@@ -522,7 +522,7 @@ got wrong twice.
 2. The slide then scales the image. `fig-wide` is `width: 100%` against a usable
    **1280px** (sections have no horizontal padding), so wide figures scale *up*
    and their authored width barely matters. What binds is `max-height`: 420px
-   for `fig-wide`, 560px for `fig-tall`.
+   for `fig-wide`, 540px for `fig-tall`.
 3. So a figure taller than about 0.44 of its width gets clamped by height, and
    all its text shrinks by that ratio.
 
