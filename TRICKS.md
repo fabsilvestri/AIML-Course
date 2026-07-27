@@ -360,7 +360,170 @@ https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/note
 
 ---
 
-## 11. Before committing
+## 11. Typography and legibility
+
+The deck is projected in a hall, sometimes badly. **Legibility from the back row
+beats refinement**, and every number below was measured in the live page rather
+than estimated.
+
+### 11.1 The type scale — six steps, no inline sizes
+
+Nineteen sizes accumulated across two decks, thirty-four of them written inline
+as `style="font-size:1.15em"`. Most steps sat within 5% of a neighbour: invisible
+as a distinction, but a decision to re-make on every future slide.
+
+```css
+--t-xs: 0.62em;  --t-sm: 0.78em;  --t-md: 1em;   --t-lg: 1.18em;
+--t-h2: 1.62em;  --t-h1: 2.10em;  --t-num: 2.60em;
+```
+
+**Never write an inline `font-size`.** If a paragraph needs to be larger, it is
+`.lead`; smaller, `.small` or `.smaller`. If none fits, add a step to the scale
+deliberately — do not invent `1.12em` on one slide.
+
+`h4` must be an eyebrow (uppercase, tracked, `--t-sm`), not a shrunken heading.
+It was smaller than the body text it introduced.
+
+### 11.2 Spacing is canvas pixels, not `em`
+
+Margins in `em` mean a `.small` paragraph is spaced 22% tighter than a body one
+and a `.smaller` list 36% tighter — there is no baseline. Use the four-step
+rhythm, which is independent of the element's own size:
+
+```css
+--sp-1: 8px;  --sp-2: 14px;  --sp-3: 22px;  --sp-4: 34px;
+```
+
+### 11.3 Anchor the layout
+
+reveal centres both axes, so the h2 baseline swung **16 px → 241 px** across
+Lecture 1 — a title moving a third of the screen between consecutive slides is
+the most visible defect from the back of a hall. `center: false`, content flush
+left, and only `.title-slide`, `.divider`, `.figslide` and `.commit-slide`
+centred by flex.
+
+Consequence worth keeping: with centring off, **overflow becomes visible instead
+of being silently re-centred**.
+
+### 11.4 Floors
+
+| element | floor | note |
+|---|---|---|
+| any text | **18 px** (1/40 of canvas) | 24 px is comfortable |
+| code | **18.6 px** | `pre { font-size: 0.62em }` |
+| plot tick labels | **15 px** | these are on-slide pixels, see §11.6 |
+| text contrast | **4.5:1** | WCAG AA |
+| graphics contrast | **3:1** | axes, rules, borders |
+
+Code lines are capped at **80 characters** — measured, an 85-char line at 18.6 px
+is 921 px against ~1103 px usable, leaving no headroom for a narrower fallback
+mono. `pre { width: fit-content }` so a 22-character snippet is not painted as a
+1237 px slab.
+
+### 11.5 Colour, corrected
+
+`--aiml-success` moves from `#1e8449` to **`#14663a`**: the old green was 4.35:1
+on the fix panel, failing AA. Same green, rescued.
+
+Two greys, not one. `--aiml-muted` `#6b7280` is **chrome only** — footer, slide
+number. Anything a student must read uses `--aiml-muted-strong` `#4b5563`
+(7.56:1).
+
+`--aiml-rule` moves to `#b0bcc7`; `#d5dbe1` is 1.4:1 and simply absent on a
+projector. Keep the old value as `--aiml-rule-faint` for table cell rules only.
+
+**Red is overloaded.** It means broken, urgent, write-this-down, look-here — and
+was also the colour of every inline `<code>`, so ten identifiers in a row read as
+a warning stripe. Inline code is `--aiml-primary`; the chip background carries
+the distinction.
+
+Panel titles take their panel's semantic colour rather than grey — they are doing
+semantic work anyway, and grey-on-tint failed AA in all four variants.
+
+### 11.6 Plots must belong to the same document
+
+The SVGs are authored at 677–927 pt and capped at 420–560 px on the slide, so
+**they display at roughly 1:1 — the rcParams numbers are on-slide pixels.** A
+`font.size: 13` tick label is 13 px against 30 px slide text.
+
+Register the vendored static cuts and set the scale for projection:
+
+```python
+from matplotlib import font_manager
+for f in (ROOT / "assets/fonts").glob("SourceSans3-*.ttf"):
+    font_manager.fontManager.addfont(f)
+
+"font.family": "Source Sans 3",
+"font.size": 17, "axes.titlesize": 19, "axes.labelsize": 17,
+"xtick.labelsize": 15, "ytick.labelsize": 15, "legend.fontsize": 15,
+"axes.titleweight": "normal",          # the slide's h2 is the title
+"axes.titlecolor": "#4b5563",
+"axes.titlelocation": "left",
+"axes.spines.top": False, "axes.spines.right": False,
+"axes.edgecolor": "#7b8794",           # 3.66:1, was 2.54:1
+"grid.color": "#b0bcc7",               # 1.93:1, was 1.40:1 — invisible
+"axes.axisbelow": True,                # gridlines under the bars, not through
+```
+
+Then shrink each `figsize` ~20%, and delete the per-call `fontsize=` arguments
+that currently defeat the global scale.
+
+`jet` is perceptually non-monotonic and imports yellow/cyan/magenta from outside
+the palette. Where a slide *prints* `cmap="jet"` for fidelity to the book, keep
+the printed code and plot with `turbo`, and spend one sentence on why — a free
+teachable moment in a course about not trusting defaults.
+
+### 11.7 One header for every hand-drawn diagram
+
+Seven diagrams used ten corner radii, six stroke widths and fourteen font sizes.
+With 22 decks still to draw, fix it now. Start every `d-*.svg` with:
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 420"
+     font-family="'Source Sans 3','Source Sans Pro',Helvetica,sans-serif">
+  <style>
+    .box   { fill:#fff; stroke:#0b3d62; stroke-width:2; }
+    .box-r { fill:#fff; stroke:#c0392b; stroke-width:2; }
+    .box-g { fill:#fff; stroke:#14663a; stroke-width:2; }
+    .box-m { fill:#fff; stroke:#6c3483; stroke-width:2; }
+    .t     { font-size:19px; fill:#16212b; }
+    .t-sub { font-size:16px; fill:#4b5563; }
+    .t-hd  { font-size:23px; font-weight:700; }
+    .flow  { stroke-width:2.5; fill:none; }
+  </style>
+```
+
+`rx="7"` everywhere; strokes 2 / 2.5 / 3 only; those three text classes only.
+
+**Do not re-implement `.panel` inside an SVG.** Explanatory boxes belong in HTML
+above or below the figure, or the same idea exists in two visual languages.
+
+**Compose diacritics with `<tspan>`, not combining marks.** `θ̂` written as
+U+03B8 + U+0302 renders with a detached, offset hat in every non-Mac fallback —
+it did, four times, in `d-projection.svg`.
+
+### 11.8 Restraint
+
+- **At most one `.panel` per slide.** At 65 panels across 199 slides, a callout
+  every third slide stops meaning "stop, this matters".
+- **A panel is never smaller than the text it interrupts** (`font-size: 0.94em`
+  floor). The most consequential sentence on the Assessment slide was set smaller
+  than the routine bullets above it.
+- **Every figure gets exactly one `.takeaway`** — one sentence saying what to
+  look at.
+- If a trailing note is not readable from row 20, it is a **speaker note**, not a
+  `<p class="small muted">`. Roughly half of the 123 `.small` uses belong in
+  `<aside class="notes">`.
+
+### 11.9 Unverified — do not ship blind
+
+`-webkit-text-stroke: 0.011em currentColor` on `.reveal .katex` was suggested to
+thicken Computer Modern's hairlines, which are the first casualty of ambient
+light. **Not tested on the hall projector.** Try it there before adopting it.
+
+---
+
+## 12. Before committing
 
 ```bash
 python3 tools/check_decks.py     # currency, weekdays, third-party notebooks,
