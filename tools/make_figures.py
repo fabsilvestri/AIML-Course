@@ -111,6 +111,11 @@ def setup():
         "legend.fontsize": TICK,
         "figure.autolayout": False,
         "svg.hashsalt": "aiml-course",
+        # TRICKS §9.1, in the other renderer: two dollar signs in one string
+        # are mathtext to matplotlib exactly as they are maths to KaTeX, so
+        # "$137,500 (101)  $162,500 (91)" renders as an italic equation. No
+        # figure in this course uses mathtext; turn the trap off entirely.
+        "text.parse_math": False,
     })
     # a missing font is a silent revert to DejaVu, so fail loudly instead
     resolved = font_manager.findfont("Source Sans 3", fallback_to_default=False)
@@ -379,21 +384,30 @@ def fig_income_value(train, clusters):
     ax.set_xlabel("median_income"); ax.set_ylabel("median_house_value")
     ax.yaxis.set_major_formatter(usd)
     ax.set_title("The strongest predictor — and the artefacts in the label")
-    ax.set_xlim(0, 17.4)                     # room for the labels, off the data
+    ax.set_xlim(0, 15.5)
     cap, n_cap = clusters["cap"], clusters["cap_count"]
     ax.axhline(cap, color=ACCENT, lw=2.2)
-    ax.text(15.6, cap, f"${cap:,.0f} cap — {n_cap} districts", va="center",
-            ha="left", fontsize=SMALL, color=ACCENT, fontweight="bold")
-    for value, count in clusters["top"]:
+    ax.text(15.3, cap - 14000, f"${cap:,.0f} cap — {n_cap} districts",
+            va="top", ha="right", fontsize=SMALL, color=ACCENT,
+            fontweight="bold", zorder=5,
+            bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
+                      edgecolor="none"))
+    for value, _ in clusters["top"]:
         ax.axhline(value, color=ACCENT, lw=1.2, ls="--", alpha=0.75)
-        ax.text(15.6, value, f"${value:,.0f} — {count}", va="center", ha="left",
-                fontsize=SMALL, color=ACCENT)
-    ax.text(0.02, 0.97, f"dashed: the five commonest values below the cap.\n"
-                        f"A typical value carries "
-                        f"{clusters['background_count']:.0f} districts.",
-            transform=ax.transAxes, va="top", ha="left", fontsize=SMALL,
-            color="#33414d", bbox=dict(boxstyle="round,pad=0.4",
-                                       facecolor="white", edgecolor=RULE))
+    # the five stripes are $25,000 apart, so a label on each one overlaps its
+    # neighbours: list them once instead, in the empty low-price/high-income
+    # corner
+    listing = "   ".join(f"${v:,.0f} ({c})" for v, c in clusters["top"][:3])
+    listing2 = "   ".join(f"${v:,.0f} ({c})" for v, c in clusters["top"][3:])
+    ax.text(0.985, 0.03,
+            f"dashed — commonest label values, districts on each:\n"
+            f"{listing}\n{listing2}"
+            f"   — a typical value carries "
+            f"{clusters['background_count']:.0f}",
+            transform=ax.transAxes, va="bottom", ha="right", fontsize=SMALL,
+            color="#33414d", linespacing=1.5,
+            bbox=dict(boxstyle="round,pad=0.4", facecolor="white",
+                      edgecolor=RULE))
     fig.tight_layout()
     return save(fig, "l1-income-value", raster=True)
 
