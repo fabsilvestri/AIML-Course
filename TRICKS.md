@@ -405,6 +405,18 @@ centred by flex.
 Consequence worth keeping: with centring off, **overflow becomes visible instead
 of being silently re-centred**.
 
+Reserve a band for the footer rather than trimming slides one at a time — a
+per-slide trim is a fix that has to be re-made every time content changes:
+
+```css
+.reveal .slides > section:not(.divider):not(.title-slide) { padding-bottom: 46px; }
+```
+
+**Ordering.** `center: false` changes the measured height of exactly the slides
+most likely to be near the limit, so run `check_overflow.py` *after* the layout
+change, never before. Trims made against the centred layout are provisional and
+may turn out to be unnecessary — or insufficient.
+
 ### 11.4 Floors
 
 | element | floor | note |
