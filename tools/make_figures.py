@@ -963,44 +963,53 @@ def error_analysis(gs, sp, base):
 
 
 def fig_error_slices(ea, overall):
-    """RMSE by income category and by ocean proximity, with counts."""
+    """RMSE by income category and by ocean proximity, with counts.
+
+    The two panels share a y-axis. They must: the whole point of the figure is
+    that the groups are compared with each other and with the one reported
+    number, and unequal limits would draw a $54,754 bar taller than a $62,606
+    one. Bar heights across the pair have to mean the same thing.
+    """
     inc = ea["by_income_cat"]
     oce = ea["by_ocean_proximity"]
-    fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 4.4),
+    ks = sorted(inc, key=int)
+    ks2 = sorted(oce, key=lambda k: -oce[k]["rmse"])
+    top = max([inc[k]["rmse"] for k in ks] +
+              [oce[k]["rmse"] for k in ks2]) * 1.32
+
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 4.4), sharey=True,
                                  gridspec_kw={"width_ratios": [1, 1.25]})
 
-    ks = sorted(inc, key=int)
-    vals = [inc[k]["rmse"] for k in ks]
-    a1.bar(ks, vals, color=PRIMARY, width=0.62)
-    a1.set_title("RMSE by income category")
-    a1.set_xlabel("income category"); a1.grid(axis="x", alpha=0)
-    a1.yaxis.set_major_formatter(usd)
-    for i, k in enumerate(ks):
-        a1.text(i, inc[k]["rmse"] + max(vals) * 0.02,
-                f"${inc[k]['rmse']:,.0f}\nn={inc[k]['n']:,}", ha="center",
-                fontsize=9.5, color=PRIMARY, fontweight="bold")
-    a1.set_ylim(0, max(vals) * 1.30)
+    def panel(ax, keys, data, colors, title):
+        ax.bar(range(len(keys)), [data[k]["rmse"] for k in keys],
+               color=colors, width=0.62, zorder=2)
+        ax.set_title(title)
+        ax.grid(axis="x", alpha=0)
+        ax.set_axisbelow(True)          # gridlines under the bars, not through
+        ax.yaxis.set_major_formatter(usd)
+        for i, k in enumerate(keys):
+            ax.text(i, data[k]["rmse"] + top * 0.017,
+                    f"${data[k]['rmse']:,.0f}\nn={data[k]['n']:,}", ha="center",
+                    fontsize=9.5, color=colors[i], fontweight="bold", zorder=5,
+                    # white ground, so the reference line cannot strike a label
+                    bbox=dict(boxstyle="round,pad=0.12", facecolor="white",
+                              edgecolor="none"))
 
-    ks2 = sorted(oce, key=lambda k: -oce[k]["rmse"])
-    vals2 = [oce[k]["rmse"] for k in ks2]
-    colors = [ACCENT if oce[k]["n"] < 50 else PRIMARY for k in ks2]
-    a2.bar(range(len(ks2)), vals2, color=colors, width=0.62)
+    panel(a1, ks, inc, [PRIMARY] * len(ks), "RMSE by income category")
+    a1.set_xticks(range(len(ks)), ks)
+    # a group too small to trust is drawn in the accent colour, not hidden
+    panel(a2, ks2, oce, [ACCENT if oce[k]["n"] < 50 else PRIMARY for k in ks2],
+          "RMSE by ocean_proximity")
     a2.set_xticks(range(len(ks2)), [k.replace(" ", "\n") for k in ks2],
                   fontsize=9)
-    a2.set_title("RMSE by ocean_proximity")
-    a2.grid(axis="x", alpha=0)
-    a2.yaxis.set_major_formatter(usd)
-    for i, k in enumerate(ks2):
-        a2.text(i, oce[k]["rmse"] + max(vals2) * 0.02,
-                f"${oce[k]['rmse']:,.0f}\nn={oce[k]['n']:,}", ha="center",
-                fontsize=9.5, color=colors[i], fontweight="bold")
-    a2.set_ylim(0, max(vals2) * 1.30)
+
+    a1.set_ylim(0, top)
     for ax in (a1, a2):
-        ax.axhline(overall, color=ACCENT, lw=1.8, ls="--", zorder=4,
-                   label=f"the single reported number, ${overall:,.0f}")
-        ax.legend(loc="upper right", fontsize=9.5, labelcolor=ACCENT)
-    fig.suptitle("The average hides this", fontsize=14, color=PRIMARY,
-                 fontweight="bold", y=1.02)
+        ax.axhline(overall, color=ACCENT, lw=1.8, ls="--", zorder=3)
+    # labelled once: with a shared axis it is visibly the same line
+    a1.axhline(overall, color=ACCENT, lw=1.8, ls="--", zorder=3,
+               label=f"the single reported number, ${overall:,.0f}")
+    a1.legend(loc="upper left", fontsize=9.5, labelcolor=ACCENT)
     fig.tight_layout()
     return save(fig, "l2-error-slices")
 
