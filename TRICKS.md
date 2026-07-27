@@ -545,10 +545,20 @@ light. **Not tested on the hall projector.** Try it there before adopting it.
 ## 12. Before committing
 
 ```bash
-python3 tools/check_decks.py     # currency, weekdays, third-party notebooks,
-                                 # missing figures, deck length
-python3 tools/make_figures.py    # regenerate every figure and figures.json
+python3 tools/make_figures.py       # regenerate every figure and figures.json
+python3 tools/check_decks.py        # currency, weekdays, third-party notebooks,
+                                    # missing figures, deck length
+python3 tools/check_provenance.py   # every quantity on a slide is traceable
+python3 tools/check_overflow.py     # nothing exceeds the 720px canvas
 ```
+
+`check_provenance.py` is the one that enforces §4. It pulls every money amount
+and thousands-separated integer out of the decks and requires each to be
+reachable from `figures.json` — exactly, or at a rounding a lecturer would
+plausibly write. Anything that is genuinely not a measurement (durations, marks,
+chapter numbers, constants quoted from the book) goes in its `ALLOWED` table
+**with the reason attached**. Adding to that table without a reason is how the
+contract rots again.
 
 Then look at the deck in a browser. The linter catches what is mechanical; it
 cannot tell you a slide is ugly, overfull, or wrong.
