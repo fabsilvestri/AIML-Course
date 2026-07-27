@@ -446,12 +446,22 @@ The SVGs are authored at 677–927 pt and capped at 420–560 px on the slide, s
 **they display at roughly 1:1 — the rcParams numbers are on-slide pixels.** A
 `font.size: 13` tick label is 13 px against 30 px slide text.
 
-Register the vendored static cuts and set the scale for projection:
+**matplotlib cannot read `.woff2`.** Its FreeType raises `Can not load face
+(unknown file format; error code 0x2)` — verified. Worse, anyone who wraps the
+call defensively gets a silent revert to DejaVu with no error at all. And a
+*variable* `.ttf` resolves to its default instance, which for Source Sans 3 is
+ExtraLight.
+
+So `assets/fonts/` carries both: woff2 variable fonts for the browser, and three
+**static** cuts — `SourceSans3-{Regular,SemiBold,Bold}.ttf` — for matplotlib,
+renamed so `font_manager` sees one family with three weights. Register those, and
+the plots and the slides are in the same typeface:
 
 ```python
 from matplotlib import font_manager
-for f in (ROOT / "assets/fonts").glob("SourceSans3-*.ttf"):
-    font_manager.fontManager.addfont(f)
+for f in ("SourceSans3-Regular.ttf", "SourceSans3-SemiBold.ttf",
+          "SourceSans3-Bold.ttf"):
+    font_manager.fontManager.addfont(ROOT / "assets/fonts" / f)
 
 "font.family": "Source Sans 3",
 "font.size": 17, "axes.titlesize": 19, "axes.labelsize": 17,
@@ -467,6 +477,15 @@ for f in (ROOT / "assets/fonts").glob("SourceSans3-*.ttf"):
 
 Then shrink each `figsize` ~20%, and delete the per-call `fontsize=` arguments
 that currently defeat the global scale.
+
+**The palette lives in two places.** `make_figures.py` carries its own copy of
+the hex values. Any change to a `--aiml-*` token in `custom.css` must be mirrored
+there in the same commit, and all figures regenerated — or the decks ship with
+two greens.
+
+**Panels of the same quantity share a y-axis.** A two-panel figure drawn at
+different limits makes a smaller bar look taller, which is precisely the reading
+error Lecture 2 teaches students to catch. Set the limit explicitly on both.
 
 `jet` is perceptually non-monotonic and imports yellow/cyan/magenta from outside
 the palette. Where a slide *prints* `cmap="jet"` for fidelity to the book, keep
