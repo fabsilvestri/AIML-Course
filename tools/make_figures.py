@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Generate every data figure used in the slide decks.
+Generate every data figure used in the slide decks, and every number quoted in
+them.
 
 Figures are produced from the real datasets, with the same code paths the
 lectures describe, so a number printed on a slide can always be reproduced by
@@ -11,11 +12,16 @@ re-running this script. Nothing here is illustrative-only.
 Output: assets/figures/*.svg (vector, for anything sparse)
         assets/figures/*.png (raster @160dpi, for dense scatter plots where
                               SVG would embed 20k+ path elements)
+        assets/figures/figures.json — every number the slides quote
+
+Expensive fits are cached in CACHE/fits-v2.pkl, keyed by name, so adding one
+measurement does not re-run the others. Delete the file to refit everything.
 """
 
 from __future__ import annotations
 
 import json
+import pickle
 import tarfile
 import urllib.request
 from pathlib import Path
@@ -42,6 +48,14 @@ RULE = "#d5dbe1"
 SOFT = "#f4f7f9"
 
 SEED = 42
+N_FOLDS = 10
+CAP = 500_000
+
+# The lectures use a shuffled KFold rather than the unshuffled default, so that
+# two students whose frames are ordered differently get identical folds.
+def cv_splitter():
+    from sklearn.model_selection import KFold
+    return KFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
 
 
 def setup():
@@ -72,6 +86,32 @@ def setup():
     })
 
 
+# ------------------------------------------------------------------- caching
+
+_CACHE_FILE = CACHE / "fits-v2.pkl"
+_cache: dict = {}
+
+
+def load_cache():
+    global _cache
+    if _CACHE_FILE.is_file():
+        _cache = pickle.loads(_CACHE_FILE.read_bytes())
+    else:
+        _cache = {}
+
+
+def cached(key, fn):
+    """Run fn() once and remember the result across runs."""
+    if key in _cache:
+        print(f"    [cached] {key}")
+        return _cache[key]
+    print(f"    [computing] {key}")
+    value = fn()
+    _cache[key] = value
+    _CACHE_FILE.write_bytes(pickle.dumps(_cache))
+    return value
+
+
 def save(fig, name, *, raster=False, dpi=160):
     ext = "png" if raster else "svg"
     path = OUT / f"{name}.{ext}"
@@ -98,6 +138,44 @@ def load_housing() -> pd.DataFrame:
 usd = FuncFormatter(lambda v, _: f"${v/1000:,.0f}k" if v else "$0")
 
 
+def income_cats(h):
+    return pd.cut(h["median_income"], bins=[0., 1.5, 3.0, 4.5, 6., np.inf],
+                  labels=[1, 2, 3, 4, 5])
+
+
+def split(h):
+    """The one stratified split the whole course uses. Named as on the slides."""
+    from sklearn.model_selection import train_test_split
+    cats = income_cats(h)
+    strat_train_set, strat_test_set = train_test_split(
+        h, test_size=0.2, random_state=SEED, stratify=cats)
+    return {
+        "train": strat_train_set,
+        "test": strat_test_set,
+        "X_train": strat_train_set.drop("median_house_value", axis=1),
+        "y_train": strat_train_set["median_house_value"].copy(),
+        "X_test": strat_test_set.drop("median_house_value", axis=1),
+        "y_test": strat_test_set["median_house_value"].copy(),
+    }
+
+
+def preprocessing(X_train):
+    """The ColumnTransformer the lectures build, and nothing else."""
+    from sklearn.compose import ColumnTransformer
+    from sklearn.impute import SimpleImputer
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+    num = X_train.select_dtypes(include=[np.number]).columns.tolist()
+    cat = ["ocean_proximity"]
+    prep = ColumnTransformer([
+        ("num", make_pipeline(SimpleImputer(strategy="median"),
+                              StandardScaler()), num),
+        ("cat", OneHotEncoder(handle_unknown="ignore"), cat),
+    ])
+    return prep, num, cat
+
+
 # ---------------------------------------------------------------- lecture 1
 
 def fig_histograms(h):
@@ -114,7 +192,8 @@ def fig_histograms(h):
     # the two features the slides call out
     axes.ravel()[7].set_title("median_income", color=ACCENT, fontsize=12)
     axes.ravel()[8].set_title("median_house_value", color=ACCENT, fontsize=12)
-    fig.suptitle("housing.hist(bins=50)", fontsize=13, color=MUTED, y=1.005)
+    fig.suptitle("housing_full.hist(bins=50)", fontsize=13, color=MUTED,
+                 y=1.005)
     fig.tight_layout()
     return save(fig, "l1-histograms")
 
@@ -142,7 +221,7 @@ def fig_hist_annotated(h):
     a2.set_title("median_house_value — the label is capped")
     a2.set_xlabel("median_house_value")
     a2.xaxis.set_major_formatter(usd)
-    n_cap = int((h["median_house_value"] >= 500_000).sum())
+    n_cap = int((h["median_house_value"] >= CAP).sum())
     a2.axvline(500_001, color=ACCENT, lw=2)
     a2.annotate(f"{n_cap:,} districts pile up\nat the $500,001 cap",
                 xy=(500_001, n_cap * 0.9),
@@ -153,10 +232,11 @@ def fig_hist_annotated(h):
     return save(fig, "l1-hist-annotated")
 
 
-def fig_geo(h):
+def fig_geo(train):
+    """Exploration plots — on the training set, after the split."""
     # plain
     fig, ax = plt.subplots(figsize=(7.2, 7.6))
-    ax.scatter(h["longitude"], h["latitude"], s=6, color=PRIMARY)
+    ax.scatter(train["longitude"], train["latitude"], s=6, color=PRIMARY)
     ax.set_xlabel("longitude"); ax.set_ylabel("latitude")
     ax.set_title("alpha = 1.0  —  it looks like California, and that is all")
     fig.tight_layout()
@@ -164,8 +244,8 @@ def fig_geo(h):
 
     # alpha, annotated
     fig, ax = plt.subplots(figsize=(7.6, 7.8))
-    ax.scatter(h["longitude"], h["latitude"], s=8, color=PRIMARY, alpha=0.2,
-               linewidths=0)
+    ax.scatter(train["longitude"], train["latitude"], s=8, color=PRIMARY,
+               alpha=0.2, linewidths=0)
     ax.set_xlabel("longitude"); ax.set_ylabel("latitude")
     ax.set_title("alpha = 0.2  —  the density structure appears")
     for name, (lon, lat), off in [
@@ -182,8 +262,9 @@ def fig_geo(h):
 
     # price + population
     fig, ax = plt.subplots(figsize=(8.6, 7.4))
-    sc = ax.scatter(h["longitude"], h["latitude"],
-                    s=h["population"] / 100, c=h["median_house_value"],
+    sc = ax.scatter(train["longitude"], train["latitude"],
+                    s=train["population"] / 100,
+                    c=train["median_house_value"],
                     cmap="jet", alpha=0.45, linewidths=0)
     ax.set_xlabel("longitude"); ax.set_ylabel("latitude")
     ax.set_title("radius = population,  colour = median house value")
@@ -194,12 +275,8 @@ def fig_geo(h):
     return save(fig, "l1-geo-price", raster=True)
 
 
-def fig_corr(h):
-    from sklearn.model_selection import train_test_split
-    cats = pd.cut(h["median_income"], bins=[0., 1.5, 3.0, 4.5, 6., np.inf],
-                  labels=[1, 2, 3, 4, 5])
-    train, _ = train_test_split(h, test_size=0.2, random_state=SEED,
-                                stratify=cats)
+def fig_corr(train):
+    """The correlation column — computed on the training set, as the slide says."""
     corr = train.corr(numeric_only=True)["median_house_value"].drop(
         "median_house_value").sort_values()
     fig, ax = plt.subplots(figsize=(9.5, 4.6))
@@ -215,13 +292,27 @@ def fig_corr(h):
                 color=PRIMARY if v >= 0 else ACCENT, fontweight="bold")
     ax.set_xlim(-0.28, 0.83)
     fig.tight_layout()
-    return save(fig, "l1-corr")
+    save(fig, "l1-corr")
+    return {k: float(v) for k, v in
+            corr.sort_values(ascending=False).items()}
 
 
-def fig_income_value(h):
+def attribute_combinations(train):
+    """The three engineered ratios, and their correlation with the target."""
+    t = train.copy()
+    t["rooms_per_house"] = t["total_rooms"] / t["households"]
+    t["bedrooms_ratio"] = t["total_bedrooms"] / t["total_rooms"]
+    t["people_per_house"] = t["population"] / t["households"]
+    corr = t.corr(numeric_only=True)["median_house_value"]
+    return {k: float(corr[k]) for k in
+            ["median_income", "rooms_per_house", "total_rooms",
+             "bedrooms_ratio", "people_per_house", "latitude"]}
+
+
+def fig_income_value(train):
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.scatter(h["median_income"], h["median_house_value"], s=7, alpha=0.1,
-               color=PRIMARY, linewidths=0)
+    ax.scatter(train["median_income"], train["median_house_value"], s=7,
+               alpha=0.1, color=PRIMARY, linewidths=0)
     ax.set_xlabel("median_income"); ax.set_ylabel("median_house_value")
     ax.yaxis.set_major_formatter(usd)
     ax.set_title("The strongest predictor — and the artefacts in the label")
@@ -240,9 +331,7 @@ def fig_income_value(h):
 
 
 def fig_income_cat(h):
-    cats = pd.cut(h["median_income"],
-                  bins=[0., 1.5, 3.0, 4.5, 6., np.inf],
-                  labels=[1, 2, 3, 4, 5])
+    cats = income_cats(h)
     counts = cats.value_counts().sort_index()
     fig, ax = plt.subplots(figsize=(8.6, 4.4))
     ax.bar([str(c) for c in counts.index], counts.values, color=PRIMARY,
@@ -256,15 +345,15 @@ def fig_income_cat(h):
                 color=PRIMARY, fontweight="bold")
     ax.set_ylim(0, counts.max() * 1.15)
     fig.tight_layout()
-    return save(fig, "l1-income-cat")
+    save(fig, "l1-income-cat")
+    return {str(k): int(v) for k, v in counts.items()}
 
 
 def fig_strat_bias(h):
     """Sampling bias of a random split vs a stratified one — measured."""
     from sklearn.model_selection import train_test_split
 
-    cats = pd.cut(h["median_income"], bins=[0., 1.5, 3.0, 4.5, 6., np.inf],
-                  labels=[1, 2, 3, 4, 5])
+    cats = income_cats(h)
     overall = cats.value_counts(normalize=True).sort_index()
 
     rand_tr, rand_te = train_test_split(h.assign(cat=cats), test_size=0.2,
@@ -294,35 +383,177 @@ def fig_strat_bias(h):
             "strat_max_abs_pct": float(err_strat.abs().max())}
 
 
-# ---------------------------------------------------------------- lecture 2
+def baseline(sp):
+    """The trivial baseline: predict one constant, forever.
 
-def build_models(h):
-    """Train the three models the lectures use, honestly, and return numbers."""
-    from sklearn.compose import ColumnTransformer
+    Nothing in either lecture is interpretable without it. Reported three ways,
+    because the deck quotes training RMSE in Lecture 1 and cross-validated and
+    test RMSE in Lecture 2.
+    """
+    from sklearn.dummy import DummyRegressor
+    from sklearn.metrics import root_mean_squared_error
+    from sklearn.model_selection import cross_val_score
+
+    y_tr, y_te = sp["y_train"], sp["y_test"]
+    X_tr, X_te = sp["X_train"], sp["X_test"]
+    mean_, median_ = float(y_tr.mean()), float(y_tr.median())
+
+    out = {
+        "train_mean": mean_,
+        "train_median": median_,
+        "mean_train_rmse": float(root_mean_squared_error(
+            y_tr, np.full(len(y_tr), mean_))),
+        "median_train_rmse": float(root_mean_squared_error(
+            y_tr, np.full(len(y_tr), median_))),
+        "mean_test_rmse": float(root_mean_squared_error(
+            y_te, np.full(len(y_te), mean_))),
+        "median_test_rmse": float(root_mean_squared_error(
+            y_te, np.full(len(y_te), median_))),
+    }
+    folds = -cross_val_score(DummyRegressor(strategy="mean"), X_tr, y_tr,
+                             scoring="neg_root_mean_squared_error",
+                             cv=cv_splitter())
+    out["mean_cv_rmse"] = float(folds.mean())
+    out["mean_cv_std"] = float(folds.std())
+    print(f"    constant = train mean   train={out['mean_train_rmse']:,.0f}  "
+          f"cv={out['mean_cv_rmse']:,.0f}  test={out['mean_test_rmse']:,.0f}")
+    print(f"    constant = train median train={out['median_train_rmse']:,.0f}  "
+          f"                 test={out['median_test_rmse']:,.0f}")
+    return out
+
+
+def measure_leak(h, n_seeds=20):
+    """How much does 'scale before split' actually cost? Measure, over seeds.
+
+    A single split gives a single subtraction, and a single subtraction of two
+    noisy numbers is not a measurement. Twenty splits give the distribution the
+    difference is drawn from — which on this dataset is centred on zero.
+
+    The reason is stated on the slide: standardisation is an invertible affine
+    map, OLS is equivariant under one, and with 20,640 rows the training and
+    full-data statistics nearly coincide. Remove any of the three and the leak
+    has teeth.
+    """
+    from sklearn.decomposition import PCA
     from sklearn.ensemble import RandomForestRegressor
     from sklearn.impute import SimpleImputer
     from sklearn.linear_model import LinearRegression
-    from sklearn.model_selection import cross_val_score, train_test_split
+    from sklearn.metrics import root_mean_squared_error
+    from sklearn.model_selection import train_test_split
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    X = h.select_dtypes(include=[np.number]).drop(columns=["median_house_value"])
+    y = h["median_house_value"].values
+
+    def run(make_prep, make_model, seed):
+        # LEAKY: preprocessing fitted on everything, then split
+        Xall = make_prep().fit_transform(X)
+        a_tr, a_te, ya_tr, ya_te = train_test_split(Xall, y, test_size=0.2,
+                                                    random_state=seed)
+        leaky = root_mean_squared_error(
+            ya_te, make_model().fit(a_tr, ya_tr).predict(a_te))
+        # CORRECT: split, then fit preprocessing on the training part only
+        b_tr, b_te, yb_tr, yb_te = train_test_split(X, y, test_size=0.2,
+                                                    random_state=seed)
+        prep = make_prep()
+        correct = root_mean_squared_error(
+            yb_te, make_model().fit(prep.fit_transform(b_tr), yb_tr)
+                              .predict(prep.transform(b_te)))
+        return float(leaky), float(correct)
+
+    base = lambda: make_pipeline(SimpleImputer(strategy="median"),
+                                 StandardScaler())
+    cases = {
+        "linear_regression": (base, LinearRegression),
+        "random_forest": (base, lambda: RandomForestRegressor(
+            n_estimators=50, random_state=SEED, n_jobs=-1)),
+        "pca_4": (lambda: make_pipeline(SimpleImputer(strategy="median"),
+                                        StandardScaler(), PCA(n_components=4)),
+                  LinearRegression),
+    }
+    # seed 42 first, so the number printed on the code slide is one of these
+    seeds = [SEED] + list(range(1, n_seeds))
+    out = {"n_seeds": n_seeds, "seeds": seeds}
+    for name, (mp, mm) in cases.items():
+        leaky, correct = zip(*(run(mp, mm, s) for s in seeds))
+        leaky, correct = np.array(leaky), np.array(correct)
+        d = leaky - correct                       # negative = leak looks better
+        out[name] = {
+            "leaky_seed42": float(leaky[0]),
+            "correct_seed42": float(correct[0]),
+            "correct_mean": float(correct.mean()),
+            "correct_std": float(correct.std(ddof=1)),
+            "diff_mean": float(d.mean()),
+            "diff_std": float(d.std(ddof=1)),
+            "diff_sign_flips": bool((d > 0).any() and (d < 0).any()),
+            "diff_abs_max": float(np.abs(d).max()),
+        }
+        print(f"    {name:20s} honest={correct.mean():9,.0f} "
+              f"± {correct.std(ddof=1):6,.0f}   "
+              f"leak cost={d.mean():+8.2f} ± {d.std(ddof=1):,.2f}"
+              f"{'  (sign flips)' if out[name]['diff_sign_flips'] else ''}")
+    return out
+
+
+def scaling_ablation(sp):
+    """Does dropping the scaler change the models in this lecture? Measure.
+
+    'Without scaling the model will ignore income and obsess over room counts'
+    is false for every model in Lectures 1 and 2: least squares by pseudoinverse
+    is equivariant under an invertible affine map of the features, and trees
+    are invariant under any monotone rescaling of a feature.
+    """
+    from sklearn.compose import ColumnTransformer
+    from sklearn.impute import SimpleImputer
+    from sklearn.linear_model import LinearRegression
+    from sklearn.model_selection import cross_val_score
     from sklearn.pipeline import Pipeline, make_pipeline
     from sklearn.preprocessing import OneHotEncoder, StandardScaler
     from sklearn.tree import DecisionTreeRegressor
 
-    cats = pd.cut(h["median_income"], bins=[0., 1.5, 3.0, 4.5, 6., np.inf],
-                  labels=[1, 2, 3, 4, 5])
-    train, test = train_test_split(h, test_size=0.2, random_state=SEED,
-                                   stratify=cats)
-    X_tr = train.drop("median_house_value", axis=1)
-    y_tr = train["median_house_value"].copy()
-    X_te = test.drop("median_house_value", axis=1)
-    y_te = test["median_house_value"].copy()
-
+    X_tr, y_tr = sp["X_train"], sp["y_train"]
     num = X_tr.select_dtypes(include=[np.number]).columns.tolist()
     cat = ["ocean_proximity"]
-    prep = ColumnTransformer([
-        ("num", make_pipeline(SimpleImputer(strategy="median"),
-                              StandardScaler()), num),
-        ("cat", OneHotEncoder(handle_unknown="ignore"), cat),
-    ])
+
+    def prep(scaled):
+        steps = [SimpleImputer(strategy="median")]
+        if scaled:
+            steps.append(StandardScaler())
+        return ColumnTransformer([
+            ("num", make_pipeline(*steps), num),
+            ("cat", OneHotEncoder(handle_unknown="ignore"), cat)])
+
+    out = {}
+    for name, est in [("linear_regression", LinearRegression()),
+                      ("decision_tree", DecisionTreeRegressor(
+                          random_state=SEED))]:
+        row = {}
+        for tag, scaled in [("scaled", True), ("unscaled", False)]:
+            folds = -cross_val_score(
+                Pipeline([("prep", prep(scaled)), ("model", est)]),
+                X_tr, y_tr, scoring="neg_root_mean_squared_error",
+                cv=cv_splitter())
+            row[tag] = float(folds.mean())
+        row["diff"] = abs(row["scaled"] - row["unscaled"])
+        out[name] = row
+        print(f"    {name:20s} scaled={row['scaled']:9,.2f}  "
+              f"unscaled={row['unscaled']:9,.2f}  diff={row['diff']:,.2f}")
+    return out
+
+
+# ---------------------------------------------------------------- lecture 2
+
+def build_models(sp):
+    """Train the three models the lectures use, honestly, and return numbers."""
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.linear_model import LinearRegression
+    from sklearn.model_selection import cross_val_score
+    from sklearn.pipeline import Pipeline
+    from sklearn.tree import DecisionTreeRegressor
+
+    X_tr, y_tr = sp["X_train"], sp["y_train"]
+    prep, num, cat = preprocessing(X_tr)
 
     models = {
         "Linear regression": LinearRegression(),
@@ -337,19 +568,83 @@ def build_models(h):
         pipe.fit(X_tr, y_tr)
         train_rmse = float(np.sqrt(np.mean((pipe.predict(X_tr) - y_tr) ** 2)))
         folds = -cross_val_score(pipe, X_tr, y_tr,
-                                 scoring="neg_root_mean_squared_error", cv=10)
+                                 scoring="neg_root_mean_squared_error",
+                                 cv=cv_splitter())
         res[name] = {"train_rmse": train_rmse,
                      "cv_folds": folds.tolist(),
                      "cv_mean": float(folds.mean()),
                      "cv_std": float(folds.std())}
         print(f"    {name:20s} train={train_rmse:9,.0f}  "
               f"cv={folds.mean():9,.0f} ± {folds.std():,.0f}")
-
-    res["_split"] = (X_tr, y_tr, X_te, y_te, prep, num, cat)
+    # the exact block the slide prints
+    res["tree_describe"] = pd.Series(
+        res["Decision tree"]["cv_folds"]).describe().to_string()
     return res
 
 
-def fig_train_vs_cv(res):
+def paired_folds(res):
+    """Compare models fold by fold, not mean against mean.
+
+    The three models are evaluated on the *same* ten folds, so the honest
+    comparison is the paired difference. Its spread is far smaller than the
+    spread of either model's fold scores, because the fold-to-fold variation is
+    mostly the composition of the held-out fold, which both models share.
+    """
+    from scipy import stats
+    names = ["Linear regression", "Decision tree", "Random forest"]
+    out = {}
+    for a, b in [("Decision tree", "Linear regression"),
+                 ("Random forest", "Linear regression")]:
+        d = np.array(res[a]["cv_folds"]) - np.array(res[b]["cv_folds"])
+        t = stats.ttest_rel(res[a]["cv_folds"], res[b]["cv_folds"])
+        out[f"{a} - {b}"] = {"mean": float(d.mean()),
+                             "std": float(d.std(ddof=1)),
+                             "p_value": float(t.pvalue),
+                             "all_same_sign": bool((d > 0).all() or (d < 0).all())}
+        print(f"    {a} - {b}: {d.mean():+,.0f} ± {d.std(ddof=1):,.0f} per fold, "
+              f"p={t.pvalue:.4f}, same sign in every fold="
+              f"{out[f'{a} - {b}']['all_same_sign']}")
+    out["fold_std"] = {n: float(np.std(res[n]["cv_folds"], ddof=1))
+                       for n in names}
+    return out
+
+
+def normal_equation(sp):
+    """Thread 1, on our own data: the closed form against Scikit-Learn's."""
+    from sklearn.impute import SimpleImputer
+    from sklearn.linear_model import LinearRegression
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler, add_dummy_feature
+
+    housing_num = sp["X_train"].select_dtypes(include=[np.number])
+    X = make_pipeline(SimpleImputer(strategy="median"),
+                      StandardScaler()).fit_transform(housing_num)
+    y = sp["y_train"].values
+
+    X_b = add_dummy_feature(X)
+    theta_best = np.linalg.inv(X_b.T @ X_b) @ X_b.T @ y
+
+    lin_reg = LinearRegression().fit(X, y)
+    sk = np.r_[lin_reg.intercept_, lin_reg.coef_]
+
+    residual = X_b @ theta_best - y
+    orth = float(np.abs(X_b.T @ residual).max())
+    scale = float(np.abs(X_b.T @ y).max())
+    print(f"    n features={X.shape[1]}  max|theta - sklearn|="
+          f"{np.abs(theta_best - sk).max():.3e}  max|X.T r|={orth:.3e}"
+          f"  (scale of X.T y: {scale:.3e}, ratio {orth / scale:.1e})")
+    return {"features": housing_num.columns.tolist(),
+            "orthogonality_scale": scale,
+            "orthogonality_ratio": orth / scale,
+            "theta": [float(v) for v in theta_best],
+            "sklearn_intercept": float(lin_reg.intercept_),
+            "sklearn_coef": [float(v) for v in lin_reg.coef_],
+            "max_abs_diff": float(np.abs(theta_best - sk).max()),
+            "orthogonality_max": orth,
+            "n_instances": int(X.shape[0]), "n_features": int(X.shape[1])}
+
+
+def fig_train_vs_cv(res, base):
     names = ["Linear regression", "Decision tree", "Random forest"]
     tr = [res[n]["train_rmse"] for n in names]
     cv = [res[n]["cv_mean"] for n in names]
@@ -362,7 +657,6 @@ def fig_train_vs_cv(res):
     ax.yaxis.set_major_formatter(usd)
     ax.set_ylabel("RMSE")
     ax.set_title("The training number and the honest number")
-    ax.legend(loc="upper left")
     ax.grid(axis="x", alpha=0)
     for rect, v in list(zip(b1, tr)) + list(zip(b2, cv)):
         ax.text(rect.get_x() + rect.get_width()/2, v + 2200,
@@ -372,7 +666,16 @@ def fig_train_vs_cv(res):
                 xy=(1 - w/2, 900), xytext=(1 - w/2, 26_000), color=ACCENT,
                 fontsize=11, fontweight="bold", ha="center",
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
-    ax.set_ylim(0, max(cv) * 1.32)
+    # the anchor: predicting one constant
+    b0 = base["mean_cv_rmse"]
+    ax.axhline(b0, color=ACCENT, lw=2, ls="--")
+    ax.text(2.42, b0, f"predict the mean:\n${b0:,.0f}", va="center",
+            ha="center", fontsize=10.5, color=ACCENT, fontweight="bold",
+            bbox=dict(boxstyle="round,pad=0.35", facecolor="white",
+                      edgecolor=ACCENT))
+    ax.legend(loc="upper left")
+    ax.set_xlim(-0.6, 2.85)
+    ax.set_ylim(0, b0 * 1.14)
     fig.tight_layout()
     return save(fig, "l2-train-vs-cv")
 
@@ -398,74 +701,47 @@ def fig_cv_spread(res):
     return save(fig, "l2-cv-spread")
 
 
-def fig_grid(res):
-    """Grid search over the forest — a real surface, not a sketch."""
+GRID = {"model__max_features": [4, 6, 8, 10, 12],
+        "model__n_estimators": [30, 100, 200]}
+
+
+def run_grid(sp):
+    """The grid search the slides show: max_features x n_estimators, 10 folds."""
     from sklearn.ensemble import RandomForestRegressor
     from sklearn.model_selection import GridSearchCV
     from sklearn.pipeline import Pipeline
 
-    X_tr, y_tr, *_rest = res["_split"]
-    prep = res["_split"][4]
-    grid = {"model__max_features": [4, 6, 8, 10, 12],
-            "model__n_estimators": [30, 100, 200]}
+    X_tr, y_tr = sp["X_train"], sp["y_train"]
+    prep, *_ = preprocessing(X_tr)
     gs = GridSearchCV(
         Pipeline([("prep", prep),
                   ("model", RandomForestRegressor(random_state=SEED,
                                                   n_jobs=-1))]),
-        grid, cv=10, scoring="neg_root_mean_squared_error", n_jobs=-1)
+        GRID, cv=cv_splitter(), scoring="neg_root_mean_squared_error",
+        n_jobs=-1)
     gs.fit(X_tr, y_tr)
+    return gs
+
+
+def fig_grid(gs):
     cv = pd.DataFrame(gs.cv_results_)
     piv = cv.pivot_table(index="param_model__max_features",
                          columns="param_model__n_estimators",
                          values="mean_test_score")
     Z = -piv.values
-
     fig, ax = plt.subplots(figsize=(8.4, 5.0))
     im = ax.imshow(Z, cmap="viridis_r", aspect="auto")
     ax.set_xticks(range(len(piv.columns)), [str(c) for c in piv.columns])
     ax.set_yticks(range(len(piv.index)), [str(i) for i in piv.index])
     ax.set_xlabel("n_estimators"); ax.set_ylabel("max_features")
-    ax.set_title("Grid search: 15 combinations × 10 folds = 150 fits")
+    n = len(GRID["model__max_features"]) * len(GRID["model__n_estimators"])
+    ax.set_title(f"Grid search: {n} combinations × {N_FOLDS} folds "
+                 f"= {n * N_FOLDS} fits")
     ax.grid(False)
     best = np.unravel_index(np.argmin(Z), Z.shape)
     for i in range(Z.shape[0]):
         for j in range(Z.shape[1]):
-            is_best = (i, j) == best
             # pick text colour from the cell's own luminance, not by guesswork
-            lum = np.dot(im.cmap(im.norm(Z[i, j]))[:3], [0.299, 0.587, 0.114])
-            ax.text(j, i, f"${Z[i, j]:,.0f}", ha="center", va="center",
-                    fontsize=11, fontweight="bold",
-                    color=ACCENT if is_best
-                    else ("#16212b" if lum > 0.6 else "white"))
-    ax.add_patch(plt.Rectangle((best[1] - .5, best[0] - .5), 1, 1,
-                               fill=False, edgecolor=ACCENT, lw=3.5))
-    fig.colorbar(im, ax=ax, label="CV RMSE")
-    fig.tight_layout()
-    save(fig, "l2-grid")
-    bp = {k: int(v) for k, v in gs.best_params_.items()}
-    on_edge = [k for k, v in bp.items()
-               if v in (min(grid[k]), max(grid[k]))]
-    return {"best_params": bp, "best_cv_rmse": float(-gs.best_score_),
-            "best_on_grid_boundary": on_edge, "gs": gs}
-
-
-def fig_grid_from_cached(gs):
-    """Redraw the grid heatmap from a completed search, without refitting."""
-    cv = pd.DataFrame(gs.cv_results_)
-    piv = cv.pivot_table(index="param_model__max_features",
-                         columns="param_model__n_estimators",
-                         values="mean_test_score")
-    Z = -piv.values
-    fig, ax = plt.subplots(figsize=(8.4, 5.0))
-    im = ax.imshow(Z, cmap="viridis_r", aspect="auto")
-    ax.set_xticks(range(len(piv.columns)), [str(c) for c in piv.columns])
-    ax.set_yticks(range(len(piv.index)), [str(i) for i in piv.index])
-    ax.set_xlabel("n_estimators"); ax.set_ylabel("max_features")
-    ax.set_title("Grid search: 15 combinations × 10 folds = 150 fits")
-    ax.grid(False)
-    best = np.unravel_index(np.argmin(Z), Z.shape)
-    for i in range(Z.shape[0]):
-        for j in range(Z.shape[1]):
             lum = np.dot(im.cmap(im.norm(Z[i, j]))[:3], [0.299, 0.587, 0.114])
             ax.text(j, i, f"${Z[i, j]:,.0f}", ha="center", va="center",
                     fontsize=11, fontweight="bold",
@@ -475,14 +751,52 @@ def fig_grid_from_cached(gs):
                                fill=False, edgecolor=ACCENT, lw=3.5))
     fig.colorbar(im, ax=ax, label="CV RMSE")
     fig.tight_layout()
-    return save(fig, "l2-grid")
+    save(fig, "l2-grid")
+    bp = {k: int(v) for k, v in gs.best_params_.items()}
+    on_edge = [k for k, v in bp.items() if v in (min(GRID[k]), max(GRID[k]))]
+    return {"best_params": bp, "best_cv_rmse": float(-gs.best_score_),
+            "best_on_grid_boundary": on_edge,
+            "n_combinations": int(n), "n_fits": int(n * N_FOLDS)}
 
 
-def fig_importance(gs, res):
+def tune_preprocessing(sp, best_params):
+    """A preprocessing hyperparameter, tuned the same way — a real one.
+
+    The imputation strategy is a hyperparameter of a step inside the
+    ColumnTransformer inside the Pipeline; the double-underscore path reaches
+    it. This is the honest version of 'you can tune preprocessing too'.
+    """
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.model_selection import GridSearchCV
+    from sklearn.pipeline import Pipeline
+
+    X_tr, y_tr = sp["X_train"], sp["y_train"]
+    prep, *_ = preprocessing(X_tr)
+    pipe = Pipeline([("prep", prep),
+                     ("model", RandomForestRegressor(
+                         random_state=SEED, n_jobs=-1,
+                         **{k.split("__", 1)[1]: v
+                            for k, v in best_params.items()}))])
+    grid = {"prep__num__simpleimputer__strategy":
+            ["median", "mean", "most_frequent"]}
+    gs = GridSearchCV(pipe, grid, cv=cv_splitter(),
+                      scoring="neg_root_mean_squared_error", n_jobs=-1)
+    gs.fit(X_tr, y_tr)
+    scores = {str(p["prep__num__simpleimputer__strategy"]): float(-s)
+              for p, s in zip(gs.cv_results_["params"],
+                              gs.cv_results_["mean_test_score"])}
+    print(f"    imputer strategy: " +
+          "  ".join(f"{k}={v:,.0f}" for k, v in scores.items()))
+    return {"scores": scores,
+            "best": str(gs.best_params_["prep__num__simpleimputer__strategy"]),
+            "spread": float(max(scores.values()) - min(scores.values()))}
+
+
+def fig_importance(gs):
     prep_fitted = gs.best_estimator_.named_steps["prep"]
     imp = gs.best_estimator_.named_steps["model"].feature_importances_
-    names = list(prep_fitted.get_feature_names_out())
-    names = [n.split("__", 1)[-1] for n in names]
+    names = [n.split("__", 1)[-1]
+             for n in prep_fitted.get_feature_names_out()]
     order = np.argsort(imp)[-12:]
     fig, ax = plt.subplots(figsize=(9.6, 5.4))
     ax.barh([names[i] for i in order], imp[order], color=PRIMARY, height=0.66)
@@ -494,42 +808,56 @@ def fig_importance(gs, res):
                 color=PRIMARY)
     ax.set_xlim(0, imp.max() * 1.18)
     fig.tight_layout()
-    return save(fig, "l2-importance")
+    save(fig, "l2-importance")
+    ranked = sorted(zip(imp.tolist(), names), reverse=True)
+    return [[round(float(v), 4), n] for v, n in ranked]
 
 
-def fig_test_ci(gs, res):
+def fig_test_ci(gs, sp):
+    """Bootstrap the test RMSE.
+
+    The squared errors are severely right-skewed — a capped, heavy-tailed
+    target — so the t-interval on their mean is the wrong tool. The percentile
+    bootstrap makes no distributional assumption.
+    """
     from scipy import stats
-    X_tr, y_tr, X_te, y_te, *_ = res["_split"]
+    X_te, y_te = sp["X_test"], sp["y_test"]
     pred = gs.best_estimator_.predict(X_te)
-    err = (pred - y_te) ** 2
-    rmse = float(np.sqrt(err.mean()))
-    lo, hi = np.sqrt(stats.t.interval(0.95, len(err) - 1,
-                                      loc=err.mean(),
-                                      scale=stats.sem(err)))
+
+    def rmse(squared_errors):
+        return np.sqrt(np.mean(squared_errors))
+
+    squared_errors = (pred - y_te) ** 2
+    point = float(rmse(squared_errors))
+    boot = stats.bootstrap([squared_errors], rmse, confidence_level=0.95,
+                           random_state=SEED)
+    lo, hi = (float(v) for v in boot.confidence_interval)
 
     fig, ax = plt.subplots(figsize=(9.6, 3.4))
-    ax.errorbar([rmse], [0], xerr=[[rmse - lo], [hi - rmse]], fmt="o",
+    ax.errorbar([point], [0], xerr=[[point - lo], [hi - point]], fmt="o",
                 color=PRIMARY, markersize=13, capsize=10, lw=2.6,
                 capthick=2.6, zorder=3)
     ax.set_yticks([])
     ax.xaxis.set_major_formatter(usd)
     ax.set_xlim(lo - 6000, hi + 6000)
     ax.set_ylim(-1, 1)
-    ax.set_title("Test RMSE with a 95% confidence interval")
-    ax.text(rmse, 0.30, f"${rmse:,.0f}", ha="center", fontsize=14,
+    ax.set_title("Test RMSE with a 95% bootstrap confidence interval")
+    ax.text(point, 0.30, f"${point:,.0f}", ha="center", fontsize=14,
             fontweight="bold", color=PRIMARY)
     ax.text(lo, -0.36, f"${lo:,.0f}", ha="center", fontsize=11, color=MUTED)
     ax.text(hi, -0.36, f"${hi:,.0f}", ha="center", fontsize=11, color=MUTED)
-    ax.text(rmse, -0.72, "report the interval, not the point estimate",
+    ax.text(point, -0.72, "report the interval, not the point estimate",
             ha="center", fontsize=11, color=ACCENT, fontweight="bold")
     ax.grid(axis="y", alpha=0)
     fig.tight_layout()
     save(fig, "l2-test-ci")
-    return {"test_rmse": rmse, "ci_lo": float(lo), "ci_hi": float(hi)}
+    return {"test_rmse": point, "ci_lo": lo, "ci_hi": hi,
+            "ci_half_width": (hi - lo) / 2,
+            "skew_squared_errors": float(stats.skew(squared_errors))}
 
 
-def fig_residuals(gs, res):
-    X_tr, y_tr, X_te, y_te, *_ = res["_split"]
+def fig_residuals(gs, sp):
+    X_te, y_te = sp["X_test"], sp["y_test"]
     pred = gs.best_estimator_.predict(X_te)
     fig, ax = plt.subplots(figsize=(7.6, 7.0))
     ax.scatter(y_te, pred, s=8, alpha=0.18, color=PRIMARY, linewidths=0)
@@ -553,58 +881,220 @@ def fig_residuals(gs, res):
     return save(fig, "l2-residuals", raster=True)
 
 
-def measure_leak(h):
-    """How much does 'scale before split' actually cost? Measure, do not assume.
+def error_analysis(gs, sp, base):
+    """The error analysis the deck promises: worst cases, and slices.
 
-    The answer on this dataset is: essentially nothing — because centring and
-    scaling is an invertible affine map and OLS is equivariant under it. That
-    is the point of the slide. The rule against it is procedural, not empirical.
+    Géron, Chapter 2, 'Analyze the Best Models and Their Errors'.
     """
-    from sklearn.decomposition import PCA
-    from sklearn.ensemble import RandomForestRegressor
-    from sklearn.impute import SimpleImputer
-    from sklearn.linear_model import LinearRegression
     from sklearn.metrics import root_mean_squared_error
-    from sklearn.model_selection import train_test_split
-    from sklearn.pipeline import make_pipeline
-    from sklearn.preprocessing import StandardScaler
 
-    X = h.select_dtypes(include=[np.number]).drop(columns=["median_house_value"])
-    y = h["median_house_value"].values
+    X_te, y_te = sp["X_test"], sp["y_test"]
+    pred = gs.best_estimator_.predict(X_te)
+    err = pred - y_te
 
-    def run(make_prep, make_model):
-        # LEAKY: preprocessing fitted on everything, then split
-        Xall = make_prep().fit_transform(X)
-        a_tr, a_te, ya_tr, ya_te = train_test_split(Xall, y, test_size=0.2,
-                                                    random_state=SEED)
-        leaky = root_mean_squared_error(
-            ya_te, make_model().fit(a_tr, ya_tr).predict(a_te))
-        # CORRECT: split, then fit preprocessing on the training part only
-        b_tr, b_te, yb_tr, yb_te = train_test_split(X, y, test_size=0.2,
-                                                    random_state=SEED)
-        prep = make_prep()
-        correct = root_mean_squared_error(
-            yb_te, make_model().fit(prep.fit_transform(b_tr), yb_tr)
-                              .predict(prep.transform(b_te)))
-        return float(leaky), float(correct)
+    df = X_te.copy()
+    df["actual"] = y_te
+    df["predicted"] = pred
+    df["error"] = err
+    df["abs_error"] = err.abs()
+    df["income_cat"] = income_cats(X_te)
 
-    base = lambda: make_pipeline(SimpleImputer(strategy="median"),
-                                 StandardScaler())
-    cases = {
-        "linear_regression": (base, LinearRegression),
-        "random_forest": (base, lambda: RandomForestRegressor(
-            n_estimators=50, random_state=SEED, n_jobs=-1)),
-        "pca_4": (lambda: make_pipeline(SimpleImputer(strategy="median"),
-                                        StandardScaler(), PCA(n_components=4)),
-                  LinearRegression),
+    worst = df.nlargest(10, "abs_error")
+    worst_rows = [{
+        "actual": float(r.actual), "predicted": float(r.predicted),
+        "error": float(r.error), "income_cat": int(r.income_cat),
+        "ocean": str(r.ocean_proximity),
+        "median_income": float(r.median_income),
+    } for r in worst.itertuples()]
+
+    def slice_rmse(by):
+        out = {}
+        for key, g in df.groupby(by, observed=True):
+            out[str(key)] = {
+                "n": int(len(g)),
+                "rmse": float(root_mean_squared_error(g["actual"],
+                                                      g["predicted"])),
+                "median_actual": float(g["actual"].median()),
+            }
+        return out
+
+    by_income = slice_rmse("income_cat")
+    by_ocean = slice_rmse("ocean_proximity")
+
+    capped = df["actual"] >= CAP
+    uncapped_rmse = float(root_mean_squared_error(
+        df.loc[~capped, "actual"], df.loc[~capped, "predicted"]))
+    # the honest comparison for the reduced set: the same constant baseline,
+    # re-measured on the same reduced set
+    uncapped_base = float(root_mean_squared_error(
+        df.loc[~capped, "actual"],
+        np.full(int((~capped).sum()), base["train_mean"])))
+
+    out = {
+        "worst10": worst_rows,
+        "by_income_cat": by_income,
+        "by_ocean_proximity": by_ocean,
+        "n_capped_test": int(capped.sum()),
+        "n_capped_train": int((sp["y_train"] >= CAP).sum()),
+        "rmse_excluding_capped": uncapped_rmse,
+        "baseline_excluding_capped": uncapped_base,
+        "worst_income_cat": max(by_income, key=lambda k: by_income[k]["rmse"]),
+        "worst_ocean": max(by_ocean, key=lambda k: by_ocean[k]["rmse"]),
     }
-    out = {}
-    for name, (mp, mm) in cases.items():
-        leaky, correct = run(mp, mm)
-        out[name] = {"leaky": leaky, "correct": correct,
-                     "diff": abs(correct - leaky)}
-        print(f"    {name:20s} leaky={leaky:10,.0f}  correct={correct:10,.0f}  "
-              f"diff={abs(correct-leaky):6,.0f}")
+    print(f"    worst single error ${worst_rows[0]['error']:,.0f} on a district "
+          f"worth ${worst_rows[0]['actual']:,.0f}")
+    for k, v in by_income.items():
+        print(f"      income_cat {k}: n={v['n']:5d}  rmse=${v['rmse']:,.0f}")
+    for k, v in by_ocean.items():
+        print(f"      {k:12s}: n={v['n']:5d}  rmse=${v['rmse']:,.0f}")
+    print(f"    excluding the {out['n_capped_test']} capped test districts: "
+          f"${uncapped_rmse:,.0f}  (baseline on the same rows "
+          f"${uncapped_base:,.0f})")
+    return out
+
+
+def fig_error_slices(ea):
+    """RMSE by income category and by ocean proximity, with counts."""
+    inc = ea["by_income_cat"]
+    oce = ea["by_ocean_proximity"]
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 4.4),
+                                 gridspec_kw={"width_ratios": [1, 1.25]})
+
+    ks = sorted(inc, key=int)
+    vals = [inc[k]["rmse"] for k in ks]
+    a1.bar(ks, vals, color=PRIMARY, width=0.62)
+    a1.set_title("RMSE by income category")
+    a1.set_xlabel("income category"); a1.grid(axis="x", alpha=0)
+    a1.yaxis.set_major_formatter(usd)
+    for i, k in enumerate(ks):
+        a1.text(i, inc[k]["rmse"] + max(vals) * 0.02,
+                f"${inc[k]['rmse']:,.0f}\nn={inc[k]['n']:,}", ha="center",
+                fontsize=9.5, color=PRIMARY, fontweight="bold")
+    a1.set_ylim(0, max(vals) * 1.30)
+
+    ks2 = sorted(oce, key=lambda k: -oce[k]["rmse"])
+    vals2 = [oce[k]["rmse"] for k in ks2]
+    colors = [ACCENT if oce[k]["n"] < 50 else PRIMARY for k in ks2]
+    a2.bar(range(len(ks2)), vals2, color=colors, width=0.62)
+    a2.set_xticks(range(len(ks2)), [k.replace(" ", "\n") for k in ks2],
+                  fontsize=9)
+    a2.set_title("RMSE by ocean_proximity")
+    a2.grid(axis="x", alpha=0)
+    a2.yaxis.set_major_formatter(usd)
+    for i, k in enumerate(ks2):
+        a2.text(i, oce[k]["rmse"] + max(vals2) * 0.02,
+                f"${oce[k]['rmse']:,.0f}\nn={oce[k]['n']:,}", ha="center",
+                fontsize=9.5, color=colors[i], fontweight="bold")
+    a2.set_ylim(0, max(vals2) * 1.30)
+    fig.suptitle("The average hides this", fontsize=14, color=PRIMARY,
+                 fontweight="bold", y=1.02)
+    fig.tight_layout()
+    return save(fig, "l2-error-slices")
+
+
+def absolute_vs_relative(gs, sp, base):
+    """The brief states a relative criterion; RMSE is absolute. Measure both."""
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.metrics import root_mean_squared_error
+    from sklearn.pipeline import Pipeline
+
+    X_tr, y_tr = sp["X_train"], sp["y_train"]
+    X_te, y_te = sp["X_test"], sp["y_test"]
+
+    pred = gs.best_estimator_.predict(X_te)
+    ape = np.abs(pred - y_te) / y_te
+    out = {
+        "rmse": float(root_mean_squared_error(y_te, pred)),
+        "mae": float(np.mean(np.abs(pred - y_te))),
+        "median_ape_pct": float(100 * np.median(ape)),
+        "within_30pct": float(100 * np.mean(ape <= 0.30)),
+        "rmse_cheapest_decile": float(root_mean_squared_error(
+            y_te[y_te <= y_te.quantile(0.1)],
+            pred[(y_te <= y_te.quantile(0.1)).values])),
+        "rmse_dearest_decile": float(root_mean_squared_error(
+            y_te[y_te >= y_te.quantile(0.9)],
+            pred[(y_te >= y_te.quantile(0.9)).values])),
+        "target_median": float(y_tr.median()),
+        "thirty_pct_of_median": float(0.30 * y_tr.median()),
+    }
+
+    # the alternative the slide names: regress the log of the target
+    prep, *_ = preprocessing(X_tr)
+    best = {k.split("__", 1)[1]: v for k, v in gs.best_params_.items()}
+    logm = Pipeline([("prep", prep),
+                     ("model", RandomForestRegressor(random_state=SEED,
+                                                     n_jobs=-1, **best))])
+    logm.fit(X_tr, np.log(y_tr))
+    log_pred = np.exp(logm.predict(X_te))
+    log_ape = np.abs(log_pred - y_te) / y_te
+    out["log_target"] = {
+        "rmse": float(root_mean_squared_error(y_te, log_pred)),
+        "median_ape_pct": float(100 * np.median(log_ape)),
+        "within_30pct": float(100 * np.mean(log_ape <= 0.30)),
+    }
+    print(f"    RMSE ${out['rmse']:,.0f}   MAE ${out['mae']:,.0f}   "
+          f"median APE {out['median_ape_pct']:.1f}%   "
+          f"within 30%: {out['within_30pct']:.1f}%")
+    print(f"    cheapest decile RMSE ${out['rmse_cheapest_decile']:,.0f}   "
+          f"dearest decile RMSE ${out['rmse_dearest_decile']:,.0f}")
+    print(f"    log target: RMSE ${out['log_target']['rmse']:,.0f}  "
+          f"median APE {out['log_target']['median_ape_pct']:.1f}%  "
+          f"within 30%: {out['log_target']['within_30pct']:.1f}%")
+    return out
+
+
+def island_check(h, sp):
+    """Pay off the ISLAND warning: what a rare category actually does.
+
+    Measured, not asserted. The silent failure is real, but on this dataset it
+    needs help to fire — so we say how rare it is, and then show the mechanism
+    directly.
+    """
+    from sklearn.model_selection import KFold
+    from sklearn.preprocessing import OneHotEncoder
+
+    X_tr = sp["X_train"]
+    n_total = int((h["ocean_proximity"] == "ISLAND").sum())
+    n_train = int((X_tr["ocean_proximity"] == "ISLAND").sum())
+    n_test = int((sp["X_test"]["ocean_proximity"] == "ISLAND").sum())
+
+    # how the folds actually fall, with the splitter the lectures use
+    is_island = (X_tr["ocean_proximity"] == "ISLAND").values
+    per_fold = []
+    for tr_idx, va_idx in cv_splitter().split(X_tr):
+        per_fold.append({"train": int(is_island[tr_idx].sum()),
+                         "val": int(is_island[va_idx].sum())})
+    starved = [f for f in per_fold if f["train"] == 0 and f["val"] > 0]
+
+    # and how often that happens at all, over many shufflings
+    hits = 0
+    trials = 500
+    for s in range(trials):
+        kf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=s)
+        if any(is_island[tr].sum() == 0 and is_island[va].sum() > 0
+               for tr, va in kf.split(X_tr)):
+            hits += 1
+
+    # the mechanism, shown directly: fit without ISLAND, transform an ISLAND row
+    enc = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+    seen = X_tr.loc[~is_island, ["ocean_proximity"]]
+    enc.fit(seen)
+    row = enc.transform(pd.DataFrame({"ocean_proximity": ["ISLAND"]}))
+    out = {
+        "n_total": n_total, "n_train": n_train, "n_test": n_test,
+        "categories_seen": [str(c) for c in enc.categories_[0]],
+        "encoded_island": [float(v) for v in row[0]],
+        "encoded_sum": float(row.sum()),
+        "folds_without_island_in_training": len(starved),
+        "pct_of_shufflings_with_a_starved_fold": 100.0 * hits / trials,
+        "per_fold": per_fold,
+    }
+    print(f"    ISLAND: {n_total} districts — {n_train} train, {n_test} test")
+    print(f"    folds whose training part has no ISLAND: {len(starved)}/"
+          f"{N_FOLDS};  over {trials} shufflings: "
+          f"{out['pct_of_shufflings_with_a_starved_fold']:.1f}%")
+    print(f"    an unseen category encodes to {row[0].tolist()} — sum "
+          f"{row.sum():.0f}, and no warning")
     return out
 
 
@@ -612,60 +1102,109 @@ def measure_leak(h):
 
 def main():
     setup()
-    import pickle
-    cache = CACHE / "fits.pkl"
+    load_cache()
     print("Loading California housing…")
     h = load_housing()
-    facts = {"n_rows": int(len(h)),
-             "n_missing_bedrooms": int(h["total_bedrooms"].isna().sum())}
+    sp = split(h)
+
+    facts = {
+        "n_rows": int(len(h)),
+        "n_missing_bedrooms": int(h["total_bedrooms"].isna().sum()),
+        "n_train": int(len(sp["train"])),
+        "n_test": int(len(sp["test"])),
+        "n_capped": int((h["median_house_value"] >= CAP).sum()),
+        "cap_value": float(h["median_house_value"].max()),
+        "target_min": float(h["median_house_value"].min()),
+        "target_median": float(h["median_house_value"].median()),
+        "target_q1": float(h["median_house_value"].quantile(0.25)),
+        "target_q3": float(h["median_house_value"].quantile(0.75)),
+        "income_min": float(h["median_income"].min()),
+        "income_max": float(h["median_income"].max()),
+        "total_rooms_min": float(h["total_rooms"].min()),
+        "total_rooms_max": float(h["total_rooms"].max()),
+        "ocean_counts": {str(k): int(v) for k, v in
+                         h["ocean_proximity"].value_counts().items()},
+    }
+    facts["pct_capped"] = 100.0 * facts["n_capped"] / facts["n_rows"]
 
     print("Lecture 1 figures:")
     fig_histograms(h)
     fig_hist_annotated(h)
-    fig_geo(h)
-    fig_corr(h)
-    fig_income_value(h)
-    fig_income_cat(h)
+    facts["income_cat_counts"] = fig_income_cat(h)
     facts.update(fig_strat_bias(h))
+    # exploration happens on the training set, after the split
+    fig_geo(sp["train"])
+    facts["corr_with_target"] = fig_corr(sp["train"])
+    facts["corr_with_combinations"] = attribute_combinations(sp["train"])
+    fig_income_value(sp["train"])
 
-    print("Cost of the scale-before-split leak (Lecture 1 worked example):")
-    facts["leak_cost"] = measure_leak(h)
+    print("The trivial baseline (Lecture 1, before the commitment):")
+    facts["baseline"] = cached("baseline", lambda: baseline(sp))
 
-    if cache.is_file():
-        print("Lecture 2 — reusing cached fits (delete "
-              f"{cache} to refit):")
-        res, gs, grid = pickle.loads(cache.read_bytes())
-        for n in ["Linear regression", "Decision tree", "Random forest"]:
-            print(f"    {n:20s} train={res[n]['train_rmse']:9,.0f}  "
-                  f"cv={res[n]['cv_mean']:9,.0f}")
-        refit = False
-    else:
-        print("Lecture 2 — training models (this takes a few minutes):")
-        res = build_models(h)
-        refit = True
+    print("Cost of the scale-before-split leak, over 20 seeds:")
+    facts["leak_cost"] = cached("leak_multiseed", lambda: measure_leak(h))
+
+    print("Does scaling change these models at all?")
+    facts["scaling"] = cached("scaling_ablation", lambda: scaling_ablation(sp))
+
+    print("Lecture 2 — the three models:")
+    res = cached("models", lambda: build_models(sp))
+    for n in ["Linear regression", "Decision tree", "Random forest"]:
+        print(f"    {n:20s} train={res[n]['train_rmse']:9,.0f}  "
+              f"cv={res[n]['cv_mean']:9,.0f} ± {res[n]['cv_std']:,.0f}")
+
+    print("The same folds, compared pairwise:")
+    facts["paired_folds"] = paired_folds(res)
+
+    print("Thread 1 on our own data:")
+    facts["normal_equation"] = cached("normal_equation",
+                                      lambda: normal_equation(sp))
+
+    print("Grid search:")
+    gs = cached("grid", lambda: run_grid(sp))
+
     print("Lecture 2 figures:")
-    fig_train_vs_cv(res)
+    fig_train_vs_cv(res, facts["baseline"])
     fig_cv_spread(res)
-    if refit:
-        grid = fig_grid(res)
-        gs = grid.pop("gs")
-        cache.write_bytes(pickle.dumps((res, gs, grid)))
-    else:
-        fig_grid_from_cached(gs)
-    fig_importance(gs, res)
-    facts.update(fig_test_ci(gs, res))
-    fig_residuals(gs, res)
+    facts.update(fig_grid(gs))
+    facts["importance"] = fig_importance(gs)
+    facts["preprocessing_tuning"] = cached(
+        "prep_tuning", lambda: tune_preprocessing(sp, gs.best_params_))
+    facts.update(fig_test_ci(gs, sp))
+    fig_residuals(gs, sp)
 
-    facts.update({k: v for k, v in grid.items()})
+    print("Error analysis:")
+    ea = cached("error_analysis",
+                lambda: error_analysis(gs, sp, facts["baseline"]))
+    fig_error_slices(ea)
+    facts["error_analysis"] = ea
+
+    print("Absolute error against the relative criterion in the brief:")
+    facts["relative"] = cached(
+        "absolute_vs_relative",
+        lambda: absolute_vs_relative(gs, sp, facts["baseline"]))
+
+    print("The ISLAND category:")
+    facts["island"] = cached("island", lambda: island_check(h, sp))
+
+    facts["tree_describe"] = res["tree_describe"]
     facts["models"] = {n: {"train_rmse": res[n]["train_rmse"],
                            "cv_mean": res[n]["cv_mean"],
-                           "cv_std": res[n]["cv_std"]}
+                           "cv_std": res[n]["cv_std"],
+                           "cv_folds": res[n]["cv_folds"]}
                        for n in ["Linear regression", "Decision tree",
                                  "Random forest"]}
+    # how much of the baseline's error each model removes
+    b = facts["baseline"]["mean_cv_rmse"]
+    facts["reduction_vs_baseline_pct"] = {
+        n: 100.0 * (1 - facts["models"][n]["cv_mean"] / b)
+        for n in facts["models"]}
+    facts["reduction_vs_baseline_pct"]["Tuned forest (test)"] = 100.0 * (
+        1 - facts["test_rmse"] / facts["baseline"]["mean_test_rmse"])
+
     out = OUT / "figures.json"
     out.write_text(json.dumps(facts, indent=2))
-    print(f"\nNumbers written to {out.relative_to(ROOT)}:")
-    print(json.dumps(facts, indent=2))
+    print(f"\nNumbers written to {out.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

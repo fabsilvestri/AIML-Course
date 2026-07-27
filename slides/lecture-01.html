@@ -116,33 +116,9 @@
   <p class="small muted">Parts I runs on CPU. From Lecture 11 onward you need a GPU.</p>
 </section>
 
-<!-- 7 -->
-<section data-menu-title="The Build / Fix rhythm">
-  <h2>Every application is two lectures</h2>
-  <div class="cols">
-    <div>
-      <p><span class="badge badge-build">A &middot; Build</span></p>
-      <ul class="tight small">
-        <li>15 min &mdash; the problem and the data</li>
-        <li>15 min &mdash; choose a metric, <strong>commit to a number</strong></li>
-        <li>60 min &mdash; build the simplest thing that runs</li>
-      </ul>
-    </div>
-    <div>
-      <p><span class="badge badge-fix">B &middot; Fix</span></p>
-      <ul class="tight small">
-        <li>20 min &mdash; <span class="badge badge-math">mathematical thread</span></li>
-        <li>20 min &mdash; diagnose why the number was wrong</li>
-        <li>35 min &mdash; the method that repairs it</li>
-        <li>15 min &mdash; re-measure, red-team a peer</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
 <!-- FIG -->
 <section class="figslide" data-menu-title="◆ The rhythm, drawn">
-  <h2>The same thing, as a clock</h2>
+  <h2>Every application is two lectures</h2>
   <figure class="fig fig-wide">
     <img src="../assets/figures/d-buildfix.svg"
          alt="Timeline of a Build lecture (15/15/60 min) above a Fix lecture (20/20/35/15 min), joined by the written commitment.">
@@ -184,21 +160,12 @@
 </section>
 
 <!-- 10 -->
-<section data-menu-title="The mathematical thread">
-  <h2>The mathematical thread</h2>
-  <p>Every <span class="badge badge-fix">Fix</span> lecture opens with
-  <strong>twenty minutes on exactly one mathematical object</strong> &mdash;
-  the one the application you just built depends on.</p>
-  <div class="panel panel-math">
-    <span class="panel-title">Not a parallel theory course</span>
-    Twelve objects, in order, each doing visible work on a system you built
-    yourself. Several of them refer back to earlier ones.
-  </div>
-</section>
-
-<!-- 11 -->
 <section data-menu-title="The twelve threads">
-  <h2>The twelve threads</h2>
+  <h2>The mathematical thread</h2>
+  <p class="small">Every <span class="badge badge-fix">Fix</span> lecture opens
+  with <strong>twenty minutes on exactly one mathematical object</strong> &mdash;
+  the one the application you just built depends on. Twelve objects, in order,
+  each doing visible work on a system you wrote.</p>
   <div class="cols">
     <div>
       <ol class="tight smaller">
@@ -370,7 +337,8 @@
 <!-- 20 -->
 <section data-menu-title="Worked example — the code">
   <h2>Worked example &mdash; what the weak prompt returns</h2>
-  <pre><code class="language-python" data-trim data-line-numbers="1-13|6-7|9-10">from sklearn.model_selection import train_test_split
+  <pre><code class="language-python" data-trim data-line-numbers="1-14|7-8|10-11"># housing_num: the eight numeric columns of all 20,640 districts;  y: the target
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import make_pipeline
@@ -410,38 +378,52 @@ print(root_mean_squared_error(y_test, model.predict(X_test)))   # 70,469
 <!-- new -->
 <section data-menu-title="Worked example — how much did it cost?">
   <h2>So how much did that cost us?</h2>
-  <p>Do not guess. Run both versions and subtract.</p>
+  <p>Do not guess. Run both versions and subtract &mdash; and then do it again on
+  <strong>twenty different splits</strong>, because one subtraction of two noisy
+  numbers is not a measurement.</p>
   <table>
-    <tr><th>Test RMSE</th><th class="num">Leaky</th><th class="num">Correct</th><th class="num">Difference</th></tr>
-    <tr><td>Linear regression</td><td class="num">$70,469</td><td class="num">$70,468</td><td class="num">$1</td></tr>
-    <tr><td>Random forest</td><td class="num">$50,892</td><td class="num">$50,949</td><td class="num">$57</td></tr>
-    <tr><td>With PCA to 4 components</td><td class="num">$80,745</td><td class="num">$80,761</td><td class="num">$16</td></tr>
+    <tr><th>Test RMSE</th><th class="num">Honest, over 20 splits</th><th class="num">Cost of the leak</th></tr>
+    <tr><td>Linear regression</td><td class="num"><span class="usd">$70,193</span> &plusmn; <span class="usd">$1,391</span></td><td class="num">&minus;<span class="usd">$0.02</span> &plusmn; <span class="usd">$0.31</span></td></tr>
+    <tr><td>Random forest</td><td class="num"><span class="usd">$49,753</span> &plusmn; <span class="usd">$1,303</span></td><td class="num">&minus;<span class="usd">$3.89</span> &plusmn; <span class="usd">$48</span></td></tr>
+    <tr><td>With PCA to 4 components</td><td class="num"><span class="usd">$79,888</span> &plusmn; <span class="usd">$1,434</span></td><td class="num">&minus;<span class="usd">$1.85</span> &plusmn; <span class="usd">$16</span></td></tr>
   </table>
-  <p class="fail" style="font-size:1.05em">Essentially nothing. The leak is real,
-  and here it is worth about a dollar.</p>
-  <aside class="notes">Expect confusion, and let it sit for a moment. Someone will
-  ask why we are making a fuss. That question is the next slide.</aside>
+  <p class="fail">Every entry in the last column changes sign from one split to
+  the next. It is a draw from a distribution centred on zero &mdash; and a
+  thousand times smaller than the split-to-split spread of the number beside it.</p>
+  <p class="small muted">On one split the forest looked <span class="usd">$57</span>
+  worse. Report that as the cost of the leak and you have quoted noise as a
+  finding &mdash; the exact error this course exists to remove.</p>
+  <aside class="notes">Expect confusion, and let it sit. Someone will ask why we
+  are making a fuss. That question is the next slide.</aside>
 </section>
 
 <!-- new -->
 <section data-menu-title="Worked example — why it still matters">
   <h2>Then why is it still a bug?</h2>
-  <ul class="tight">
-    <li><strong>You did not know it was a dollar until you measured.</strong>
-        Nothing in the code told you, and neither did the output</li>
-    <li>The size of the leak depends entirely on <em>what</em> was fitted. Centre
-        and scale: pennies. Fit a feature selector, a dimensionality reduction, or
-        anything derived from the label on all the data, and the same shape of
-        mistake is worth a great deal</li>
-    <li>You cannot detect it from the number, because a leaked score and an honest
-        score can be identical</li>
-  </ul>
-  <div class="panel panel-fix">
-    <span class="panel-title">Which is why the rule is procedural</span>
-    Split first &mdash; not because the damage is always large, but because you
-    cannot tell whether it is, and a result produced by an unsound procedure
-    cannot be defended even when it happens to be right.
+  <p class="small">Because it measures zero <em>here</em> for three specific
+  reasons, and you must be able to name them:</p>
+  <ol class="tight small">
+    <li><strong>The map is an invertible affine one.</strong> Centring and
+        scaling is $x \mapsto (x - \mu)/\sigma$. It loses nothing</li>
+    <li><strong>The estimator is equivariant under it.</strong> Least squares
+        fitted on rescaled features gives the same predictions; the coefficients
+        absorb $\mu$ and $\sigma$. Trees are invariant for the same reason they
+        do not need scaling at all</li>
+    <li><strong>There are 20,640 rows.</strong> The mean of 20,640 and the mean of
+        16,512 of them differ in the fourth decimal place</li>
+  </ol>
+  <div class="panel panel-fail">
+    <span class="panel-title">Remove any one and it has teeth</span>
+    Fit a feature selector, an oversampler, or a target encoder on all the data
+    &mdash; none of them invertible, none of them harmless. Or keep the scaler
+    and shrink the data to 200 rows. Or leak across <em>time</em>: in
+    Lecture&nbsp;20 the same shape of mistake, on a forecasting problem, is worth
+    a great deal, and we measure that too.
   </div>
+  <p class="small fail">The rule is procedural: split first &mdash; not because
+  the damage is always large, but because you cannot tell whether it is from the
+  number, and an unsound procedure cannot be defended even when it happens to be
+  right.</p>
 </section>
 
 <!-- new -->
@@ -452,9 +434,10 @@ print(root_mean_squared_error(y_test, model.predict(X_test)))   # 70,469
   <table>
     <tr><th>Same family of mistake</th><th class="num">Reported</th><th class="num">Honest</th></tr>
     <tr><td>Scaler fitted before the split</td><td class="num">$70,469</td><td class="num">$70,468</td></tr>
-    <tr><td>Decision tree scored on its own training data</td><td class="num fail">$0</td><td class="num">$68,779</td></tr>
+    <tr><td>Decision tree scored on its own training data</td><td class="num fail">$0</td><td class="num">$68,574</td></tr>
   </table>
-  <p>Identical in kind. Different by a factor of seventy thousand.</p>
+  <p>Identical in kind. One of them costs a dollar; the other costs the entire
+  measurement.</p>
   <p class="small muted">You will build the second one yourself in about an hour,
   and you will believe it &mdash; which is the point.</p>
 </section>
@@ -541,46 +524,29 @@ print(prep[-1].mean_[:3])                 # the check we asked for
 <!-- new -->
 <section data-menu-title="Why a written exam">
   <h2>&ldquo;A written exam, on an applied course?&rdquo;</h2>
-  <p>Yes &mdash; and it fits this course better than it fits most.</p>
-  <div class="panel">
-    <span class="panel-title">Because the skill is a reading skill</span>
-    What you are learning is not typing. It is <strong>judgement about whether a
-    result can be trusted</strong> &mdash; and you exercise that by reading. Code
-    you did not write, a metric, a curve. Reading works on paper.
-  </div>
-  <p class="small">At a keyboard you can reach the right answer by running things
-  until they look right. On paper you have to actually know.</p>
-  <div class="panel panel-fix">
-    <span class="panel-title">And closed book costs you nothing</span>
-    Each of the twelve threads is a <strong>derivation you have performed</strong>.
-    A result you can rebuild in three lines is not a result you need to have
-    memorised &mdash; which is why there is no formula sheet, and why you will not
-    miss one.
-  </div>
-  <aside class="notes">Someone always asks this in the first lecture. Answer it
-  before they do.</aside>
-</section>
-
-<!-- new -->
-<section data-menu-title="What the written exam is not">
-  <h2>Three rules for the written exam</h2>
-  <ol class="tight">
+  <p class="small">Because what you are learning is not typing. It is
+  <strong>judgement about whether a result can be trusted</strong> &mdash; and you
+  exercise that by reading: code you did not write, a metric, a curve. At a
+  keyboard you can reach the right answer by running things until they look
+  right. On paper you have to actually know.</p>
+  <ol class="tight small">
     <li><strong>No question tests API recall.</strong> In a course where you
         deliberately do not type the code, asking for the arguments of
-        <code>train_test_split</code> would be incoherent.
-        <span class="small muted">Syntax errors in handwritten code cost nothing.
-        Logic errors cost everything.</span></li>
+        <code>train_test_split</code> would be incoherent. Syntax errors in
+        handwritten code cost nothing; logic errors cost everything</li>
     <li><strong>No question is answerable by reciting a definition.</strong> Every
-        one applies it to a stated situation.</li>
-    <li><strong>The paper states what it needs.</strong> No formula sheet, and
-        none required: any definition a question depends on is printed in the
-        question. You supply the reasoning, never the recall.</li>
+        one applies it to a stated situation</li>
+    <li><strong>The paper states what it needs.</strong> Any definition a question
+        depends on is printed in the question &mdash; which is why there is no
+        formula sheet and why you will not miss one</li>
   </ol>
   <div class="panel panel-fix">
     <span class="panel-title">Part B is the red-team exercise</span>
     The thing we do every second lecture &mdash; take someone else&rsquo;s
     notebook and find the leak &mdash; is the exam, sat individually, on paper.
   </div>
+  <aside class="notes">Someone always asks this in the first lecture. Answer it
+  before they do.</aside>
 </section>
 
 <!-- new -->
@@ -608,10 +574,10 @@ print(f"best alpha={best[0]}, test RMSE={best[1]:,.0f}")
         <strong>higher</strong> or <strong>lower</strong>? Is that guaranteed on
         any <em>single</em> split?</li>
   </ol>
-  <aside class="notes">Give them two minutes on (a) and (b) before advancing.
-  Nobody can answer (c) or (d) yet — that is the point. This is shown to
-  establish the standard, not as an exercise; the concepts land properly in the
-  next lecture.</aside>
+  <aside class="notes">Give them two minutes on 1 and 2 before advancing. Nobody
+  can answer 3 or 4 yet — that is the point, and say so. We answer those two at
+  the end of the next lecture, once cross-validation exists; note it in the
+  margin of the specimen sheet so they know it is coming.</aside>
 </section>
 
 <!-- ANSWERS -->
@@ -638,58 +604,12 @@ print(f"best alpha={best[0]}, test RMSE={best[1]:,.0f}")
       </ul>
     </div>
   </div>
+  <p class="small muted">Questions 3 and 4 &mdash; the repair, and whether the
+  honest number is higher &mdash; are answered at the end of the next lecture,
+  when you have the tools to answer them yourselves.</p>
   <aside class="notes">Both answers are one word or one roman numeral. If a
   candidate writes three paragraphs without producing "the test set" and "(i)",
   they have not answered the question.</aside>
-</section>
-
-<!-- ANSWERS -->
-<section data-menu-title="◇ Answer — 3">
-  <h2>Specimen answer &mdash; 3, the repair</h2>
-  <pre><code class="language-python" data-trim data-line-numbers="1-4|1-2|4">gs = GridSearchCV(Ridge(), {"alpha": [0.01, 0.1, 1, 10, 100]},
-                  scoring="neg_root_mean_squared_error", cv=10).fit(X_train, y_train)
-
-print(root_mean_squared_error(y_test, gs.predict(X_test)))
-</code></pre>
-  <div class="panel panel-fix">
-    <span class="panel-title">What makes it defensible</span>
-    $\alpha$ is chosen on validation folds carved out of the <em>training</em>
-    set. The test set is touched <strong>exactly once</strong>, after
-    $\alpha$ is already fixed.
-  </div>
-  <p class="small muted"><code>RidgeCV</code> does the same job in one line and is
-  equally acceptable. What is <em>not</em> acceptable is any version in which
-  <code>X_test</code> appears before the choice is made.</p>
-</section>
-
-<!-- ANSWERS -->
-<section data-menu-title="◇ Answer — 4">
-  <h2>Specimen answer &mdash; 4</h2>
-  <div class="cols">
-    <div>
-      <p><strong>In expectation?</strong></p>
-      <p style="font-size:1.3em"><span class="fix">Higher.</span></p>
-      <ul class="tight smaller">
-        <li>The printed number was a <em>minimum</em> over five noisy estimates,
-            so it sits below the truth</li>
-        <li>$\alpha$ was chosen to look good on the very set it was scored on</li>
-      </ul>
-    </div>
-    <div>
-      <p><strong>Guaranteed on one split?</strong></p>
-      <p style="font-size:1.3em"><span class="fail">No.</span></p>
-      <ul class="tight smaller">
-        <li>The bias is a statement about <em>repeated draws</em>, not about this
-            sample</li>
-        <li>Cross-validation may also pick a genuinely better $\alpha$</li>
-      </ul>
-    </div>
-  </div>
-  <p class="small fail">Both halves are required. <em>Higher</em> alone, or
-  <em>no</em> alone, is half the marks.</p>
-  <aside class="notes">Splitting the subtle point into two questions with fixed
-  answers is deliberate: "higher or lower" and "guaranteed, yes or no" can be
-  marked identically by any examiner.</aside>
 </section>
 
 <!-- 16 -->
@@ -708,23 +628,26 @@ print(root_mean_squared_error(y_test, gs.predict(X_test)))
 <section data-menu-title="Today">
   <h2>Today</h2>
   <ol>
-    <li>The brief &mdash; what we are being asked to build <span class="muted small">(10 min)</span></li>
-    <li>The data &mdash; look before you model <span class="muted small">(15 min)</span></li>
-    <li>The metric &mdash; and your written commitment <span class="muted small">(15 min)</span></li>
-    <li>The build &mdash; end to end, in one sitting <span class="muted small">(25 min)</span></li>
+    <li>The brief &mdash; what we are being asked to build <span class="muted small">(8 min)</span></li>
+    <li>The data &mdash; look, split, then look properly <span class="muted small">(20 min)</span></li>
+    <li>The metric &mdash; a baseline, and your written commitment <span class="muted small">(12 min)</span></li>
+    <li>The build &mdash; end to end, in one sitting <span class="muted small">(30 min)</span></li>
   </ol>
   <p><span class="badge badge-ch">Géron, Chapters 1&ndash;2</span></p>
+  <p class="small muted">The twenty minutes just spent were the course itself,
+  and this is the only lecture that carries them. Every other Build lecture is
+  15 minutes of problem, 15 of metric, and a full hour of building.</p>
 </section>
 
 <!-- ==================================================================== -->
-<!-- PART 1 — THE BRIEF (15 min)                                          -->
+<!-- PART 1 — THE BRIEF (8 min)                                          -->
 <!-- ==================================================================== -->
 
 <!-- 18 -->
 <section class="divider" data-menu-title="◆ The brief">
   <p class="kicker">Part one</p>
   <h1>The brief</h1>
-  <p class="clock">10 minutes</p>
+  <p class="clock">8 minutes</p>
 </section>
 
 <!-- 19 -->
@@ -765,42 +688,11 @@ print(root_mean_squared_error(y_test, gs.predict(X_test)))
     A piece of information fed to an ML system is called a <em>signal</em> &mdash;
     after Shannon&rsquo;s information theory. You want a high signal-to-noise ratio.
   </div>
+  <p class="small fail">Note the consequence: nobody downstream ever looks at
+  your prediction. A component that quietly degrades inside a chain of
+  components is not noticed by anyone &mdash; which is why the evidence has to
+  come from you.</p>
 </section>
-
-<!-- 22 -->
-<section data-menu-title="Pipelines">
-  <h2>This is a pipeline</h2>
-  <p>A sequence of data-processing components. Each pulls data, transforms it,
-  and writes the result to another store.</p>
-  <div class="cols">
-    <div>
-      <p class="small"><strong>Why this is good</strong></p>
-      <ul class="tight smaller">
-        <li>Components are self-contained</li>
-        <li>Teams work independently</li>
-        <li>A broken component does not immediately halt the system</li>
-      </ul>
-    </div>
-    <div>
-      <p class="small"><strong>Why this is dangerous</strong></p>
-      <ul class="tight smaller">
-        <li>A broken component can go unnoticed for a long time</li>
-        <li>Data goes stale</li>
-        <li>Performance drops quietly</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ The pipeline, drawn">
-  <h2>Where your component sits</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/d-pipeline.svg"
-         alt="Upstream collection, a data store, your component, a predictions store, a downstream analysis system, and an investment decision.">
-  </figure>
-</section>
-
 
 <!-- 23 -->
 <section data-menu-title="The current solution">
@@ -812,8 +704,13 @@ print(root_mean_squared_error(y_test, gs.predict(X_test)))
     When the team can check their estimates against the truth, they are typically
     off by more than <span class="fail">30%</span>.
   </div>
-  <p class="small muted">Remember this figure. It is our baseline, and it is what
-  &ldquo;good enough&rdquo; will be measured against.</p>
+  <p class="small">Remember this figure &mdash; and read it carefully. It is a
+  <strong>relative</strong> criterion: 30% <em>of the district&rsquo;s price</em>.
+  We are about to choose a metric measured in dollars, which is not the same
+  thing, and we will come back to that before you commit a number.</p>
+  <p class="small muted">It is also the stakeholder&rsquo;s claim about their own
+  team, not a measurement we made. We will treat it as an assumption and label
+  it as one wherever it appears.</p>
 </section>
 
 <!-- 24 -->
@@ -830,44 +727,23 @@ print(root_mean_squared_error(y_test, gs.predict(X_test)))
 </section>
 
 <!-- 25 -->
-<section data-menu-title="Supervision">
-  <h2>1 &middot; Training supervision</h2>
-  <p>Each district in our data comes with its <strong>expected output</strong> —
-  the median housing price.</p>
-  <p class="fix" style="font-size:1.15em">This is supervised learning.</p>
+<section data-menu-title="Framing 1–3">
+  <h2>Questions 1&ndash;3, answered</h2>
+  <table>
+    <tr><th>Question</th><th>Answer</th><th>Because</th></tr>
+    <tr><td>Supervision</td><td class="fix">supervised</td><td>every district carries its expected output</td></tr>
+    <tr><td>Task</td><td class="fix">multiple, univariate regression</td><td>predict one value, from several features</td></tr>
+    <tr><td>Learning mode</td><td class="fix">batch, offline</td><td>no data stream, and 20,640 rows fit in memory</td></tr>
+  </table>
   <div class="panel panel-book">
     <span class="panel-title">The alternatives, for reference</span>
     Unsupervised (no labels) &middot; semi-supervised (some labels) &middot;
-    self-supervised (labels generated from the data itself) &middot;
-    reinforcement (rewards, not labels).
+    self-supervised (labels from the data itself) &middot; reinforcement (rewards).
+    Predict several values per district and it becomes <em>multivariate</em>
+    regression; add a data stream and it becomes <em>online</em> learning.
   </div>
-</section>
-
-<!-- 26 -->
-<section data-menu-title="Task type">
-  <h2>2 &middot; What kind of task</h2>
-  <ul>
-    <li>We predict a <strong>value</strong>, so this is <strong>regression</strong></li>
-    <li>We use several features, so it is <strong>multiple regression</strong></li>
-    <li>We predict one value per district, so it is <strong>univariate regression</strong></li>
-  </ul>
-  <div class="panel">
-    Had we predicted several values per district, it would be
-    <em>multivariate</em> regression.
-  </div>
-</section>
-
-<!-- 27 -->
-<section data-menu-title="Batch or online">
-  <h2>3 &middot; Batch or online</h2>
-  <ul>
-    <li>No continuous flow of data into the system</li>
-    <li>No need to adjust rapidly to change</li>
-    <li>The data fits comfortably in memory</li>
-  </ul>
-  <p class="fix" style="font-size:1.15em">Plain batch learning will do.</p>
-  <p class="small muted">If the data were huge, we would split the work across
-  servers, or switch to an online technique that learns incrementally.</p>
+  <p class="small muted">Three answers, one minute. The fourth question is the
+  one that can sink the project.</p>
 </section>
 
 <!-- 28 -->
@@ -886,28 +762,15 @@ print(root_mean_squared_error(y_test, gs.predict(X_test)))
   save three months.</aside>
 </section>
 
-<!-- 29 -->
-<section data-menu-title="Framing summary">
-  <h2>Framing: settled</h2>
-  <table>
-    <tr><th>Question</th><th>Answer</th></tr>
-    <tr><td>Supervision</td><td>Supervised — we have labels</td></tr>
-    <tr><td>Task</td><td>Multiple, univariate regression</td></tr>
-    <tr><td>Learning mode</td><td>Batch, offline</td></tr>
-    <tr><td>Approach</td><td>Model-based</td></tr>
-    <tr><td>Baseline to beat</td><td>Human experts, ~30% error</td></tr>
-  </table>
-</section>
-
 <!-- ==================================================================== -->
-<!-- PART 2 — THE DATA (15 min)                                           -->
+<!-- PART 2 — THE DATA (20 min)                                           -->
 <!-- ==================================================================== -->
 
 <!-- 30 -->
 <section class="divider" data-menu-title="◆ The data">
   <p class="kicker">Part two</p>
   <h1>The data</h1>
-  <p class="clock">15 minutes &middot; look before you model</p>
+  <p class="clock">20 minutes &middot; look, then split, then look properly</p>
 </section>
 
 <!-- 31 -->
@@ -935,23 +798,11 @@ housing_full = load_housing_data()
   change, and you will need this on another machine.</p>
 </section>
 
-<!-- 32 -->
-<section data-menu-title="First look">
-  <h2>Look at the top five rows</h2>
-  <pre><code class="language-python" data-trim>
-housing_full.head()
-  </code></pre>
-  <p>Each row is one district. Ten attributes:</p>
-  <p class="smaller"><code>longitude</code> &middot; <code>latitude</code> &middot;
-  <code>housing_median_age</code> &middot; <code>total_rooms</code> &middot;
-  <code>total_bedrooms</code> &middot; <code>population</code> &middot;
-  <code>households</code> &middot; <code>median_income</code> &middot;
-  <code>median_house_value</code> &middot; <code>ocean_proximity</code></p>
-</section>
-
 <!-- 33 -->
 <section data-menu-title="info()">
   <h2>The structure</h2>
+  <p class="small">One row per district, ten attributes. Start with
+  <code>head()</code> and <code>info()</code>, always, before anything else.</p>
   <pre><code class="language-text" data-trim>
 &gt;&gt;&gt; housing_full.info()
 RangeIndex: 20640 entries, 0 to 20639
@@ -1088,13 +939,27 @@ plt.show()
 <!-- 40 -->
 <section data-menu-title="Observation 3">
   <h2>Observation 3 &middot; The scales differ wildly</h2>
-  <p><code>total_rooms</code> runs from about 6 to 39,320.<br>
-  <code>median_income</code> runs from 0 to 15.</p>
-  <div class="panel panel-fail">
-    Without scaling, most models will effectively ignore income and obsess over
-    room counts.
+  <p><code>total_rooms</code> runs from 2 to 39,320.
+  <code>median_income</code> runs from 0.4999 to 15.0001.</p>
+  <div class="panel">
+    <span class="panel-title">Which matters for some methods and not others</span>
+    <p class="small tight" style="margin:0.3em 0"><strong>Scaling is required
+    for:</strong> gradient descent, regularised linear models (ridge, lasso),
+    SVMs, $k$-nearest neighbours, $k$-means, PCA, neural networks. Anything that
+    measures a distance, penalises a coefficient, or takes a step.</p>
+    <p class="small tight" style="margin:0.3em 0"><strong>Scaling does nothing
+    for:</strong> decision trees, random forests, and ordinary least squares.
+    Trees split on one feature at a time, so any monotone rescaling gives the
+    same tree; least squares is <em>equivariant</em> under an invertible affine
+    map of the features &mdash; the fit is identical and the coefficients simply
+    absorb the change.</p>
   </div>
-  <p class="small muted">We will fix this in the build with feature scaling.</p>
+  <p class="small fail">All three models you build today are in the second list.
+  We will scale anyway &mdash; and then measure how much it changed, which is
+  nothing.</p>
+  <aside class="notes">Do not say "models perform badly on different scales". It
+  is false for every model in this lecture, and they will catch you when we
+  measure it in the next one.</aside>
 </section>
 
 <!-- 41 -->
@@ -1109,310 +974,11 @@ plt.show()
   not exponentially rarer.</p>
 </section>
 
-<!-- 42 -->
-<section data-menu-title="Geographic scatter">
-  <h2>The data is geographical &mdash; so look at it</h2>
-  <pre><code class="language-python" data-trim>
-housing.plot(kind="scatter", x="longitude", y="latitude", grid=True)
-plt.show()
-  </code></pre>
-  <p>It looks like California. Beyond that, nothing is visible.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Scatter, alpha=1">
-  <h2>Every district, plotted</h2>
-  <figure class="fig fig-tall">
-    <img src="../assets/figures/l1-geo-plain.png"
-         alt="Scatter plot of district longitude against latitude, fully opaque, showing the outline of California and nothing else.">
-  </figure>
-  <p class="takeaway muted">California. And nothing else &mdash; the ink is
-  saturated.</p>
-</section>
-
-
-<!-- 43 -->
-<section data-menu-title="Scatter with alpha">
-  <h2>One parameter changes everything</h2>
-  <pre><code class="language-python" data-trim>
-housing.plot(kind="scatter", x="longitude", y="latitude",
-             grid=True, alpha=0.2)
-plt.show()
-  </code></pre>
-  <p>Now the high-density areas appear: the Bay Area, Los Angeles, San Diego, and
-  the Central Valley around Sacramento and Fresno.</p>
-  <p class="small muted">Our brains are excellent at spotting patterns in pictures.
-  Expect to tune plotting parameters until the pattern shows.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Scatter, alpha=0.2">
-  <h2>The same data, at one fifth the opacity</h2>
-  <figure class="fig fig-tall">
-    <img src="../assets/figures/l1-geo-alpha.png"
-         alt="The same scatter plot with alpha 0.2, revealing dense clusters at the Bay Area, the Central Valley, Los Angeles and San Diego.">
-  </figure>
-  <p class="takeaway muted">One keyword argument. Same data, and now you can see
-  the population of a state.</p>
-</section>
-
-
-<!-- 44 -->
-<section data-menu-title="Price and population">
-  <h2>Three variables at once</h2>
-  <pre><code class="language-python" data-trim>
-housing.plot(kind="scatter", x="longitude", y="latitude", grid=True,
-             s=housing["population"] / 100, label="population",
-             c="median_house_value", cmap="jet", colorbar=True,
-             legend=True, sharex=False, figsize=(10, 7))
-plt.show()
-  </code></pre>
-  <p>Radius encodes population, colour encodes price.</p>
-  <p class="small">Prices are strongly related to <strong>location</strong> and
-  <strong>population density</strong>. A clustering algorithm should be useful
-  here &mdash; we will come back to that idea.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Price and population">
-  <h2>Location and density, against price</h2>
-  <figure class="fig fig-tall">
-    <img src="../assets/figures/l1-geo-price.png"
-         alt="Scatter of districts with marker radius proportional to population and colour showing median house value; the coast and the two big metros are red.">
-  </figure>
-  <p class="takeaway muted">Red on the coast, blue inland. The model does not know
-  what &ldquo;coast&rdquo; means &mdash; but it will learn longitude.</p>
-</section>
-
-
-<!-- 45 -->
-<section data-menu-title="Correlations">
-  <h2>Standard correlation coefficient</h2>
-  <pre><code class="language-text" data-trim>
-&gt;&gt;&gt; corr_matrix = housing.corr(numeric_only=True)
-&gt;&gt;&gt; corr_matrix["median_house_value"].sort_values(ascending=False)
-median_house_value    1.000000
-median_income         0.688380
-total_rooms           0.137455
-housing_median_age    0.102175
-households            0.071426
-total_bedrooms        0.054635
-population           -0.020153
-longitude            -0.050859
-latitude             -0.139584
-  </code></pre>
-  <p class="small">Pearson&rsquo;s $r$ ranges from $-1$ to $+1$. Income dominates.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Correlations">
-  <h2>The same column, as a picture</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l1-corr.svg"
-         alt="Horizontal bar chart of each attribute's Pearson correlation with median house value; median_income at +0.688 dwarfs everything else.">
-  </figure>
-  <p class="takeaway muted">One bar is five times the next. That is the feature
-  we will stratify on.</p>
-</section>
-
-
-<!-- 46 -->
-<section data-menu-title="What correlation misses">
-  <h2>What the correlation coefficient cannot see</h2>
-  <p>$r$ measures <strong>linear</strong> correlation only.</p>
-  <div class="panel panel-fail">
-    <span class="panel-title">Two traps</span>
-    A dataset can have $r = 0$ and be completely dependent — any nonlinear
-    relationship. And $r = \pm 1$ says nothing about the <em>slope</em>: your
-    height in inches correlates $1.0$ with your height in nanometres.
-  </div>
-</section>
-
-<!-- 47 -->
-<section data-menu-title="The price cap, visible">
-  <h2>Zoom in on the strongest predictor</h2>
-  <pre><code class="language-python" data-trim>
-housing.plot(kind="scatter", x="median_income", y="median_house_value",
-             alpha=0.1, grid=True)
-plt.show()
-  </code></pre>
-  <ul class="tight small">
-    <li>The upward trend is real, though noisy</li>
-    <li>The <span class="fail">$500,000 cap</span> is a clear horizontal line</li>
-    <li>So are fainter lines near <span class="usd">$450,000</span>, <span class="usd">$350,000</span> and <span class="usd">$280,000</span></li>
-  </ul>
-  <p class="small muted">Consider removing those districts so the model does not
-  learn to reproduce data quirks.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ The cap, visible">
-  <h2>Income against price &mdash; and four horizontal lines</h2>
-  <figure class="fig fig-tall">
-    <img src="../assets/figures/l1-income-value.png"
-         alt="Scatter of median income against median house value, with a hard horizontal line at $500,001 and fainter lines near $450,000, $350,000 and $280,000.">
-  </figure>
-  <p class="takeaway fail">The trend is real. The straight lines are not &mdash;
-  they are artefacts of how the labels were recorded.</p>
-</section>
-
-
-<!-- 48 -->
-<section data-menu-title="Attribute combinations">
-  <h2>Combine attributes before modelling</h2>
-  <pre><code class="language-python" data-trim>
-housing["rooms_per_house"]  = housing["total_rooms"] / housing["households"]
-housing["bedrooms_ratio"]   = housing["total_bedrooms"] / housing["total_rooms"]
-housing["people_per_house"] = housing["population"] / housing["households"]
-  </code></pre>
-  <table>
-    <tr><th>Attribute</th><th class="num">Correlation with price</th></tr>
-    <tr><td>median_income</td><td class="num">0.688</td></tr>
-    <tr><td>rooms_per_house</td><td class="num">0.144</td></tr>
-    <tr><td>total_rooms</td><td class="num">0.137</td></tr>
-    <tr><td>bedrooms_ratio</td><td class="num hit">&minus;0.256</td></tr>
-  </table>
-  <p class="small"><code>bedrooms_ratio</code> is far more informative than
-  either raw count.</p>
-</section>
-
-<!-- 49 -->
-<section data-menu-title="A warning on combinations">
-  <h2>A warning you will need in Lecture 2</h2>
-  <div class="panel panel-fail">
-    <span class="panel-title">Collinearity</span>
-    When you create combined features, make sure they are not too linearly
-    correlated with existing ones. In particular, <strong>avoid simple weighted
-    sums of existing features.</strong>
-  </div>
-  <p>Collinearity causes real problems for some models &mdash; linear regression
-  above all.</p>
-  <p class="small muted">In the next lecture we will see <em>exactly</em> why, in
-  the first mathematical thread.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- PART 3 — THE METRIC (15 min)                                         -->
-<!-- ==================================================================== -->
-
-<!-- 50 -->
-<section class="divider" data-menu-title="◆ The metric">
-  <p class="kicker">Part three</p>
-  <h1>How will we know<br>if it works?</h1>
-  <p class="clock">15 minutes</p>
-</section>
-
-<!-- 51 -->
-<section data-menu-title="Metric before model">
-  <h2>Choose the metric before the model</h2>
-  <p>If you choose the metric afterwards, you will choose the one that flatters
-  the model you happen to have built.</p>
-  <div class="panel">
-    <span class="panel-title">The rule for this course</span>
-    Metric first. Target number second. Model third.
-  </div>
-</section>
-
-<!-- 52 -->
-<section data-menu-title="Notation">
-  <h2>Notation we will use all semester</h2>
-  <ul class="tight">
-    <li>$m$ &mdash; the number of instances in the set being measured</li>
-    <li>$\mathbf{x}^{(i)}$ &mdash; the feature vector of the $i$-th instance, excluding its label</li>
-    <li>$y^{(i)}$ &mdash; the label of the $i$-th instance</li>
-    <li>$\mathbf{X}$ &mdash; the matrix with one row per instance, row $i$ being $\left(\mathbf{x}^{(i)}\right)^{\!\intercal}$</li>
-    <li>$h$ &mdash; the system&rsquo;s prediction function, the <em>hypothesis</em></li>
-    <li>$\hat{y}^{(i)} = h\!\left(\mathbf{x}^{(i)}\right)$ &mdash; the prediction for instance $i$</li>
-  </ul>
-  <p class="small muted">Lowercase italic for scalars, lowercase bold for vectors,
-  uppercase bold for matrices.</p>
-</section>
-
-<!-- 53 -->
-<section data-menu-title="RMSE">
-  <h2>Root mean squared error</h2>
-  <div class="eqn-box">
-    $$\mathrm{RMSE}(\mathbf{X}, y, h) \;=\; \sqrt{\frac{1}{m}\sum_{i=1}^{m}\left(h\!\left(\mathbf{x}^{(i)}\right) - y^{(i)}\right)^{2}}$$
-  </div>
-  <p class="eqn-label">The typical performance measure for regression</p>
-  <p>It gives an idea of how much error the system typically makes,
-  <strong>with a higher weight on large errors</strong>.</p>
-</section>
-
-<!-- 54 -->
-<section data-menu-title="MAE">
-  <h2>Mean absolute error</h2>
-  <div class="eqn-box">
-    $$\mathrm{MAE}(\mathbf{X}, y, h) \;=\; \frac{1}{m}\sum_{i=1}^{m}\left|h\!\left(\mathbf{x}^{(i)}\right) - y^{(i)}\right|$$
-  </div>
-  <p class="eqn-label">Also called the average absolute deviation</p>
-  <p>Preferred when the data contains many outliers, because RMSE is quite
-  sensitive to them.</p>
-</section>
-
-<!-- 55 -->
-<section data-menu-title="Norms">
-  <h2>Both are distances between two vectors</h2>
-  <p>The vector of predictions and the vector of targets. Different distances,
-  different <em>norms</em>:</p>
-  <ul class="tight">
-    <li>RMSE is the <strong>Euclidean norm</strong> $\lVert \cdot \rVert_2$ &mdash; root of a sum of squares</li>
-    <li>MAE is the <strong>Manhattan norm</strong> $\lVert \cdot \rVert_1$ &mdash; sum of absolutes</li>
-  </ul>
-  <div class="eqn-box">
-    $$\lVert \mathbf{v} \rVert_k \;=\; \left(|v_1|^k + |v_2|^k + \dots + |v_n|^k\right)^{1/k}$$
-  </div>
-  <p class="small muted">$\lVert\cdot\rVert_0$ counts nonzero elements;
-  $\lVert\cdot\rVert_\infty$ gives the maximum absolute value.</p>
-</section>
-
-<!-- 56 -->
-<section data-menu-title="Which norm">
-  <h2>Which to choose here</h2>
-  <p class="panel">
-    <strong>The higher the norm index, the more it focuses on large values and
-    neglects small ones.</strong> That is exactly why RMSE is more sensitive to
-    outliers than MAE.
-  </p>
-  <p>But when outliers are exponentially rare — as in a bell-shaped curve — RMSE
-  performs very well and is generally preferred.</p>
-  <p class="fix" style="font-size:1.1em">We choose RMSE.</p>
-</section>
-
-<!-- 57 -->
-<section data-menu-title="What is good?">
-  <h2>What number counts as success?</h2>
-  <ul>
-    <li>Most districts have <code>median_house_value</code> between <span class="usd">$120,000</span> and <span class="usd">$265,000</span></li>
-    <li>The human experts are off by more than <span class="fail">30%</span></li>
-    <li>30% of, say, $200,000 is about <span class="fail">$60,000</span></li>
-  </ul>
-  <div class="panel">
-    So an RMSE materially below <strong>$60,000</strong> would already be
-    commercially useful. An RMSE near $70,000 would not beat the humans.
-  </div>
-</section>
-
-<!-- 58 -->
-<section class="commit-slide" data-menu-title="★ COMMIT">
-  <h2>Commit</h2>
-  <div class="commit">
-    <span class="commit-label">Write this down. On paper. Now.</span>
-    <p style="font-size:0.92em; text-align:left; line-height:1.9">
-      Metric: <span class="blank"></span><br>
-      Target RMSE for a good system: $ <span class="blank"></span><br>
-      RMSE I expect from the model we build today: $ <span class="blank"></span>
-    </p>
-  </div>
-  <p class="small muted">In the next lecture we compare your three numbers to reality. Two
-  of them will be wrong, and the reason will be the lecture.</p>
-  <aside class="notes">Do not move on until pens have actually moved. Walk the
-  room if necessary.</aside>
-</section>
-
 <!-- 59 -->
 <section data-menu-title="Measuring honestly">
-  <h2>Measuring honestly: the test set</h2>
+  <h2>Stop. Before we look any closer</h2>
+  <p class="small muted">Four observations from four histograms, and we have not
+  yet plotted one variable against another. That is exactly the moment to stop.</p>
   <p>The only way to know how a model generalises is to try it on cases it has
   never seen.</p>
   <ul class="tight">
@@ -1514,15 +1080,404 @@ for set_ in (strat_train_set, strat_test_set):
 </section>
 
 
+<!-- new -->
+<section data-menu-title="Check the split">
+  <h2>Check the split before you trust it</h2>
+  <pre><code class="language-python" data-trim>
+assert len(strat_train_set) + len(strat_test_set) == 20640
+assert set(strat_train_set.columns) == set(strat_test_set.columns)
+assert strat_train_set.index.intersection(strat_test_set.index).empty
+  </code></pre>
+  <p class="small">Three lines: nothing was dropped, the two frames have the
+  same columns, and no district is in both. Each one has been a real bug in a
+  real notebook.</p>
+  <div class="panel">
+    <span class="panel-title">Assert after every structural step</span>
+    An assertion is a claim about your data that fails <em>loudly</em>. It is the
+    only thing in this course that does. Write one after every split, merge,
+    reshape and drop &mdash; and count what you dropped.
+  </div>
+  <p class="small muted">Reviewer question 4 &mdash; <em>what was dropped?</em>
+  &mdash; answered by the program instead of by you.</p>
+</section>
+
 <!-- ==================================================================== -->
-<!-- PART 4 — THE BUILD (25 min)                                          -->
+<!-- 42 -->
+<section data-menu-title="Explore the training set">
+  <h2>Now explore &mdash; the training set, and only that</h2>
+  <pre><code class="language-python" data-trim>
+housing = strat_train_set.copy()          # 16,512 districts. The other 4,128
+                                          # are sealed until the last slide of
+                                          # the next lecture.
+  </code></pre>
+  <p>Everything from here to the end of this part is computed on
+  <code>housing</code>. Every correlation, every scatter, every ratio.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">Why the copy</span>
+    So that nothing we invent while exploring &mdash; a new column, a filter, a
+    dropped row &mdash; can reach <code>strat_train_set</code> by accident. And
+    so that the numbers on the next eight slides are honestly labelled: they are
+    <strong>training-set</strong> numbers, and they will differ slightly from
+    anything you compute on all 20,640 rows.
+  </div>
+</section>
+
+<!-- 42b -->
+<section data-menu-title="Geographic scatter">
+  <h2>The data is geographical &mdash; so look at it</h2>
+  <pre><code class="language-python" data-trim>
+housing.plot(kind="scatter", x="longitude", y="latitude", grid=True)
+plt.show()
+  </code></pre>
+  <p>It looks like California. Beyond that, nothing is visible.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Scatter, alpha=1">
+  <h2>Every district, plotted</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l1-geo-plain.png"
+         alt="Scatter plot of district longitude against latitude, fully opaque, showing the outline of California and nothing else.">
+  </figure>
+  <p class="takeaway muted">California. And nothing else &mdash; the ink is
+  saturated.</p>
+</section>
+
+
+<!-- 43 -->
+<section data-menu-title="Scatter with alpha">
+  <h2>One parameter changes everything</h2>
+  <pre><code class="language-python" data-trim>
+housing.plot(kind="scatter", x="longitude", y="latitude",
+             grid=True, alpha=0.2)
+plt.show()
+  </code></pre>
+  <p>Now the high-density areas appear: the Bay Area, Los Angeles, San Diego, and
+  the Central Valley around Sacramento and Fresno.</p>
+  <p class="small muted">Our brains are excellent at spotting patterns in pictures.
+  Expect to tune plotting parameters until the pattern shows.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Scatter, alpha=0.2">
+  <h2>The same data, at one fifth the opacity</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l1-geo-alpha.png"
+         alt="The same scatter plot with alpha 0.2, revealing dense clusters at the Bay Area, the Central Valley, Los Angeles and San Diego.">
+  </figure>
+  <p class="takeaway muted">One keyword argument. Same data, and now you can see
+  the population of a state.</p>
+</section>
+
+
+<!-- 44 -->
+<section data-menu-title="Price and population">
+  <h2>Three variables at once</h2>
+  <pre><code class="language-python" data-trim>
+housing.plot(kind="scatter", x="longitude", y="latitude", grid=True,
+             s=housing["population"] / 100, label="population",
+             c="median_house_value", cmap="jet", colorbar=True,
+             legend=True, sharex=False, figsize=(10, 7))
+plt.show()
+  </code></pre>
+  <p>Radius encodes population, colour encodes price.</p>
+  <p class="small">Prices are strongly related to <strong>location</strong> and
+  <strong>population density</strong>. A clustering algorithm should be useful
+  here &mdash; we will come back to that idea.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Price and population">
+  <h2>Location and density, against price</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l1-geo-price.png"
+         alt="Scatter of districts with marker radius proportional to population and colour showing median house value; the coast and the two big metros are red.">
+  </figure>
+  <p class="takeaway muted">Red on the coast, blue inland. The model does not know
+  what &ldquo;coast&rdquo; means &mdash; but it will learn longitude.</p>
+</section>
+
+
+<!-- 45 -->
+<section data-menu-title="Correlations">
+  <h2>Standard correlation coefficient</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; corr_matrix = housing.corr(numeric_only=True)
+&gt;&gt;&gt; corr_matrix["median_house_value"].sort_values(ascending=False)
+median_house_value    1.000000
+median_income         0.688380
+total_rooms           0.137455
+housing_median_age    0.102175
+households            0.071426
+total_bedrooms        0.054635
+population           -0.020153
+longitude            -0.050859
+latitude             -0.139584
+  </code></pre>
+  <p class="small">Pearson&rsquo;s $r$ ranges from $-1$ to $+1$. Income dominates.</p>
+  <p class="small fail">These are training-set values. Compute them on all 20,640
+  rows and the third decimal moves &mdash; which is why a number is worth nothing
+  without the set it was measured on.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Correlations">
+  <h2>The same column, as a picture</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l1-corr.svg"
+         alt="Horizontal bar chart of each attribute's Pearson correlation with median house value; median_income at +0.688 dwarfs everything else.">
+  </figure>
+  <p class="takeaway muted">One bar is five times the next. That is the feature
+  we will stratify on.</p>
+</section>
+
+
+<!-- 46 -->
+<section data-menu-title="What correlation misses">
+  <h2>What the correlation coefficient cannot see</h2>
+  <p>$r$ measures <strong>linear</strong> correlation only.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Two traps</span>
+    A dataset can have $r = 0$ and be completely dependent — any nonlinear
+    relationship. And $r = \pm 1$ says nothing about the <em>slope</em>: your
+    height in inches correlates $1.0$ with your height in nanometres.
+  </div>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="The price cap, visible">
+  <h2>Zoom in on the strongest predictor</h2>
+  <pre><code class="language-python" data-trim>
+housing.plot(kind="scatter", x="median_income", y="median_house_value",
+             alpha=0.1, grid=True)
+plt.show()
+  </code></pre>
+  <ul class="tight small">
+    <li>The upward trend is real, though noisy</li>
+    <li>The <span class="fail">$500,000 cap</span> is a clear horizontal line</li>
+    <li>So are fainter lines near <span class="usd">$450,000</span>, <span class="usd">$350,000</span> and <span class="usd">$280,000</span></li>
+  </ul>
+  <p class="small muted">Consider removing those districts so the model does not
+  learn to reproduce data quirks.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The cap, visible">
+  <h2>Income against price &mdash; and four horizontal lines</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l1-income-value.png"
+         alt="Scatter of median income against median house value, with a hard horizontal line at $500,001 and fainter lines near $450,000, $350,000 and $280,000.">
+  </figure>
+  <p class="takeaway fail">The trend is real. The straight lines are not &mdash;
+  they are artefacts of how the labels were recorded.</p>
+</section>
+
+
+<!-- 48 -->
+<section data-menu-title="Attribute combinations">
+  <h2>Combine attributes before modelling</h2>
+  <pre><code class="language-python" data-trim>
+housing["rooms_per_house"]  = housing["total_rooms"] / housing["households"]
+housing["bedrooms_ratio"]   = housing["total_bedrooms"] / housing["total_rooms"]
+housing["people_per_house"] = housing["population"] / housing["households"]
+  </code></pre>
+  <table>
+    <tr><th>Attribute</th><th class="num">Correlation with price</th></tr>
+    <tr><td>median_income</td><td class="num">0.688</td></tr>
+    <tr><td>rooms_per_house</td><td class="num">0.144</td></tr>
+    <tr><td>total_rooms</td><td class="num">0.137</td></tr>
+    <tr><td>bedrooms_ratio</td><td class="num hit">&minus;0.256</td></tr>
+  </table>
+  <p class="small"><code>bedrooms_ratio</code> is far more informative than
+  either raw count.</p>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="A warning on combinations">
+  <h2>A warning you will need in Lecture 2</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Collinearity</span>
+    When you create combined features, make sure they are not too linearly
+    correlated with existing ones. In particular, <strong>avoid simple weighted
+    sums of existing features.</strong>
+  </div>
+  <p>Collinearity causes real problems for some models &mdash; linear regression
+  above all.</p>
+  <p class="small muted">In the next lecture we will see <em>exactly</em> why, in
+  the first mathematical thread.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- PART 3 — THE METRIC (12 min)                                         -->
+<!-- ==================================================================== -->
+
+<!-- 50 -->
+<section class="divider" data-menu-title="◆ The metric">
+  <p class="kicker">Part three</p>
+  <h1>How will we know<br>if it works?</h1>
+  <p class="clock">12 minutes</p>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="Metric before model">
+  <h2>Choose the metric before the model</h2>
+  <p>If you choose the metric afterwards, you will choose the one that flatters
+  the model you happen to have built.</p>
+  <div class="panel">
+    <span class="panel-title">The rule for this course</span>
+    Metric first. Target number second. Model third.
+  </div>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="Notation">
+  <h2>Notation we will use all semester</h2>
+  <ul class="tight">
+    <li>$m$ &mdash; the number of instances in the set being measured</li>
+    <li>$\mathbf{x}^{(i)}$ &mdash; the feature vector of the $i$-th instance, excluding its label</li>
+    <li>$y^{(i)}$ &mdash; the label of the $i$-th instance</li>
+    <li>$\mathbf{X}$ &mdash; the matrix with one row per instance, row $i$ being $\left(\mathbf{x}^{(i)}\right)^{\!\intercal}$</li>
+    <li>$h$ &mdash; the system&rsquo;s prediction function, the <em>hypothesis</em></li>
+    <li>$\hat{y}^{(i)} = h\!\left(\mathbf{x}^{(i)}\right)$ &mdash; the prediction for instance $i$</li>
+  </ul>
+  <p class="small muted">Lowercase italic for scalars, lowercase bold for vectors,
+  uppercase bold for matrices.</p>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="RMSE">
+  <h2>Root mean squared error</h2>
+  <div class="eqn-box">
+    $$\mathrm{RMSE}(\mathbf{X}, y, h) \;=\; \sqrt{\frac{1}{m}\sum_{i=1}^{m}\left(h\!\left(\mathbf{x}^{(i)}\right) - y^{(i)}\right)^{2}}$$
+  </div>
+  <p class="eqn-label">The typical performance measure for regression</p>
+  <p>It gives an idea of how much error the system typically makes,
+  <strong>with a higher weight on large errors</strong>.</p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="MAE">
+  <h2>Mean absolute error</h2>
+  <div class="eqn-box">
+    $$\mathrm{MAE}(\mathbf{X}, y, h) \;=\; \frac{1}{m}\sum_{i=1}^{m}\left|h\!\left(\mathbf{x}^{(i)}\right) - y^{(i)}\right|$$
+  </div>
+  <p class="eqn-label">Also called the average absolute deviation</p>
+  <p>Preferred when the data contains many outliers, because RMSE is quite
+  sensitive to them.</p>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="Norms">
+  <h2>Both are distances between two vectors</h2>
+  <p class="small">The vector of predictions and the vector of targets. RMSE is
+  the Euclidean norm $\lVert\cdot\rVert_2$; MAE is the Manhattan norm
+  $\lVert\cdot\rVert_1$.</p>
+  <div class="eqn-box">
+    $$\lVert \mathbf{v} \rVert_k \;=\; \left(|v_1|^k + |v_2|^k + \dots + |v_n|^k\right)^{1/k}$$
+  </div>
+  <p class="small">The higher the index, the more the norm attends to large
+  values and neglects small ones &mdash; which is exactly why RMSE is more
+  sensitive to outliers than MAE, and why MAE is preferred when there are many.</p>
+  <p class="small fail">Note what this argument does <em>not</em> settle: both
+  are measured in dollars. Neither of them is the criterion in the brief.</p>
+</section>
+
+<!-- new -->
+<section data-menu-title="Absolute or relative">
+  <h2>A dollar is not a dollar</h2>
+  <p class="small">The brief says the experts are off by more than <strong>30% of
+  the price</strong>. RMSE and MAE are absolute: a
+  <span class="usd">$50,000</span> miss counts the same on a
+  <span class="usd">$80,000</span> district as on a
+  <span class="usd">$500,000</span> one. To the business those are a catastrophe
+  and a rounding error.</p>
+  <table class="smaller">
+    <tr><th>Criterion</th><th>Optimises</th><th>Cost</th></tr>
+    <tr><td>RMSE on the price</td><td>the dear districts, where the dollars are</td><td>relative error on cheap districts is unbounded</td></tr>
+    <tr><td>RMSE on $\log$ price</td><td>the <em>ratio</em> predicted&nbsp;/&nbsp;actual</td><td>no longer measured in dollars; harder to explain</td></tr>
+    <tr><td>Share within 30%</td><td>exactly what the brief states</td><td>ignores how badly the rest miss</td></tr>
+  </table>
+  <p class="fix">We choose RMSE &mdash; knowingly, because the downstream system
+  consumes prices in dollars, and because the target is roughly symmetric once
+  you are above the cheapest decile.</p>
+  <p class="small muted">In the next lecture we measure all three on the same
+  model, and find out what that choice cost. Transforming the target is
+  Chapter&nbsp;2; we come back to it.</p>
+  <aside class="notes">This is the slide that stops "we picked RMSE because the
+  book did". Make them say which criterion the stakeholder actually stated.</aside>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="What is good?">
+  <h2>What number counts as success?</h2>
+  <ul class="tight small">
+    <li>Half the districts fall between <span class="usd">$119,600</span> and <span class="usd">$264,725</span>; the median is <span class="usd">$179,700</span></li>
+    <li>The experts are stated to be off by more than <span class="fail">30%</span> &mdash; an <em>assumption we were given</em>, not a measurement we made</li>
+    <li>Read as an absolute figure at the median district, 30% is about <span class="fail">$54,000</span></li>
+  </ul>
+  <div class="panel">
+    So an RMSE materially below <span class="usd">$54,000</span> would plausibly
+    be useful. That is an order of magnitude, not a target &mdash; it converts a
+    relative criterion at one price point into a dollar figure, and we have just
+    seen that this conversion is lossy.
+  </div>
+  <p class="small fail">It is also not a baseline. A baseline is something you can
+  actually run. Next slide.</p>
+</section>
+
+<!-- new -->
+<section data-menu-title="The trivial baseline">
+  <h2>Before you commit: what does <em>nothing</em> score?</h2>
+  <p class="small">The cheapest possible model. Predict one constant for every
+  district in California, forever.</p>
+  <pre><code class="language-python" data-trim>
+y_train  = strat_train_set["median_house_value"]
+constant = y_train.mean()                      # 206,334
+rmse     = root_mean_squared_error(y_train, np.full(len(y_train), constant))
+  </code></pre>
+  <table class="smaller">
+    <tr><th>Model</th><th class="num">RMSE on the training set</th></tr>
+    <tr><td>Predict the training <strong>mean</strong> every time</td><td class="num"><span class="usd">$115,311</span></td></tr>
+    <tr><td>Predict the training <strong>median</strong> every time</td><td class="num"><span class="usd">$118,460</span></td></tr>
+  </table>
+  <p class="fix">Now every number today has something to be compared against.
+  Anything above <span class="usd">$115,311</span> is worse than a constant, and
+  the distance below it is the only part you actually earned.</p>
+  <p class="small muted">Rule 2, applied to ourselves: a metric with nothing to
+  compare it to is decoration.</p>
+  <aside class="notes">Ask for a show of hands on what the constant model scores
+  before revealing it. Most guess far too low.</aside>
+</section>
+
+<!-- 58 -->
+<section class="commit-slide" data-menu-title="★ COMMIT">
+  <h2>Commit</h2>
+  <div class="commit">
+    <span class="commit-label">Write this down. On paper. Now.</span>
+    <p style="font-size:0.92em; text-align:left; line-height:1.9">
+      Metric: <span class="blank"></span><br>
+      Target RMSE for a good system: $ <span class="blank"></span><br>
+      RMSE I expect from the model we build today: $ <span class="blank"></span>
+    </p>
+  </div>
+  <p class="small">You are not guessing in the dark: a constant scores
+  <span class="usd">$115,311</span>, and 30% of the median district is about
+  <span class="usd">$54,000</span>. Your number belongs somewhere between them,
+  and saying <em>where</em> is the whole exercise.</p>
+  <p class="small muted">In the next lecture we compare your three numbers to
+  reality. Two of them will be wrong, and the reason will be the lecture.</p>
+  <aside class="notes">Do not move on until pens have actually moved. Walk the
+  room if necessary.</aside>
+</section>
+
+<!-- PART 4 — THE BUILD (30 min)                                          -->
 <!-- ==================================================================== -->
 
 <!-- 64 -->
 <section class="divider" data-menu-title="◆ Build">
   <p class="kicker">Part four</p>
   <h1>Build</h1>
-  <p class="clock">25 minutes &middot; end to end, in one sitting</p>
+  <p class="clock">30 minutes &middot; end to end, in one sitting</p>
 </section>
 
 <!-- 65 -->
@@ -1562,13 +1517,19 @@ for set_ in (strat_train_set, strat_test_set):
 <section data-menu-title="Predictors and labels">
   <h2>Predictors and labels</h2>
   <pre><code class="language-python" data-trim>
-housing = strat_train_set.drop("median_house_value", axis=1)
-housing_labels = strat_train_set["median_house_value"].copy()
+X_train = strat_train_set.drop("median_house_value", axis=1)
+y_train = strat_train_set["median_house_value"].copy()
+
+assert set(X_train.columns) == set(strat_test_set.columns) - {"median_house_value"}
+assert "median_house_value" not in X_train.columns      # the one that matters
   </code></pre>
   <p>We separate them because we do not necessarily want to apply the same
   transformations to predictors and targets.</p>
   <p class="small muted"><code>drop()</code> returns a copy; it does not modify
-  <code>strat_train_set</code>.</p>
+  <code>strat_train_set</code>. <code>housing</code> &mdash; the exploration copy
+  &mdash; still has the label in it, which is why it is not the thing we train on.</p>
+  <p class="small fail">The second assertion catches the single most embarrassing
+  bug in applied machine learning: predicting the target from itself.</p>
 </section>
 
 <!-- 68 -->
@@ -1578,7 +1539,7 @@ housing_labels = strat_train_set["median_house_value"].copy()
 from sklearn.impute import SimpleImputer
 
 imputer = SimpleImputer(strategy="median")
-housing_num = housing.select_dtypes(include=[np.number])
+housing_num = X_train.select_dtypes(include=[np.number])
 imputer.fit(housing_num)
 X = imputer.transform(housing_num)
   </code></pre>
@@ -1613,7 +1574,7 @@ X = imputer.transform(housing_num)
 from sklearn.preprocessing import OneHotEncoder
 
 cat_encoder = OneHotEncoder(handle_unknown="ignore")
-housing_cat_1hot = cat_encoder.fit_transform(housing[["ocean_proximity"]])
+housing_cat_1hot = cat_encoder.fit_transform(X_train[["ocean_proximity"]])
   </code></pre>
   <div class="panel panel-fail">
     <span class="panel-title">Why not <code>OrdinalEncoder</code></span>
@@ -1641,8 +1602,11 @@ housing_cat_1hot = cat_encoder.fit_transform(housing[["ocean_proximity"]])
 <!-- 72 -->
 <section data-menu-title="Feature scaling">
   <h2>Feature scaling</h2>
-  <p>With few exceptions, models perform badly when numerical attributes have
-  very different scales.</p>
+  <p class="small">Two standard transformations, both fitted on the training set
+  and stored, exactly like the imputer. Neither of them will change today&rsquo;s
+  three models &mdash; we scale because the pipeline is the artefact we reuse for
+  the rest of the semester, and most of what goes in it later
+  <em>does</em> need it.</p>
   <div class="cols">
     <div>
       <p class="small"><strong>Min-max scaling</strong></p>
@@ -1689,13 +1653,13 @@ preprocessing = ColumnTransformer([
 from sklearn.linear_model import LinearRegression
 
 lin_reg = make_pipeline(preprocessing, LinearRegression())
-lin_reg.fit(housing, housing_labels)
+lin_reg.fit(X_train, y_train)
   </code></pre>
   <pre><code class="language-text" data-trim>
-&gt;&gt;&gt; housing_predictions = lin_reg.predict(housing)
+&gt;&gt;&gt; housing_predictions = lin_reg.predict(X_train)
 &gt;&gt;&gt; housing_predictions[:5].round(-2)
 array([246000., 372700., 135700.,  91400., 330900.])
-&gt;&gt;&gt; housing_labels.iloc[:5].values
+&gt;&gt;&gt; y_train.iloc[:5].values
 array([458300., 483800., 101700.,  96100., 361800.])
   </code></pre>
 </section>
@@ -1706,7 +1670,7 @@ array([458300., 483800., 101700.,  96100., 361800.])
   <pre><code class="language-python" data-trim>
 from sklearn.metrics import root_mean_squared_error
 
-lin_rmse = root_mean_squared_error(housing_labels, housing_predictions)
+lin_rmse = root_mean_squared_error(y_train, housing_predictions)
   </code></pre>
   <p class="big-num bad">$68,233</p>
   <p>Most districts sit between <span class="usd">$120,000</span> and
@@ -1724,10 +1688,10 @@ from sklearn.tree import DecisionTreeRegressor
 
 tree_reg = make_pipeline(preprocessing,
                          DecisionTreeRegressor(random_state=42))
-tree_reg.fit(housing, housing_labels)
+tree_reg.fit(X_train, y_train)
 
-housing_predictions = tree_reg.predict(housing)
-tree_rmse = root_mean_squared_error(housing_labels, housing_predictions)
+housing_predictions = tree_reg.predict(X_train)
+tree_rmse = root_mean_squared_error(y_train, housing_predictions)
   </code></pre>
   <p class="small muted">Decision trees can find complex nonlinear relationships.
   We meet them properly in Lecture 7.</p>
@@ -1755,7 +1719,7 @@ from sklearn.ensemble import RandomForestRegressor
 
 forest_reg = make_pipeline(preprocessing,
                            RandomForestRegressor(random_state=42))
-forest_reg.fit(housing, housing_labels)
+forest_reg.fit(X_train, y_train)
   </code></pre>
   <p>Many decision trees trained on random subsets, with their predictions
   averaged. Models built from other models are called <strong>ensembles</strong>.</p>
@@ -1767,13 +1731,16 @@ forest_reg.fit(housing, housing_labels)
   <h2>Where we stand</h2>
   <table>
     <tr><th>Model</th><th class="num">RMSE on training data</th><th>Reading</th></tr>
-    <tr><td>Human experts</td><td class="num">~$60,000</td><td>the baseline</td></tr>
-    <tr><td>Linear regression</td><td class="num miss">$68,233</td><td>underfits</td></tr>
+    <tr><td>Predict a constant</td><td class="num"><span class="usd">$115,311</span></td><td>the baseline &mdash; measured</td></tr>
+    <tr><td>Linear regression</td><td class="num miss"><span class="usd">$68,233</span></td><td>41% better than nothing; underfits</td></tr>
     <tr><td>Decision tree</td><td class="num">0.0</td><td class="fail">???</td></tr>
-    <tr><td>Random forest</td><td class="num">$18,058</td><td class="fail">???</td></tr>
+    <tr><td>Random forest</td><td class="num"><span class="usd">$18,058</span></td><td class="fail">???</td></tr>
   </table>
-  <p class="fail" style="font-size:1.05em">Two of these four numbers are
-  meaningless. Which two, and why, is the next lecture.</p>
+  <p class="small muted">The experts&rsquo; 30% is not in this table. It is a
+  relative criterion and an assumption; it cannot sit in a column of measured
+  dollars. We convert it properly in the next lecture.</p>
+  <p class="fail">Two of these four numbers are meaningless. Which two, and why,
+  is the next lecture.</p>
 </section>
 
 <!-- 80 -->
@@ -1827,10 +1794,15 @@ forest_reg.fit(housing, housing_labels)
     <li>Framed the problem before touching data — supervised, multiple univariate
         regression, batch</li>
     <li>Checked the assumptions with the downstream team</li>
-    <li>Explored: found missing values, a capped target, mismatched scales, skew</li>
-    <li>Chose RMSE, and justified it against MAE using norms</li>
-    <li>Committed to a target number in writing</li>
-    <li>Built a stratified split, a preprocessing pipeline, and three models</li>
+    <li>Looked at the whole dataset once: missing values, a capped target,
+        mismatched scales, skew</li>
+    <li>Built the stratified split and <em>then</em> explored, on the training set
+        only</li>
+    <li>Chose RMSE against MAE using norms — and noticed that the brief states a
+        relative criterion while our metric is absolute</li>
+    <li>Measured the trivial baseline, <span class="usd">$115,311</span>, and
+        committed a target number in writing against it</li>
+    <li>Built a preprocessing pipeline and three models</li>
   </ol>
 </section>
 
