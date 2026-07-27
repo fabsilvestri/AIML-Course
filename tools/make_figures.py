@@ -83,6 +83,9 @@ def setup():
         "legend.frameon": False,
         "legend.fontsize": 11,
         "figure.autolayout": False,
+        # deterministic element ids, so re-running the script does not rewrite
+        # every SVG with fresh hashes and leave a diff that means nothing
+        "svg.hashsalt": "aiml-course",
     })
 
 
@@ -115,8 +118,10 @@ def cached(key, fn):
 def save(fig, name, *, raster=False, dpi=160):
     ext = "png" if raster else "svg"
     path = OUT / f"{name}.{ext}"
+    # no creation date in the file, for the same reason as svg.hashsalt
+    meta = {"Date": None} if not raster else {}
     fig.savefig(path, format=ext, dpi=dpi, bbox_inches="tight",
-                pad_inches=0.15)
+                pad_inches=0.15, metadata=meta)
     plt.close(fig)
     kb = path.stat().st_size / 1024
     print(f"  {path.relative_to(ROOT)}  ({kb:.0f} KB)")
