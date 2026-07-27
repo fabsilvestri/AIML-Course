@@ -980,7 +980,10 @@ def fig_residuals(gs, sp):
     ax.axvline(500_001, color=ACCENT, ls="--", lw=1.4, alpha=0.8)
     ax.annotate("every capped district sits on this line —\n"
                 "the model cannot predict above the cap\nit was trained on",
-                xy=(498_000, 300_000), xytext=(14_000, 452_000), fontsize=SMALL,
+                # the tip must land where the stripe is DENSE (y ~ 440-500k);
+                # at y=300k it sat in the sparse part and read as pointing at
+                # empty space
+                xy=(500_500, 468_000), xytext=(14_000, 300_000), fontsize=SMALL,
                 color=ACCENT, fontweight="bold",
                 bbox=dict(boxstyle="round,pad=0.45", facecolor="white",
                           edgecolor=ACCENT, alpha=0.95),

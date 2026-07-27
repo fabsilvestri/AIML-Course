@@ -504,6 +504,26 @@ for f in ("SourceSans3-Regular.ttf", "SourceSans3-SemiBold.ttf",
 Then shrink each `figsize` ~20%, and delete the per-call `fontsize=` arguments
 that currently defeat the global scale.
 
+**How big a plot's text ends up, in three steps.** This is not obvious and was
+got wrong twice.
+
+1. matplotlib writes SVG in **points**; the browser converts at 96/72, so 1pt
+   becomes **1.33px**. PNG is rasterised at `dpi=160`, so 1pt becomes **2.22px**
+   in the file — rasters are authored 1.67× larger than vectors for the same
+   `fontsize`.
+2. The slide then scales the image. `fig-wide` is `width: 100%` against a usable
+   **1280px** (sections have no horizontal padding), so wide figures scale *up*
+   and their authored width barely matters. What binds is `max-height`: 420px
+   for `fig-wide`, 560px for `fig-tall`.
+3. So a figure taller than about 0.44 of its width gets clamped by height, and
+   all its text shrinks by that ratio.
+
+Net: measured across both decks, 15pt text lands between 16.5px and 28px —
+rasters at the bottom of that range, SVGs at the top. Nothing is under the 15px
+floor, but the margin on a tall PNG is thin. **Do not "fix" this by scaling
+fontsize without checking the format**: multiplying a raster's sizes by the
+clamp ratio takes its labels past the 30px slide body text.
+
 **The palette lives in two places.** `make_figures.py` carries its own copy of
 the hex values. Any change to a `--aiml-*` token in `custom.css` must be mirrored
 there in the same commit, and all figures regenerated — or the decks ship with
