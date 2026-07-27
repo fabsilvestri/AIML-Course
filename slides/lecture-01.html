@@ -324,7 +324,7 @@
         training and test sets.&rdquo;
       </div>
       <p class="small muted">Under-specified in exactly one place &mdash; and that
-      place will cost us the entire next lecture.</p>
+      one place is the difference between a defensible result and a lucky one.</p>
     </div>
     <div>
       <p><span class="badge badge-fix">Usable</span></p>
@@ -370,36 +370,93 @@
 <!-- 20 -->
 <section data-menu-title="Worked example — the code">
   <h2>Worked example &mdash; what the weak prompt returns</h2>
-  <pre><code class="language-python" data-trim data-line-numbers="1-11|4-5|7-8">from sklearn.model_selection import train_test_split
+  <pre><code class="language-python" data-trim data-line-numbers="1-13|6-7|9-10">from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import make_pipeline
 
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(housing_num)
+prep = make_pipeline(SimpleImputer(strategy="median"), StandardScaler())
+X_scaled = prep.fit_transform(housing_num)
 
 X_train, X_test, y_train, y_test = train_test_split(
     X_scaled, y, test_size=0.2, random_state=42)
 
 model = LinearRegression().fit(X_train, y_train)
-print(rmse(model, X_test, y_test))   # 68,142 — looks fine
+print(root_mean_squared_error(y_test, model.predict(X_test)))   # 70,469
 </code></pre>
   <p class="small">It runs. It imports nothing exotic. It prints a believable
-  number. <span class="fail">It is wrong.</span></p>
+  number. <span class="fail">The procedure that produced it is wrong.</span></p>
 </section>
 
 <!-- 21 -->
-<section data-menu-title="Worked example — the bug">
-  <h2>Question 1 catches it</h2>
-  <p><em>What touched the test set?</em></p>
+<section data-menu-title="Worked example — why it is wrong">
+  <h2>Why that program is wrong</h2>
+  <p><em>Reviewer question 1: what touched the test set?</em></p>
   <div class="panel panel-fail">
-    <span class="panel-title">Line 5</span>
-    <code>fit_transform</code> was called on <strong>all</strong> the data. The
-    scaler&rsquo;s mean and standard deviation were computed from rows that end up
-    in the test set.
+    <span class="panel-title">Line 7, before the split on line 9</span>
+    <code>fit_transform</code> ran on <strong>all 20,640 rows</strong>. The
+    median that fills the missing values, and the mean and standard deviation
+    that centre and scale every column, were all computed from a set that
+    <em>includes the 4,128 rows we are about to call the test set.</em>
   </div>
-  <p>The test score is therefore measured on data the preprocessing has already
-  seen. It is optimistic, and you cannot tell by how much from the number alone.</p>
-  <p class="small muted">The assistant did nothing unreasonable: the request said
-  &ldquo;scale and split&rdquo;, in that order. It complied.</p>
+  <p>So the model is evaluated on rows whose own values helped define the
+  transformation applied to them. The test set is no longer untouched, and a
+  score measured on it no longer answers the question it appears to answer:
+  <em>how will this behave on data we have never seen?</em></p>
+  <p class="small muted">The assistant did nothing unreasonable. The request said
+  &ldquo;scale and split&rdquo;, in that order, and it complied.</p>
+</section>
+
+<!-- new -->
+<section data-menu-title="Worked example — how much did it cost?">
+  <h2>So how much did that cost us?</h2>
+  <p>Do not guess. Run both versions and subtract.</p>
+  <table>
+    <tr><th>Test RMSE</th><th class="num">Leaky</th><th class="num">Correct</th><th class="num">Difference</th></tr>
+    <tr><td>Linear regression</td><td class="num">$70,469</td><td class="num">$70,468</td><td class="num">$1</td></tr>
+    <tr><td>Random forest</td><td class="num">$50,892</td><td class="num">$50,949</td><td class="num">$57</td></tr>
+    <tr><td>With PCA to 4 components</td><td class="num">$80,745</td><td class="num">$80,761</td><td class="num">$16</td></tr>
+  </table>
+  <p class="fail" style="font-size:1.05em">Essentially nothing. The leak is real,
+  and here it is worth about a dollar.</p>
+  <aside class="notes">Expect confusion, and let it sit for a moment. Someone will
+  ask why we are making a fuss. That question is the next slide.</aside>
+</section>
+
+<!-- new -->
+<section data-menu-title="Worked example — why it still matters">
+  <h2>Then why is it still a bug?</h2>
+  <ul class="tight">
+    <li><strong>You did not know it was a dollar until you measured.</strong>
+        Nothing in the code told you, and neither did the output</li>
+    <li>The size of the leak depends entirely on <em>what</em> was fitted. Centre
+        and scale: pennies. Fit a feature selector, a dimensionality reduction, or
+        anything derived from the label on all the data, and the same shape of
+        mistake is worth a great deal</li>
+    <li>You cannot detect it from the number, because a leaked score and an honest
+        score can be identical</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">Which is why the rule is procedural</span>
+    Split first &mdash; not because the damage is always large, but because you
+    cannot tell whether it is, and a result produced by an unsound procedure
+    cannot be defended even when it happens to be right.
+  </div>
+</section>
+
+<!-- new -->
+<section data-menu-title="Worked example — the same error, expensive">
+  <h2>The same error, one lecture later</h2>
+  <p>&ldquo;Evaluate on data the procedure has already seen&rdquo; has a much more
+  expensive form, and you will meet it today:</p>
+  <table>
+    <tr><th>Same family of mistake</th><th class="num">Reported</th><th class="num">Honest</th></tr>
+    <tr><td>Scaler fitted before the split</td><td class="num">$70,469</td><td class="num">$70,468</td></tr>
+    <tr><td>Decision tree scored on its own training data</td><td class="num fail">$0</td><td class="num">$68,779</td></tr>
+  </table>
+  <p>Identical in kind. Different by a factor of seventy thousand.</p>
+  <p class="small muted">You will build the second one yourself in about an hour,
+  and you will believe it &mdash; which is the point.</p>
 </section>
 
 <!-- FIG -->
@@ -420,12 +477,12 @@ print(rmse(model, X_test, y_test))   # 68,142 — looks fine
   <pre><code class="language-python" data-trim data-line-numbers="1-9|1-2|5-6">X_train, X_test, y_train, y_test = train_test_split(
     housing_num, y, test_size=0.2, random_state=42)
 
-scaler = StandardScaler()
-X_train_s = scaler.fit_transform(X_train)   # fit: training only
-X_test_s  = scaler.transform(X_test)        # transform: no fitting
+prep = make_pipeline(SimpleImputer(strategy="median"), StandardScaler())
+X_train_s = prep.fit_transform(X_train)   # fit: training data only
+X_test_s  = prep.transform(X_test)        # transform: nothing is fitted
 
 print(X_train_s.shape, X_test_s.shape)
-print(scaler.mean_[:3])                     # the check we asked for
+print(prep[-1].mean_[:3])                 # the check we asked for
 </code></pre>
   <p class="small"><code>fit_transform</code> on train, <code>transform</code> on
   test. Two lines, one asymmetry, and the whole difference between an honest
@@ -437,7 +494,7 @@ print(scaler.mean_[:3])                     # the check we asked for
   <h2>What that example is really teaching</h2>
   <ul class="tight">
     <li>The assistant was <em>obedient</em>, not wrong. The specification was wrong</li>
-    <li>No error, no warning, no crash &mdash; only a slightly better number</li>
+    <li>No error, no warning, no crash &mdash; and the number did not even move</li>
     <li>The only thing that caught it was a human reading with a checklist</li>
   </ul>
   <div class="panel panel-fix">

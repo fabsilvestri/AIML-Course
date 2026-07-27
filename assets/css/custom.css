@@ -208,16 +208,17 @@
 
 /* --- Tables ------------------------------------------------------------- */
 
-/* NOTE: reveal.js renders line-numbered code blocks as a <table>. Every rule
-   below is scoped away from `pre` so that our content-table styling — alternating
-   row backgrounds above all — does not bleed into syntax-highlighted code. */
+/* NOTE: reveal.js renders line-numbered code blocks as <table class="hljs-ln">,
+   and that table's parent is the <code> element — so a `:not(pre) >` guard does
+   NOT exclude it. Exclude it by its own class instead, or the content-table
+   styling below stripes the source code. */
 
-.reveal :not(pre) > table {
+.reveal table:not(.hljs-ln) {
   font-size: 0.72em;
   border-collapse: collapse;
   margin: 0.5em auto;
 }
-.reveal :not(pre) > table th {
+.reveal table:not(.hljs-ln) th {
   background: var(--aiml-primary);
   color: #fff;
   font-weight: 600;
@@ -225,27 +226,27 @@
   padding: 0.42em 0.75em;
   text-align: left;
 }
-.reveal :not(pre) > table td {
+.reveal table:not(.hljs-ln) td {
   border-bottom: 1px solid var(--aiml-rule);
   padding: 0.38em 0.75em;
 }
-.reveal :not(pre) > table tr:nth-child(even) td { background: #fafbfc; }
+.reveal table:not(.hljs-ln) tr:nth-child(even) td { background: #fafbfc; }
 
-/* Belt and braces: neutralise anything inherited inside code tables. */
-.reveal pre table,
-.reveal pre table td,
-.reveal pre table tr,
-.reveal pre table tr:nth-child(even) td {
+/* The code table: no inherited chrome, and one uniform gutter.
+   Keep these selectors free of :nth-child — an even-row rule outranks a plain
+   `td` rule and would apply the gutter padding to alternate lines only, which
+   makes every other line of source code sit a few pixels out of alignment. */
+.reveal table.hljs-ln,
+.reveal table.hljs-ln tr,
+.reveal table.hljs-ln td {
   background: none;
   border: none;
   padding: 0;
   font-size: inherit;
   margin: 0;
 }
-/* ...but keep the gutter separated from the code. */
-.reveal pre table td.hljs-ln-numbers,
-.reveal pre table td.hljs-ln-numbers .hljs-ln-n { padding-right: 1.1em; }
-.reveal pre table td.hljs-ln-code { padding-left: 0.2em; }
+.reveal table.hljs-ln td.hljs-ln-numbers { padding-right: 1.1em; }
+.reveal table.hljs-ln td.hljs-ln-code    { padding-left: 0.2em; }
 .reveal table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .reveal table .hit  { color: var(--aiml-success); font-weight: 700; }
 .reveal table .miss { color: var(--aiml-accent);  font-weight: 700; }

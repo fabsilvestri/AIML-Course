@@ -553,6 +553,61 @@ def fig_residuals(gs, res):
     return save(fig, "l2-residuals", raster=True)
 
 
+def measure_leak(h):
+    """How much does 'scale before split' actually cost? Measure, do not assume.
+
+    The answer on this dataset is: essentially nothing — because centring and
+    scaling is an invertible affine map and OLS is equivariant under it. That
+    is the point of the slide. The rule against it is procedural, not empirical.
+    """
+    from sklearn.decomposition import PCA
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.impute import SimpleImputer
+    from sklearn.linear_model import LinearRegression
+    from sklearn.metrics import root_mean_squared_error
+    from sklearn.model_selection import train_test_split
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    X = h.select_dtypes(include=[np.number]).drop(columns=["median_house_value"])
+    y = h["median_house_value"].values
+
+    def run(make_prep, make_model):
+        # LEAKY: preprocessing fitted on everything, then split
+        Xall = make_prep().fit_transform(X)
+        a_tr, a_te, ya_tr, ya_te = train_test_split(Xall, y, test_size=0.2,
+                                                    random_state=SEED)
+        leaky = root_mean_squared_error(
+            ya_te, make_model().fit(a_tr, ya_tr).predict(a_te))
+        # CORRECT: split, then fit preprocessing on the training part only
+        b_tr, b_te, yb_tr, yb_te = train_test_split(X, y, test_size=0.2,
+                                                    random_state=SEED)
+        prep = make_prep()
+        correct = root_mean_squared_error(
+            yb_te, make_model().fit(prep.fit_transform(b_tr), yb_tr)
+                              .predict(prep.transform(b_te)))
+        return float(leaky), float(correct)
+
+    base = lambda: make_pipeline(SimpleImputer(strategy="median"),
+                                 StandardScaler())
+    cases = {
+        "linear_regression": (base, LinearRegression),
+        "random_forest": (base, lambda: RandomForestRegressor(
+            n_estimators=50, random_state=SEED, n_jobs=-1)),
+        "pca_4": (lambda: make_pipeline(SimpleImputer(strategy="median"),
+                                        StandardScaler(), PCA(n_components=4)),
+                  LinearRegression),
+    }
+    out = {}
+    for name, (mp, mm) in cases.items():
+        leaky, correct = run(mp, mm)
+        out[name] = {"leaky": leaky, "correct": correct,
+                     "diff": abs(correct - leaky)}
+        print(f"    {name:20s} leaky={leaky:10,.0f}  correct={correct:10,.0f}  "
+              f"diff={abs(correct-leaky):6,.0f}")
+    return out
+
+
 # ---------------------------------------------------------------- driver
 
 def main():
@@ -572,6 +627,9 @@ def main():
     fig_income_value(h)
     fig_income_cat(h)
     facts.update(fig_strat_bias(h))
+
+    print("Cost of the scale-before-split leak (Lecture 1 worked example):")
+    facts["leak_cost"] = measure_leak(h)
 
     if cache.is_file():
         print("Lecture 2 — reusing cached fits (delete "
