@@ -738,21 +738,163 @@
 <section id="assessment">
   <div class="wrap">
     <h2>Assessment</h2>
+    <p class="lede">Two components, in the usual order: a written examination,
+    and an oral examination taken only by candidates who pass it.</p>
+
+    <div class="grid">
+      <div class="card">
+        <h4>Written examination</h4>
+        <p>Three hours, closed book, with a formula sheet provided. Three parts:
+        the mathematical threads, a code review on paper, and diagnosis from
+        evidence.</p>
+        <p class="muted">A pass is required to sit the oral.</p>
+      </div>
+      <div class="card">
+        <h4>Oral examination</h4>
+        <p>Twenty to twenty-five minutes, conducted <strong>on your own
+        notebooks</strong> from the twelve applications. Bring them; the
+        examination has no other subject matter.</p>
+        <p class="muted">The notebooks are not graded as artefacts. They are what
+        the oral interrogates.</p>
+      </div>
+    </div>
+
+    <h3>Can a course this applied really have a written examination?</h3>
+    <p>Yes &mdash; and this course is better suited to one than most applied
+    courses, for a specific reason.</p>
+    <div class="panel">
+      The competence being built here is not typing. It is
+      <strong>judgement about whether a result can be trusted</strong>, and that
+      judgement is exercised by reading: reading code you did not write, reading a
+      metric, reading a curve. Reading is paper-native. A written examination
+      tests it <em>more</em> directly than a lab does &mdash; at a keyboard a
+      student can arrive at the right answer by running things until they look
+      right, whereas on paper they have to actually know.
+    </div>
+    <p>Two rules keep it honest. <strong>No question tests API recall</strong>
+    &mdash; in a course where you deliberately do not type the code, asking for
+    the arguments of <code>train_test_split</code> would be incoherent. Syntax
+    errors in handwritten code cost nothing; logic errors cost everything.
+    <strong>No question is answerable by reciting a definition</strong> &mdash;
+    every one requires applying it to a stated situation.</p>
+    <p>What a written examination cannot see is whether you can make something
+    work at all. That is exactly what the oral is for.</p>
+
+    <h3>The written examination</h3>
     <div class="tablewrap">
       <table>
         <thead>
-          <tr><th>Component</th><th>What is assessed</th></tr>
+          <tr><th>Part</th><th>What it asks</th><th class="num">Weight</th></tr>
         </thead>
         <tbody>
-          <tr><td>Written examination</td><td>The twelve mathematical threads: derive, state, apply</td></tr>
-          <tr><td>Red-team reports</td><td>Find the leakage or evaluation bug in another team&rsquo;s notebook</td></tr>
-          <tr><td>Oral defence</td><td>&ldquo;Explain line 47. What breaks if I change this?&rdquo;</td></tr>
-          <tr><td>Final project</td><td>One application, iterated properly, with evidence</td></tr>
+          <tr>
+            <td><strong>A &middot; The mathematical threads</strong></td>
+            <td>Derive, state, apply. The twelve objects developed at the top of
+                each Fix lecture — the normal equation, the bias&ndash;variance
+                decomposition, variance reduction by averaging, reverse-mode
+                differentiation, cross-entropy, and the rest.</td>
+            <td class="num">40%</td>
+          </tr>
+          <tr>
+            <td><strong>B &middot; Code review on paper</strong></td>
+            <td>A printed notebook excerpt with a reported number. Find every path
+                by which the result could be untrustworthy, cite the line, and say
+                what the honest procedure would be. <span class="muted">This is the
+                red-team exercise, sat individually and under exam conditions.</span></td>
+            <td class="num">35%</td>
+          </tr>
+          <tr>
+            <td><strong>C &middot; Diagnosis from evidence</strong></td>
+            <td>Plots and tables — learning curves, per-fold scores, a confusion
+                matrix, a precision/recall curve. Name the pathology, prescribe the
+                fix, and say which way the number will move.</td>
+            <td class="num">25%</td>
+          </tr>
         </tbody>
       </table>
     </div>
-    <p>Note what is absent: there are no marks for a notebook that runs.
-    <strong>Evidence earns marks.</strong></p>
+
+    <h3>Three specimen questions</h3>
+    <p>One from each part, at the intended level.</p>
+
+    <div class="specimen">
+      <h4>Part A &mdash; derive, then apply</h4>
+      <p>Two regressors each have variance $\sigma^2$ and are correlated with
+      coefficient $\rho$.</p>
+      <ol class="tight">
+        <li>Show that the variance of their average is
+            $\frac{\sigma^{2}(1+\rho)}{2}$.</li>
+        <li>Bagging and a random forest differ in one respect. State it, and say
+            which term in your expression it attacks.</li>
+        <li>An ensemble of one hundred <em>identical</em> trees has $\rho = 1$.
+            What does your expression predict, and is that the right answer?</li>
+      </ol>
+    </div>
+
+    <div class="specimen">
+      <h4>Part B &mdash; code review on paper</h4>
+<pre><code>best = None
+for a in [0.01, 0.1, 1, 10, 100]:
+    m = Ridge(alpha=a).fit(X_train, y_train)
+    s = root_mean_squared_error(y_test, m.predict(X_test))
+    if best is None or s &lt; best[1]:
+        best = (a, s)
+
+print(f"best alpha={best[0]}, test RMSE={best[1]:,.0f}")</code></pre>
+      <ol class="tight">
+        <li>The printed number is the smallest of five test-set scores. What does
+            it estimate, and what does it <em>not</em> estimate?</li>
+        <li>Name the defect without using the word &ldquo;overfitting&rdquo;.</li>
+        <li>Rewrite the loop so the reported number is defensible. Two lines is
+            enough.</li>
+        <li>Will the corrected number be higher, lower, or can you not say?
+            Justify your answer.</li>
+      </ol>
+      <p class="small muted">Part (d) is the one that separates candidates. In
+      expectation the corrected number is higher, because the minimum of five
+      noisy estimates is biased downward — but on any single dataset you cannot
+      be certain, and saying so is the correct answer.</p>
+    </div>
+
+    <div class="specimen">
+      <h4>Part C &mdash; diagnosis from evidence</h4>
+      <p>Two teams report the following for the same dataset.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Team</th><th class="num">Training RMSE</th><th class="num">10-fold CV RMSE</th></tr></thead>
+          <tbody>
+            <tr><td>A</td><td class="num">$0</td><td class="num">$68,779</td></tr>
+            <tr><td>B</td><td class="num">$68,233</td><td class="num">$68,316</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ol class="tight">
+        <li>Name each pathology.</li>
+        <li>Which model is more useful? Explain why that is not the same question
+            as which is better fitted.</li>
+        <li>One of these is helped by collecting more training data and the other
+            is not. Which, and why?</li>
+      </ol>
+    </div>
+
+    <h3>The oral examination</h3>
+    <p>Conducted on your own notebooks. Representative questions:</p>
+    <ul class="plain">
+      <li>&ldquo;Explain line 47. What breaks if I change this?&rdquo;</li>
+      <li>&ldquo;You reported this number. Convince me it is not leakage.&rdquo;</li>
+      <li>&ldquo;Delete this component and tell me what happens to the metric,
+          and why.&rdquo;</li>
+      <li>&ldquo;You chose this metric over that one. Defend the choice to a
+          stakeholder who wanted the other.&rdquo;</li>
+    </ul>
+    <div class="panel panel-accent">
+      <strong>Rule one applies here.</strong> You may not submit code you cannot
+      explain line by line — and this is where that is checked. It applies to code
+      an assistant wrote for you exactly as it applies to code you typed.
+    </div>
+
+    <p style="margin-top:1.75rem">Note what is absent: there are no marks for a
+    notebook that runs. <strong>Evidence earns marks.</strong></p>
   </div>
 </section>
 
