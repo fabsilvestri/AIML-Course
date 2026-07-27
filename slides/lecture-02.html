@@ -43,9 +43,9 @@
   <table>
     <tr><th>Model</th><th class="num">RMSE on training data</th></tr>
     <tr><td>Human experts</td><td class="num">~$60,000</td></tr>
-    <tr><td>Linear regression</td><td class="num">$68,973</td></tr>
+    <tr><td>Linear regression</td><td class="num">$68,233</td></tr>
     <tr><td>Decision tree</td><td class="num fail">0.0</td></tr>
-    <tr><td>Random forest</td><td class="num">$17,551</td></tr>
+    <tr><td>Random forest</td><td class="num">$18,058</td></tr>
   </table>
   <p class="fail" style="font-size:1.05em">Two of these numbers are meaningless.</p>
 </section>
@@ -221,6 +221,19 @@
     features. The residual is what the features cannot reach.
   </div>
 </section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The projection">
+  <h2>The whole thread, in one picture</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/d-projection.svg"
+         alt="The column space of X drawn as a plane; y points out of it, its projection X theta-hat lies in it, and the residual joins them at a right angle.">
+  </figure>
+  <aside class="notes">Ask: what happens to the plane when two columns are
+  collinear? They should say &ldquo;it collapses&rdquo;. That is the next slide,
+  and it is the whole failure condition.</aside>
+</section>
+
 
 <!-- 14b -->
 <section data-menu-title="Verify orthogonality">
@@ -460,7 +473,7 @@ np.linalg.pinv(X_b) @ y                  # same result
     <li>The goal is performance on <strong>new</strong> instances</li>
     <li>Low training error with high generalisation error <em>is the definition of overfitting</em></li>
   </ul>
-  <p class="small">Linear regression&rsquo;s $68,973 was also a training number.
+  <p class="small">Linear regression&rsquo;s $68,233 was also a training number.
   It happens to be roughly honest &mdash; but only because the model is too rigid
   to memorise anything.</p>
 </section>
@@ -525,9 +538,9 @@ train_set, test_set = train_test_split(housing_scaled)   # then split
   <h2>Diagnosis</h2>
   <table>
     <tr><th>Number</th><th>Verdict</th></tr>
-    <tr><td>Linear regression &mdash; $68,973</td><td>roughly honest; the model underfits</td></tr>
+    <tr><td>Linear regression &mdash; $68,233</td><td>roughly honest; the model underfits</td></tr>
     <tr><td>Decision tree &mdash; 0.0</td><td class="miss">meaningless: memorised, measured on itself</td></tr>
-    <tr><td>Random forest &mdash; $17,551</td><td class="miss">meaningless for the same reason</td></tr>
+    <tr><td>Random forest &mdash; $18,058</td><td class="miss">meaningless for the same reason</td></tr>
   </table>
   <p>We need a way to estimate generalisation error <strong>without</strong>
   touching the test set.</p>
@@ -598,6 +611,18 @@ train_set, test_set = train_test_split(housing_scaled)   # then split
   <p class="small muted">Cost: you train the model $k$ times.</p>
 </section>
 
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ k-fold, drawn">
+  <h2>Every row is a complete, independent fit</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-kfold.svg"
+         alt="Five rows of five blocks; in each row a different block is the validation part and the other four are training, each producing one RMSE.">
+  </figure>
+  <p class="takeaway muted">Five fits to get one number &mdash; and a second
+  number, the spread, that a single holdout could never give you.</p>
+</section>
+
+
 <!-- 42 -->
 <section data-menu-title="k-fold code">
   <h2>In code</h2>
@@ -627,9 +652,9 @@ min      64607.896046
 50%      66388.272499
 max      68532.210664
   </code></pre>
-  <p class="fail" style="font-size:1.1em">Not 0.0. About <strong>$66,574</strong>.</p>
+  <p class="fail" style="font-size:1.1em">Not 0.0. About <strong>$68,779</strong>.</p>
   <p class="small muted">And we get something a single number cannot give us: a
-  standard deviation of about $1,103, so we know how precise the estimate is.</p>
+  standard deviation of about $1,524, so we know how precise the estimate is.</p>
 </section>
 
 <!-- 44 -->
@@ -637,13 +662,38 @@ max      68532.210664
   <h2>All three, measured honestly</h2>
   <table>
     <tr><th>Model</th><th class="num">Training RMSE</th><th class="num">Cross-validated RMSE</th></tr>
-    <tr><td>Linear regression</td><td class="num">$68,973</td><td class="num">$70,003</td></tr>
-    <tr><td>Decision tree</td><td class="num fail">$0</td><td class="num">$66,574</td></tr>
-    <tr><td>Random forest</td><td class="num">$17,551</td><td class="num hit">$47,038</td></tr>
+    <tr><td>Linear regression</td><td class="num">$68,233</td><td class="num">$68,316</td></tr>
+    <tr><td>Decision tree</td><td class="num fail">$0</td><td class="num">$68,779</td></tr>
+    <tr><td>Random forest</td><td class="num">$18,058</td><td class="num hit">$48,921</td></tr>
   </table>
   <p class="small">Now the table is readable. The gap between the two columns
   <em>is</em> the overfitting.</p>
 </section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Train vs CV">
+  <h2>The gap between the columns <em>is</em> the overfitting</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l2-train-vs-cv.svg"
+         alt="Grouped bar chart of training RMSE against 10-fold cross-validated RMSE for linear regression, decision tree and random forest.">
+  </figure>
+  <p class="takeaway fail">The decision tree has no training bar at all. Its
+  perfect score is a bar of height zero &mdash; and that is exactly how much it
+  told you.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Fold spread">
+  <h2>Ten folds, not one number</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l2-cv-spread.svg"
+         alt="Strip plot of the ten per-fold RMSE values for each of the three models, with the mean and standard deviation marked.">
+  </figure>
+  <p class="takeaway muted">The forest&rsquo;s folds are tight (&plusmn;$679).
+  The tree&rsquo;s are more than twice as scattered (&plusmn;$1,524) &mdash; an
+  unstable model, which is itself a finding.</p>
+</section>
+
 
 <!-- 45 -->
 <section data-menu-title="Reading the table">
@@ -651,9 +701,10 @@ max      68532.210664
   <ul class="tight">
     <li><strong>Linear regression</strong> &mdash; the two columns nearly agree.
         It is not overfitting; it is <span class="fail">underfitting</span></li>
-    <li><strong>Decision tree</strong> &mdash; $0 against $66,574. Severe
-        overfitting, and barely better than the linear model</li>
-    <li><strong>Random forest</strong> &mdash; $17,551 against $47,038. Still
+    <li><strong>Decision tree</strong> &mdash; $0 against $68,779. Severe
+        overfitting &mdash; and once measured honestly it is <em>worse</em> than
+        the linear model it appeared to crush</li>
+    <li><strong>Random forest</strong> &mdash; $18,058 against $48,921. Still
         overfitting, but by far the best honest score</li>
   </ul>
   <p class="small muted">Fixes for overfitting: simplify the model, constrain it,
@@ -688,6 +739,19 @@ full_pipeline = Pipeline([
   <p class="fix">The transformers never see the held-out fold. Leakage cannot
   occur by accident.</p>
 </section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The pipeline object">
+  <h2>What that object actually is</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-coltransformer.svg"
+         alt="A Pipeline containing a ColumnTransformer that routes numeric columns through an imputer and scaler and the categorical column through a one-hot encoder, then concatenates and feeds the model.">
+  </figure>
+  <p class="takeaway muted">One object, so <code>cross_val_score</code> can refit
+  <em>all</em> of it per fold. That is what makes the leak structurally
+  impossible rather than merely avoided.</p>
+</section>
+
 
 <!-- 48 -->
 <section data-menu-title="Grid search">
@@ -726,15 +790,29 @@ grid_search.fit(housing, housing_labels)
   <h2>Grid search result</h2>
   <pre><code class="language-text" data-trim>
 &gt;&gt;&gt; grid_search.best_params_
-{'preprocessing__geo__n_clusters': 15, 'random_forest__max_features': 6}
+{'model__max_features': 8, 'model__n_estimators': 200}
   </code></pre>
-  <p>Best cross-validated RMSE: <strong>$43,590</strong>, improved from $47,038.</p>
+  <p>Best cross-validated RMSE: <strong>$48,257</strong>, improved from $48,921.</p>
   <div class="panel panel-fail">
     <span class="panel-title">Read the boundary</span>
-    15 was the <em>largest</em> value we tried for <code>n_clusters</code>. The
-    optimum may lie outside the grid. Search again with higher values.
+    200 was the <em>largest</em> value we tried for <code>n_estimators</code>.
+    A winner sitting on the edge of the grid means the optimum may lie outside it.
+    Search again with higher values.
   </div>
 </section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The grid">
+  <h2>All fifteen combinations at once</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l2-grid.svg"
+         alt="Heatmap of cross-validated RMSE over max_features by n_estimators, with the best cell (8, 200) outlined in red on the right-hand edge.">
+  </figure>
+  <p class="takeaway fail">Look where the winner sits: hard against the right
+  edge of the grid. We did not find the optimum &mdash; we found the edge of what
+  we searched.</p>
+</section>
+
 
 <!-- 51 -->
 <section data-menu-title="Randomized search">
@@ -814,6 +892,19 @@ rnd_search = RandomizedSearchCV(full_pipeline, param_distributions=param_distrib
   only <code>INLAND</code> really earns its place.</p>
 </section>
 
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Feature importance">
+  <h2>What the forest actually leaned on</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l2-importance.svg"
+         alt="Horizontal bar chart of the twelve most important features in the tuned random forest.">
+  </figure>
+  <p class="takeaway muted">Some of the one-hot ocean-proximity columns earn
+  almost nothing. Importance is a reason to <em>try</em> dropping a feature, and
+  then to measure &mdash; never a reason to drop it outright.</p>
+</section>
+
+
 <!-- 54 -->
 <section data-menu-title="Fairness check">
   <h2>Also check fairness</h2>
@@ -836,10 +927,25 @@ y_test = strat_test_set["median_house_value"].copy()
 final_predictions = final_model.predict(X_test)
 final_rmse = root_mean_squared_error(y_test, final_predictions)
   </code></pre>
-  <p class="big-num good">$41,446</p>
+  <p class="big-num good">$49,037</p>
   <p class="small muted">Note we <code>predict</code> on the test set. We never
   <code>fit</code> anything on it.</p>
 </section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Residuals">
+  <h2>Predicted against actual, on data never seen</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l2-residuals.png"
+         alt="Scatter of predicted against actual median house value on the test set, with a vertical stripe of capped districts at $500,001 that the model systematically under-predicts.">
+  </figure>
+  <p class="takeaway fail">The vertical stripe at $500,001 is the cap we spotted
+  in the histogram, coming back to collect. Every one of those is a district the
+  model <em>cannot</em> get right.</p>
+  <aside class="notes">Close the loop out loud: they saw this in a histogram in
+  the previous lecture, before a single model existed.</aside>
+</section>
+
 
 <!-- 56 -->
 <section data-menu-title="Confidence interval">
@@ -855,10 +961,27 @@ boot_result = stats.bootstrap([squared_errors], rmse,
                               confidence_level=0.95, random_state=42)
 rmse_lower, rmse_upper = boot_result.confidence_interval
   </code></pre>
-  <p>95% interval: <strong>$39,521 &ndash; $43,702</strong>.</p>
+  <p>95% interval: <strong>$46,635 &ndash; $51,328</strong>.</p>
   <p class="small muted">A point estimate alone may not be enough to justify a
   launch — especially if the improvement over the incumbent is small.</p>
 </section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The interval">
+  <h2>The number you should actually report</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l2-test-ci.svg"
+         alt="The test RMSE of $49,037 shown as a point with a 95% confidence interval from $46,635 to $51,328.">
+  </figure>
+  <div class="panel panel-fail">
+    <span class="panel-title">Notice what happened</span>
+    Tuned cross-validated RMSE: <strong>$48,257</strong>. Test RMSE:
+    <strong>$49,037</strong>. The test number came out <em>worse</em> &mdash;
+    exactly as the next slide warns, because we fine-tuned against the validation
+    folds.
+  </div>
+</section>
+
 
 <!-- 57 -->
 <section data-menu-title="Don't tweak now">
@@ -899,8 +1022,8 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   <table>
     <tr><th>Reality</th><th class="num">RMSE</th></tr>
     <tr><td>Human experts</td><td class="num">~$60,000</td></tr>
-    <tr><td>Honest cross-validated best</td><td class="num">$43,590</td></tr>
-    <tr><td>Final, on the test set</td><td class="num hit">$41,446</td></tr>
+    <tr><td>Honest cross-validated best</td><td class="num">$48,257</td></tr>
+    <tr><td>Final, on the test set</td><td class="num hit">$49,037</td></tr>
   </table>
 </section>
 
@@ -960,7 +1083,7 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
     </div>
     <div>
       <div class="panel panel-fix" style="font-size:0.8em">
-        &ldquo;This notebook reports RMSE $49{,}682$. Assume that number is
+        &ldquo;This notebook reports RMSE $49{,}037$. Assume that number is
         optimistic. List every path by which test-set information could have
         reached the training procedure, and cite the line.&rdquo;
       </div>
