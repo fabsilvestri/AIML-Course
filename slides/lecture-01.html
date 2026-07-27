@@ -602,10 +602,81 @@ print(f"best alpha={best[0]}, test RMSE={best[1]:,.0f}")
     <li>Rewrite the loop so the number is defensible. Two lines is enough.</li>
     <li>Will the corrected number be higher, lower, or can you not say?</li>
   </ol>
-  <aside class="notes">Part (d) separates candidates. Higher in expectation — the
-  minimum of five noisy estimates is biased downward — but on one dataset you
-  cannot be certain, and saying so is the correct answer. Do not give this away
-  now; it is Lecture 2 material.</aside>
+  <aside class="notes">Give them two minutes on (a) and (b) before advancing.
+  Nobody can answer (c) or (d) yet — that is the point. This is shown to
+  establish the standard, not as an exercise; the concepts land properly in the
+  next lecture.</aside>
+</section>
+
+<!-- ANSWERS -->
+<section data-menu-title="◇ Answers — (a) and (b)">
+  <h2>Specimen answers &mdash; (a) and (b)</h2>
+  <div class="cols">
+    <div>
+      <p><strong>(a)</strong> What does it estimate?</p>
+      <ul class="tight smaller fragment">
+        <li>The test-set error of whichever $\alpha$ happened to look best
+            <em>on this test set</em></li>
+        <li><span class="fail">Not</span> the error of that model on unseen data
+            &mdash; the test set was used to choose, so it is no longer unseen</li>
+        <li>It is the <strong>minimum of five noisy estimates</strong>, and a
+            minimum of noisy estimates is biased downward</li>
+      </ul>
+    </div>
+    <div>
+      <p><strong>(b)</strong> Name the defect.</p>
+      <ul class="tight smaller fragment">
+        <li>The test set was used for <strong>model selection</strong>. It has
+            become a validation set, and no held-out estimate remains</li>
+        <li class="fix">Also accepted: selection bias &middot; the winner&rsquo;s
+            curse &middot; optimism from maximising over candidates</li>
+        <li class="fail">Not accepted: &ldquo;overfitting&rdquo; on its own
+            &mdash; which is why the question forbids the word</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ANSWERS -->
+<section data-menu-title="◇ Answer — (c)">
+  <h2>Specimen answer &mdash; (c) the repair</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-4|1-2|4">gs = GridSearchCV(Ridge(), {"alpha": [0.01, 0.1, 1, 10, 100]},
+                  scoring="neg_root_mean_squared_error", cv=10).fit(X_train, y_train)
+
+print(root_mean_squared_error(y_test, gs.predict(X_test)))
+</code></pre>
+  <div class="panel panel-fix">
+    <span class="panel-title">What makes it defensible</span>
+    $\alpha$ is chosen on validation folds carved out of the <em>training</em>
+    set. The test set is touched <strong>exactly once</strong>, after
+    $\alpha$ is already fixed.
+  </div>
+  <p class="small muted"><code>RidgeCV</code> does the same job in one line and is
+  equally acceptable. What is <em>not</em> acceptable is any version in which
+  <code>X_test</code> appears before the choice is made.</p>
+</section>
+
+<!-- ANSWERS -->
+<section data-menu-title="◇ Answer — (d)">
+  <h2>Specimen answer &mdash; (d) the one that sorts the room</h2>
+  <p><strong>Higher &mdash; in expectation.</strong> For two independent reasons:</p>
+  <ol class="tight small">
+    <li>The original number was a <em>minimum</em> over five noisy estimates, so
+        it is biased downward</li>
+    <li>The original $\alpha$ was chosen to look good on the very set it was then
+        scored on</li>
+  </ol>
+  <div class="panel panel-fail">
+    <span class="panel-title">But you cannot be certain</span>
+    The bias is a statement about <em>repeated draws</em>, not about this one
+    sample. Cross-validation might also select a genuinely better $\alpha$. On a
+    single dataset the corrected number can come out lower.
+  </div>
+  <p class="small fail">Full marks require both halves: the direction, <em>and</em>
+  the admission that it is not guaranteed.</p>
+  <aside class="notes">Half the room will say "higher" and stop. That is a
+  partial answer. The other failure is "you cannot say" with no direction — also
+  partial. Both halves, or neither.</aside>
 </section>
 
 <!-- 16 -->
