@@ -59,8 +59,12 @@ ALLOWED: dict[float, str] = {
     0.4999: "median_income floor, quoted from the book",
 }
 
-# Tolerated roundings, as (divisor, label).
-ROUNDINGS = [(1, "exact"), (10, "to $10"), (100, "to $100"),
+# Tolerated roundings, as (divisor, label). The sub-dollar steps are needed for
+# the quantities whose whole point is that they are tiny — the per-seed cost of
+# the scale-before-split leak is -$0.02, and rounding that to the nearest dollar
+# is zero.
+ROUNDINGS = [(0.01, "to a cent"), (0.1, "to 10c"), (1, "exact"),
+             (10, "to $10"), (100, "to $100"),
              (1_000, "to $1,000"), (10_000, "to $10,000")]
 
 
@@ -85,7 +89,7 @@ def derived(values: set[float]) -> set[float]:
     out = set(values)
     for v in values:
         for div, _ in ROUNDINGS:
-            out.add(round(v / div) * div)
+            out.add(round(round(v / div) * div, 2))
         out.add(round(v))
         if 0 < v <= 1:                      # a ratio quoted as a percentage
             out.add(round(v * 100, 1))
@@ -101,6 +105,10 @@ def quantities(src: str):
     body = re.sub(r"<!--.*?-->", blank, body, flags=re.S)
     body = re.sub(r'\b(?:alt|title|content)="[^"]*"', blank, body)
     body = html.unescape(body)
+    # KaTeX, not currency: "$7.1\times10^{-6}$" is an expression, and the same
+    # backslash test check_decks.py uses tells the two apart.
+    body = re.sub(r"(?<!\$)\$[^$\n]{1,160}?\$(?!\$)",
+                  lambda m: blank(m) if "\\" in m.group() else m.group(), body)
 
     pattern = re.compile(r"\$\s?(\d[\d,]*(?:\.\d+)?)|(?<![\d.])(\d{1,3}(?:,\d{3})+)")
     for m in pattern.finditer(body):

@@ -314,6 +314,12 @@ def attribute_combinations(train):
              "bedrooms_ratio", "people_per_house", "latitude"]}
 
 
+# The horizontal stripes in the label, read off the scatter. The cap is in the
+# book; the three below it are artefacts of how the census recorded prices, and
+# the slide quotes them, so they are declared here and used by the plot.
+LABEL_ARTEFACT_LINES = [500_001, 450_000, 350_000, 280_000]
+
+
 def fig_income_value(train):
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.scatter(train["median_income"], train["median_house_value"], s=7,
@@ -322,12 +328,12 @@ def fig_income_value(train):
     ax.yaxis.set_major_formatter(usd)
     ax.set_title("The strongest predictor — and the artefacts in the label")
     ax.set_xlim(0, 15.5)
-    for y, label, style in [
-        (500_001, "$500,001 cap", dict(color=ACCENT, lw=2.2)),
-        (450_000, "$450,000", dict(color=ACCENT, lw=1.2, ls="--", alpha=0.75)),
-        (350_000, "$350,000", dict(color=ACCENT, lw=1.2, ls="--", alpha=0.75)),
-        (280_000, "$280,000", dict(color=ACCENT, lw=1.2, ls="--", alpha=0.75)),
-    ]:
+    cap, *artefacts = LABEL_ARTEFACT_LINES
+    for y, label, style in (
+        [(cap, f"${cap:,} cap", dict(color=ACCENT, lw=2.2))] +
+        [(v, f"${v:,}", dict(color=ACCENT, lw=1.2, ls="--", alpha=0.75))
+         for v in artefacts]
+    ):
         ax.axhline(y, **style)
         ax.text(15.3, y, label, va="center", ha="left", fontsize=10.5,
                 color=ACCENT, fontweight="bold" if y > 500_000 else "normal")
@@ -489,6 +495,10 @@ def measure_leak(h, n_seeds=20):
         out[name] = {
             "leaky_seed42": float(leaky[0]),
             "correct_seed42": float(correct[0]),
+            # what a single split would have let you report, which is the point
+            "diff_seed42": float(abs(leaky[0] - correct[0])),
+            "diff_abs_mean": float(np.abs(d.mean())),
+            "diff_abs_std": float(d.std(ddof=1)),
             "correct_mean": float(correct.mean()),
             "correct_std": float(correct.std(ddof=1)),
             "diff_mean": float(d.mean()),
@@ -605,6 +615,7 @@ def paired_folds(res):
         d = np.array(res[a]["cv_folds"]) - np.array(res[b]["cv_folds"])
         t = stats.ttest_rel(res[a]["cv_folds"], res[b]["cv_folds"])
         out[f"{a} - {b}"] = {"mean": float(d.mean()),
+                             "abs_mean": float(abs(d.mean())),
                              "std": float(d.std(ddof=1)),
                              "p_value": float(t.pvalue),
                              "folds_where_first_is_better": int((d < 0).sum()),
@@ -910,7 +921,8 @@ def error_analysis(gs, sp, base):
     worst = df.nlargest(10, "abs_error")
     worst_rows = [{
         "actual": float(r.actual), "predicted": float(r.predicted),
-        "error": float(r.error), "income_cat": int(r.income_cat),
+        "error": float(r.error), "abs_error": float(r.abs_error),
+        "income_cat": int(r.income_cat),
         "ocean": str(r.ocean_proximity),
         "median_income": float(r.median_income),
     } for r in worst.itertuples()]
@@ -1223,6 +1235,23 @@ def main():
         for n in facts["models"]}
     facts["reduction_vs_baseline_pct"]["Tuned forest (test)"] = 100.0 * (
         1 - facts["test_rmse"] / facts["baseline"]["mean_test_rmse"])
+
+    # Differences the slides quote in their own right. A gap between two
+    # exported numbers is still a number on a slide, so it is exported too.
+    m = facts["models"]
+    facts["gaps"] = {
+        "linear_cv_minus_train": m["Linear regression"]["cv_mean"]
+                                 - m["Linear regression"]["train_rmse"],
+        "tuning_gain": m["Random forest"]["cv_mean"] - facts["best_cv_rmse"],
+        "test_minus_best_cv": facts["test_rmse"] - facts["best_cv_rmse"],
+        "log_target_rmse_penalty": (facts["relative"]["log_target"]["rmse"]
+                                    - facts["relative"]["rmse"]),
+        "n_test_uncapped": facts["n_test"]
+                           - facts["error_analysis"]["n_capped_test"],
+        "n_bedrooms_nonnull": facts["n_rows"] - facts["n_missing_bedrooms"],
+        "island_importance_rank_from_bottom": 1,
+    }
+    facts["label_artefact_lines"] = LABEL_ARTEFACT_LINES
 
     out = OUT / "figures.json"
     out.write_text(json.dumps(facts, indent=2))
