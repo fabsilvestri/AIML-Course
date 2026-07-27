@@ -3,15 +3,66 @@
    Shared slide theme — layered on top of reveal.js `white`
    ========================================================================== */
 
+/* The vendored theme ships only 400 and 600 of Source Sans Pro, so every
+   `font-weight: 700` below silently rendered at semibold — headings and <strong>
+   came out identical and weight carried no hierarchy at all. Source Sans 3 is
+   the metric-compatible successor with a real 200–900 axis. */
+@font-face {
+  font-family: 'Source Sans 3';
+  src: url('../fonts/SourceSans3-VF.woff2') format('woff2-variations');
+  font-weight: 200 900; font-style: normal; font-display: block;
+}
+@font-face {
+  font-family: 'Source Sans 3';
+  src: url('../fonts/SourceSans3-Italic-VF.woff2') format('woff2-variations');
+  font-weight: 200 900; font-style: italic; font-display: block;
+}
+@font-face {
+  font-family: 'Source Code Pro';
+  src: url('../fonts/SourceCodePro-VF.woff2') format('woff2-variations');
+  font-weight: 200 900; font-style: normal; font-display: block;
+}
+
 :root {
   --aiml-primary:  #0b3d62;   /* deep blue  — structure, headings          */
   --aiml-accent:   #c0392b;   /* brick red  — failures, warnings, "broken" */
-  --aiml-success:  #1e8449;   /* green      — fixes, "repaired"            */
+  --aiml-success:  #14663a;   /* green      — fixes, "repaired"            */
   --aiml-math:     #6c3483;   /* purple     — mathematical thread          */
-  --aiml-muted:    #6b7280;   /* grey       — secondary text               */
-  --aiml-rule:     #d5dbe1;   /* hairlines                                 */
+  --aiml-muted:    #6b7280;   /* grey       — chrome only: footer, number  */
+  --aiml-muted-strong: #4b5563; /* secondary text a student must read      */
+  --aiml-rule:     #b0bcc7;   /* hairlines that survive a projector        */
+  --aiml-rule-faint: #d5dbe1; /* table cell rules only                     */
   --aiml-bg-soft:  #f4f7f9;   /* panel background                          */
+
+  /* Six steps. Never write an inline font-size; if none fits, add a step
+     here deliberately rather than inventing 1.12em on one slide. */
+  --t-xs: 0.62em; --t-sm: 0.78em; --t-md: 1em; --t-lg: 1.18em;
+  --t-h2: 1.62em; --t-h1: 2.10em; --t-num: 2.60em;
+
+  /* Vertical rhythm in canvas pixels, so a .small paragraph is not spaced
+     22% tighter than a body one purely because its own type is smaller. */
+  --sp-1: 8px; --sp-2: 14px; --sp-3: 22px; --sp-4: 34px;
+
+  --r-main-font: 'Source Sans 3', 'Source Sans Pro', Helvetica, sans-serif;
+  --r-heading-font: var(--r-main-font);
+  --r-code-font: 'Source Code Pro', 'SFMono-Regular', Consolas, monospace;
 }
+
+/* --- Layout anchor (pairs with center:false) ----------------------------- */
+/* reveal centres both axes, so the h2 baseline swung 16px→241px across a deck.
+   Flush left with a fixed top; only these four slide types stay centred. */
+.reveal .slides > section { text-align: left; padding-top: 4px; }
+.reveal .slides > section:not(.divider):not(.title-slide) { padding-bottom: 46px; }
+.reveal .slides > section.title-slide,
+.reveal .slides > section.divider,
+.reveal .slides > section.figslide,
+.reveal .slides > section.commit-slide {
+  display: flex; flex-direction: column; justify-content: center;
+  height: 100%; text-align: center;
+}
+.reveal .slides > section.figslide { justify-content: flex-start; }
+.reveal .slides > section.figslide > figure { margin: auto; }
+.reveal .left { text-align: left; } .reveal .center { text-align: center; }
 
 /* --- Base typography ---------------------------------------------------- */
 
@@ -31,21 +82,24 @@
   line-height: 1.15;
 }
 
-.reveal h1 { font-size: 2.10em; }
-.reveal h2 { font-size: 1.50em; margin-bottom: 0.5em; }
-.reveal h3 { font-size: 1.15em; color: #16212b; }
-.reveal h4 { font-size: 0.95em; color: var(--aiml-muted); font-weight: 600; }
+.reveal h1 { font-size: var(--t-h1); line-height: 1.10; }
+.reveal h2 { font-size: var(--t-h2); line-height: 1.12; margin-bottom: var(--sp-3); }
+.reveal h3 { font-size: var(--t-lg); font-weight: 600; color: var(--aiml-primary); }
+/* an eyebrow, not a shrunken heading — it used to be smaller than its own body */
+.reveal h4 { font-size: var(--t-sm); font-weight: 600; color: var(--aiml-muted-strong);
+             letter-spacing: 0.06em; text-transform: uppercase; }
 
 .reveal p        { line-height: 1.35; }
 .reveal em       { color: var(--aiml-primary); font-style: italic; }
-.reveal strong   { color: var(--aiml-primary); }
+.reveal strong   { color: var(--aiml-primary); font-weight: 600; }
 .reveal a        { color: var(--aiml-primary); text-decoration: underline;
                    text-underline-offset: 3px; }
 .reveal a:hover  { color: var(--aiml-accent); }
 
 .reveal ul,
 .reveal ol { display: block; margin-left: 1.1em; }
-.reveal li { margin-bottom: 0.42em; line-height: 1.3; }
+.reveal li { margin-bottom: var(--sp-1); line-height: 1.3; }
+.reveal p  { margin: 0 0 var(--sp-2); }
 .reveal ul ul,
 .reveal ol ol { font-size: 0.90em; margin-top: 0.35em; color: #33414d; }
 
@@ -54,9 +108,9 @@
 /* --- Slide titles get a hairline rule ----------------------------------- */
 
 .reveal section > h2:first-child {
-  border-bottom: 2px solid var(--aiml-rule);
-  padding-bottom: 0.28em;
-  margin-bottom: 0.65em;
+  border-bottom: 3px solid var(--aiml-primary);
+  padding-bottom: 0.22em;
+  margin-bottom: var(--sp-3);
 }
 
 /* --- Title slide -------------------------------------------------------- */
@@ -120,8 +174,9 @@
 .badge-build { background: var(--aiml-primary); color: #fff; }
 .badge-fix   { background: var(--aiml-success); color: #fff; }
 .badge-math  { background: var(--aiml-math);    color: #fff; }
-.badge-ch    { background: var(--aiml-bg-soft); color: var(--aiml-muted);
+.badge-ch    { background: var(--aiml-bg-soft); color: var(--aiml-muted-strong);
                border: 1px solid var(--aiml-rule); }
+.badge-fail  { background: var(--aiml-accent);  color: #fff; }
 
 /* --- Callout panels ----------------------------------------------------- */
 
@@ -129,20 +184,26 @@
   border-left: 5px solid var(--aiml-primary);
   background: var(--aiml-bg-soft);
   padding: 0.75em 1.05em;
-  margin: 0.7em 0;
+  margin: var(--sp-3) 0;
   text-align: left;
-  font-size: 0.88em;
+  font-size: 0.94em;   /* never below the body it interrupts */
   border-radius: 0 4px 4px 0;
 }
+/* grey-on-tint failed AA in all four variants (4.32–4.49:1) at 19px uppercase
+   and letter-spaced — the three conditions that make text hardest to read. The
+   label is doing semantic work anyway, so give it the panel's own colour. */
 .panel .panel-title {
   display: block;
-  font-size: 0.72em;
+  font-size: 0.74em;
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
-  color: var(--aiml-muted);
+  color: var(--aiml-muted-strong);
   margin-bottom: 0.35em;
 }
+.panel-fail .panel-title { color: var(--aiml-accent); }
+.panel-fix  .panel-title { color: var(--aiml-success); }
+.panel-math .panel-title { color: var(--aiml-math); }
 .panel-fail    { border-left-color: var(--aiml-accent);
                  background: #fdf1ef; }
 .panel-fix     { border-left-color: var(--aiml-success);
@@ -214,7 +275,7 @@
    styling below stripes the source code. */
 
 .reveal table:not(.hljs-ln) {
-  font-size: 0.72em;
+  font-size: 0.80em;
   border-collapse: collapse;
   margin: 0.5em auto;
 }
@@ -227,10 +288,13 @@
   text-align: left;
 }
 .reveal table:not(.hljs-ln) td {
-  border-bottom: 1px solid var(--aiml-rule);
+  border-bottom: 1px solid var(--aiml-rule-faint);
   padding: 0.38em 0.75em;
 }
-.reveal table:not(.hljs-ln) tr:nth-child(even) td { background: #fafbfc; }
+/* #fafbfc is 1.02:1 against white — not perceptible at any distance */
+.reveal table:not(.hljs-ln) tr:nth-child(even) td { background: #eef2f6; }
+/* a right-aligned money column needs its header over the digits */
+.reveal table:not(.hljs-ln) th.num { text-align: right; }
 
 /* The code table: no inherited chrome, and one uniform gutter.
    Keep these selectors free of :nth-child — an even-row rule outranks a plain
@@ -247,18 +311,25 @@
 }
 .reveal table.hljs-ln td.hljs-ln-numbers { padding-right: 1.1em; }
 .reveal table.hljs-ln td.hljs-ln-code    { padding-left: 0.2em; }
-.reveal table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.reveal table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .reveal table .hit  { color: var(--aiml-success); font-weight: 700; }
 .reveal table .miss { color: var(--aiml-accent);  font-weight: 700; }
 
 /* --- Code --------------------------------------------------------------- */
 
+/* was 0.46em = 13.8px = 1.9% of canvas height, about half the legibility floor
+   for a hall — in a course whose central claim is "read the code before you run
+   it". 0.62em = 18.6px; measured, the longest line in either deck is 921px
+   against ~1103px usable. width:fit-content stops a 22-character snippet being
+   painted as a 1237px slab. */
 .reveal pre {
-  width: 94%;
-  margin: 0.5em auto;
-  font-size: 0.46em;
-  line-height: 1.32;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.10);
+  width: fit-content;
+  max-width: 96%;
+  margin: var(--sp-3) auto;
+  font-size: 0.62em;
+  line-height: 1.42;
+  box-shadow: none;
+  border: 1px solid var(--aiml-rule);
   border-radius: 4px;
 }
 .reveal pre code {
@@ -268,39 +339,43 @@
 }
 .reveal code:not(pre code) {
   background: var(--aiml-bg-soft);
-  border: 1px solid var(--aiml-rule);
+  border: 1px solid var(--aiml-rule-faint);
   border-radius: 3px;
   padding: 0.06em 0.32em;
   font-size: 0.88em;
-  color: #9c2f2f;
+  /* was #9c2f2f — a third red in a deck where red means "broken", so ten
+     identifiers in a row read as a warning stripe. The chip carries it. */
+  color: var(--aiml-primary);
 }
 
 /* --- Mathematics -------------------------------------------------------- */
 
-.reveal .katex { font-size: 1.05em; }
-.reveal .katex-display {
-  margin: 0.7em 0;
-  padding: 0.45em 0;
-}
+/* KaTeX_Main has a smaller x-height than Source Sans 3, so 1.05em read ~7%
+   *smaller* than the prose around it. 1.14em is the optical match. */
+.reveal .katex { font-size: 1.14em; }
+.reveal .katex-display > .katex { font-size: 1.55em; }
+.reveal .katex-display { margin: var(--sp-2) 0; padding: 0; }
+/* was white-on-white with a 1.4:1 hairline — a rectangle of nothing on a
+   projector. A top rule in the thread's own purple instead. */
 .eqn-box {
-  background: #fff;
-  border: 1px solid var(--aiml-rule);
-  border-radius: 5px;
-  padding: 0.55em 1em;
-  margin: 0.6em auto;
+  background: var(--aiml-bg-soft);
+  border: none;
+  border-top: 3px solid var(--aiml-math);
+  border-radius: 0 0 5px 5px;
+  padding: 0.7em 1.4em;
+  margin: var(--sp-2) auto;
   display: inline-block;
 }
 .eqn-label {
-  font-size: 0.58em;
-  color: var(--aiml-muted);
+  font-size: var(--t-xs);
+  color: var(--aiml-math);
   letter-spacing: 0.09em;
   text-transform: uppercase;
   margin-top: 0.35em;
 }
 .derive-step {
-  font-size: 0.62em;
-  color: var(--aiml-muted);
-  font-style: italic;
+  font-size: var(--t-sm);
+  color: var(--aiml-muted-strong);
   margin-top: 0.45em;
 }
 
@@ -318,7 +393,7 @@
 
 /* --- Figures ------------------------------------------------------------ */
 
-.reveal figure { margin: 0.4em auto; }
+.reveal figure { margin: var(--sp-2) auto; }
 .reveal figure img {
   max-height: 460px;
   border: 1px solid var(--aiml-rule);
@@ -360,10 +435,14 @@
   margin-bottom: 0.35em;
   padding-bottom: 0.2em;
 }
-.reveal section.figslide .takeaway {
-  font-size: 0.8em;
-  margin-top: 0.45em;
+/* defined at top level: it is used on non-figure slides too, and there it was
+   silently unstyled. */
+.takeaway {
+  font-size: var(--t-sm);
+  color: var(--aiml-muted-strong);
+  margin-top: var(--sp-2);
 }
+.reveal section.figslide .takeaway { font-size: 0.86em; }
 
 /* --- Book citation ------------------------------------------------------ */
 
@@ -403,17 +482,18 @@
 
 /* --- Small utilities ---------------------------------------------------- */
 
-.muted     { color: var(--aiml-muted); }
+.muted     { color: var(--aiml-muted-strong); }
 .fail      { color: var(--aiml-accent);  font-weight: 700; }
 .fix       { color: var(--aiml-success); font-weight: 700; }
-.big-num   { font-size: 2.5em; font-weight: 700; color: var(--aiml-primary);
+.big-num   { font-size: var(--t-num); font-weight: 700; color: var(--aiml-primary);
              font-variant-numeric: tabular-nums; line-height: 1.1; }
 .big-num.bad  { color: var(--aiml-accent); }
 .big-num.good { color: var(--aiml-success); }
 .left      { text-align: left; }
 .center    { text-align: center; }
-.small     { font-size: 0.78em; }
-.smaller   { font-size: 0.64em; }
+.small     { font-size: var(--t-sm); }
+.smaller   { font-size: var(--t-xs); }
+.lead      { font-size: var(--t-lg); line-height: 1.32; }
 .tight li  { margin-bottom: 0.22em; }
 
 /* Currency in prose. The span is not decoration: a bare "$" pairs with the next
@@ -421,3 +501,13 @@
    spaces and the dollar signs. Wrapping each amount breaks the text node so no
    pairing is possible — and keeps the amount from wrapping mid-number. */
 .usd { white-space: nowrap; }
+
+/* --- Stepped code highlighting ------------------------------------------ */
+
+/* reveal dims non-highlighted lines to opacity .4, which against monokai's
+   #272822 lands at roughly 2:1 — the lines you are deliberately drawing
+   attention *away* from become unreadable rather than secondary. On the nine
+   slides that step through code, those lines still carry the context that makes
+   the highlighted one mean anything. */
+.reveal .hljs.has-highlights tr:not(.highlight-line) { opacity: 0.62; }
+.reveal .hljs.has-highlights .highlight-line { background: rgba(255,255,255,0.07); }

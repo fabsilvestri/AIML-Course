@@ -21,6 +21,8 @@ measurement does not re-run the others. Delete the file to refit everything.
 from __future__ import annotations
 
 import json
+from functools import reduce
+from math import gcd
 import pickle
 import tarfile
 import urllib.request
@@ -32,20 +34,29 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib import font_manager
 from matplotlib.ticker import FuncFormatter
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "assets" / "figures"
+FONTS = ROOT / "assets" / "fonts"
 CACHE = Path("/private/tmp/claude-501/aiml-data")
 
-# Palette shared with assets/css/custom.css
+# Palette shared with assets/css/custom.css — keep in sync with :root there.
 PRIMARY = "#0b3d62"
 ACCENT = "#c0392b"
-SUCCESS = "#1e8449"
+SUCCESS = "#14663a"     # was #1e8449 — 4.35:1 on the fix panel failed WCAG AA
 MATH = "#6c3483"
-MUTED = "#6b7280"
-RULE = "#d5dbe1"
+MUTED = "#4b5563"       # was #6b7280 — the weakest readable text in the deck
+RULE = "#b0bcc7"        # was #d5dbe1 — 1.40:1 is simply absent on a projector
 SOFT = "#f4f7f9"
+AXIS = "#7b8794"        # 3.66:1, clears the 3:1 minimum for graphics
+
+# The plot SVGs display at roughly 1:1 on the slide, so every size below is an
+# on-slide pixel. See TRICKS §11.6.
+BODY = 17
+SMALL = 15              # the floor for anything a student has to read
+TICK = 15
 
 SEED = 42
 N_FOLDS = 10
@@ -61,32 +72,50 @@ def cv_splitter():
 def setup():
     OUT.mkdir(parents=True, exist_ok=True)
     CACHE.mkdir(parents=True, exist_ok=True)
+
+    # The plot SVGs are authored at 677-927pt and capped at 420-560px on the
+    # slide, so they display at roughly 1:1 — these numbers ARE on-slide pixels.
+    # At the old font.size=13 a tick label was 13px against 30px slide text.
+    #
+    # matplotlib cannot read woff2 and a variable ttf resolves to its default
+    # instance (ExtraLight for Source Sans 3), hence the three static cuts.
+    for _f in ("SourceSans3-Regular.ttf", "SourceSans3-SemiBold.ttf",
+               "SourceSans3-Bold.ttf"):
+        font_manager.fontManager.addfont(ROOT / "assets" / "fonts" / _f)
+
     plt.rcParams.update({
         "figure.facecolor": "white",
         "axes.facecolor": "white",
         "savefig.facecolor": "white",
-        "font.size": 13,
-        "axes.titlesize": 15,
-        "axes.titleweight": "bold",
-        "axes.titlecolor": PRIMARY,
-        "axes.labelsize": 13,
+        "font.family": "Source Sans 3",
+        "font.size": BODY,
+        "axes.titlesize": 19,
+        "axes.titleweight": "normal",   # the slide's h2 is the title; this is a
+        "axes.titlecolor": MUTED,       # subtitle, and must not compete with it
+        "axes.titlelocation": "left",
+        "axes.labelsize": BODY,
         "axes.labelcolor": "#16212b",
-        "axes.edgecolor": "#98a4b0",
-        "axes.linewidth": 1.0,
+        "axes.edgecolor": AXIS,         # 3.66:1; was #98a4b0 at 2.54:1
+        "axes.linewidth": 1.2,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
         "axes.grid": True,
-        "grid.color": RULE,
-        "grid.linewidth": 0.8,
+        "axes.axisbelow": True,         # gridlines under the bars, not through
+        "grid.color": RULE,             # 1.93:1; was #d5dbe1 at 1.40:1
+        "grid.linewidth": 0.9,
         "xtick.color": "#33414d",
         "ytick.color": "#33414d",
-        "xtick.labelsize": 11,
-        "ytick.labelsize": 11,
+        "xtick.labelsize": TICK,
+        "ytick.labelsize": TICK,
         "legend.frameon": False,
-        "legend.fontsize": 11,
+        "legend.fontsize": TICK,
         "figure.autolayout": False,
-        # deterministic element ids, so re-running the script does not rewrite
-        # every SVG with fresh hashes and leave a diff that means nothing
         "svg.hashsalt": "aiml-course",
     })
+    # a missing font is a silent revert to DejaVu, so fail loudly instead
+    resolved = font_manager.findfont("Source Sans 3", fallback_to_default=False)
+    if "SourceSans3" not in Path(resolved).name:
+        raise RuntimeError(f"Source Sans 3 did not resolve: {resolved}")
 
 
 # ------------------------------------------------------------------- caching
@@ -187,17 +216,17 @@ def fig_histograms(h):
     cols = ["longitude", "latitude", "housing_median_age", "total_rooms",
             "total_bedrooms", "population", "households", "median_income",
             "median_house_value"]
-    fig, axes = plt.subplots(3, 3, figsize=(13, 8))
+    fig, axes = plt.subplots(3, 3, figsize=(10.8, 6.6))
     for ax, c in zip(axes.ravel(), cols):
         ax.hist(h[c].dropna(), bins=50, color=PRIMARY, edgecolor="white",
                 linewidth=0.25)
-        ax.set_title(c, fontsize=12)
+        ax.set_title(c, fontsize=SMALL)
         ax.tick_params(labelsize=9)
         ax.grid(alpha=0.55)
     # the two features the slides call out
-    axes.ravel()[7].set_title("median_income", color=ACCENT, fontsize=12)
-    axes.ravel()[8].set_title("median_house_value", color=ACCENT, fontsize=12)
-    fig.suptitle("housing_full.hist(bins=50)", fontsize=13, color=MUTED,
+    axes.ravel()[7].set_title("median_income", color=ACCENT, fontsize=SMALL)
+    axes.ravel()[8].set_title("median_house_value", color=ACCENT, fontsize=SMALL)
+    fig.suptitle("housing_full.hist(bins=50)", fontsize=BODY, color=MUTED,
                  y=1.005)
     fig.tight_layout()
     return save(fig, "l1-histograms")
@@ -205,7 +234,7 @@ def fig_histograms(h):
 
 def fig_hist_annotated(h):
     """The same two histograms, enlarged, with the cap and the scaling marked."""
-    fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 4.6))
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(10.8, 3.8))
 
     a1.hist(h["median_income"], bins=50, color=PRIMARY, edgecolor="white",
             linewidth=0.3)
@@ -214,10 +243,10 @@ def fig_hist_annotated(h):
     a1.axvline(15.0001, color=ACCENT, lw=2)
     a1.annotate("capped at 15.0001", xy=(15.0001, a1.get_ylim()[1] * 0.55),
                 xytext=(10.2, a1.get_ylim()[1] * 0.78), color=ACCENT,
-                fontsize=11, fontweight="bold",
+                fontsize=SMALL, fontweight="bold",
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.6))
     a1.text(0.97, 0.44, "≈ tens of thousands of dollars:\n3 means about $30,000",
-            transform=a1.transAxes, ha="right", fontsize=10.5, color="#33414d",
+            transform=a1.transAxes, ha="right", fontsize=SMALL, color="#33414d",
             bbox=dict(boxstyle="round,pad=0.45", facecolor="white",
                       edgecolor=RULE))
 
@@ -231,7 +260,7 @@ def fig_hist_annotated(h):
     a2.annotate(f"{n_cap:,} districts pile up\nat the $500,001 cap",
                 xy=(500_001, n_cap * 0.9),
                 xytext=(250_000, a2.get_ylim()[1] * 0.72), color=ACCENT,
-                fontsize=11, fontweight="bold",
+                fontsize=SMALL, fontweight="bold",
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.6))
     fig.tight_layout()
     return save(fig, "l1-hist-annotated")
@@ -240,7 +269,7 @@ def fig_hist_annotated(h):
 def fig_geo(train):
     """Exploration plots — on the training set, after the split."""
     # plain
-    fig, ax = plt.subplots(figsize=(7.2, 7.6))
+    fig, ax = plt.subplots(figsize=(6.4, 6.7))
     ax.scatter(train["longitude"], train["latitude"], s=6, color=PRIMARY)
     ax.set_xlabel("longitude"); ax.set_ylabel("latitude")
     ax.set_title("alpha = 1.0  —  it looks like California, and that is all")
@@ -248,7 +277,7 @@ def fig_geo(train):
     save(fig, "l1-geo-plain", raster=True)
 
     # alpha, annotated
-    fig, ax = plt.subplots(figsize=(7.6, 7.8))
+    fig, ax = plt.subplots(figsize=(6.6, 6.8))
     ax.scatter(train["longitude"], train["latitude"], s=8, color=PRIMARY,
                alpha=0.2, linewidths=0)
     ax.set_xlabel("longitude"); ax.set_ylabel("latitude")
@@ -259,14 +288,14 @@ def fig_geo(train):
         ("Los Angeles", (-118.3, 34.05), (-120.9, 33.3)),
         ("San Diego", (-117.15, 32.75), (-119.4, 32.2)),
     ]:
-        ax.annotate(name, xy=(lon, lat), xytext=off, fontsize=11,
+        ax.annotate(name, xy=(lon, lat), xytext=off, fontsize=SMALL,
                     color=ACCENT, fontweight="bold",
                     arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.4))
     fig.tight_layout()
     save(fig, "l1-geo-alpha", raster=True)
 
     # price + population
-    fig, ax = plt.subplots(figsize=(8.6, 7.4))
+    fig, ax = plt.subplots(figsize=(7.4, 6.4))
     sc = ax.scatter(train["longitude"], train["latitude"],
                     s=train["population"] / 100,
                     c=train["median_house_value"],
@@ -284,7 +313,7 @@ def fig_corr(train):
     """The correlation column — computed on the training set, as the slide says."""
     corr = train.corr(numeric_only=True)["median_house_value"].drop(
         "median_house_value").sort_values()
-    fig, ax = plt.subplots(figsize=(9.5, 4.6))
+    fig, ax = plt.subplots(figsize=(10.8, 4.2))
     colors = [ACCENT if v < 0 else PRIMARY for v in corr]
     ax.barh(corr.index, corr.values, color=colors, height=0.62)
     ax.axvline(0, color="#98a4b0", lw=1)
@@ -293,9 +322,9 @@ def fig_corr(train):
     ax.grid(axis="y", alpha=0)
     for i, v in enumerate(corr.values):
         ax.text(v + (0.012 if v >= 0 else -0.012), i, f"{v:+.3f}",
-                va="center", ha="left" if v >= 0 else "right", fontsize=10.5,
+                va="center", ha="left" if v >= 0 else "right", fontsize=SMALL,
                 color=PRIMARY if v >= 0 else ACCENT, fontweight="bold")
-    ax.set_xlim(-0.28, 0.83)
+    ax.set_xlim(-0.40, 0.92)          # room for the signed labels at both ends
     fig.tight_layout()
     save(fig, "l1-corr")
     return {k: float(v) for k, v in
@@ -314,29 +343,57 @@ def attribute_combinations(train):
              "bedrooms_ratio", "people_per_house", "latitude"]}
 
 
-# The horizontal stripes in the label, read off the scatter. The cap is in the
-# book; the three below it are artefacts of how the census recorded prices, and
-# the slide quotes them, so they are declared here and used by the plot.
-LABEL_ARTEFACT_LINES = [500_001, 450_000, 350_000, 280_000]
+def label_clusters(train, n=5):
+    """Which label values do districts actually pile up on? Count them.
+
+    The deck used to name $450,000, $350,000 and $280,000, following the book's
+    prose. Measured on our training split those are 31, 62 and 3 districts, and
+    the median count across all distinct label values is 3 — so one of the three
+    is a real stripe, one is marginal, and one is indistinguishable from the
+    background. The stripes that are actually there sit on multiples of $12,500.
+    """
+    counts = train["median_house_value"].value_counts()
+    background = float(counts.median())
+    cap = float(counts.index.max())
+    top = counts.drop(cap).head(n)
+    # every stripe sits on a multiple of this — measured, not asserted
+    modulus = reduce(gcd, [int(v) for v in top.index])
+    return {
+        "cap": cap,
+        "cap_count": int(counts.loc[cap]),
+        "background_count": background,
+        "top": [[float(v), int(c)] for v, c in top.items()],
+        "modulus": float(modulus),
+        # as pairs, not a dict: dict keys are strings and would not be seen by
+        # tools/check_provenance.py, so the slide quoting them would look
+        # unsourced even though the script computes them
+        "asserted_by_the_book": [[float(v), int(counts.get(v, 0))]
+                                 for v in (450_000, 350_000, 280_000)],
+    }
 
 
-def fig_income_value(train):
-    fig, ax = plt.subplots(figsize=(10, 6))
+def fig_income_value(train, clusters):
+    fig, ax = plt.subplots(figsize=(9.0, 5.4))
     ax.scatter(train["median_income"], train["median_house_value"], s=7,
                alpha=0.1, color=PRIMARY, linewidths=0)
     ax.set_xlabel("median_income"); ax.set_ylabel("median_house_value")
     ax.yaxis.set_major_formatter(usd)
     ax.set_title("The strongest predictor — and the artefacts in the label")
-    ax.set_xlim(0, 15.5)
-    cap, *artefacts = LABEL_ARTEFACT_LINES
-    for y, label, style in (
-        [(cap, f"${cap:,} cap", dict(color=ACCENT, lw=2.2))] +
-        [(v, f"${v:,}", dict(color=ACCENT, lw=1.2, ls="--", alpha=0.75))
-         for v in artefacts]
-    ):
-        ax.axhline(y, **style)
-        ax.text(15.3, y, label, va="center", ha="left", fontsize=10.5,
-                color=ACCENT, fontweight="bold" if y > 500_000 else "normal")
+    ax.set_xlim(0, 17.4)                     # room for the labels, off the data
+    cap, n_cap = clusters["cap"], clusters["cap_count"]
+    ax.axhline(cap, color=ACCENT, lw=2.2)
+    ax.text(15.6, cap, f"${cap:,.0f} cap — {n_cap} districts", va="center",
+            ha="left", fontsize=SMALL, color=ACCENT, fontweight="bold")
+    for value, count in clusters["top"]:
+        ax.axhline(value, color=ACCENT, lw=1.2, ls="--", alpha=0.75)
+        ax.text(15.6, value, f"${value:,.0f} — {count}", va="center", ha="left",
+                fontsize=SMALL, color=ACCENT)
+    ax.text(0.02, 0.97, f"dashed: the five commonest values below the cap.\n"
+                        f"A typical value carries "
+                        f"{clusters['background_count']:.0f} districts.",
+            transform=ax.transAxes, va="top", ha="left", fontsize=SMALL,
+            color="#33414d", bbox=dict(boxstyle="round,pad=0.4",
+                                       facecolor="white", edgecolor=RULE))
     fig.tight_layout()
     return save(fig, "l1-income-value", raster=True)
 
@@ -344,7 +401,7 @@ def fig_income_value(train):
 def fig_income_cat(h):
     cats = income_cats(h)
     counts = cats.value_counts().sort_index()
-    fig, ax = plt.subplots(figsize=(8.6, 4.4))
+    fig, ax = plt.subplots(figsize=(10.0, 3.6))
     ax.bar([str(c) for c in counts.index], counts.values, color=PRIMARY,
            width=0.62)
     ax.set_xlabel("income category")
@@ -352,7 +409,7 @@ def fig_income_cat(h):
     ax.set_title("Stratify on the strongest predictor, not on a raw float")
     ax.grid(axis="x", alpha=0)
     for i, v in enumerate(counts.values):
-        ax.text(i, v + 90, f"{v:,}", ha="center", fontsize=11,
+        ax.text(i, v + 90, f"{v:,}", ha="center", fontsize=SMALL,
                 color=PRIMARY, fontweight="bold")
     ax.set_ylim(0, counts.max() * 1.15)
     fig.tight_layout()
@@ -378,15 +435,15 @@ def fig_strat_bias(h):
     err_strat = 100 * (strat / overall - 1)
 
     x = np.arange(len(overall)); w = 0.38
-    fig, ax = plt.subplots(figsize=(9.6, 4.6))
+    fig, ax = plt.subplots(figsize=(10.4, 3.9))
     ax.bar(x - w/2, err_rand, w, label="random split", color=ACCENT)
     ax.bar(x + w/2, err_strat, w, label="stratified split", color=SUCCESS)
     ax.axhline(0, color="#98a4b0", lw=1)
     ax.set_xticks(x, [str(c) for c in overall.index])
     ax.set_xlabel("income category")
-    ax.set_ylabel("% error vs the full dataset")
+    ax.set_ylabel("% error vs the full data")
     ax.set_title("Test-set composition error, by sampling method")
-    ax.legend()
+    ax.legend(loc="lower right", ncols=2)
     ax.grid(axis="x", alpha=0)
     fig.tight_layout()
     save(fig, "l1-strat-bias")
@@ -667,8 +724,9 @@ def fig_train_vs_cv(res, base):
     names = ["Linear regression", "Decision tree", "Random forest"]
     tr = [res[n]["train_rmse"] for n in names]
     cv = [res[n]["cv_mean"] for n in names]
-    x = np.arange(3); w = 0.36
-    fig, ax = plt.subplots(figsize=(10, 5.2))
+    # wider than the 0.8 rule of thumb: six value labels need horizontal room
+    x = np.arange(3); w = 0.34
+    fig, ax = plt.subplots(figsize=(10.8, 4.4))
     b1 = ax.bar(x - w/2, tr, w, label="RMSE on training data", color="#9fb8ca")
     b2 = ax.bar(x + w/2, cv, w, label="RMSE, 10-fold cross-validation",
                 color=PRIMARY)
@@ -677,31 +735,41 @@ def fig_train_vs_cv(res, base):
     ax.set_ylabel("RMSE")
     ax.set_title("The training number and the honest number")
     ax.grid(axis="x", alpha=0)
-    for rect, v in list(zip(b1, tr)) + list(zip(b2, cv)):
-        ax.text(rect.get_x() + rect.get_width()/2, v + 2200,
-                f"${v:,.0f}", ha="center", fontsize=10.5, fontweight="bold",
+    b0 = base["mean_cv_rmse"]
+    # the training label goes inside its bar: for linear regression the two
+    # bars are the same height to within $49, so two labels above them touch
+    for rect, v in zip(b1, tr):
+        if v > b0 * 0.10:
+            ax.text(rect.get_x() + rect.get_width()/2, v - b0 * 0.022,
+                    f"${v:,.0f}", ha="center", va="top", fontsize=SMALL,
+                    fontweight="bold", color="#16212b")
+        else:
+            ax.text(rect.get_x() + rect.get_width()/2, v + b0 * 0.022,
+                    f"${v:,.0f}", ha="center", fontsize=SMALL,
+                    fontweight="bold", color=PRIMARY)
+    for rect, v in zip(b2, cv):
+        ax.text(rect.get_x() + rect.get_width()/2, v + b0 * 0.022,
+                f"${v:,.0f}", ha="center", fontsize=SMALL, fontweight="bold",
                 color=PRIMARY)
     ax.annotate("a tree that memorises\nits training set\nscores exactly 0",
-                xy=(1 - w/2, 900), xytext=(1 - w/2, 26_000), color=ACCENT,
-                fontsize=11, fontweight="bold", ha="center",
+                xy=(1 - w/2, 1200), xytext=(1 - w/2 - 0.12, 26_000),
+                color=ACCENT,
+                fontsize=SMALL, fontweight="bold", ha="center",
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     # the anchor: predicting one constant
-    b0 = base["mean_cv_rmse"]
     ax.axhline(b0, color=ACCENT, lw=2, ls="--")
-    ax.text(2.30, b0, f"predict the mean:\n${b0:,.0f}", va="center",
-            ha="center", fontsize=10.5, color=ACCENT, fontweight="bold",
-            bbox=dict(boxstyle="round,pad=0.35", facecolor="white",
-                      edgecolor=ACCENT))
-    ax.legend(loc="upper left")
-    ax.set_xlim(-0.6, 2.85)
-    ax.set_ylim(0, b0 * 1.14)
+    ax.text(-0.52, b0 * 0.975, f"predict the mean — ${b0:,.0f}", va="top",
+            ha="left", fontsize=SMALL, color=ACCENT, fontweight="bold")
+    ax.legend(loc="upper right", bbox_to_anchor=(1.0, 0.88))
+    ax.set_xlim(-0.62, 2.6)
+    ax.set_ylim(0, b0 * 1.10)
     fig.tight_layout()
     return save(fig, "l2-train-vs-cv")
 
 
 def fig_cv_spread(res):
     names = ["Linear regression", "Decision tree", "Random forest"]
-    fig, ax = plt.subplots(figsize=(9.6, 5.0))
+    fig, ax = plt.subplots(figsize=(10.4, 4.2))
     rng = np.random.default_rng(SEED)
     for i, n in enumerate(names):
         f = np.array(res[n]["cv_folds"])
@@ -709,7 +777,7 @@ def fig_cv_spread(res):
                    alpha=0.7, zorder=3, linewidths=0)
         ax.hlines(f.mean(), i - 0.24, i + 0.24, color=ACCENT, lw=2.6, zorder=4)
         ax.text(i + 0.30, f.mean(), f"mean ${f.mean():,.0f}\nstd ${f.std():,.0f}",
-                va="center", fontsize=10.5, color=ACCENT, fontweight="bold")
+                va="center", fontsize=SMALL, color=ACCENT, fontweight="bold")
     ax.set_xticks(range(3), names)
     ax.set_xlim(-0.45, 2.85)
     ax.yaxis.set_major_formatter(usd)
@@ -748,7 +816,7 @@ def fig_grid(gs):
                          columns="param_model__n_estimators",
                          values="mean_test_score")
     Z = -piv.values
-    fig, ax = plt.subplots(figsize=(8.4, 5.0))
+    fig, ax = plt.subplots(figsize=(9.4, 4.6))
     im = ax.imshow(Z, cmap="viridis_r", aspect="auto")
     ax.set_xticks(range(len(piv.columns)), [str(c) for c in piv.columns])
     ax.set_yticks(range(len(piv.index)), [str(i) for i in piv.index])
@@ -763,7 +831,7 @@ def fig_grid(gs):
             # pick text colour from the cell's own luminance, not by guesswork
             lum = np.dot(im.cmap(im.norm(Z[i, j]))[:3], [0.299, 0.587, 0.114])
             ax.text(j, i, f"${Z[i, j]:,.0f}", ha="center", va="center",
-                    fontsize=11, fontweight="bold",
+                    fontsize=SMALL, fontweight="bold",
                     color=ACCENT if (i, j) == best
                     else ("#16212b" if lum > 0.6 else "white"))
     ax.add_patch(plt.Rectangle((best[1] - .5, best[0] - .5), 1, 1,
@@ -816,15 +884,23 @@ def fig_importance(gs):
     imp = gs.best_estimator_.named_steps["model"].feature_importances_
     names = [n.split("__", 1)[-1]
              for n in prep_fitted.get_feature_names_out()]
-    order = np.argsort(imp)[-12:]
-    fig, ax = plt.subplots(figsize=(9.6, 5.4))
-    ax.barh([names[i] for i in order], imp[order], color=PRIMARY, height=0.66)
+    order = np.argsort(imp)            # all thirteen: the smallest is
+                                       # ocean_proximity_ISLAND, and the
+                                       # next slide is about exactly that
+    fig, ax = plt.subplots(figsize=(10.8, 4.4))
+    # the rare category is drawn in the accent colour: the next slide is about
+    # what those five districts do, and the figure should already point at it
+    colors = [ACCENT if names[i].endswith("ISLAND") else PRIMARY for i in order]
+    ax.barh([names[i] for i in order], imp[order], color=colors, height=0.66)
+    for lbl, c in zip(ax.get_yticklabels(), colors):
+        lbl.set_color(c)
     ax.set_xlabel("feature importance")
     ax.set_title("What the forest actually used")
     ax.grid(axis="y", alpha=0)
     for i, v in enumerate(imp[order]):
-        ax.text(v + 0.004, i, f"{v:.3f}", va="center", fontsize=10,
-                color=PRIMARY)
+        # three decimals hides the one that matters: ISLAND is 0.0003
+        ax.text(v + 0.004, i, f"{v:.4f}" if v < 0.01 else f"{v:.3f}",
+                va="center", fontsize=SMALL, color=colors[i])
     ax.set_xlim(0, imp.max() * 1.18)
     fig.tight_layout()
     save(fig, "l2-importance")
@@ -852,7 +928,7 @@ def fig_test_ci(gs, sp):
                            random_state=SEED)
     lo, hi = (float(v) for v in boot.confidence_interval)
 
-    fig, ax = plt.subplots(figsize=(9.6, 3.4))
+    fig, ax = plt.subplots(figsize=(10.4, 2.6))
     ax.errorbar([point], [0], xerr=[[point - lo], [hi - point]], fmt="o",
                 color=PRIMARY, markersize=13, capsize=10, lw=2.6,
                 capthick=2.6, zorder=3)
@@ -861,12 +937,12 @@ def fig_test_ci(gs, sp):
     ax.set_xlim(lo - 6000, hi + 6000)
     ax.set_ylim(-1, 1)
     ax.set_title("Test RMSE with a 95% bootstrap confidence interval")
-    ax.text(point, 0.30, f"${point:,.0f}", ha="center", fontsize=14,
+    ax.text(point, 0.30, f"${point:,.0f}", ha="center", fontsize=24.7,
             fontweight="bold", color=PRIMARY)
-    ax.text(lo, -0.36, f"${lo:,.0f}", ha="center", fontsize=11, color=MUTED)
-    ax.text(hi, -0.36, f"${hi:,.0f}", ha="center", fontsize=11, color=MUTED)
+    ax.text(lo, -0.36, f"${lo:,.0f}", ha="center", fontsize=SMALL, color=MUTED)
+    ax.text(hi, -0.36, f"${hi:,.0f}", ha="center", fontsize=SMALL, color=MUTED)
     ax.text(point, -0.72, "report the interval, not the point estimate",
-            ha="center", fontsize=11, color=ACCENT, fontweight="bold")
+            ha="center", fontsize=SMALL, color=ACCENT, fontweight="bold")
     ax.grid(axis="y", alpha=0)
     fig.tight_layout()
     save(fig, "l2-test-ci")
@@ -878,7 +954,7 @@ def fig_test_ci(gs, sp):
 def fig_residuals(gs, sp):
     X_te, y_te = sp["X_test"], sp["y_test"]
     pred = gs.best_estimator_.predict(X_te)
-    fig, ax = plt.subplots(figsize=(7.6, 7.0))
+    fig, ax = plt.subplots(figsize=(6.8, 6.2))
     ax.scatter(y_te, pred, s=8, alpha=0.18, color=PRIMARY, linewidths=0)
     lim = [0, 520_000]
     ax.plot(lim, lim, color=ACCENT, lw=2, label="perfect prediction")
@@ -890,7 +966,7 @@ def fig_residuals(gs, sp):
     ax.axvline(500_001, color=ACCENT, ls="--", lw=1.4, alpha=0.8)
     ax.annotate("every capped district sits on this line —\n"
                 "the model cannot predict above the cap\nit was trained on",
-                xy=(498_000, 300_000), xytext=(20_000, 430_000), fontsize=10.5,
+                xy=(498_000, 300_000), xytext=(20_000, 430_000), fontsize=SMALL,
                 color=ACCENT, fontweight="bold",
                 bbox=dict(boxstyle="round,pad=0.45", facecolor="white",
                           edgecolor=ACCENT, alpha=0.95),
@@ -977,51 +1053,54 @@ def error_analysis(gs, sp, base):
 def fig_error_slices(ea, overall):
     """RMSE by income category and by ocean proximity, with counts.
 
-    The two panels share a y-axis. They must: the whole point of the figure is
-    that the groups are compared with each other and with the one reported
-    number, and unequal limits would draw a $54,754 bar taller than a $62,606
-    one. Bar heights across the pair have to mean the same thing.
+    Horizontal bars: at the 15px legibility floor, five vertical bars per panel
+    cannot carry a value label each without colliding, and the category names
+    ("<1H OCEAN") do not fit under a tick either. Laid on their side both fit
+    with room to spare.
+
+    The two panels share an x-axis. They must: the figure exists to compare
+    these groups with each other and with the one reported number, so a bar's
+    length has to mean the same thing in both.
     """
     inc = ea["by_income_cat"]
     oce = ea["by_ocean_proximity"]
-    ks = sorted(inc, key=int)
-    ks2 = sorted(oce, key=lambda k: -oce[k]["rmse"])
-    top = max([inc[k]["rmse"] for k in ks] +
-              [oce[k]["rmse"] for k in ks2]) * 1.32
+    ks = sorted(inc, key=int, reverse=True)
+    ks2 = sorted(oce, key=lambda k: oce[k]["rmse"])
+    top = max([v["rmse"] for v in inc.values()] +
+              [v["rmse"] for v in oce.values()]) * 1.30
 
-    fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 4.4), sharey=True,
-                                 gridspec_kw={"width_ratios": [1, 1.25]})
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(10.8, 3.8), sharex=True)
 
-    def panel(ax, keys, data, colors, title):
-        ax.bar(range(len(keys)), [data[k]["rmse"] for k in keys],
-               color=colors, width=0.62, zorder=2)
+    def panel(ax, keys, data, colors, title, label):
+        y = range(len(keys))
+        ax.barh(y, [data[k]["rmse"] for k in keys], color=colors, height=0.66,
+                zorder=2)
+        ax.set_yticks(y, [label(k) for k in keys])
+        for lbl, c in zip(ax.get_yticklabels(), colors):
+            lbl.set_color(c)
         ax.set_title(title)
-        ax.grid(axis="x", alpha=0)
-        ax.set_axisbelow(True)          # gridlines under the bars, not through
-        ax.yaxis.set_major_formatter(usd)
+        ax.grid(axis="y", alpha=0)
+        ax.set_axisbelow(True)
+        ax.xaxis.set_major_formatter(usd)
+        ax.set_xlim(0, top)
         for i, k in enumerate(keys):
-            ax.text(i, data[k]["rmse"] + top * 0.017,
-                    f"${data[k]['rmse']:,.0f}\nn={data[k]['n']:,}", ha="center",
-                    fontsize=9.5, color=colors[i], fontweight="bold", zorder=5,
-                    # white ground, so the reference line cannot strike a label
+            ax.text(data[k]["rmse"] + top * 0.015, i,
+                    f"${data[k]['rmse']:,.0f}", va="center", fontsize=SMALL,
+                    color=colors[i], fontweight="bold", zorder=5,
+                    # white ground: the reference line must not strike a label
                     bbox=dict(boxstyle="round,pad=0.12", facecolor="white",
                               edgecolor="none"))
+        ax.axvline(overall, color=ACCENT, lw=1.8, ls="--", zorder=3)
 
-    panel(a1, ks, inc, [PRIMARY] * len(ks), "RMSE by income category")
-    a1.set_xticks(range(len(ks)), ks)
+    panel(a1, ks, inc, [PRIMARY] * len(ks), "RMSE by income category",
+          lambda k: f"{k}  ({inc[k]['n']:,})")
     # a group too small to trust is drawn in the accent colour, not hidden
-    panel(a2, ks2, oce, [ACCENT if oce[k]["n"] < 50 else PRIMARY for k in ks2],
-          "RMSE by ocean_proximity")
-    a2.set_xticks(range(len(ks2)), [k.replace(" ", "\n") for k in ks2],
-                  fontsize=9)
-
-    a1.set_ylim(0, top)
-    for ax in (a1, a2):
-        ax.axhline(overall, color=ACCENT, lw=1.8, ls="--", zorder=3)
-    # labelled once: with a shared axis it is visibly the same line
-    a1.axhline(overall, color=ACCENT, lw=1.8, ls="--", zorder=3,
-               label=f"the single reported number, ${overall:,.0f}")
-    a1.legend(loc="upper left", fontsize=9.5, labelcolor=ACCENT)
+    oce_colors = [ACCENT if oce[k]["n"] < 50 else PRIMARY for k in ks2]
+    panel(a2, ks2, oce, oce_colors, "RMSE by ocean_proximity",
+          lambda k: f"{k}  ({oce[k]['n']:,})")
+    a1.set_xlabel("test RMSE        (districts in the group in brackets)")
+    a2.set_xlabel(f"dashed: the one reported number, ${overall:,.0f}")
+    a2.xaxis.label.set_color(ACCENT)
     fig.tight_layout()
     return save(fig, "l2-error-slices")
 
@@ -1170,7 +1249,8 @@ def main():
     fig_geo(sp["train"])
     facts["corr_with_target"] = fig_corr(sp["train"])
     facts["corr_with_combinations"] = attribute_combinations(sp["train"])
-    fig_income_value(sp["train"])
+    facts["label_clusters"] = label_clusters(sp["train"])
+    fig_income_value(sp["train"], facts["label_clusters"])
 
     print("The trivial baseline (Lecture 1, before the commitment):")
     facts["baseline"] = cached("baseline", lambda: baseline(sp))
@@ -1251,7 +1331,6 @@ def main():
         "n_bedrooms_nonnull": facts["n_rows"] - facts["n_missing_bedrooms"],
         "island_importance_rank_from_bottom": 1,
     }
-    facts["label_artefact_lines"] = LABEL_ARTEFACT_LINES
 
     out = OUT / "figures.json"
     out.write_text(json.dumps(facts, indent=2))
