@@ -401,6 +401,8 @@ def baseline(sp):
     out = {
         "train_mean": mean_,
         "train_median": median_,
+        "train_q1": float(y_tr.quantile(0.25)),
+        "train_q3": float(y_tr.quantile(0.75)),
         "mean_train_rmse": float(root_mean_squared_error(
             y_tr, np.full(len(y_tr), mean_))),
         "median_train_rmse": float(root_mean_squared_error(
@@ -933,6 +935,7 @@ def error_analysis(gs, sp, base):
 
     out = {
         "worst10": worst_rows,
+        "worst10_capped": int(sum(r["actual"] >= CAP for r in worst_rows)),
         "by_income_cat": by_income,
         "by_ocean_proximity": by_ocean,
         "n_capped_test": int(capped.sum()),

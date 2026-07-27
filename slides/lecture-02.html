@@ -989,6 +989,8 @@ rnd_search = RandomizedSearchCV(full_pipeline, param_distributions=param_distrib
 <section data-menu-title="The test set">
   <h2>Finally: the test set</h2>
   <pre><code class="language-python" data-trim>
+final_model = grid_search.best_estimator_        # already refitted on all of X_train
+
 X_test = strat_test_set.drop("median_house_value", axis=1)
 y_test = strat_test_set["median_house_value"].copy()
 
@@ -1051,16 +1053,14 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   </figure>
   <div class="panel">
     <span class="panel-title">Now use it on the obvious temptation</span>
-    Tuned cross-validated RMSE <span class="usd">$48,180</span>; test RMSE
-    <span class="usd">$49,037</span>. The test number is
-    <span class="usd">$857</span> higher &mdash; and the interval we just computed
-    on the same slide is <span class="usd">&plusmn;$2,336</span> wide.
-    <strong>The two agree.</strong> There is nothing here to explain.
+    Tuned cross-validated RMSE <span class="usd">$48,180</span>, test RMSE
+    <span class="usd">$49,037</span>: the test number is
+    <span class="usd">$857</span> higher, and the interval is
+    <span class="usd">&plusmn;$2,336</span>. <strong>The two agree; there is
+    nothing here to explain.</strong> Reading that <span class="usd">$857</span>
+    as overfitted folds, bad luck or a bug is the instinct this course removes.
+    The next slide is true in general and this is not an instance of it.
   </div>
-  <p class="small fail">Reading that <span class="usd">$857</span> as evidence of
-  anything &mdash; overfitting the folds, bad luck, a bug &mdash; is the exact
-  instinct this course exists to remove. The story on the next slide is true in
-  general; this is not an instance of it.</p>
   <aside class="notes">Someone will have already written "we overfitted the
   validation folds" in their notes. That is why the paired-comparison slide came
   first.</aside>
@@ -1095,7 +1095,7 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
     <tr><td class="num"><span class="usd">$500,001</span></td><td class="num"><span class="usd">$171,694</span></td><td class="num fail">&minus;<span class="usd">$328,308</span></td><td>2</td><td>&lt;1H OCEAN</td></tr>
     <tr><td class="num"><span class="usd">$500,001</span></td><td class="num"><span class="usd">$175,534</span></td><td class="num fail">&minus;<span class="usd">$324,468</span></td><td>1</td><td>INLAND</td></tr>
   </table>
-  <p class="small"><strong>Eight of the ten are capped districts</strong> the
+  <p class="small"><strong>Seven of the ten are capped districts</strong> the
   model under-predicts by a quarter of a million dollars. The third row is the
   mirror image: a district whose <code>median_income</code> is 15.0001 &mdash; the
   <em>other</em> cap &mdash; and which the model therefore prices as if it were
@@ -1350,7 +1350,8 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   choosing $\alpha$ by scoring on <code>X_test</code>. You could answer 1 and 2
   then. You can answer 3 and 4 now.</p>
   <pre><code class="language-python" data-trim data-line-numbers="1-4|1-2|4">gs = GridSearchCV(Ridge(), {"alpha": [0.01, 0.1, 1, 10, 100]},
-                  scoring="neg_root_mean_squared_error", cv=10).fit(X_train, y_train)
+                  scoring="neg_root_mean_squared_error",
+                  cv=KFold(10, shuffle=True, random_state=42)).fit(X_train, y_train)
 
 print(root_mean_squared_error(y_test, gs.predict(X_test)))
 </code></pre>
