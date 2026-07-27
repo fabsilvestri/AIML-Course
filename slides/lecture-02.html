@@ -42,12 +42,14 @@
   <h2>Where we left off</h2>
   <table>
     <tr><th>Model</th><th class="num">RMSE on training data</th></tr>
-    <tr><td>Human experts</td><td class="num">~$60,000</td></tr>
-    <tr><td>Linear regression</td><td class="num">$68,233</td></tr>
+    <tr><td>Predict a constant &mdash; the baseline</td><td class="num"><span class="usd">$115,311</span></td></tr>
+    <tr><td>Linear regression</td><td class="num"><span class="usd">$68,233</span></td></tr>
     <tr><td>Decision tree</td><td class="num fail">0.0</td></tr>
-    <tr><td>Random forest</td><td class="num">$18,058</td></tr>
+    <tr><td>Random forest</td><td class="num"><span class="usd">$18,058</span></td></tr>
   </table>
   <p class="fail" style="font-size:1.05em">Two of these numbers are meaningless.</p>
+  <p class="small muted">The first one is not. It is the only row here that was
+  measured against something.</p>
 </section>
 
 <!-- 3 -->
@@ -57,9 +59,9 @@
     <li><span class="badge badge-math">Thread 1</span> Least squares and the
         normal equation <span class="muted small">(20 min)</span></li>
     <li>Diagnose &mdash; why a tree scored exactly zero
-        <span class="muted small">(20 min)</span></li>
-    <li>Fix &mdash; cross-validation, pipelines, tuning
-        <span class="muted small">(35 min)</span></li>
+        <span class="muted small">(15 min)</span></li>
+    <li>Fix &mdash; cross-validation, pipelines, tuning, and reading the errors
+        <span class="muted small">(40 min)</span></li>
     <li>Re-measure and red-team <span class="muted small">(15 min)</span></li>
   </ol>
 </section>
@@ -197,21 +199,15 @@
   limits, no integrals.</p>
 </section>
 
-<!-- 13 -->
-<section data-menu-title="The geometry">
-  <h2>Read it geometrically</h2>
-  <p>Look again at the stationarity condition:</p>
-  <div class="eqn-box">
-    $$\mathbf{X}^{\intercal}\underbrace{\left(\mathbf{X}\hat{\boldsymbol\theta} - y\right)}_{\text{residual } \mathbf{r}} \;=\; \mathbf{0}$$
-  </div>
-  <p style="font-size:1.1em">Every column of $\mathbf{X}$ is
-  <strong>orthogonal to the residual</strong>.</p>
-</section>
-
 <!-- 14 -->
 <section data-menu-title="Projection">
   <h2>Least squares <em>is</em> orthogonal projection</h2>
-  <ul class="tight">
+  <p class="small">Read the stationarity condition again: every column of
+  $\mathbf{X}$ is orthogonal to the residual.</p>
+  <div class="eqn-box">
+    $$\mathbf{X}^{\intercal}\underbrace{\left(\mathbf{X}\hat{\boldsymbol\theta} - y\right)}_{\text{residual } \mathbf{r}} \;=\; \mathbf{0}$$
+  </div>
+  <ul class="tight small">
     <li>$\mathbf{X}\boldsymbol\theta$ ranges over the <strong>column space</strong> of $\mathbf{X}$ as $\boldsymbol\theta$ varies</li>
     <li>Minimising $\lVert \mathbf{X}\boldsymbol\theta - y\rVert_2$ finds the point of that subspace closest to $y$</li>
     <li>The closest point of a subspace to a vector is its <strong>orthogonal projection</strong></li>
@@ -235,49 +231,66 @@
 </section>
 
 
-<!-- 14b -->
-<section data-menu-title="Verify orthogonality">
-  <h2>Verify it on our own data</h2>
-  <p>If the geometry is right, the residual must be orthogonal to every column of
-  $\mathbf{X}$ &mdash; so $\mathbf{X}^{\intercal}\mathbf{r}$ should be numerically zero.</p>
-  <pre><code class="language-python" data-trim>
-residual = X_b @ theta_best - y
-print(np.abs(X_b.T @ residual).max())        # ~1e-9, i.e. zero
-  </code></pre>
-  <p class="small muted">Not exactly zero: floating-point arithmetic. But nine
-  orders of magnitude below the scale of the data.</p>
-  <p class="fix small">A cheap, decisive check that your solver did what the
-  mathematics says it should.</p>
-</section>
-
 <!-- 15 -->
 <section data-menu-title="Compute it">
-  <h2>Compute it directly</h2>
+  <h2>Compute it on our own data</h2>
   <pre><code class="language-python" data-trim>
 import numpy as np
 from sklearn.preprocessing import add_dummy_feature
+
+housing_num = X_train.select_dtypes(include=[np.number])   # 16,512 x 8
+X = make_pipeline(SimpleImputer(strategy="median"),
+                  StandardScaler()).fit_transform(housing_num)
+y = y_train.values
 
 X_b = add_dummy_feature(X)              # add x0 = 1 to each instance
 theta_best = np.linalg.inv(X_b.T @ X_b) @ X_b.T @ y
   </code></pre>
   <p class="small muted">The <code>@</code> operator is matrix multiplication.
-  PyTorch, TensorFlow and JAX all support it; pure Python lists do not.</p>
+  PyTorch, TensorFlow and JAX all support it; pure Python lists do not. Eight
+  features, so $\hat{\boldsymbol\theta}$ has nine entries.</p>
 </section>
 
 <!-- 16 -->
 <section data-menu-title="Compare">
-  <h2>And compare</h2>
+  <h2>And compare with the library</h2>
   <pre><code class="language-text" data-trim>
-&gt;&gt;&gt; lin_reg = LinearRegression()
-&gt;&gt;&gt; lin_reg.fit(X, y)
-&gt;&gt;&gt; lin_reg.intercept_, lin_reg.coef_
-(array([3.69084138]), array([[3.32960458]]))
+&gt;&gt;&gt; theta_best[:3].round(1)
+array([206333.5, -85371.4, -90829.7])
+&gt;&gt;&gt; lin_reg = LinearRegression().fit(X, y)
+&gt;&gt;&gt; np.abs(theta_best - np.r_[lin_reg.intercept_, lin_reg.coef_]).max()
+6.4e-10
   </code></pre>
-  <p>Identical, to floating-point precision.</p>
-  <div class="panel">
-    Note that Scikit-Learn separates the bias term (<code>intercept_</code>) from
-    the feature weights (<code>coef_</code>).
+  <p class="small">Identical to floating-point precision. Scikit-Learn separates
+  the bias term (<code>intercept_</code>) from the feature weights
+  (<code>coef_</code>); we stacked them back together to compare.</p>
+  <div class="panel panel-math">
+    <span class="panel-title">Look at $\theta_0$</span>
+    <span class="usd">$206,334</span> &mdash; and the mean price of the training
+    set is <span class="usd">$206,334</span>. With centred features the intercept
+    <em>is</em> the mean of the target, so the trivial baseline you measured in
+    the previous lecture is exactly this model with all eight weights set to
+    zero. Least squares spends those eight weights to get from
+    <span class="usd">$115,311</span> to <span class="usd">$68,233</span>.
   </div>
+</section>
+
+<!-- 14b -->
+<section data-menu-title="Verify orthogonality">
+  <h2>Verify the geometry, on the same data</h2>
+  <p>If the geometry is right, the residual must be orthogonal to every column of
+  $\mathbf{X}$ &mdash; so $\mathbf{X}^{\intercal}\mathbf{r}$ should be numerically zero.</p>
+  <pre><code class="language-python" data-trim>
+residual = X_b @ theta_best - y
+print(np.abs(X_b.T @ residual).max())        # 7.1e-06
+print(np.abs(X_b.T @ y).max())               # 3.4e+09  — the scale to judge it by
+  </code></pre>
+  <p class="small">Not exactly zero: floating-point arithmetic. But
+  $7.1\times10^{-6}$ against a scale of $3.4\times10^{9}$ is a relative
+  $2\times10^{-15}$ &mdash; machine epsilon, on a double.</p>
+  <p class="fix small">A cheap, decisive check that your solver did what the
+  mathematics says it should. Note that &ldquo;small&rdquo; is meaningless until
+  you divide by something.</p>
 </section>
 
 <!-- 17 -->
@@ -395,14 +408,14 @@ np.linalg.pinv(X_b) @ y                  # same result
 </section>
 
 <!-- ==================================================================== -->
-<!-- DIAGNOSE (20 min)                                                    -->
+<!-- DIAGNOSE (15 min)                                                    -->
 <!-- ==================================================================== -->
 
 <!-- 25 -->
 <section class="divider" data-menu-title="◆ Diagnose">
   <p class="kicker">Part two</p>
   <h1>Diagnose</h1>
-  <p class="clock">20 minutes &middot; why a tree scored zero</p>
+  <p class="clock">15 minutes &middot; why a tree scored zero</p>
 </section>
 
 <!-- 26 -->
@@ -438,18 +451,11 @@ np.linalg.pinv(X_b) @ y                  # same result
   </div>
   <p>This is <strong>overfitting</strong>: excellent on the training data,
   useless on anything else.</p>
-</section>
-
-<!-- 29 -->
-<section data-menu-title="Nonparametric">
-  <h2>Why trees are especially prone to it</h2>
-  <p>Decision trees make very few assumptions about the data. Left unconstrained,
-  the tree structure adapts itself to the training data &mdash; fitting it very
-  closely, most likely overfitting it.</p>
   <div class="panel panel-book">
     Such a model is called <em>nonparametric</em>: not because it has no
     parameters, but because the <strong>number</strong> of parameters is not
-    fixed before training, so the structure is free to follow the data.
+    fixed before training, so the structure is free to follow the data. That
+    freedom is exactly what lets it memorise.
   </div>
 </section>
 
@@ -473,9 +479,10 @@ np.linalg.pinv(X_b) @ y                  # same result
     <li>The goal is performance on <strong>new</strong> instances</li>
     <li>Low training error with high generalisation error <em>is the definition of overfitting</em></li>
   </ul>
-  <p class="small">Linear regression&rsquo;s $68,233 was also a training number.
-  It happens to be roughly honest &mdash; but only because the model is too rigid
-  to memorise anything.</p>
+  <p class="small">Linear regression&rsquo;s <span class="usd">$68,233</span> was
+  also a training number. It happens to be honest to within
+  <span class="usd">$49</span> &mdash; but only because the model is too rigid to
+  memorise anything, and you had no way to know that in advance.</p>
 </section>
 
 <!-- 32 -->
@@ -494,30 +501,23 @@ np.linalg.pinv(X_b) @ y                  # same result
 <!-- 33 -->
 <section data-menu-title="A second bug">
   <h2>A second bug, which we avoided by luck</h2>
-  <p>Consider this extremely common pattern:</p>
   <pre><code class="language-python" data-trim>
 # WRONG — do not do this
 scaler = StandardScaler()
 housing_scaled = scaler.fit_transform(housing_full)      # all the data
 train_set, test_set = train_test_split(housing_scaled)   # then split
   </code></pre>
-  <p class="fail">The scaler saw the test set. Its mean and standard deviation
-  encode information from data the model must not know about.</p>
-</section>
-
-<!-- 34 -->
-<section data-menu-title="Leakage">
-  <h2>Data leakage</h2>
   <div class="panel panel-fail">
-    <span class="panel-title">Definition</span>
+    <span class="panel-title">Data leakage</span>
     Information from outside the training set influences the model. The reported
-    score improves. The deployed system does not.
+    score improves. The deployed system does not. It never raises an exception,
+    and it is the single most common way a machine learning result becomes
+    fiction.
   </div>
-  <p>Leakage is the single most common way a machine learning result becomes
-  fiction. It never raises an exception.</p>
-  <p class="small muted">Our code in the previous lecture escaped it &mdash; not because we were
-  careful, but because we happened to put the scaler inside a pipeline. Let us
-  make that deliberate.</p>
+  <p class="small muted">We escaped it in the previous lecture &mdash; not because
+  we were careful, but because we happened to put the scaler inside a pipeline.
+  And we measured the cost of not escaping it: on this dataset, and only on this
+  dataset, zero. Let us make the escape deliberate rather than lucky.</p>
 </section>
 
 <!-- 35 -->
@@ -547,14 +547,14 @@ train_set, test_set = train_test_split(housing_scaled)   # then split
 </section>
 
 <!-- ==================================================================== -->
-<!-- FIX (35 min)                                                         -->
+<!-- FIX (40 min)                                                         -->
 <!-- ==================================================================== -->
 
 <!-- 37 -->
 <section class="divider" data-menu-title="◆ Fix">
   <p class="kicker">Part three</p>
   <h1>Fix</h1>
-  <p class="clock">35 minutes</p>
+  <p class="clock">40 minutes</p>
 </section>
 
 <!-- 38 -->
@@ -572,19 +572,10 @@ train_set, test_set = train_test_split(housing_scaled)   # then split
 <!-- 39 -->
 <section data-menu-title="Holdout validation">
   <h2>Fix 1 &middot; Hold out a validation set</h2>
-  <p>Split the <em>training</em> set again: a smaller training set, and a
-  <strong>validation set</strong> (also called the development set, or dev set).</p>
-  <ol class="tight small">
-    <li>Train candidate models on the reduced training set</li>
-    <li>Select the one that performs best on the validation set</li>
-    <li>Retrain that model on the full training set</li>
-    <li>Evaluate <em>once</em> on the test set</li>
-  </ol>
-</section>
-
-<!-- 40 -->
-<section data-menu-title="Holdout problems">
-  <h2>Holdout validation has a tension</h2>
+  <p class="small">Split the <em>training</em> set again: a smaller training set,
+  and a <strong>validation set</strong> (also called the development set). Train
+  the candidates on the reduced set, select on the validation set, retrain the
+  winner on the full training set, and evaluate <em>once</em> on the test set.</p>
   <div class="cols">
     <div>
       <p class="small"><strong>Validation set too small</strong></p>
@@ -626,18 +617,32 @@ train_set, test_set = train_test_split(housing_scaled)   # then split
 <!-- 42 -->
 <section data-menu-title="k-fold code">
   <h2>In code</h2>
-  <pre><code class="language-python" data-trim>
-from sklearn.model_selection import cross_val_score
+  <pre><code class="language-python" data-trim data-line-numbers="1-8|4|6-8">from sklearn.model_selection import KFold, cross_val_score
 
-tree_rmses = -cross_val_score(tree_reg, housing, housing_labels,
-                              scoring="neg_root_mean_squared_error", cv=10)
+# not cv=10: the default KFold does not shuffle
+cv = KFold(n_splits=10, shuffle=True, random_state=42)
+
+tree_rmses = -cross_val_score(tree_reg, X_train, y_train,
+                              scoring="neg_root_mean_squared_error", cv=cv)
+# about 25 s
   </code></pre>
-  <div class="panel">
-    <span class="panel-title">Why the minus sign</span>
-    Scikit-Learn&rsquo;s cross-validation expects a <em>utility</em> function
-    (greater is better), not a cost function. The scorer is the negative RMSE, so
-    flip the sign back.
+  <div class="cols cols-60-40">
+    <div>
+      <p class="small"><strong>Why the minus sign.</strong> Scikit-Learn&rsquo;s
+      cross-validation expects a <em>utility</em> function (greater is better),
+      not a cost function. The scorer is the negative RMSE, so flip the sign
+      back.</p>
+    </div>
+    <div>
+      <p class="small"><strong>Why the explicit <code>KFold</code>.</strong>
+      <code>cv=10</code> takes ten contiguous blocks in row order. Two of you
+      whose frames are sorted differently then get different folds and cannot
+      see why your numbers disagree.</p>
+    </div>
   </div>
+  <p class="smaller muted">The runtime comment is there so that four minutes of
+  no output is not read as &ldquo;it hung&rdquo; and interrupted. Timings are for
+  a free Colab CPU runtime and are <strong>not examinable</strong>.</p>
 </section>
 
 <!-- 43 -->
@@ -646,15 +651,20 @@ tree_rmses = -cross_val_score(tree_reg, housing, housing_labels,
   <pre><code class="language-text" data-trim>
 &gt;&gt;&gt; pd.Series(tree_rmses).describe()
 count       10.000000
-mean     66573.734600
-std       1103.402323
-min      64607.896046
-50%      66388.272499
-max      68532.210664
+mean     68573.733113
+std       2014.711361
+min      65499.052101
+25%      66693.914880
+50%      69070.930754
+75%      69962.630213
+max      70958.417942
   </code></pre>
-  <p class="fail" style="font-size:1.1em">Not 0.0. About <strong>$68,779</strong>.</p>
-  <p class="small muted">And we get something a single number cannot give us: a
-  standard deviation of about $1,524, so we know how precise the estimate is.</p>
+  <p class="fail" style="font-size:1.1em">Not 0.0. About
+  <span class="usd">$68,574</span>.</p>
+  <p class="small muted">And something a single number cannot give us: a spread.
+  The ten folds run from <span class="usd">$65,499</span> to
+  <span class="usd">$70,958</span>, so any comparison that turns on less than a
+  couple of thousand dollars is not a comparison.</p>
 </section>
 
 <!-- 44 -->
@@ -662,12 +672,14 @@ max      68532.210664
   <h2>All three, measured honestly</h2>
   <table>
     <tr><th>Model</th><th class="num">Training RMSE</th><th class="num">Cross-validated RMSE</th></tr>
-    <tr><td>Linear regression</td><td class="num">$68,233</td><td class="num">$68,316</td></tr>
-    <tr><td>Decision tree</td><td class="num fail">$0</td><td class="num">$68,779</td></tr>
-    <tr><td>Random forest</td><td class="num">$18,058</td><td class="num hit">$48,921</td></tr>
+    <tr><td>Predict a constant</td><td class="num"><span class="usd">$115,311</span></td><td class="num"><span class="usd">$115,300</span></td></tr>
+    <tr><td>Linear regression</td><td class="num"><span class="usd">$68,233</span></td><td class="num"><span class="usd">$68,282</span></td></tr>
+    <tr><td>Decision tree</td><td class="num fail">$0</td><td class="num"><span class="usd">$68,574</span></td></tr>
+    <tr><td>Random forest</td><td class="num"><span class="usd">$18,058</span></td><td class="num hit"><span class="usd">$48,687</span></td></tr>
   </table>
   <p class="small">Now the table is readable. The gap between the two columns
-  <em>is</em> the overfitting.</p>
+  <em>is</em> the overfitting &mdash; and the first row, which cannot overfit
+  anything, has no gap at all.</p>
 </section>
 
 <!-- FIG -->
@@ -689,41 +701,59 @@ max      68532.210664
     <img src="../assets/figures/l2-cv-spread.svg"
          alt="Strip plot of the ten per-fold RMSE values for each of the three models, with the mean and standard deviation marked.">
   </figure>
-  <p class="takeaway muted">The forest&rsquo;s folds are tight
-  (<span class="usd">&plusmn;$679</span>). The tree&rsquo;s are more than twice as
-  scattered (<span class="usd">&plusmn;$1,524</span>) &mdash; an unstable model,
-  which is itself a finding.</p>
+  <p class="takeaway">All three spreads are around
+  <span class="usd">&plusmn;$2,000</span>&ndash;<span class="usd">$3,000</span>
+  &mdash; and that is mostly <em>which districts landed in the fold</em>, not the
+  model. Any difference smaller than this is not a difference.</p>
+  <aside class="notes">The instinct to read the widest strip as "the least stable
+  model" is wrong and worth naming: the folds are shared, so the right comparison
+  is fold by fold. That is the next slide.</aside>
 </section>
 
 
 <!-- 45 -->
 <section data-menu-title="Reading the table">
   <h2>Reading the table</h2>
-  <ul class="tight">
+  <ul class="tight small">
     <li><strong>Linear regression</strong> &mdash; the two columns nearly agree.
         It is not overfitting; it is <span class="fail">underfitting</span></li>
-    <li><strong>Decision tree</strong> &mdash; <span class="usd">$0</span> against <span class="usd">$68,779</span>. Severe
-        overfitting &mdash; and once measured honestly it is <em>worse</em> than
-        the linear model it appeared to crush</li>
-    <li><strong>Random forest</strong> &mdash; <span class="usd">$18,058</span> against <span class="usd">$48,921</span>. Still
-        overfitting, but by far the best honest score</li>
+    <li><strong>Decision tree</strong> &mdash; <span class="usd">$0</span> against
+        <span class="usd">$68,574</span>. Severe overfitting &mdash; and once
+        measured honestly it is not better than the linear model it appeared to
+        crush</li>
+    <li><strong>Random forest</strong> &mdash; <span class="usd">$18,058</span>
+        against <span class="usd">$48,687</span>. Still overfitting, but by far
+        the best honest score, and 58% below the constant baseline</li>
   </ul>
   <p class="small muted">Fixes for overfitting: simplify the model, constrain it,
   or obtain more training data.</p>
 </section>
 
-<!-- 46 -->
-<section data-menu-title="Why the forest wins">
-  <h2>Why does averaging trees help?</h2>
-  <p>A random forest trains many decision trees on random subsets of the features,
-  then averages their predictions.</p>
-  <div class="panel">
-    If the underlying models are diverse, their errors are not strongly
-    correlated, so averaging smooths the errors out, reduces overfitting, and
-    improves overall performance.
-  </div>
-  <p class="small muted">In Lecture 8 we quantify exactly this &mdash; thread 4
-  gives the variance of an average of correlated predictors.</p>
+<!-- new -->
+<section data-menu-title="Comparing two models">
+  <h2>Is <span class="usd">$68,574</span> worse than <span class="usd">$68,282</span>?</h2>
+  <p class="small">The tree&rsquo;s mean is <span class="usd">$292</span> above the
+  linear model&rsquo;s, and the folds scatter by <span class="usd">$2,000</span>.
+  So compare them <em>fold by fold</em>: both models saw the same ten folds, and
+  the shared fold-to-fold noise cancels in the difference.</p>
+  <table class="smaller">
+    <tr><th>Per-fold difference</th><th class="num">Mean</th><th class="num">Std</th><th class="num">Same sign in all 10?</th></tr>
+    <tr><td>Decision tree &minus; linear regression</td><td class="num">+<span class="usd">$292</span></td><td class="num"><span class="usd">$1,634</span></td><td class="num fail">no</td></tr>
+    <tr><td>Random forest &minus; linear regression</td><td class="num">&minus;<span class="usd">$19,594</span></td><td class="num"><span class="usd">$1,650</span></td><td class="num hit">yes</td></tr>
+  </table>
+  <p class="fix">The forest is genuinely better &mdash; it averages many trees
+  fitted on random subsets, and if their errors are not strongly correlated the
+  average is more accurate than any of them. (Thread 4, in Lecture 8, makes that
+  precise.) The tree is
+  <strong>indistinguishable</strong> from the linear model &mdash; a paired
+  $t$-test gives $p = 0.59$, and on six of the ten folds the tree is the
+  <em>better</em> of the two.</p>
+  <p class="small fail">Say &ldquo;the tree is worse&rdquo; and you have read a
+  ranking out of noise. Two numbers are only different if you have shown that
+  they are.</p>
+  <aside class="notes">This is the single most transferable slide in the lecture.
+  It comes back on the interval slide at the end, and in every red-team report
+  they write.</aside>
 </section>
 
 <!-- 47 -->
@@ -731,8 +761,8 @@ max      68532.210664
   <h2>Fix 3 &middot; Pipelines make leakage structurally impossible</h2>
   <pre><code class="language-python" data-trim>
 full_pipeline = Pipeline([
-    ("preprocessing", preprocessing),
-    ("random_forest", RandomForestRegressor(random_state=42)),
+    ("prep",  preprocessing),                              # the ColumnTransformer
+    ("model", RandomForestRegressor(random_state=42)),
 ])
   </code></pre>
   <p>When <code>cross_val_score</code> holds out fold $j$, the entire pipeline
@@ -760,30 +790,18 @@ full_pipeline = Pipeline([
   <pre><code class="language-python" data-trim>
 from sklearn.model_selection import GridSearchCV
 
-param_grid = [
-    {'preprocessing__geo__n_clusters': [5, 8, 10],
-     'random_forest__max_features': [4, 6, 8]},
-    {'preprocessing__geo__n_clusters': [10, 15],
-     'random_forest__max_features': [6, 8, 10]},
-]
-grid_search = GridSearchCV(full_pipeline, param_grid, cv=3,
-                           scoring='neg_root_mean_squared_error')
-grid_search.fit(housing, housing_labels)
-  </code></pre>
-  <p class="small muted">Double underscores address any hyperparameter of any
-  estimator, however deeply nested.</p>
-</section>
+param_grid = {"model__max_features": [4, 6, 8, 10, 12],
+              "model__n_estimators": [30, 100, 200]}
 
-<!-- 49 -->
-<section data-menu-title="Tuning preprocessing">
-  <h2>Note what we just tuned</h2>
-  <p><code>preprocessing__geo__n_clusters</code> is not a model hyperparameter.
-  It belongs to a <em>preprocessing step</em>.</p>
-  <div class="panel">
-    Wrapping preprocessing in a pipeline lets you tune preprocessing
-    hyperparameters together with model hyperparameters &mdash; which matters,
-    because they interact.
-  </div>
+grid_search = GridSearchCV(full_pipeline, param_grid, cv=cv,
+                           scoring="neg_root_mean_squared_error", n_jobs=-1)
+grid_search.fit(X_train, y_train)      # 15 x 10 = 150 fits, about 4 minutes
+  </code></pre>
+  <p class="small"><code>model__max_features</code> reads as: the step named
+  <code>model</code>, its parameter <code>max_features</code>. Double underscores
+  address any hyperparameter of any estimator, however deeply nested.</p>
+  <p class="smaller muted">Four minutes with no output. That is the cell working,
+  not the cell hanging &mdash; do not interrupt it. <em>(Timing not examinable.)</em></p>
 </section>
 
 <!-- 50 -->
@@ -792,13 +810,19 @@ grid_search.fit(housing, housing_labels)
   <pre><code class="language-text" data-trim>
 &gt;&gt;&gt; grid_search.best_params_
 {'model__max_features': 8, 'model__n_estimators': 200}
+&gt;&gt;&gt; -grid_search.best_score_
+48179.64299597594
   </code></pre>
-  <p>Best cross-validated RMSE: <strong>$48,257</strong>, improved from $48,921.</p>
+  <p><span class="usd">$48,180</span>, improved from
+  <span class="usd">$48,687</span> &mdash; a gain of
+  <span class="usd">$507</span>, against a fold spread of
+  <span class="usd">$2,762</span>. Note that carefully: 150 fits bought us
+  something we cannot cleanly distinguish from noise.</p>
   <div class="panel panel-fail">
-    <span class="panel-title">Read the boundary</span>
+    <span class="panel-title">And read the boundary</span>
     200 was the <em>largest</em> value we tried for <code>n_estimators</code>.
-    A winner sitting on the edge of the grid means the optimum may lie outside it.
-    Search again with higher values.
+    A winner sitting on the edge of the grid means the optimum may lie outside
+    it. Search again with higher values.
   </div>
 </section>
 
@@ -815,6 +839,29 @@ grid_search.fit(housing, housing_labels)
 </section>
 
 
+<!-- 49 -->
+<section data-menu-title="Tuning preprocessing">
+  <h2>Preprocessing has hyperparameters too</h2>
+  <p class="small">The imputer lives inside the <code>ColumnTransformer</code>
+  inside the <code>Pipeline</code>. The same double-underscore path reaches it,
+  so it can be tuned by the same search:</p>
+  <pre><code class="language-python" data-trim>
+grid = {"prep__num__simpleimputer__strategy": ["median", "mean", "most_frequent"]}
+  </code></pre>
+  <table class="smaller">
+    <tr><th>Imputation strategy</th><th class="num">Cross-validated RMSE</th></tr>
+    <tr><td><code>median</code></td><td class="num"><span class="usd">$48,180</span></td></tr>
+    <tr><td><code>mean</code></td><td class="num"><span class="usd">$48,154</span></td></tr>
+    <tr><td><code>most_frequent</code></td><td class="num"><span class="usd">$48,171</span></td></tr>
+  </table>
+  <p class="small">A spread of <span class="usd">$26</span> across the three.
+  With 207 missing values out of 20,640, that is exactly what it should be
+  &mdash; and now we know, instead of assuming.</p>
+  <p class="small muted">The reason to put preprocessing in the pipeline is not
+  that tuning it always helps. It is that preprocessing and model interact, and
+  the pipeline is what lets you find out whether they do here.</p>
+</section>
+
 <!-- 51 -->
 <section data-menu-title="Randomized search">
   <h2>Randomised search is usually better</h2>
@@ -822,75 +869,63 @@ grid_search.fit(housing, housing_labels)
 from sklearn.model_selection import RandomizedSearchCV
 from scipy.stats import randint
 
-param_distribs = {'preprocessing__geo__n_clusters': randint(low=3, high=50),
-                  'random_forest__max_features': randint(low=2, high=20)}
+param_distribs = {"model__max_features": randint(low=2, high=13),
+                  "model__n_estimators": randint(low=30, high=500)}
 
 rnd_search = RandomizedSearchCV(full_pipeline, param_distributions=param_distribs,
-                                n_iter=10, cv=3,
-                                scoring='neg_root_mean_squared_error',
+                                n_iter=10, cv=cv, n_jobs=-1,
+                                scoring="neg_root_mean_squared_error",
                                 random_state=42)
   </code></pre>
-</section>
-
-<!-- 52 -->
-<section data-menu-title="Why randomized">
-  <h2>Why randomised wins</h2>
-  <ul class="tight">
-    <li>Run it for 1,000 iterations and it explores 1,000 <em>distinct values</em>
-        of each continuous hyperparameter — a grid explores only the few you listed</li>
+  <ul class="tight smaller">
+    <li>1,000 iterations explores 1,000 <em>distinct values</em> of each
+        hyperparameter; a grid explores only the few you listed</li>
     <li>Add a hyperparameter that turns out not to matter: a grid multiplies the
         runtime, a random search does not</li>
-    <li>Six hyperparameters with ten values each means a million grid fits.
-        Randomised search runs for however long you allow</li>
+    <li>Six hyperparameters with ten values each is a million grid fits.
+        Randomised search runs for however long you allow &mdash; and note that
+        it cannot sit on the edge of a grid, because there is no grid</li>
   </ul>
 </section>
 
 <!-- 52b -->
 <section data-menu-title="Halving search">
-  <h2>Spending the compute budget better</h2>
-  <p><code>HalvingGridSearchCV</code> and <code>HalvingRandomSearchCV</code> run
-  a tournament:</p>
-  <ol class="tight small">
-    <li>Generate many candidate configurations</li>
-    <li>Evaluate them all with <strong>limited resources</strong> &mdash; typically
-        a small slice of the training set</li>
-    <li>Only the best candidates advance, with more resources each round</li>
-    <li>The finalists are evaluated at full resource</li>
-  </ol>
-  <p class="small muted">Same search space, considerably less compute &mdash; or
-  a much larger space for the same compute.</p>
-</section>
-
-<!-- 52c -->
-<section data-menu-title="Ensembles as tuning">
-  <h2>A third way to improve the system</h2>
-  <p>Combine the models that perform best. A group will often beat the best
-  individual member &mdash; just as a random forest beats the trees it is built
-  from.</p>
+  <h2>Two more ways to spend the budget</h2>
+  <p class="small"><code>HalvingGridSearchCV</code> and
+  <code>HalvingRandomSearchCV</code> run a tournament: generate many candidates,
+  evaluate them all on a small slice of the training set, promote the best with
+  more data each round, and evaluate the finalists at full resource. Same search
+  space, considerably less compute.</p>
   <div class="panel">
-    This works best when the individual models make
-    <strong>different kinds of errors</strong>. Averaging correlated mistakes
-    achieves nothing.
+    <span class="panel-title">Or stop tuning and combine instead</span>
+    Ensemble the models that perform best. A group will often beat its best
+    individual member &mdash; just as a random forest beats the trees it is built
+    from &mdash; but only when the members make <strong>different kinds of
+    errors</strong>. Averaging correlated mistakes achieves nothing.
   </div>
-  <p class="small muted">We return to this properly in Lecture 8, where thread 4
-  makes &ldquo;different kinds of errors&rdquo; precise.</p>
+  <p class="small muted">Lecture 8 makes &ldquo;different kinds of errors&rdquo;
+  precise; that is thread 4.</p>
 </section>
 
 <!-- 53 -->
 <section data-menu-title="Feature importance">
   <h2>Analyse the best model</h2>
   <pre><code class="language-text" data-trim>
-[(0.1860, 'log__median_income'),
- (0.0734, 'cat__ocean_proximity_INLAND'),
- (0.0656, 'bedrooms__ratio'),
- (0.0536, 'rooms_per_house__ratio'),
- (0.0460, 'people_per_house__ratio'),
+&gt;&gt;&gt; sorted(zip(importances.round(4), feature_names), reverse=True)
+[(0.4418, 'num__median_income'),
+ (0.1511, 'cat__ocean_proximity_INLAND'),
+ (0.1146, 'num__longitude'),
+ (0.1043, 'num__latitude'),
+ (0.0494, 'num__housing_median_age'),
  [...]
- (0.0004, 'cat__ocean_proximity_NEAR BAY'),
- (0.00003, 'cat__ocean_proximity_ISLAND')]
+ (0.0062, 'cat__ocean_proximity_NEAR OCEAN'),
+ (0.0020, 'cat__ocean_proximity_NEAR BAY'),
+ (0.0003, 'cat__ocean_proximity_ISLAND')]
   </code></pre>
-  <p class="small">Median income dominates. Of the ocean-proximity categories,
-  only <code>INLAND</code> really earns its place.</p>
+  <p class="small">Median income dominates, as the correlation column predicted.
+  Longitude and latitude together take 0.22 &mdash; the forest has rediscovered
+  the coast from two raw coordinates. Of the ocean-proximity categories, only
+  <code>INLAND</code> really earns its place.</p>
 </section>
 
 <!-- FIG -->
@@ -902,9 +937,39 @@ rnd_search = RandomizedSearchCV(full_pipeline, param_distributions=param_distrib
   </figure>
   <p class="takeaway muted">Some of the one-hot ocean-proximity columns earn
   almost nothing. Importance is a reason to <em>try</em> dropping a feature, and
-  then to measure &mdash; never a reason to drop it outright.</p>
+  then to measure &mdash; never a reason to drop it outright. We measure at the
+  end of this lecture.</p>
 </section>
 
+
+<!-- new -->
+<section data-menu-title="The least important column">
+  <h2>The gun we loaded in the previous lecture</h2>
+  <p class="small">Bottom of that list: <code>ocean_proximity_ISLAND</code>, at
+  0.0003. Five districts in California. Recall where they went:</p>
+  <table class="smaller">
+    <tr><th>ISLAND districts</th><th class="num">Total</th><th class="num">In training</th><th class="num">In test</th></tr>
+    <tr><td>Stratified 80/20 on <em>income</em>, not on this</td><td class="num">5</td><td class="num fail">2</td><td class="num">3</td></tr>
+  </table>
+  <p class="small">The model has seen the category twice. It will be asked about
+  it three times, and we will report those three answers inside an average of
+  4,128.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">And in cross-validation it can vanish entirely</span>
+    <code>handle_unknown="ignore"</code> does not raise on a category it never
+    saw. It emits <code>[0, 0, 0, 0]</code> &mdash; a district that is nowhere
+    near the ocean and nowhere inland &mdash; silently.
+    <span class="small">With our seed no fold loses it; over 500 reshufflings,
+    <strong>11.2%</strong> produce at least one fold in which the encoder is
+    fitted without ISLAND and then asked about it.</span>
+  </div>
+  <p class="small muted">A one-in-nine chance of a silently wrong column, invisible
+  in the score. This is what &ldquo;rare categories will cause trouble&rdquo;
+  meant.</p>
+  <aside class="notes">Ask what the alternatives are before giving them: stratify
+  on the category as well, merge ISLAND into NEAR OCEAN, or set
+  handle_unknown="error" and be told. All three are defensible; silence is not.</aside>
+</section>
 
 <!-- 54 -->
 <section data-menu-title="Fairness check">
@@ -912,10 +977,12 @@ rnd_search = RandomizedSearchCV(full_pipeline, param_distributions=param_distrib
   <p>A model should work well not only on average, but across categories of
   district &mdash; rural or urban, rich or poor, northern or southern.</p>
   <div class="panel">
-    Build subsets of the validation set per category and analyse performance on
-    each. If the model performs poorly on a whole category, it should not be
-    deployed for that category &mdash; it may do more harm than good.
+    Build subsets per category and analyse performance on each. If the model
+    performs poorly on a whole category, it should not be deployed for that
+    category &mdash; it may do more harm than good.
   </div>
+  <p class="fix small">We do exactly this in the last fifteen minutes of today,
+  on the test set, and it changes what we would tell the client.</p>
 </section>
 
 <!-- 55 -->
@@ -962,9 +1029,17 @@ boot_result = stats.bootstrap([squared_errors], rmse,
                               confidence_level=0.95, random_state=42)
 rmse_lower, rmse_upper = boot_result.confidence_interval
   </code></pre>
-  <p>95% interval: <strong><span class="usd">$46,635</span> &ndash; <span class="usd">$51,328</span></strong>.</p>
+  <p>95% interval: <strong><span class="usd">$46,877</span> &ndash;
+  <span class="usd">$51,550</span></strong>.</p>
+  <div class="panel">
+    <span class="panel-title">Why bootstrap and not a $t$-interval</span>
+    A $t$-interval on the mean squared error assumes the squared errors are
+    roughly normal. Ours have a skewness of <strong>8.9</strong> &mdash; a capped,
+    heavy-tailed target. The percentile bootstrap assumes nothing: it resamples
+    the errors we actually have.
+  </div>
   <p class="small muted">A point estimate alone may not be enough to justify a
-  launch — especially if the improvement over the incumbent is small.</p>
+  launch &mdash; especially if the improvement over the incumbent is small.</p>
 </section>
 
 <!-- FIG -->
@@ -972,15 +1047,23 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   <h2>The number you should actually report</h2>
   <figure class="fig fig-wide">
     <img src="../assets/figures/l2-test-ci.svg"
-         alt="The test RMSE of $49,037 shown as a point with a 95% confidence interval from $46,635 to $51,328.">
+         alt="The test RMSE of $49,037 shown as a point with a 95% bootstrap confidence interval from $46,877 to $51,550.">
   </figure>
-  <div class="panel panel-fail">
-    <span class="panel-title">Notice what happened</span>
-    Tuned cross-validated RMSE: <strong>$48,257</strong>. Test RMSE:
-    <strong>$49,037</strong>. The test number came out <em>worse</em> &mdash;
-    exactly as the next slide warns, because we fine-tuned against the validation
-    folds.
+  <div class="panel">
+    <span class="panel-title">Now use it on the obvious temptation</span>
+    Tuned cross-validated RMSE <span class="usd">$48,180</span>; test RMSE
+    <span class="usd">$49,037</span>. The test number is
+    <span class="usd">$857</span> higher &mdash; and the interval we just computed
+    on the same slide is <span class="usd">&plusmn;$2,336</span> wide.
+    <strong>The two agree.</strong> There is nothing here to explain.
   </div>
+  <p class="small fail">Reading that <span class="usd">$857</span> as evidence of
+  anything &mdash; overfitting the folds, bad luck, a bug &mdash; is the exact
+  instinct this course exists to remove. The story on the next slide is true in
+  general; this is not an instance of it.</p>
+  <aside class="notes">Someone will have already written "we overfitted the
+  validation folds" in their notes. That is why the paired-comparison slide came
+  first.</aside>
 </section>
 
 
@@ -989,13 +1072,133 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   <h2>One last temptation</h2>
   <div class="panel panel-fail">
     <span class="panel-title">Resist it</span>
-    If you tuned a lot, test performance is usually slightly <em>worse</em> than
+    If you tuned a lot, test performance is often slightly <em>worse</em> than
     cross-validated performance, because the system was fine-tuned to the
     validation data. When that happens you must <strong>not</strong> tweak
     hyperparameters to make the test number look better.
   </div>
   <p class="small">Those improvements would not generalise. You would simply be
-  overfitting the test set instead.</p>
+  overfitting the test set instead &mdash; and the test set is the only thing
+  standing between you and a confident fiction.</p>
+  <p class="small muted">We searched 15 configurations, so the effect here is
+  small enough to be invisible. Search 10,000 and it will not be.</p>
+</section>
+
+<!-- new -->
+<section data-menu-title="The ten worst predictions">
+  <h2>Look at the ten worst predictions</h2>
+  <table class="smaller">
+    <tr><th class="num">Actual</th><th class="num">Predicted</th><th class="num">Error</th><th>income_cat</th><th>ocean_proximity</th></tr>
+    <tr><td class="num"><span class="usd">$500,001</span></td><td class="num"><span class="usd">$129,715</span></td><td class="num fail">&minus;<span class="usd">$370,286</span></td><td>2</td><td>&lt;1H OCEAN</td></tr>
+    <tr><td class="num"><span class="usd">$500,001</span></td><td class="num"><span class="usd">$130,590</span></td><td class="num fail">&minus;<span class="usd">$369,412</span></td><td>3</td><td>INLAND</td></tr>
+    <tr><td class="num"><span class="usd">$131,300</span></td><td class="num"><span class="usd">$464,117</span></td><td class="num fail">+<span class="usd">$332,817</span></td><td>5</td><td>&lt;1H OCEAN</td></tr>
+    <tr><td class="num"><span class="usd">$500,001</span></td><td class="num"><span class="usd">$171,694</span></td><td class="num fail">&minus;<span class="usd">$328,308</span></td><td>2</td><td>&lt;1H OCEAN</td></tr>
+    <tr><td class="num"><span class="usd">$500,001</span></td><td class="num"><span class="usd">$175,534</span></td><td class="num fail">&minus;<span class="usd">$324,468</span></td><td>1</td><td>INLAND</td></tr>
+  </table>
+  <p class="small"><strong>Eight of the ten are capped districts</strong> the
+  model under-predicts by a quarter of a million dollars. The third row is the
+  mirror image: a district whose <code>median_income</code> is 15.0001 &mdash; the
+  <em>other</em> cap &mdash; and which the model therefore prices as if it were
+  Beverly Hills. It is worth <span class="usd">$131,300</span>.</p>
+  <p class="fix small">Both caps, spotted in a histogram before any model
+  existed, are now the two largest errors of the finished system. Look at your
+  worst cases. Always.</p>
+</section>
+
+<!-- new -->
+<section data-menu-title="Slice the error">
+  <h2>The average hides the model</h2>
+  <p class="small">One number for 4,128 districts is a summary, not a finding.
+  Break it out by the categories the client cares about:</p>
+  <div class="cols">
+    <div>
+      <table class="smaller">
+        <tr><th>income_cat</th><th class="num">n</th><th class="num">RMSE</th></tr>
+        <tr><td>1 (poorest)</td><td class="num">165</td><td class="num fail"><span class="usd">$62,606</span></td></tr>
+        <tr><td>2</td><td class="num">1,316</td><td class="num"><span class="usd">$43,082</span></td></tr>
+        <tr><td>3</td><td class="num">1,447</td><td class="num"><span class="usd">$48,381</span></td></tr>
+        <tr><td>4</td><td class="num">728</td><td class="num"><span class="usd">$53,152</span></td></tr>
+        <tr><td>5 (richest)</td><td class="num">472</td><td class="num"><span class="usd">$54,333</span></td></tr>
+      </table>
+    </div>
+    <div>
+      <table class="smaller">
+        <tr><th>ocean_proximity</th><th class="num">n</th><th class="num">RMSE</th></tr>
+        <tr><td>INLAND</td><td class="num">1,250</td><td class="num hit"><span class="usd">$39,829</span></td></tr>
+        <tr><td>&lt;1H OCEAN</td><td class="num">1,862</td><td class="num"><span class="usd">$48,967</span></td></tr>
+        <tr><td>ISLAND</td><td class="num fail">3</td><td class="num"><span class="usd">$54,754</span></td></tr>
+        <tr><td>NEAR OCEAN</td><td class="num">569</td><td class="num"><span class="usd">$57,191</span></td></tr>
+        <tr><td>NEAR BAY</td><td class="num">444</td><td class="num fail"><span class="usd">$60,195</span></td></tr>
+      </table>
+    </div>
+  </div>
+  <p class="small">The poorest 165 districts are predicted worst in dollars
+  &mdash; and their median price is <span class="usd">$91,300</span>, so in
+  <em>relative</em> terms it is far worse still. NEAR BAY is 51% worse than
+  INLAND. And the ISLAND number is computed from three districts: report it with
+  the count or do not report it.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Where the error lives">
+  <h2>The same two slices, drawn</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l2-error-slices.svg"
+         alt="Two bar charts: test RMSE by income category, worst for category 1, and test RMSE by ocean_proximity, worst for NEAR BAY and best for INLAND, each bar labelled with its district count.">
+  </figure>
+  <p class="takeaway fail">A single RMSE of <span class="usd">$49,037</span>
+  describes none of these five groups. That is the answer to
+  &ldquo;also check fairness&rdquo;, and it is a different report to the client.</p>
+</section>
+
+
+<!-- new -->
+<section data-menu-title="Drop the capped districts?">
+  <h2>The obvious next move, and its trap</h2>
+  <p class="small">The cap causes the worst errors. So remove the 205 capped
+  districts from the test set and measure again:</p>
+  <table class="smaller">
+    <tr><th>Evaluated on</th><th class="num">n</th><th class="num">Model RMSE</th><th class="num">Constant baseline</th></tr>
+    <tr><td>All test districts</td><td class="num">4,128</td><td class="num"><span class="usd">$49,037</span></td><td class="num"><span class="usd">$115,727</span></td></tr>
+    <tr><td>Capped districts removed</td><td class="num">3,923</td><td class="num hit"><span class="usd">$44,197</span></td><td class="num"><span class="usd">$97,908</span></td></tr>
+  </table>
+  <div class="panel panel-fail">
+    <span class="panel-title">These two numbers cannot be compared</span>
+    <span class="usd">$44,197</span> is not an improvement on
+    <span class="usd">$49,037</span>. We did not change the model &mdash; we
+    changed the <strong>question</strong>. The second row answers &ldquo;how well
+    does it do on districts below the cap?&rdquo;, which is a different and
+    easier question. Notice that the baseline fell by 15% as well.
+  </div>
+  <p class="small fail">Any time a number improves, ask first whether the
+  evaluation set moved. Dropping rows is the cheapest way in the world to
+  improve a metric, and it is almost never a result.</p>
+  <p class="small muted">Should we drop them? For <em>training</em>, arguably yes
+  &mdash; they teach the model a price that does not exist. For
+  <em>reporting</em>, only with the sentence above attached.</p>
+</section>
+
+<!-- new -->
+<section data-menu-title="Absolute vs relative, measured">
+  <h2>The criterion we never measured</h2>
+  <p class="small">The brief said the experts are off by more than <strong>30% of
+  the price</strong>. We optimised dollars. Here is what that cost, on the same
+  4,128 test districts:</p>
+  <table class="smaller">
+    <tr><th>Trained on</th><th class="num">RMSE</th><th class="num">Median error, as % of price</th><th class="num">Within 30%</th></tr>
+    <tr><td>the price (what we did)</td><td class="num hit"><span class="usd">$49,037</span></td><td class="num">11.3%</td><td class="num">85.1%</td></tr>
+    <tr><td>$\log$ of the price</td><td class="num"><span class="usd">$49,955</span></td><td class="num hit">11.0%</td><td class="num hit">87.2%</td></tr>
+  </table>
+  <p class="small">Exactly the trade the metric slide predicted: regressing the
+  log target is <span class="usd">$918</span> worse in dollars and better on the
+  criterion the stakeholder actually stated. Neither is <em>the</em> right answer
+  &mdash; but choosing without measuring is not a choice.</p>
+  <p class="small fail">Also worth carrying to the client: the cheapest tenth of
+  districts is predicted with an RMSE of <span class="usd">$38,441</span>, the
+  dearest tenth with <span class="usd">$97,519</span>. In dollars the model is
+  worst where the money is; in percentages it is worst where the money is not.</p>
+  <p class="smaller muted">Target transformation is Géron Chapter 2; the wrapper
+  that back-transforms predictions is <code>TransformedTargetRegressor</code>.</p>
 </section>
 
 <!-- ==================================================================== -->
@@ -1021,22 +1224,33 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
     </p>
   </div>
   <table>
-    <tr><th>Reality</th><th class="num">RMSE</th></tr>
-    <tr><td>Human experts</td><td class="num">~$60,000</td></tr>
-    <tr><td>Honest cross-validated best</td><td class="num">$48,257</td></tr>
-    <tr><td>Final, on the test set</td><td class="num hit">$49,037</td></tr>
+    <tr><th>Reality</th><th class="num">RMSE</th><th class="num">vs the baseline</th></tr>
+    <tr><td>Predict a constant</td><td class="num"><span class="usd">$115,311</span></td><td class="num">&mdash;</td></tr>
+    <tr><td>Honest cross-validated best</td><td class="num"><span class="usd">$48,180</span></td><td class="num">58% better</td></tr>
+    <tr><td>Final, on the test set</td><td class="num hit"><span class="usd">$49,037</span></td><td class="num">58% better</td></tr>
   </table>
+  <p class="small muted">Score your three numbers out loud. The interesting
+  question is not whether you were close, but whether you were closer than the
+  constant model &mdash; and whether you knew you were guessing.</p>
 </section>
 
 <!-- 60 -->
 <section data-menu-title="The verdict">
   <h2>Is that good?</h2>
-  <p>The final system is not dramatically better than the experts&rsquo; ~30%
-  error.</p>
-  <div class="panel">
-    It may still be worth launching &mdash; especially if it frees the experts to
-    work on more interesting and productive tasks.
+  <p class="small">On the stakeholder&rsquo;s own criterion, the system is within
+  30% on <strong>85.1%</strong> of districts, and its median miss is
+  <strong>11.3%</strong>. The experts were said to be off by more than 30%
+  typically. So: plausibly better &mdash; on an assumption we were handed and
+  never checked.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">What a defensible report says</span>
+    Ask for fifty districts estimated by the expert team, and score them on the
+    same test rows with the same metric. Until then the comparison is between a
+    measurement and a claim, and only one of them has an interval.
   </div>
+  <p class="small">It may still be worth launching &mdash; especially if it frees
+  the experts for work only they can do. But do not deploy it unqualified for
+  the poorest districts, or for the 205 at the cap.</p>
   <p class="small muted">&ldquo;Is the model good?&rdquo; is not a question about
   RMSE. It is a question about what the organisation does with it.</p>
 </section>
@@ -1044,12 +1258,14 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
 <!-- 61 -->
 <section data-menu-title="Red-team">
   <h2>Red-team exercise</h2>
-  <p>Swap notebooks with the team beside you. You have ten minutes.</p>
+  <p>Swap notebooks with the team beside you. You have eight minutes.</p>
   <ol class="tight small">
     <li>Find any place where a transformer is fitted outside the training set</li>
     <li>Find any metric computed on data the model was trained on</li>
     <li>Find any hyperparameter chosen by looking at the test set</li>
     <li>Check whether the split was stratified &mdash; and on what</li>
+    <li>Find any two numbers compared without a spread, or measured on different
+        sets of rows</li>
   </ol>
   <p class="fail small">Report what you found, not what you would have done
   differently.</p>
@@ -1127,51 +1343,97 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   recurs, extended, in every application from here on.</aside>
 </section>
 
-<!-- 63 -->
-<section data-menu-title="Saving the model">
-  <h2>If you were to ship this</h2>
-  <pre><code class="language-python" data-trim>
-import joblib
+<!-- ANSWERS — moved here from Lecture 1, where nobody could answer them -->
+<section data-menu-title="◇ Answer — 3">
+  <h2>Back to the specimen question &mdash; 3, the repair</h2>
+  <p class="small muted">The Part B question from the previous lecture: a loop
+  choosing $\alpha$ by scoring on <code>X_test</code>. You could answer 1 and 2
+  then. You can answer 3 and 4 now.</p>
+  <pre><code class="language-python" data-trim data-line-numbers="1-4|1-2|4">gs = GridSearchCV(Ridge(), {"alpha": [0.01, 0.1, 1, 10, 100]},
+                  scoring="neg_root_mean_squared_error", cv=10).fit(X_train, y_train)
 
-joblib.dump(final_model, "my_california_housing_model.pkl")
-  </code></pre>
-  <p class="small">Save every model you experiment with, along with its
-  cross-validation scores and its predictions on the validation set. It lets you
-  compare scores across model types and compare the kinds of errors they make.</p>
-  <div class="panel panel-book">
-    Deployment is not the end. You need monitoring, because performance decays
-    quietly through <em>data drift</em>.
+print(root_mean_squared_error(y_test, gs.predict(X_test)))
+</code></pre>
+  <div class="panel panel-fix">
+    <span class="panel-title">What makes it defensible</span>
+    $\alpha$ is chosen on validation folds carved out of the <em>training</em>
+    set. The test set is touched <strong>exactly once</strong>, after $\alpha$ is
+    already fixed. It is the same two-line shape we used on the forest an hour
+    ago.
   </div>
+  <p class="small muted"><code>RidgeCV</code> does the same job in one line and is
+  equally acceptable. What is <em>not</em> acceptable is any version in which
+  <code>X_test</code> appears before the choice is made.</p>
+</section>
+
+<!-- ANSWERS -->
+<section data-menu-title="◇ Answer — 4">
+  <h2>Specimen answer &mdash; 4</h2>
+  <div class="cols">
+    <div>
+      <p><strong>In expectation?</strong></p>
+      <p style="font-size:1.3em"><span class="fix">Higher.</span></p>
+      <ul class="tight smaller">
+        <li>The printed number was a <em>minimum</em> over five noisy estimates,
+            so it sits below the truth</li>
+        <li>$\alpha$ was chosen to look good on the very set it was scored on</li>
+      </ul>
+    </div>
+    <div>
+      <p><strong>Guaranteed on one split?</strong></p>
+      <p style="font-size:1.3em"><span class="fail">No.</span></p>
+      <ul class="tight smaller">
+        <li>The bias is a statement about <em>repeated draws</em>, not about this
+            sample</li>
+        <li>Cross-validation may also pick a genuinely better $\alpha$</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small fail">Both halves are required. <em>Higher</em> alone, or
+  <em>no</em> alone, is half the marks.</p>
+  <p class="small">You have now seen the second half measured: our own tuned
+  model came out <span class="usd">$857</span> higher on the test set, which is
+  well inside the interval &mdash; a single split, telling you nothing about the
+  expectation.</p>
+  <aside class="notes">Splitting the subtle point into two questions with fixed
+  answers is deliberate: "higher or lower" and "guaranteed, yes or no" can be
+  marked identically by any examiner.</aside>
 </section>
 
 <!-- 63b -->
 <section data-menu-title="Presenting the result">
-  <h2>Presenting the solution</h2>
-  <p>What separates great data scientists from good ones is not the model. It is
-  the communication of it.</p>
-  <ul class="tight small">
-    <li>Concise reports; visualise the key insights</li>
-    <li>Tailor the message: technical for peers, high-level for stakeholders</li>
-    <li>Give one memorable statement &mdash; here: <em>&ldquo;median income is the
-        number one predictor of housing prices&rdquo;</em></li>
-    <li>State what worked, what did not, what you assumed, and where the system
-        is limited</li>
-  </ul>
-</section>
-
-<!-- 63c -->
-<section data-menu-title="Reproducibility">
-  <h2>And make it reproducible</h2>
-  <ul class="tight small">
-    <li>Code accessible to the team, with a structured README</li>
-    <li>Clear notebooks: code, explanation and results together</li>
-    <li>A <code>requirements.txt</code> or <code>environment.yml</code> pinning
-        exact library versions &mdash; or a container image</li>
-    <li>Seeds set for every random generator; every other source of variability
-        removed</li>
-  </ul>
+  <h2>Presenting it, and making it reproducible</h2>
+  <pre><code class="language-python" data-trim>
+joblib.dump(final_model, "my_california_housing_model.pkl")   # with its scores
+  </code></pre>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>The report</strong></p>
+      <ul class="tight smaller">
+        <li>Concise; visualise the key insights</li>
+        <li>Technical for peers, high-level for stakeholders</li>
+        <li>One memorable statement &mdash; here: <em>median income is the number
+            one predictor, and the model should not be trusted at the cap</em></li>
+        <li>What worked, what did not, what you assumed, where it is limited</li>
+      </ul>
+    </div>
+    <div>
+      <p class="small"><strong>The artefact</strong></p>
+      <ul class="tight smaller">
+        <li>Code the team can run, with a structured README</li>
+        <li>Notebooks where code, explanation and results sit together</li>
+        <li><code>requirements.txt</code> or a container image, pinning versions</li>
+        <li>Seeds for every generator; <code>KFold(shuffle=True,
+            random_state=42)</code>, never the default</li>
+      </ul>
+    </div>
+  </div>
   <p class="small fail">This is graded. A result nobody else can reproduce is not
   a result.</p>
+  <p class="smaller muted">Save every model you experiment with together with its
+  cross-validation scores and its validation predictions, so you can compare the
+  <em>kinds</em> of errors they make. And deployment is not the end: performance
+  decays quietly through <em>data drift</em>, so it has to be monitored.</p>
 </section>
 
 <!-- 64 -->
@@ -1208,16 +1470,22 @@ joblib.dump(final_model, "my_california_housing_model.pkl")
 <!-- 65 -->
 <section data-menu-title="Summary">
   <h2>What we learned</h2>
-  <ol class="tight small">
+  <ol class="tight smaller">
     <li>Fitting a linear model is orthogonal projection; the normal equation is
-        the orthogonality condition</li>
+        the orthogonality condition, and with centred features $\theta_0$ is the
+        baseline you already measured</li>
     <li>It fails when features are collinear or $m &lt; n$; the SVD pseudoinverse
         does not</li>
     <li>A tree scoring zero has memorised, not learned</li>
     <li>Training error is not generalisation error</li>
-    <li>Cross-validation gives an honest estimate <em>and</em> its precision</li>
+    <li>Cross-validation gives an honest estimate <em>and</em> its precision
+        &mdash; and two estimates are only different if the paired, per-fold
+        difference says so</li>
     <li>Pipelines make leakage structurally impossible</li>
-    <li>Tune with randomised search; touch the test set once</li>
+    <li>Tune with randomised search; touch the test set once; report an interval</li>
+    <li>An average over 4,128 districts describes none of them. Slice it, look at
+        the worst cases, and never compare two numbers measured on different
+        evaluation sets</li>
   </ol>
 </section>
 
@@ -1230,7 +1498,8 @@ joblib.dump(final_model, "my_california_housing_model.pkl")
     <tr><td>Cross-validation, grid and randomised search</td><td>2</td></tr>
     <tr><td>Pipelines and <code>ColumnTransformer</code></td><td>2</td></tr>
     <tr><td>Overfitting, generalisation error, validation sets</td><td>1, 2</td></tr>
-    <tr><td>Feature importance, bias analysis, deployment</td><td>2</td></tr>
+    <tr><td>Feature importance, error analysis, deployment</td><td>2</td></tr>
+    <tr><td>Transforming the target; <code>TransformedTargetRegressor</code></td><td>2</td></tr>
     <tr><td>Nonparametric models and tree regularisation</td><td>5</td></tr>
   </table>
 </section>

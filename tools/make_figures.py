@@ -600,6 +600,7 @@ def paired_folds(res):
         out[f"{a} - {b}"] = {"mean": float(d.mean()),
                              "std": float(d.std(ddof=1)),
                              "p_value": float(t.pvalue),
+                             "folds_where_first_is_better": int((d < 0).sum()),
                              "all_same_sign": bool((d > 0).all() or (d < 0).all())}
         print(f"    {a} - {b}: {d.mean():+,.0f} ± {d.std(ddof=1):,.0f} per fold, "
               f"p={t.pvalue:.4f}, same sign in every fold="
@@ -669,7 +670,7 @@ def fig_train_vs_cv(res, base):
     # the anchor: predicting one constant
     b0 = base["mean_cv_rmse"]
     ax.axhline(b0, color=ACCENT, lw=2, ls="--")
-    ax.text(2.42, b0, f"predict the mean:\n${b0:,.0f}", va="center",
+    ax.text(2.30, b0, f"predict the mean:\n${b0:,.0f}", va="center",
             ha="center", fontsize=10.5, color=ACCENT, fontweight="bold",
             bbox=dict(boxstyle="round,pad=0.35", facecolor="white",
                       edgecolor=ACCENT))
@@ -953,7 +954,7 @@ def error_analysis(gs, sp, base):
     return out
 
 
-def fig_error_slices(ea):
+def fig_error_slices(ea, overall):
     """RMSE by income category and by ocean proximity, with counts."""
     inc = ea["by_income_cat"]
     oce = ea["by_ocean_proximity"]
@@ -986,6 +987,10 @@ def fig_error_slices(ea):
                 f"${oce[k]['rmse']:,.0f}\nn={oce[k]['n']:,}", ha="center",
                 fontsize=9.5, color=colors[i], fontweight="bold")
     a2.set_ylim(0, max(vals2) * 1.30)
+    for ax in (a1, a2):
+        ax.axhline(overall, color=ACCENT, lw=1.8, ls="--", zorder=4,
+                   label=f"the single reported number, ${overall:,.0f}")
+        ax.legend(loc="upper right", fontsize=9.5, labelcolor=ACCENT)
     fig.suptitle("The average hides this", fontsize=14, color=PRIMARY,
                  fontweight="bold", y=1.02)
     fig.tight_layout()
@@ -1176,7 +1181,7 @@ def main():
     print("Error analysis:")
     ea = cached("error_analysis",
                 lambda: error_analysis(gs, sp, facts["baseline"]))
-    fig_error_slices(ea)
+    fig_error_slices(ea, facts["test_rmse"])
     facts["error_analysis"] = ea
 
     print("Absolute error against the relative criterion in the brief:")
