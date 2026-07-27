@@ -980,12 +980,14 @@ def fig_residuals(gs, sp):
     ax.axvline(500_001, color=ACCENT, ls="--", lw=1.4, alpha=0.8)
     ax.annotate("every capped district sits on this line —\n"
                 "the model cannot predict above the cap\nit was trained on",
-                xy=(498_000, 300_000), xytext=(20_000, 430_000), fontsize=SMALL,
+                xy=(498_000, 300_000), xytext=(14_000, 452_000), fontsize=SMALL,
                 color=ACCENT, fontweight="bold",
                 bbox=dict(boxstyle="round,pad=0.45", facecolor="white",
                           edgecolor=ACCENT, alpha=0.95),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
-    ax.legend(loc="upper left")
+    # lower right: the upper left is where the callout goes, and at 15px the
+    # two collided
+    ax.legend(loc="lower right")
     fig.tight_layout()
     return save(fig, "l2-residuals", raster=True)
 
