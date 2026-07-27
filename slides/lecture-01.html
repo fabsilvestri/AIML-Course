@@ -596,11 +596,17 @@ for a in [0.01, 0.1, 1, 10, 100]:
 print(f"best alpha={best[0]}, test RMSE={best[1]:,.0f}")
 </code></pre>
   <ol class="tight smaller">
-    <li>The printed number is the smallest of five test-set scores. What does it
-        estimate, and what does it <em>not</em>?</li>
-    <li>Name the defect without using the word &ldquo;overfitting&rdquo;.</li>
-    <li>Rewrite the loop so the number is defensible. Two lines is enough.</li>
-    <li>Will the corrected number be higher, lower, or can you not say?</li>
+    <li>This program never creates a validation set. <strong>Which object is doing
+        that job?</strong></li>
+    <li>As an estimate of the model&rsquo;s error on new data, the printed RMSE is
+        <strong>(i)</strong> too optimistic, <strong>(ii)</strong> too pessimistic,
+        or <strong>(iii)</strong> neither. Choose one, and give the reason in a
+        sentence.</li>
+    <li>Rewrite the program so the printed number is honest. Two statements is
+        enough.</li>
+    <li>In expectation over repeated train/test splits, is the honest number
+        <strong>higher</strong> or <strong>lower</strong>? Is that guaranteed on
+        any <em>single</em> split?</li>
   </ol>
   <aside class="notes">Give them two minutes on (a) and (b) before advancing.
   Nobody can answer (c) or (d) yet — that is the point. This is shown to
@@ -609,37 +615,37 @@ print(f"best alpha={best[0]}, test RMSE={best[1]:,.0f}")
 </section>
 
 <!-- ANSWERS -->
-<section data-menu-title="◇ Answers — (a) and (b)">
-  <h2>Specimen answers &mdash; (a) and (b)</h2>
+<section data-menu-title="◇ Answers — 1 and 2">
+  <h2>Specimen answers &mdash; 1 and 2</h2>
   <div class="cols">
     <div>
-      <p><strong>(a)</strong> What does it estimate?</p>
+      <p><strong>1.</strong> Which object is the validation set?</p>
+      <p class="fragment" style="font-size:1.15em"><span class="fix">The test set.</span></p>
       <ul class="tight smaller fragment">
-        <li>The test-set error of whichever $\alpha$ happened to look best
-            <em>on this test set</em></li>
-        <li><span class="fail">Not</span> the error of that model on unseen data
-            &mdash; the test set was used to choose, so it is no longer unseen</li>
-        <li>It is the <strong>minimum of five noisy estimates</strong>, and a
-            minimum of noisy estimates is biased downward</li>
+        <li>Line 4 scores on it; line 5 uses that score to <em>choose</em>
+            $\alpha$. Choosing is a validation set&rsquo;s job</li>
+        <li>Once it has been used to choose, no held-out data remains</li>
       </ul>
     </div>
     <div>
-      <p><strong>(b)</strong> Name the defect.</p>
+      <p><strong>2.</strong> Too optimistic, too pessimistic, or neither?</p>
+      <p class="fragment" style="font-size:1.15em"><span class="fix">(i) too optimistic.</span></p>
       <ul class="tight smaller fragment">
-        <li>The test set was used for <strong>model selection</strong>. It has
-            become a validation set, and no held-out estimate remains</li>
-        <li class="fix">Also accepted: selection bias &middot; the winner&rsquo;s
-            curse &middot; optimism from maximising over candidates</li>
-        <li class="fail">Not accepted: &ldquo;overfitting&rdquo; on its own
-            &mdash; which is why the question forbids the word</li>
+        <li>The printed value is the <strong>minimum</strong> of five numbers
+            measured on the same data used to report it</li>
+        <li>$\alpha$ was selected <em>because</em> it scored lowest there, so the
+            score cannot also be a fair test of it</li>
       </ul>
     </div>
   </div>
+  <aside class="notes">Both answers are one word or one roman numeral. If a
+  candidate writes three paragraphs without producing "the test set" and "(i)",
+  they have not answered the question.</aside>
 </section>
 
 <!-- ANSWERS -->
-<section data-menu-title="◇ Answer — (c)">
-  <h2>Specimen answer &mdash; (c) the repair</h2>
+<section data-menu-title="◇ Answer — 3">
+  <h2>Specimen answer &mdash; 3, the repair</h2>
   <pre><code class="language-python" data-trim data-line-numbers="1-4|1-2|4">gs = GridSearchCV(Ridge(), {"alpha": [0.01, 0.1, 1, 10, 100]},
                   scoring="neg_root_mean_squared_error", cv=10).fit(X_train, y_train)
 
@@ -657,26 +663,33 @@ print(root_mean_squared_error(y_test, gs.predict(X_test)))
 </section>
 
 <!-- ANSWERS -->
-<section data-menu-title="◇ Answer — (d)">
-  <h2>Specimen answer &mdash; (d) the one that sorts the room</h2>
-  <p><strong>Higher &mdash; in expectation.</strong> For two independent reasons:</p>
-  <ol class="tight small">
-    <li>The original number was a <em>minimum</em> over five noisy estimates, so
-        it is biased downward</li>
-    <li>The original $\alpha$ was chosen to look good on the very set it was then
-        scored on</li>
-  </ol>
-  <div class="panel panel-fail">
-    <span class="panel-title">But you cannot be certain</span>
-    The bias is a statement about <em>repeated draws</em>, not about this one
-    sample. Cross-validation might also select a genuinely better $\alpha$. On a
-    single dataset the corrected number can come out lower.
+<section data-menu-title="◇ Answer — 4">
+  <h2>Specimen answer &mdash; 4</h2>
+  <div class="cols">
+    <div>
+      <p><strong>In expectation?</strong></p>
+      <p style="font-size:1.3em"><span class="fix">Higher.</span></p>
+      <ul class="tight smaller">
+        <li>The printed number was a <em>minimum</em> over five noisy estimates,
+            so it sits below the truth</li>
+        <li>$\alpha$ was chosen to look good on the very set it was scored on</li>
+      </ul>
+    </div>
+    <div>
+      <p><strong>Guaranteed on one split?</strong></p>
+      <p style="font-size:1.3em"><span class="fail">No.</span></p>
+      <ul class="tight smaller">
+        <li>The bias is a statement about <em>repeated draws</em>, not about this
+            sample</li>
+        <li>Cross-validation may also pick a genuinely better $\alpha$</li>
+      </ul>
+    </div>
   </div>
-  <p class="small fail">Full marks require both halves: the direction, <em>and</em>
-  the admission that it is not guaranteed.</p>
-  <aside class="notes">Half the room will say "higher" and stop. That is a
-  partial answer. The other failure is "you cannot say" with no direction — also
-  partial. Both halves, or neither.</aside>
+  <p class="small fail">Both halves are required. <em>Higher</em> alone, or
+  <em>no</em> alone, is half the marks.</p>
+  <aside class="notes">Splitting the subtle point into two questions with fixed
+  answers is deliberate: "higher or lower" and "guaranteed, yes or no" can be
+  marked identically by any examiner.</aside>
 </section>
 
 <!-- 16 -->
