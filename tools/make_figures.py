@@ -21,6 +21,8 @@ measurement does not re-run the others. Delete the file to refit everything.
 from __future__ import annotations
 
 import json
+import re
+import struct
 from functools import reduce
 from math import gcd
 import pickle
@@ -1232,6 +1234,72 @@ def island_check(h, sp):
 
 # ---------------------------------------------------------------- driver
 
+# --------------------------------------------------- the on-slide text floor
+
+# Mirrors .fig-wide / .fig-tall in assets/css/custom.css. If those caps change,
+# change these.
+CANVAS_W, CAP_WIDE, CAP_TALL, FLOOR_PX = 1280, 420, 560, 15.0
+
+
+def _natural_css_px(path: Path) -> tuple[float, float]:
+    """The size the browser gives a figure before any CSS scaling."""
+    if path.suffix == ".png":
+        w, h = struct.unpack(">II", path.read_bytes()[16:24])
+        return float(w), float(h)          # one image pixel is one CSS pixel
+    head = path.read_text()[:600]
+    # matplotlib writes points; the hand-authored d-*.svg diagrams are unitless
+    # (user units, which are CSS pixels already).
+    pt = re.search(r'width="([\d.]+)pt"\s+height="([\d.]+)pt"', head)
+    if pt:
+        w, h = float(pt.group(1)), float(pt.group(2))
+        return w * 96 / 72, h * 96 / 72    # the browser converts pt at 96/72
+    plain = re.search(r'width="([\d.]+)"\s+height="([\d.]+)"', head)
+    if plain:
+        return float(plain.group(1)), float(plain.group(2))
+    raise RuntimeError(f"{path.name}: cannot read intrinsic size from the header")
+
+
+def check_text_floor() -> list[str]:
+    """Refuse to ship a figure whose smallest label lands under the floor.
+
+    Two conversions have to line up and neither is obvious, which is why this is
+    a check rather than a paragraph in TRICKS:
+
+      * matplotlib font sizes are POINTS. A point becomes 96/72 = 1.33 CSS px in
+        an SVG, but dpi/72 = 2.22 px in a PNG rasterised at 160 — so a raster is
+        authored 1.67x larger for the same `fontsize`.
+      * the slide then scales the image uniformly (uniformly only since the
+        .fig-wide aspect bug was fixed) by min(1280/w, cap/h).
+
+    Today nothing is under the floor, but only because the ~0.5x downscale of
+    the near-square rasters happens to cancel the 1.67x from dpi=160. Change the
+    dpi, the caps, or save a square figure as SVG instead of PNG, and text drops
+    under the floor with nothing to say so.
+    """
+    used: dict[str, str] = {}          # figure filename -> the figure's class
+    for deck in sorted(ROOT.glob("slides/*.html")):
+        html = deck.read_text()
+        for m in re.finditer(r'<figure class="([^"]*)"[^>]*>\s*<img\s+src="([^"]+)"',
+                             html):
+            used[Path(m.group(2)).name] = m.group(1)
+
+    problems = []
+    for name, classes in sorted(used.items()):
+        path = OUT / name
+        if not path.is_file():
+            continue
+        nw, nh = _natural_css_px(path)
+        cap = CAP_TALL if "fig-tall" in classes else CAP_WIDE
+        scale = min(CANVAS_W / nw, cap / nh)
+        px_per_pt = (160 if path.suffix == ".png" else 96) / 72
+        on_slide = SMALL * px_per_pt * scale
+        if on_slide < FLOOR_PX:
+            problems.append(
+                f"{name}: smallest text renders at {on_slide:.1f}px on the "
+                f"slide (floor {FLOOR_PX:.0f}). Widen it, or raise its sizes.")
+    return problems
+
+
 def main():
     setup()
     load_cache()
@@ -1350,6 +1418,12 @@ def main():
         "n_bedrooms_nonnull": facts["n_rows"] - facts["n_missing_bedrooms"],
         "island_importance_rank_from_bottom": 1,
     }
+
+    if (floor_problems := check_text_floor()):
+        print("\nfigures whose text lands under the on-slide floor:")
+        for p_ in floor_problems:
+            print("  " + p_)
+        raise SystemExit(1)
 
     out = OUT / "figures.json"
     out.write_text(json.dumps(facts, indent=2))

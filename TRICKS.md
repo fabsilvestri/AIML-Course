@@ -504,6 +504,14 @@ for f in ("SourceSans3-Regular.ttf", "SourceSans3-SemiBold.ttf",
 Then shrink each `figsize` ~20%, and delete the per-call `fontsize=` arguments
 that currently defeat the global scale.
 
+**`width: 100%` next to `max-height` distorts the aspect ratio.** The two axes
+are then set independently and the browser squashes the image into the box.
+`.fig-wide` did exactly this, stretching seven figures horizontally by 10–48%
+— a heatmap whose cells should be square rendered at 1.48 : 1, and the
+letterforms in those figures were wider than the same typeface on the slide
+beside them. Use `max-width` with `max-height`, never `width` with `max-height`.
+To fill the full slide width, author at aspect ≤ 0.328.
+
 **How big a plot's text ends up, in three steps.** This is not obvious and was
 got wrong twice.
 
@@ -518,11 +526,24 @@ got wrong twice.
 3. So a figure taller than about 0.44 of its width gets clamped by height, and
    all its text shrinks by that ratio.
 
-Net: measured across both decks, 15pt text lands between 16.5px and 28px —
-rasters at the bottom of that range, SVGs at the top. Nothing is under the 15px
-floor, but the margin on a tall PNG is thin. **Do not "fix" this by scaling
-fontsize without checking the format**: multiplying a raster's sizes by the
-clamp ratio takes its labels past the 30px slide body text.
+**You do not have to do this arithmetic — `make_figures.py` does it and refuses
+to ship a figure under the floor.** It reads each figure's intrinsic size, finds
+which `.fig-*` class the decks use it with, applies the right px-per-point, and
+raises if the smallest label would land below 15px. Current minimum across all
+22 figures is 17.4px.
+
+That check exists because the margin was an accident: the ~0.5× downscale of the
+near-square rasters happens to cancel the 1.67× from `dpi=160`, and nothing said
+so. Change the dpi, change the caps, or save a square figure as SVG instead of
+PNG, and text drops under the floor silently.
+
+Two ways to get this wrong, both of which happened:
+
+- **Do not scale a raster's `fontsize` by the clamp ratio.** Multiplying
+  `◆ Residuals` by ~1.7 would take its labels to ~31px — larger than the 30px
+  slide body text.
+- **Measure the vertical scale, not the horizontal one.** Text height follows
+  `sy`. Reading `sx` off a stretched figure overstates it.
 
 **The palette lives in two places.** `make_figures.py` carries its own copy of
 the hex values. Any change to a `--aiml-*` token in `custom.css` must be mirrored
