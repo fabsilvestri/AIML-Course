@@ -277,15 +277,29 @@ secondary. Do not use them decoratively.
 Each of these produced a bug that looked fine until someone read the slide
 carefully. All are checked by `tools/check_decks.py` where checking is possible.
 
-### 9.1 KaTeX eats currency
+### 9.1 A dollar sign is a maths delimiter in three different renderers
 
-`$120,000 and $265,000` is read as inline maths and renders as italic
-*120,000and265,000* — both dollar signs and the spaces gone.
+This is one hazard, not three, and it has now been rediscovered three times in
+three files. **A course about money, taught with maths, in three renderers that
+all treat `$…$` as an equation.** Read this once and you will not meet it again.
 
-**Always** wrap prose currency: `<span class="usd">$120,000</span>`. Table cells
-happen to survive (each `<td>` is its own text node) but wrap them anyway for
-consistency. Never write `$49{,}037$` intending a dollar sign — that is maths,
-and renders without the symbol.
+| where | what happens | the defence |
+|---|---|---|
+| **KaTeX**, in slides and the site | `$120,000 and $265,000` renders as italic *120,000and265,000* — both signs and the spaces gone | wrap every prose amount: `<span class="usd">$120,000</span>` |
+| **matplotlib**, in any plot string | mathtext turns a cluster listing into an italic equation reading *187,500(76)225,000* | `"text.parse_math": False` in `setup()`, set script-wide |
+| **the checkers**, reading the decks | must tell `$1.0$` (maths) from `$120,000 and ` (currency) or they cry wolf on every slide | the backslash-plus-shape test in `check_decks.py` and `check_provenance.py` |
+
+Two corollaries worth stating outright:
+
+- Never write `$49{,}037$` meaning a dollar amount. That is maths, and renders as
+  an italic number **with no currency symbol at all** — which is worse than the
+  visible breakage, because it looks deliberate.
+- Table cells survive by accident (each `<td>` is its own text node, so there is
+  nothing to pair with). Wrap them anyway. The next edit that merges two cells
+  into a sentence will silently reintroduce the bug.
+
+If you add a fourth renderer, add a fourth row here rather than a fourth
+defence somewhere else.
 
 ### 9.2 Content-table CSS bleeds into code blocks
 
