@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 2 — Your RMSE was a lie</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- ==================================================================== -->
+<!-- OPENING                                                              -->
+<!-- ==================================================================== -->
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Your RMSE was a lie</h1>
+  <p class="subtitle">Application 1 &middot; California housing</p>
+  <p><span class="badge badge-fix">Lecture 2 &middot; Fix</span>
+     <span class="badge badge-math">Thread 1</span>
+     <span class="badge badge-ch">Géron Ch. 2 &amp; 4</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Ask for the committed sheets before starting. Nobody
+  proceeds without one on the desk.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we left off">
+  <h2>Where we left off</h2>
+  <table>
+    <tr><th>Model</th><th class="num">RMSE on training data</th></tr>
+    <tr><td>Human experts</td><td class="num">~$60,000</td></tr>
+    <tr><td>Linear regression</td><td class="num">$68,973</td></tr>
+    <tr><td>Decision tree</td><td class="num fail">0.0</td></tr>
+    <tr><td>Random forest</td><td class="num">$17,551</td></tr>
+  </table>
+  <p class="fail" style="font-size:1.05em">Two of these numbers are meaningless.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li><span class="badge badge-math">Thread 1</span> Least squares and the
+        normal equation <span class="muted small">(20 min)</span></li>
+    <li>Diagnose &mdash; why a tree scored exactly zero
+        <span class="muted small">(20 min)</span></li>
+    <li>Fix &mdash; cross-validation, pipelines, tuning
+        <span class="muted small">(35 min)</span></li>
+    <li>Re-measure and red-team <span class="muted small">(15 min)</span></li>
+  </ol>
+</section>
+
+<!-- ==================================================================== -->
+<!-- MATHEMATICAL THREAD 1 (20 min)                                       -->
+<!-- ==================================================================== -->
+
+<!-- 4 -->
+<section class="divider" data-menu-title="◆ Thread 1">
+  <p class="kicker">Mathematical thread 1</p>
+  <h1>Least squares and<br>the normal equation</h1>
+  <p class="clock">20 minutes</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="The question">
+  <h2>The question</h2>
+  <p style="font-size:1.15em">You called <code>LinearRegression().fit()</code>.</p>
+  <p style="font-size:1.15em">What did it actually compute &mdash; and when does
+  that computation <em>fail</em>?</p>
+  <div class="panel panel-math">
+    <span class="panel-title">Why you need the answer</span>
+    The failure condition is exactly the warning from the previous lecture about
+    engineering features as weighted sums.
+  </div>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="The model">
+  <h2>The linear model</h2>
+  <div class="eqn-box">
+    $$\hat{y} \;=\; \theta_0 + \theta_1 x_1 + \theta_2 x_2 + \dots + \theta_n x_n$$
+  </div>
+  <ul class="tight small">
+    <li>$\hat{y}$ &mdash; the predicted value</li>
+    <li>$n$ &mdash; the number of features</li>
+    <li>$x_i$ &mdash; the $i$-th feature value</li>
+    <li>$\theta_j$ &mdash; the $j$-th model parameter, including the bias term $\theta_0$</li>
+  </ul>
+  <p class="small muted">A weighted sum of the input features, plus a constant
+  called the <em>bias</em> or <em>intercept</em> term.</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="Vectorised form">
+  <h2>Vectorised form</h2>
+  <div class="eqn-box">
+    $$\hat{y} \;=\; h_{\boldsymbol\theta}(\mathbf{x}) \;=\; \boldsymbol\theta \cdot \mathbf{x}$$
+  </div>
+  <p class="small">where $\mathbf{x}$ contains $x_0$ through $x_n$ with
+  $x_0 \equiv 1$, so the dot product reproduces the bias term.</p>
+  <div class="panel">
+    In machine learning, vectors are usually <strong>column vectors</strong>. With
+    that convention the prediction is $\boldsymbol\theta^{\intercal}\mathbf{x}$ —
+    the same quantity, written as a single-cell matrix rather than a scalar.
+  </div>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="What 'best fit' means">
+  <h2>What &ldquo;fit&rdquo; means</h2>
+  <p>Training the model means setting $\boldsymbol\theta$ so the model best fits
+  the training set. To do that we need a measure of how badly it fits.</p>
+  <div class="eqn-box">
+    $$\mathrm{MSE}(\mathbf{X}, y, h_{\boldsymbol\theta}) \;=\; \frac{1}{m}\sum_{i=1}^{m}\left(\boldsymbol\theta^{\intercal}\mathbf{x}^{(i)} - y^{(i)}\right)^{2}$$
+  </div>
+  <p class="eqn-label">Mean squared error of a linear hypothesis</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="MSE not RMSE">
+  <h2>Why minimise MSE and not RMSE?</h2>
+  <p>Because $\sqrt{\cdot}$ is strictly increasing on $[0,\infty)$:</p>
+  <div class="eqn-box">
+    $$\arg\min_{\boldsymbol\theta} \sqrt{f(\boldsymbol\theta)} \;=\; \arg\min_{\boldsymbol\theta} f(\boldsymbol\theta)$$
+  </div>
+  <p>Same minimiser, simpler algebra.</p>
+  <div class="panel panel-book">
+    Learning algorithms often optimise a different function during training than
+    the one used to evaluate the final model &mdash; because it is easier to
+    optimise, or because it carries extra terms needed only during training.
+  </div>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="Matrix form">
+  <h2>In matrix form</h2>
+  <p>Stack the instances as rows of $\mathbf{X}$ and the labels into $y$:</p>
+  <div class="eqn-box">
+    $$\mathrm{MSE}(\boldsymbol\theta) \;=\; \frac{1}{m}\,\lVert \mathbf{X}\boldsymbol\theta - y \rVert_2^{\,2}$$
+  </div>
+  <p>We are minimising a squared Euclidean norm. <strong>That is a geometric
+  statement</strong>, and it is the whole content of this thread.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="Differentiate">
+  <h2>Differentiate and set to zero</h2>
+  <div class="eqn-box">
+    $$\nabla_{\boldsymbol\theta}\,\mathrm{MSE}(\boldsymbol\theta) \;=\; \frac{2}{m}\,\mathbf{X}^{\intercal}\!\left(\mathbf{X}\boldsymbol\theta - y\right)$$
+  </div>
+  <p class="derive-step">Setting the gradient to zero at the minimiser $\hat{\boldsymbol\theta}$:</p>
+  <div class="eqn-box">
+    $$\mathbf{X}^{\intercal}\!\left(\mathbf{X}\hat{\boldsymbol\theta} - y\right) \;=\; \mathbf{0}$$
+  </div>
+  <p class="small muted">A stationary point. Is it a minimum?</p>
+</section>
+
+<!-- 11b -->
+<section data-menu-title="Convexity">
+  <h2>Why that stationary point is <em>the</em> minimum</h2>
+  <p>The Hessian of the MSE is</p>
+  <div class="eqn-box">
+    $$\nabla^{2}_{\boldsymbol\theta}\,\mathrm{MSE} \;=\; \frac{2}{m}\,\mathbf{X}^{\intercal}\mathbf{X}$$
+  </div>
+  <p>For any vector $\mathbf{v}$, $\;\mathbf{v}^{\intercal}\mathbf{X}^{\intercal}\mathbf{X}\mathbf{v} = \lVert \mathbf{X}\mathbf{v}\rVert_2^2 \ge 0$,
+  so the Hessian is positive semi-definite and the MSE is <strong>convex</strong>.</p>
+  <p class="fix small">A convex function has no local minima — only a global one.
+  Any stationary point is it.</p>
+  <p class="small muted">This is also why gradient descent, in Lecture 6, is
+  guaranteed to find the same answer.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="The normal equation">
+  <h2>The normal equation</h2>
+  <p class="derive-step">Rearranging $\mathbf{X}^{\intercal}\mathbf{X}\hat{\boldsymbol\theta} = \mathbf{X}^{\intercal}y$:</p>
+  <div class="eqn-box">
+    $$\hat{\boldsymbol\theta} \;=\; \left(\mathbf{X}^{\intercal}\mathbf{X}\right)^{-1}\mathbf{X}^{\intercal}\,y$$
+  </div>
+  <p class="eqn-label">A closed-form solution &mdash; no iteration required</p>
+  <p class="small muted">A closed-form equation is composed only of a finite
+  number of constants, variables and standard operations. No infinite sums, no
+  limits, no integrals.</p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="The geometry">
+  <h2>Read it geometrically</h2>
+  <p>Look again at the stationarity condition:</p>
+  <div class="eqn-box">
+    $$\mathbf{X}^{\intercal}\underbrace{\left(\mathbf{X}\hat{\boldsymbol\theta} - y\right)}_{\text{residual } \mathbf{r}} \;=\; \mathbf{0}$$
+  </div>
+  <p style="font-size:1.1em">Every column of $\mathbf{X}$ is
+  <strong>orthogonal to the residual</strong>.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Projection">
+  <h2>Least squares <em>is</em> orthogonal projection</h2>
+  <ul class="tight">
+    <li>$\mathbf{X}\boldsymbol\theta$ ranges over the <strong>column space</strong> of $\mathbf{X}$ as $\boldsymbol\theta$ varies</li>
+    <li>Minimising $\lVert \mathbf{X}\boldsymbol\theta - y\rVert_2$ finds the point of that subspace closest to $y$</li>
+    <li>The closest point of a subspace to a vector is its <strong>orthogonal projection</strong></li>
+  </ul>
+  <div class="panel panel-math">
+    Fitting a linear model is projecting the label vector onto the span of the
+    features. The residual is what the features cannot reach.
+  </div>
+</section>
+
+<!-- 14b -->
+<section data-menu-title="Verify orthogonality">
+  <h2>Verify it on our own data</h2>
+  <p>If the geometry is right, the residual must be orthogonal to every column of
+  $\mathbf{X}$ &mdash; so $\mathbf{X}^{\intercal}\mathbf{r}$ should be numerically zero.</p>
+  <pre><code class="language-python" data-trim>
+residual = X_b @ theta_best - y
+print(np.abs(X_b.T @ residual).max())        # ~1e-9, i.e. zero
+  </code></pre>
+  <p class="small muted">Not exactly zero: floating-point arithmetic. But nine
+  orders of magnitude below the scale of the data.</p>
+  <p class="fix small">A cheap, decisive check that your solver did what the
+  mathematics says it should.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="Compute it">
+  <h2>Compute it directly</h2>
+  <pre><code class="language-python" data-trim>
+import numpy as np
+from sklearn.preprocessing import add_dummy_feature
+
+X_b = add_dummy_feature(X)              # add x0 = 1 to each instance
+theta_best = np.linalg.inv(X_b.T @ X_b) @ X_b.T @ y
+  </code></pre>
+  <p class="small muted">The <code>@</code> operator is matrix multiplication.
+  PyTorch, TensorFlow and JAX all support it; pure Python lists do not.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="Compare">
+  <h2>And compare</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; lin_reg = LinearRegression()
+&gt;&gt;&gt; lin_reg.fit(X, y)
+&gt;&gt;&gt; lin_reg.intercept_, lin_reg.coef_
+(array([3.69084138]), array([[3.32960458]]))
+  </code></pre>
+  <p>Identical, to floating-point precision.</p>
+  <div class="panel">
+    Note that Scikit-Learn separates the bias term (<code>intercept_</code>) from
+    the feature weights (<code>coef_</code>).
+  </div>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="When it breaks">
+  <h2>When does this break?</h2>
+  <p style="font-size:1.15em">The equation requires
+  $\left(\mathbf{X}^{\intercal}\mathbf{X}\right)^{-1}$ to exist.</p>
+  <p>$\mathbf{X}^{\intercal}\mathbf{X}$ is $(n{+}1)\times(n{+}1)$. It is
+  invertible if and only if it has full rank &mdash; equivalently, if and only if
+  $\mathbf{X}$ has linearly independent columns.</p>
+  <p class="fail">Two ways to lose that.</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="Failure 1">
+  <h2>Failure 1 &middot; More features than instances</h2>
+  <p>If $m &lt; n$, then $\operatorname{rank}(\mathbf{X}) \le m &lt; n+1$, so
+  $\mathbf{X}^{\intercal}\mathbf{X}$ is singular.</p>
+  <div class="panel">
+    Infinitely many parameter vectors fit the data exactly. The problem is not
+    that there is no solution &mdash; it is that there are too many.
+  </div>
+  <p class="small muted">Common in genomics, text, and any wide-feature setting.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="Failure 2">
+  <h2>Failure 2 &middot; Collinear features</h2>
+  <p>If one column is a linear combination of others, the columns are dependent
+  and $\mathbf{X}^{\intercal}\mathbf{X}$ is singular again.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">The previous lecture&rsquo;s warning, explained</span>
+    &ldquo;When creating new combined features, avoid simple weighted sums of
+    existing features.&rdquo;<br><br>
+    A weighted sum of existing columns <em>is</em> a linear combination. You would
+    be manufacturing the singularity yourself.
+  </div>
+  <aside class="notes">This is the payoff of the callback. Pause here.</aside>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="Near-singular">
+  <h2>Near-singular is also a problem</h2>
+  <p>Exact collinearity is rare; <em>near</em> collinearity is common.</p>
+  <ul class="tight">
+    <li>$\mathbf{X}^{\intercal}\mathbf{X}$ is invertible but ill-conditioned</li>
+    <li>Tiny changes in the training set produce large changes in $\hat{\boldsymbol\theta}$</li>
+    <li>The model becomes <strong>numerically unstable</strong></li>
+  </ul>
+  <p class="small muted">In Lecture 6 we will repair this with ridge regression,
+  which adds $\alpha\mathbf{A}$ and makes the matrix invertible for every
+  $\alpha &gt; 0$.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="The pseudoinverse">
+  <h2>What Scikit-Learn actually does</h2>
+  <p>It does not invert anything. It computes</p>
+  <div class="eqn-box">
+    $$\hat{\boldsymbol\theta} \;=\; \mathbf{X}^{+}\,y$$
+  </div>
+  <p>where $\mathbf{X}^{+}$ is the <strong>pseudoinverse</strong> &mdash;
+  specifically the Moore&ndash;Penrose inverse.</p>
+  <pre><code class="language-python" data-trim>
+np.linalg.pinv(X_b) @ y                  # same result
+  </code></pre>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="SVD">
+  <h2>Computed by SVD</h2>
+  <p>Singular value decomposition factors the training matrix as</p>
+  <div class="eqn-box">
+    $$\mathbf{X} \;=\; \mathbf{U}\,\boldsymbol\Sigma\,\mathbf{V}^{\intercal}
+      \qquad\Longrightarrow\qquad
+      \mathbf{X}^{+} \;=\; \mathbf{V}\,\boldsymbol\Sigma^{+}\mathbf{U}^{\intercal}$$
+  </div>
+  <p class="small">To build $\boldsymbol\Sigma^{+}$: take $\boldsymbol\Sigma$, set
+  to zero every value below a tiny threshold, replace the remaining values by
+  their reciprocals, and transpose.</p>
+  <p class="fix">The pseudoinverse is <strong>always defined</strong>, even when
+  the inverse is not.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="Complexity">
+  <h2>What it costs</h2>
+  <table>
+    <tr><th>Method</th><th>In $n$ (features)</th><th>In $m$ (instances)</th></tr>
+    <tr><td>Normal equation</td><td>$O(n^{2.4})$ to $O(n^{3})$</td><td>$O(m)$</td></tr>
+    <tr><td>SVD (Scikit-Learn)</td><td>$O(n^{2})$</td><td>$O(m)$</td></tr>
+  </table>
+  <ul class="tight small">
+    <li>Double the features with the normal equation &rarr; roughly 5 to 8 times slower</li>
+    <li>Double the features with SVD &rarr; roughly 4 times slower</li>
+    <li>Both are <strong>linear in the number of instances</strong> &mdash; they
+        handle large training sets well, provided the data fits in memory</li>
+  </ul>
+  <p class="small fail">Both become very slow when $n$ grows large — say 100,000
+  features. That is what gradient descent is for.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Thread 1 summary">
+  <h2>Thread 1 &middot; Summary</h2>
+  <ul class="tight">
+    <li>Fitting a linear model minimises $\lVert\mathbf{X}\boldsymbol\theta - y\rVert_2^2$</li>
+    <li>The minimiser satisfies $\mathbf{X}^{\intercal}(\mathbf{X}\hat{\boldsymbol\theta}-y)=\mathbf{0}$: the residual is orthogonal to every feature</li>
+    <li>Hence $\hat{\boldsymbol\theta} = (\mathbf{X}^{\intercal}\mathbf{X})^{-1}\mathbf{X}^{\intercal}y$, when the inverse exists</li>
+    <li>It fails to exist when $m &lt; n$ or when features are collinear</li>
+    <li>The SVD-based pseudoinverse is always defined and cheaper</li>
+  </ul>
+  <p class="small muted">Examinable: derive the normal equation; state and justify
+  the invertibility condition.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- DIAGNOSE (20 min)                                                    -->
+<!-- ==================================================================== -->
+
+<!-- 25 -->
+<section class="divider" data-menu-title="◆ Diagnose">
+  <p class="kicker">Part two</p>
+  <h1>Diagnose</h1>
+  <p class="clock">20 minutes &middot; why a tree scored zero</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="The suspect">
+  <h2>The suspect</h2>
+  <p class="big-num bad">0.0</p>
+  <p style="font-size:1.1em">A decision tree made <strong>no error at all</strong>
+  on 16,512 districts.</p>
+  <p>Two hypotheses. Only one of them is flattering.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Hypothesis 1">
+  <h2>Hypothesis 1 &middot; The model is perfect</h2>
+  <p>Housing prices would have to be an exact deterministic function of eight
+  census attributes.</p>
+  <ul class="tight small">
+    <li>Two identical districts would always have identical median prices</li>
+    <li>No measurement noise anywhere in a census</li>
+    <li>No influence from anything not in our eight columns</li>
+  </ul>
+  <p class="fail" style="font-size:1.1em">Reject.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Hypothesis 2">
+  <h2>Hypothesis 2 &middot; The model memorised</h2>
+  <p>A decision tree left unconstrained keeps splitting until every leaf is pure.</p>
+  <div class="panel">
+    With enough depth it can isolate <strong>every single training district into
+    its own leaf</strong>. Then predicting the training set is a lookup, and a
+    lookup has zero error.
+  </div>
+  <p>This is <strong>overfitting</strong>: excellent on the training data,
+  useless on anything else.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Nonparametric">
+  <h2>Why trees are especially prone to it</h2>
+  <p>Decision trees make very few assumptions about the data. Left unconstrained,
+  the tree structure adapts itself to the training data &mdash; fitting it very
+  closely, most likely overfitting it.</p>
+  <div class="panel panel-book">
+    Such a model is called <em>nonparametric</em>: not because it has no
+    parameters, but because the <strong>number</strong> of parameters is not
+    fixed before training, so the structure is free to follow the data.
+  </div>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="The real error">
+  <h2>But overfitting is not the bug</h2>
+  <p style="font-size:1.15em">Overfitting is a property of the model.</p>
+  <p style="font-size:1.15em" class="fail">The bug is that we could not
+  <em>see</em> it.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">The cardinal error</span>
+    We measured the RMSE on <strong>the same data the model was trained on</strong>.
+  </div>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Training error">
+  <h2>Training error tells you almost nothing</h2>
+  <ul class="tight">
+    <li>It measures how well the model reproduces what it has already seen</li>
+    <li>The goal is performance on <strong>new</strong> instances</li>
+    <li>Low training error with high generalisation error <em>is the definition of overfitting</em></li>
+  </ul>
+  <p class="small">Linear regression&rsquo;s $68,973 was also a training number.
+  It happens to be roughly honest &mdash; but only because the model is too rigid
+  to memorise anything.</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Why not the test set">
+  <h2>&ldquo;Then use the test set&rdquo;</h2>
+  <p class="fail" style="font-size:1.1em">No.</p>
+  <p>We are still choosing between models and tuning them. If we consult the test
+  set now, we will select whatever suits it, and our estimate of generalisation
+  error becomes optimistic.</p>
+  <div class="panel">
+    The test set is used <strong>once</strong>, at the very end, to estimate the
+    generalisation error of a system we have already committed to.
+  </div>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="A second bug">
+  <h2>A second bug, which we avoided by luck</h2>
+  <p>Consider this extremely common pattern:</p>
+  <pre><code class="language-python" data-trim>
+# WRONG — do not do this
+scaler = StandardScaler()
+housing_scaled = scaler.fit_transform(housing_full)      # all the data
+train_set, test_set = train_test_split(housing_scaled)   # then split
+  </code></pre>
+  <p class="fail">The scaler saw the test set. Its mean and standard deviation
+  encode information from data the model must not know about.</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="Leakage">
+  <h2>Data leakage</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Definition</span>
+    Information from outside the training set influences the model. The reported
+    score improves. The deployed system does not.
+  </div>
+  <p>Leakage is the single most common way a machine learning result becomes
+  fiction. It never raises an exception.</p>
+  <p class="small muted">Our code in the previous lecture escaped it &mdash; not because we were
+  careful, but because we happened to put the scaler inside a pipeline. Let us
+  make that deliberate.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="The rule">
+  <h2>The rule, stated once</h2>
+  <div class="panel">
+    <span class="panel-title">Never violate this</span>
+    Fit every transformer on the <strong>training set only</strong>. Never call
+    <code>fit()</code> or <code>fit_transform()</code> on the validation set, the
+    test set, or new data. Once fitted, you may <code>transform()</code> anything.
+  </div>
+  <p class="small">This applies to imputers, scalers, encoders, dimensionality
+  reduction &mdash; everything that learns anything from data.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Diagnosis">
+  <h2>Diagnosis</h2>
+  <table>
+    <tr><th>Number</th><th>Verdict</th></tr>
+    <tr><td>Linear regression &mdash; $68,973</td><td>roughly honest; the model underfits</td></tr>
+    <tr><td>Decision tree &mdash; 0.0</td><td class="miss">meaningless: memorised, measured on itself</td></tr>
+    <tr><td>Random forest &mdash; $17,551</td><td class="miss">meaningless for the same reason</td></tr>
+  </table>
+  <p>We need a way to estimate generalisation error <strong>without</strong>
+  touching the test set.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- FIX (35 min)                                                         -->
+<!-- ==================================================================== -->
+
+<!-- 37 -->
+<section class="divider" data-menu-title="◆ Fix">
+  <p class="kicker">Part three</p>
+  <h1>Fix</h1>
+  <p class="clock">35 minutes</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="★ Colab notebook">
+  <h2>Today&rsquo;s notebook</h2>
+  <p style="margin:1.2em 0">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-02.ipynb">
+       Open Lecture 2 in Google Colab</a>
+  </p>
+  <p class="small muted">It begins from the previous lecture&rsquo;s final state, so you can
+  reproduce the broken numbers before repairing them.</p>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Holdout validation">
+  <h2>Fix 1 &middot; Hold out a validation set</h2>
+  <p>Split the <em>training</em> set again: a smaller training set, and a
+  <strong>validation set</strong> (also called the development set, or dev set).</p>
+  <ol class="tight small">
+    <li>Train candidate models on the reduced training set</li>
+    <li>Select the one that performs best on the validation set</li>
+    <li>Retrain that model on the full training set</li>
+    <li>Evaluate <em>once</em> on the test set</li>
+  </ol>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="Holdout problems">
+  <h2>Holdout validation has a tension</h2>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>Validation set too small</strong></p>
+      <p class="smaller">Evaluations are imprecise; you may select a suboptimal
+      model by chance.</p>
+    </div>
+    <div>
+      <p class="small"><strong>Validation set too large</strong></p>
+      <p class="smaller">The remaining training set is much smaller than the full
+      one &mdash; like selecting a sprinter to run a marathon.</p>
+    </div>
+  </div>
+  <p class="fix">Solution: many small validation sets, used in rotation.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="k-fold">
+  <h2>Fix 2 &middot; $k$-fold cross-validation</h2>
+  <p>Split the training set into $k$ non-overlapping <strong>folds</strong>.
+  Train and evaluate $k$ times, holding out a different fold each time.</p>
+  <div class="eqn-box">
+    $$\text{score} \;=\; \frac{1}{k}\sum_{j=1}^{k} \text{RMSE}\!\left(\text{model trained without fold } j,\ \text{fold } j\right)$$
+  </div>
+  <p class="small muted">Cost: you train the model $k$ times.</p>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="k-fold code">
+  <h2>In code</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.model_selection import cross_val_score
+
+tree_rmses = -cross_val_score(tree_reg, housing, housing_labels,
+                              scoring="neg_root_mean_squared_error", cv=10)
+  </code></pre>
+  <div class="panel">
+    <span class="panel-title">Why the minus sign</span>
+    Scikit-Learn&rsquo;s cross-validation expects a <em>utility</em> function
+    (greater is better), not a cost function. The scorer is the negative RMSE, so
+    flip the sign back.
+  </div>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="Tree, honestly">
+  <h2>The tree, measured honestly</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; pd.Series(tree_rmses).describe()
+count       10.000000
+mean     66573.734600
+std       1103.402323
+min      64607.896046
+50%      66388.272499
+max      68532.210664
+  </code></pre>
+  <p class="fail" style="font-size:1.1em">Not 0.0. About <strong>$66,574</strong>.</p>
+  <p class="small muted">And we get something a single number cannot give us: a
+  standard deviation of about $1,103, so we know how precise the estimate is.</p>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="All three">
+  <h2>All three, measured honestly</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Training RMSE</th><th class="num">Cross-validated RMSE</th></tr>
+    <tr><td>Linear regression</td><td class="num">$68,973</td><td class="num">$70,003</td></tr>
+    <tr><td>Decision tree</td><td class="num fail">$0</td><td class="num">$66,574</td></tr>
+    <tr><td>Random forest</td><td class="num">$17,551</td><td class="num hit">$47,038</td></tr>
+  </table>
+  <p class="small">Now the table is readable. The gap between the two columns
+  <em>is</em> the overfitting.</p>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="Reading the table">
+  <h2>Reading the table</h2>
+  <ul class="tight">
+    <li><strong>Linear regression</strong> &mdash; the two columns nearly agree.
+        It is not overfitting; it is <span class="fail">underfitting</span></li>
+    <li><strong>Decision tree</strong> &mdash; $0 against $66,574. Severe
+        overfitting, and barely better than the linear model</li>
+    <li><strong>Random forest</strong> &mdash; $17,551 against $47,038. Still
+        overfitting, but by far the best honest score</li>
+  </ul>
+  <p class="small muted">Fixes for overfitting: simplify the model, constrain it,
+  or obtain more training data.</p>
+</section>
+
+<!-- 46 -->
+<section data-menu-title="Why the forest wins">
+  <h2>Why does averaging trees help?</h2>
+  <p>A random forest trains many decision trees on random subsets of the features,
+  then averages their predictions.</p>
+  <div class="panel">
+    If the underlying models are diverse, their errors are not strongly
+    correlated, so averaging smooths the errors out, reduces overfitting, and
+    improves overall performance.
+  </div>
+  <p class="small muted">In Lecture 8 we quantify exactly this &mdash; thread 4
+  gives the variance of an average of correlated predictors.</p>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="Pipelines protect">
+  <h2>Fix 3 &middot; Pipelines make leakage structurally impossible</h2>
+  <pre><code class="language-python" data-trim>
+full_pipeline = Pipeline([
+    ("preprocessing", preprocessing),
+    ("random_forest", RandomForestRegressor(random_state=42)),
+])
+  </code></pre>
+  <p>When <code>cross_val_score</code> holds out fold $j$, the entire pipeline
+  &mdash; imputer, encoder, scaler, model &mdash; is fitted on the other folds only.</p>
+  <p class="fix">The transformers never see the held-out fold. Leakage cannot
+  occur by accident.</p>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="Grid search">
+  <h2>Fix 4 &middot; Tune, instead of guessing</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.model_selection import GridSearchCV
+
+param_grid = [
+    {'preprocessing__geo__n_clusters': [5, 8, 10],
+     'random_forest__max_features': [4, 6, 8]},
+    {'preprocessing__geo__n_clusters': [10, 15],
+     'random_forest__max_features': [6, 8, 10]},
+]
+grid_search = GridSearchCV(full_pipeline, param_grid, cv=3,
+                           scoring='neg_root_mean_squared_error')
+grid_search.fit(housing, housing_labels)
+  </code></pre>
+  <p class="small muted">Double underscores address any hyperparameter of any
+  estimator, however deeply nested.</p>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="Tuning preprocessing">
+  <h2>Note what we just tuned</h2>
+  <p><code>preprocessing__geo__n_clusters</code> is not a model hyperparameter.
+  It belongs to a <em>preprocessing step</em>.</p>
+  <div class="panel">
+    Wrapping preprocessing in a pipeline lets you tune preprocessing
+    hyperparameters together with model hyperparameters &mdash; which matters,
+    because they interact.
+  </div>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Grid results">
+  <h2>Grid search result</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; grid_search.best_params_
+{'preprocessing__geo__n_clusters': 15, 'random_forest__max_features': 6}
+  </code></pre>
+  <p>Best cross-validated RMSE: <strong>$43,590</strong>, improved from $47,038.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Read the boundary</span>
+    15 was the <em>largest</em> value we tried for <code>n_clusters</code>. The
+    optimum may lie outside the grid. Search again with higher values.
+  </div>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="Randomized search">
+  <h2>Randomised search is usually better</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.model_selection import RandomizedSearchCV
+from scipy.stats import randint
+
+param_distribs = {'preprocessing__geo__n_clusters': randint(low=3, high=50),
+                  'random_forest__max_features': randint(low=2, high=20)}
+
+rnd_search = RandomizedSearchCV(full_pipeline, param_distributions=param_distribs,
+                                n_iter=10, cv=3,
+                                scoring='neg_root_mean_squared_error',
+                                random_state=42)
+  </code></pre>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="Why randomized">
+  <h2>Why randomised wins</h2>
+  <ul class="tight">
+    <li>Run it for 1,000 iterations and it explores 1,000 <em>distinct values</em>
+        of each continuous hyperparameter — a grid explores only the few you listed</li>
+    <li>Add a hyperparameter that turns out not to matter: a grid multiplies the
+        runtime, a random search does not</li>
+    <li>Six hyperparameters with ten values each means a million grid fits.
+        Randomised search runs for however long you allow</li>
+  </ul>
+</section>
+
+<!-- 52b -->
+<section data-menu-title="Halving search">
+  <h2>Spending the compute budget better</h2>
+  <p><code>HalvingGridSearchCV</code> and <code>HalvingRandomSearchCV</code> run
+  a tournament:</p>
+  <ol class="tight small">
+    <li>Generate many candidate configurations</li>
+    <li>Evaluate them all with <strong>limited resources</strong> &mdash; typically
+        a small slice of the training set</li>
+    <li>Only the best candidates advance, with more resources each round</li>
+    <li>The finalists are evaluated at full resource</li>
+  </ol>
+  <p class="small muted">Same search space, considerably less compute &mdash; or
+  a much larger space for the same compute.</p>
+</section>
+
+<!-- 52c -->
+<section data-menu-title="Ensembles as tuning">
+  <h2>A third way to improve the system</h2>
+  <p>Combine the models that perform best. A group will often beat the best
+  individual member &mdash; just as a random forest beats the trees it is built
+  from.</p>
+  <div class="panel">
+    This works best when the individual models make
+    <strong>different kinds of errors</strong>. Averaging correlated mistakes
+    achieves nothing.
+  </div>
+  <p class="small muted">We return to this properly in Lecture 8, where thread 4
+  makes &ldquo;different kinds of errors&rdquo; precise.</p>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="Feature importance">
+  <h2>Analyse the best model</h2>
+  <pre><code class="language-text" data-trim>
+[(0.1860, 'log__median_income'),
+ (0.0734, 'cat__ocean_proximity_INLAND'),
+ (0.0656, 'bedrooms__ratio'),
+ (0.0536, 'rooms_per_house__ratio'),
+ (0.0460, 'people_per_house__ratio'),
+ [...]
+ (0.0004, 'cat__ocean_proximity_NEAR BAY'),
+ (0.00003, 'cat__ocean_proximity_ISLAND')]
+  </code></pre>
+  <p class="small">Median income dominates. Of the ocean-proximity categories,
+  only <code>INLAND</code> really earns its place.</p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="Fairness check">
+  <h2>Also check fairness</h2>
+  <p>A model should work well not only on average, but across categories of
+  district &mdash; rural or urban, rich or poor, northern or southern.</p>
+  <div class="panel">
+    Build subsets of the validation set per category and analyse performance on
+    each. If the model performs poorly on a whole category, it should not be
+    deployed for that category &mdash; it may do more harm than good.
+  </div>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="The test set">
+  <h2>Finally: the test set</h2>
+  <pre><code class="language-python" data-trim>
+X_test = strat_test_set.drop("median_house_value", axis=1)
+y_test = strat_test_set["median_house_value"].copy()
+
+final_predictions = final_model.predict(X_test)
+final_rmse = root_mean_squared_error(y_test, final_predictions)
+  </code></pre>
+  <p class="big-num good">$41,446</p>
+  <p class="small muted">Note we <code>predict</code> on the test set. We never
+  <code>fit</code> anything on it.</p>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="Confidence interval">
+  <h2>How precise is that estimate?</h2>
+  <pre><code class="language-python" data-trim>
+from scipy import stats
+
+def rmse(squared_errors):
+    return np.sqrt(np.mean(squared_errors))
+
+squared_errors = (final_predictions - y_test) ** 2
+boot_result = stats.bootstrap([squared_errors], rmse,
+                              confidence_level=0.95, random_state=42)
+rmse_lower, rmse_upper = boot_result.confidence_interval
+  </code></pre>
+  <p>95% interval: <strong>$39,521 &ndash; $43,702</strong>.</p>
+  <p class="small muted">A point estimate alone may not be enough to justify a
+  launch — especially if the improvement over the incumbent is small.</p>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="Don't tweak now">
+  <h2>One last temptation</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Resist it</span>
+    If you tuned a lot, test performance is usually slightly <em>worse</em> than
+    cross-validated performance, because the system was fine-tuned to the
+    validation data. When that happens you must <strong>not</strong> tweak
+    hyperparameters to make the test number look better.
+  </div>
+  <p class="small">Those improvements would not generalise. You would simply be
+  overfitting the test set instead.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- RE-MEASURE (15 min)                                                  -->
+<!-- ==================================================================== -->
+
+<!-- 58 -->
+<section class="divider" data-menu-title="◆ Re-measure">
+  <p class="kicker">Part four</p>
+  <h1>Re-measure</h1>
+  <p class="clock">15 minutes</p>
+</section>
+
+<!-- 59 -->
+<section data-menu-title="★ Your numbers">
+  <h2>Compare with your sheet</h2>
+  <div class="commit">
+    <span class="commit-label">From the previous lecture</span>
+    <p class="small" style="text-align:left; line-height:1.8">
+      Target RMSE for a good system: $ <span class="blank"></span><br>
+      RMSE I expected from today&rsquo;s model: $ <span class="blank"></span><br>
+      Best RMSE I obtained: $ <span class="blank"></span>
+    </p>
+  </div>
+  <table>
+    <tr><th>Reality</th><th class="num">RMSE</th></tr>
+    <tr><td>Human experts</td><td class="num">~$60,000</td></tr>
+    <tr><td>Honest cross-validated best</td><td class="num">$43,590</td></tr>
+    <tr><td>Final, on the test set</td><td class="num hit">$41,446</td></tr>
+  </table>
+</section>
+
+<!-- 60 -->
+<section data-menu-title="The verdict">
+  <h2>Is that good?</h2>
+  <p>The final system is not dramatically better than the experts&rsquo; ~30%
+  error.</p>
+  <div class="panel">
+    It may still be worth launching &mdash; especially if it frees the experts to
+    work on more interesting and productive tasks.
+  </div>
+  <p class="small muted">&ldquo;Is the model good?&rdquo; is not a question about
+  RMSE. It is a question about what the organisation does with it.</p>
+</section>
+
+<!-- 61 -->
+<section data-menu-title="Red-team">
+  <h2>Red-team exercise</h2>
+  <p>Swap notebooks with the team beside you. You have ten minutes.</p>
+  <ol class="tight small">
+    <li>Find any place where a transformer is fitted outside the training set</li>
+    <li>Find any metric computed on data the model was trained on</li>
+    <li>Find any hyperparameter chosen by looking at the test set</li>
+    <li>Check whether the split was stratified &mdash; and on what</li>
+  </ol>
+  <p class="fail small">Report what you found, not what you would have done
+  differently.</p>
+</section>
+
+<!-- 62 -->
+<section data-menu-title="Leakage checklist">
+  <h2>Leakage checklist &mdash; keep this</h2>
+  <ul class="tight small">
+    <li>Was every transformer fitted <em>after</em> the split, on training data only?</li>
+    <li>Is preprocessing inside the pipeline passed to cross-validation?</li>
+    <li>Was the reported metric computed on held-out data?</li>
+    <li>Was the test set touched more than once?</li>
+    <li>Were hyperparameters selected using validation data, not test data?</li>
+    <li>Does any feature encode information unavailable at prediction time?</li>
+  </ul>
+  <p class="small muted">Six questions. They will catch most of what goes wrong
+  in this course and in your projects.</p>
+</section>
+
+<!-- 62b -->
+<section data-menu-title="Red-teaming with the assistant">
+  <h2>Can the assistant red-team for you?</h2>
+  <p>Partly &mdash; and only if you ask it as an <em>adversary</em>, not as an
+  author.</p>
+  <div class="cols">
+    <div>
+      <div class="panel panel-fail" style="font-size:0.8em">
+        &ldquo;Is this code correct?&rdquo;
+        <br><span class="small muted">Invites agreement. You will usually get it.</span>
+      </div>
+    </div>
+    <div>
+      <div class="panel panel-fix" style="font-size:0.8em">
+        &ldquo;This notebook reports RMSE $49{,}682$. Assume that number is
+        optimistic. List every path by which test-set information could have
+        reached the training procedure, and cite the line.&rdquo;
+      </div>
+    </div>
+  </div>
+  <p class="small">Give it the failure to look for, and a number to disbelieve.
+  Generic review requests return generic praise.</p>
+</section>
+
+<!-- 62c -->
+<section data-menu-title="What it will and will not catch">
+  <h2>What that catches &mdash; and what it does not</h2>
+  <table>
+    <tr><th>Bug</th><th>Found from the code alone?</th></tr>
+    <tr><td><code>fit_transform</code> on the full set</td><td class="hit">yes</td></tr>
+    <tr><td>Preprocessing outside the cross-validated pipeline</td><td class="hit">yes</td></tr>
+    <tr><td>Test set evaluated more than once</td><td class="miss">no &mdash; that is session history, not code</td></tr>
+    <tr><td>A feature unavailable at prediction time</td><td class="miss">no &mdash; that is domain knowledge</td></tr>
+    <tr><td>Split not stratified on the right variable</td><td class="miss">no &mdash; &ldquo;right&rdquo; is your judgement</td></tr>
+  </table>
+  <p class="small fail">Three of the five require something the assistant cannot
+  read off the file. Those three are yours.</p>
+</section>
+
+<!-- 62d -->
+<section data-menu-title="The prompt that prevents it">
+  <h2>Moving the check upstream</h2>
+  <p>Everything diagnosed today was preventable at specification time. Keep this
+  as a standing constraint in every request:</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">Standing constraint</span>
+    &ldquo;Split before anything is fitted. All preprocessing lives inside a
+    <code>Pipeline</code> passed to cross-validation. Nothing derived from the
+    test set may appear in the training path. Fixed random seed. Print the fold
+    scores, not just the mean.&rdquo;
+  </div>
+  <p class="small muted">A specification is cheaper than a diagnosis. This one
+  would have saved us the first forty minutes of this lecture.</p>
+  <aside class="notes">Ask them to paste this into their own notes now. It
+  recurs, extended, in every application from here on.</aside>
+</section>
+
+<!-- 63 -->
+<section data-menu-title="Saving the model">
+  <h2>If you were to ship this</h2>
+  <pre><code class="language-python" data-trim>
+import joblib
+
+joblib.dump(final_model, "my_california_housing_model.pkl")
+  </code></pre>
+  <p class="small">Save every model you experiment with, along with its
+  cross-validation scores and its predictions on the validation set. It lets you
+  compare scores across model types and compare the kinds of errors they make.</p>
+  <div class="panel panel-book">
+    Deployment is not the end. You need monitoring, because performance decays
+    quietly through <em>data drift</em>.
+  </div>
+</section>
+
+<!-- 63b -->
+<section data-menu-title="Presenting the result">
+  <h2>Presenting the solution</h2>
+  <p>What separates great data scientists from good ones is not the model. It is
+  the communication of it.</p>
+  <ul class="tight small">
+    <li>Concise reports; visualise the key insights</li>
+    <li>Tailor the message: technical for peers, high-level for stakeholders</li>
+    <li>Give one memorable statement &mdash; here: <em>&ldquo;median income is the
+        number one predictor of housing prices&rdquo;</em></li>
+    <li>State what worked, what did not, what you assumed, and where the system
+        is limited</li>
+  </ul>
+</section>
+
+<!-- 63c -->
+<section data-menu-title="Reproducibility">
+  <h2>And make it reproducible</h2>
+  <ul class="tight small">
+    <li>Code accessible to the team, with a structured README</li>
+    <li>Clear notebooks: code, explanation and results together</li>
+    <li>A <code>requirements.txt</code> or <code>environment.yml</code> pinning
+        exact library versions &mdash; or a container image</li>
+    <li>Seeds set for every random generator; every other source of variability
+        removed</li>
+  </ul>
+  <p class="small fail">This is graded. A result nobody else can reproduce is not
+  a result.</p>
+</section>
+
+<!-- 64 -->
+<section data-menu-title="★ All notebooks">
+  <h2>Every notebook in the course</h2>
+  <div class="nb-index">
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-01.ipynb">01 · Prices — build</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-02.ipynb">02 · Prices — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-03.ipynb">03 · Rare events — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-04.ipynb">04 · Rare events — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-05.ipynb">05 · Survival — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-06.ipynb">06 · Survival — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-07.ipynb">07 · Land cover — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-08.ipynb">08 · Land cover — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-09.ipynb">09 · Faces — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">10 · Faces — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-11.ipynb">11 · First network — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-12.ipynb">12 · First network — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-13.ipynb">13 · Deep recognition — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-14.ipynb">14 · Deep recognition — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-15.ipynb">15 · Visual inspection — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-16.ipynb">16 · Visual inspection — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-17.ipynb">17 · Detection — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-18.ipynb">18 · Detection — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-19.ipynb">19 · Forecasting — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-20.ipynb">20 · Forecasting — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-21.ipynb">21 · Feedback — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-22.ipynb">22 · Feedback — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-23.ipynb">23 · Catalogue — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-24.ipynb">24 · Catalogue — fix</a></p>
+  </div>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="Summary">
+  <h2>What we learned</h2>
+  <ol class="tight small">
+    <li>Fitting a linear model is orthogonal projection; the normal equation is
+        the orthogonality condition</li>
+    <li>It fails when features are collinear or $m &lt; n$; the SVD pseudoinverse
+        does not</li>
+    <li>A tree scoring zero has memorised, not learned</li>
+    <li>Training error is not generalisation error</li>
+    <li>Cross-validation gives an honest estimate <em>and</em> its precision</li>
+    <li>Pipelines make leakage structurally impossible</li>
+    <li>Tune with randomised search; touch the test set once</li>
+  </ol>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="References">
+  <h2>In the book</h2>
+  <table>
+    <tr><th>Topic</th><th>Chapter</th></tr>
+    <tr><td>Normal equation, SVD, pseudoinverse, complexity</td><td>4</td></tr>
+    <tr><td>Cross-validation, grid and randomised search</td><td>2</td></tr>
+    <tr><td>Pipelines and <code>ColumnTransformer</code></td><td>2</td></tr>
+    <tr><td>Overfitting, generalisation error, validation sets</td><td>1, 2</td></tr>
+    <tr><td>Feature importance, bias analysis, deployment</td><td>2</td></tr>
+    <tr><td>Nonparametric models and tree regularisation</td><td>5</td></tr>
+  </table>
+</section>
+
+<!-- 67 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 3 &middot; Build</p>
+  <h1>Finding the rare event</h1>
+  <p style="font-size:0.8em; color:#cfe2f0">
+    A new application, a new metric<br>
+    You will build a classifier that scores above 90%<br>
+    and does nothing useful whatsoever
+  </p>
+  <p class="clock">Bring a fresh commitment sheet</p>
+</section>
+
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 2
+  <span class="sep">&middot;</span> Your RMSE was a lie
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,79 @@
+# Applicazioni Informatiche del Machine Learning
+
+Course materials for **Applications of Machine Learning**, third year of the BSc
+in Mathematics of Artificial Intelligence, Sapienza Università di Roma.
+
+48 academic hours · 24 lectures of 90 minutes · 12 applications.
+Taught in Italian; all materials are in English.
+
+**Site:** <https://fabsilvestri.github.io/AIML-Course/>
+
+> Status: work in progress. Lectures 1–2 are complete and serve as the template
+> for the remaining decks. Not yet announced to students.
+
+## Organising principle
+
+Chapters never introduce themselves. Every method enters the course at the
+moment an application breaks without it. Each application spans two lectures —
+**A · Build** (build the simplest thing that runs, and commit a target number in
+writing) and **B · Break → Fix** (a twenty-minute mathematical thread, the
+diagnosis of why that number was wrong, and the method that repairs it).
+
+`LECTURES.md` is the authoritative plan: all 24 lectures, the chapter coverage
+map, and the twelve mathematical threads in order.
+
+## Scope
+
+Everything taught comes from A. Géron, *Hands-On Machine Learning with
+Scikit-Learn and PyTorch* (O'Reilly, 2025), **Chapters 1–16**. Nothing outside
+those chapters is examinable.
+
+The book supplies the syllabus, not the code: no notebook from the author or any
+other third party is used. See `notebooks/README.md`.
+
+## Layout
+
+```
+index.html          course site (GitHub Pages entry point)
+LECTURES.md         the 24-lecture plan
+slides/             one reveal.js deck per lecture, lecture-NN.html
+notebooks/          one Colab notebook per lecture, lecture-NN.ipynb
+assets/css/
+  site.css          course site
+  custom.css        shared slide theme, layered on reveal.js `white`
+lib/                vendored dependencies (see below)
+```
+
+## Vendored dependencies
+
+`lib/` is committed deliberately rather than loaded from a CDN, so the decks
+render in a lecture hall with unreliable or absent wifi:
+
+| Path | What |
+|---|---|
+| `lib/reveal.js/` | reveal.js 5.2.1 |
+| `lib/katex/` | KaTeX 0.16.11, used by reveal's math plugin (`local:` mode) |
+| `lib/reveal-menu/` | slide menu (denehyg) |
+| `lib/reveal-chalkboard/` | chalkboard / annotation (rajgoel) |
+
+## Working on the decks locally
+
+Any static server works, but a no-cache one saves a lot of confusion while
+iterating on the shared CSS:
+
+```bash
+python3 -m http.server 8000
+# then open http://127.0.0.1:8000/
+```
+
+In a deck: `M` menu · `S` speaker notes · `C` chalkboard · `F` full screen ·
+`?print-pdf` appended to the URL gives a printable handout.
+
+## Conventions
+
+- Slides never name a weekday. Lectures refer to one another relatively — *in the
+  next lecture*, *in two lectures* — so the material is independent of the
+  timetable.
+- Every deck is at least 70 slides.
+- Every notebook is linked from the slides that use it.
+- Each lecture contains at least one worked assistant failure.
