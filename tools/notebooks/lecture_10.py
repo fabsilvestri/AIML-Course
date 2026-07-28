@@ -331,7 +331,10 @@ bench(lambda: PCA(d95, svd_solver="full", random_state=RANDOM_STATE).fit(X_tr),
       "PCA, full SVD")
 bench(lambda: PCA(d95, svd_solver="randomized", random_state=RANDOM_STATE).fit(X_tr),
       "PCA, randomised")
-bench(lambda: IncrementalPCA(d95, batch_size=70).fit(X_tr), "Incremental PCA")
+# batch_size must be at least n_components — IncrementalPCA fits each batch,
+# and a batch smaller than the target dimensionality cannot determine it.
+bench(lambda: IncrementalPCA(d95, batch_size=max(2 * d95, 256)).fit(X_tr),
+      "Incremental PCA")
 bench(lambda: GaussianRandomProjection(d95, random_state=RANDOM_STATE).fit(X_tr),
       "Random projection")
 '''),

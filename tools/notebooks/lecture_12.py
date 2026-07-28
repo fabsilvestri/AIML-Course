@@ -435,8 +435,18 @@ xb, yb = torch.randn(8, 4), torch.randn(8, 1)
 for k in range(3):
     lossf(probe(xb), yb).backward()          # no zero_grad anywhere
     print(f"after {k+1} backward call(s): |grad| = {probe.weight.grad.norm():.4f}")
+# zero_grad() defaults to set_to_none=True, so .grad becomes None rather than a
+# tensor of zeros — reading .norm() on it raises AttributeError. That default is
+# a performance choice, and it is the second way this bug bites: code that
+# inspects gradients after zeroing them breaks rather than reporting zero.
 probe.zero_grad()
-print(f"after zero_grad():          |grad| = {probe.weight.grad.norm():.4f}")
+print(f"after zero_grad():          grad is {probe.weight.grad}")
+
+probe.zero_grad(set_to_none=False)
+lossf(probe(xb), yb).backward()
+probe.zero_grad(set_to_none=False)
+print(f"after zero_grad(set_to_none=False): |grad| = "
+      f"{probe.weight.grad.norm():.4f}")
 '''),
 
         md("""

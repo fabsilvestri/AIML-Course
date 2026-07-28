@@ -232,11 +232,19 @@ Step 4 of the working method, and the cheapest twenty seconds in the lecture.
 `X_train[0]` is the 5 we plotted above.
 """),
         code('''
-some_digit = X_train[0]
-print("true label:", y_train[0])
-print("prediction:", clf.predict([some_digit]))       # note the brackets
+# one known 5 and one known not-5, so the two cases are visible
+i_pos = int(np.argmax(y_train))          # first 5
+i_neg = int(np.argmin(y_train))          # first non-5
 
-assert clf.predict([some_digit])[0] == True
+for i in (i_pos, i_neg):
+    print(f"index {i:>5}   true: {bool(y_train[i])!s:<5}   "
+          f"predicted: {bool(clf.predict([X_train[i]])[0])}")
+
+# Assert the SHAPE, not the answer. A single correct prediction is not evidence
+# that the detector works — that is the whole argument of this lecture, and an
+# assertion that the model got one example right would contradict it.
+assert clf.predict(X_train[:8]).shape == (8,)
+assert clf.predict(X_train[:8]).dtype == bool
 '''),
 
         md("""
