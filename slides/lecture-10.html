@@ -42,10 +42,10 @@
   <h2>Scoring what you wrote down</h2>
   <table class="smaller">
     <tr><th>Quantity</th><th class="num">You predicted</th><th class="num">Measured</th></tr>
-    <tr><td>$k$ the silhouette chooses</td><td class="num muted">&mdash;</td><td class="num">@@l09_best_k@@</td></tr>
-    <tr><td>Silhouette at that $k$</td><td class="num muted">&mdash;</td><td class="num">@@l09_best_silhouette:.4f@@</td></tr>
-    <tr><td>ARI on the forty labels</td><td class="num muted">&mdash;</td><td class="num">@@l09_ari_audit_at_best:.3f@@</td></tr>
-    <tr><td>Minutes for one sweep</td><td class="num muted">&mdash;</td><td class="num">@@l09_sweep_minutes:.1f@@</td></tr>
+    <tr><td>$k$ the silhouette chooses</td><td class="num muted">&mdash;</td><td class="num">59</td></tr>
+    <tr><td>Silhouette at that $k$</td><td class="num muted">&mdash;</td><td class="num">0.1707</td></tr>
+    <tr><td>ARI on the forty labels</td><td class="num muted">&mdash;</td><td class="num">0.395</td></tr>
+    <tr><td>Minutes for one sweep</td><td class="num muted">&mdash;</td><td class="num">1.1</td></tr>
   </table>
   <p class="small">Say your four numbers out loud before the next slide. The
   gaps are the lecture.</p>
@@ -57,15 +57,15 @@
 <section data-menu-title="Four things were wrong">
   <h2>Four things were wrong, and only one was the method</h2>
   <ol class="tight small">
-    <li>The silhouette chose $k = @@l09_best_k@@$, and the truth is 40</li>
+    <li>The silhouette chose $k = 59$, and the truth is 40</li>
     <li>The clusters grouped <strong>lighting</strong>, not identity: mean purity
-        @@l09_clusters.mean_purity:.2f@@, and only @@l09_clusters.n_pure@@ of
-        @@l09_clusters.k@@ clusters held a single person</li>
+        0.74, and only 16 of
+        40 clusters held a single person</li>
     <li>The reported silhouette was optimistic by
-        @@l09_selection_optimism.optimism_pct:.0f@@%, because the number that
+        50%, because the number that
         chose the model also reported it</li>
-    <li>One sweep took @@l09_sweep_minutes:.1f@@ minutes on
-        @@l09_bytes_mb:.1f@@ MB of data</li>
+    <li>One sweep took 1.1 minutes on
+        6.6 MB of data</li>
   </ol>
   <p class="fail">Three of these have the same cause, and it is not k-means.</p>
 </section>
@@ -76,7 +76,7 @@
   <ol>
     <li><span class="badge badge-math">Thread 5</span> SVD, PCA, and
         Johnson&ndash;Lindenstrauss <span class="muted small">(20 min)</span></li>
-    <li>Diagnose &mdash; what @@l09_n_features:,@@ dimensions did to every number
+    <li>Diagnose &mdash; what 4,096 dimensions did to every number
         <span class="muted small">(20 min)</span></li>
     <li>Fix &mdash; compress first, then extend the pipeline
         <span class="muted small">(35 min)</span></li>
@@ -98,9 +98,9 @@
 <!-- 6 -->
 <section data-menu-title="The question">
   <h2>The question</h2>
-  <p class="lead">@@l09_n_images@@ points in
-  $\mathbb{R}^{@@l09_n_features@@}$.</p>
-  <p class="lead">How many of those @@l09_n_features:,@@ numbers are doing
+  <p class="lead">400 points in
+  $\mathbb{R}^{4,096}$.</p>
+  <p class="lead">How many of those 4,096 numbers are doing
   work &mdash; and what exactly do you lose by throwing the rest away?</p>
   <div class="panel panel-math">
     <span class="panel-title">Why you need the answer</span>
@@ -242,11 +242,11 @@ assert abs(lhs - rhs) / rhs &lt; 1e-5
   cumulate to choose $d$.</p>
   <table class="smaller">
     <tr><th>Components kept</th><th class="num">Variance explained</th></tr>
-    <tr><td>1</td><td class="num">@@l10_evr_1:.1%@@</td></tr>
-    <tr><td>10</td><td class="num">@@l10_evr_top10:.1%@@</td></tr>
-    <tr><td>50</td><td class="num">@@l10_evr_top50:.1%@@</td></tr>
-    <tr><td>@@l10_d95@@</td><td class="num fix">95%</td></tr>
-    <tr><td>@@l10_d99@@</td><td class="num">99%</td></tr>
+    <tr><td>1</td><td class="num">23.8%</td></tr>
+    <tr><td>10</td><td class="num">65.6%</td></tr>
+    <tr><td>50</td><td class="num">87.4%</td></tr>
+    <tr><td>123</td><td class="num fix">95%</td></tr>
+    <tr><td>260</td><td class="num">99%</td></tr>
   </table>
 </section>
 
@@ -257,16 +257,16 @@ assert abs(lhs - rhs) / rhs &lt; 1e-5
     <img src="../assets/figures/l10-scree.svg"
          alt="Two panels. Left: variance explained by each of the first fifty components, falling steeply from a large first value. Right: cumulative variance rising to a plateau, with dashed lines marking ninety-five percent and the component count where it is reached.">
   </figure>
-  <p class="takeaway muted">@@l10_d95@@ components hold 95% of the variance of
-  @@l09_n_features:,@@ pixels &mdash; a factor of
-  @@l10_compression_95:.0f@@ fewer numbers per photograph.</p>
+  <p class="takeaway muted">123 components hold 95% of the variance of
+  4,096 pixels &mdash; a factor of
+  33 fewer numbers per photograph.</p>
 </section>
 
 <!-- 16 -->
 <section data-menu-title="Components are images">
   <h2>The components live in the same space as the data</h2>
-  <p>A principal component is a vector in $\mathbb{R}^{@@l09_n_features@@}$.
-  Reshape it to @@l09_side@@ &times; @@l09_side@@ and it is an image.</p>
+  <p>A principal component is a vector in $\mathbb{R}^{4,096}$.
+  Reshape it to 64 &times; 64 and it is an image.</p>
   <div class="panel panel-math">
     <span class="panel-title">Why they have a name</span>
     The principal components of a face dataset are called <strong>eigenfaces</strong>,
@@ -299,7 +299,7 @@ assert abs(lhs - rhs) / rhs &lt; 1e-5
     <img src="../assets/figures/l10-reconstruction.png"
          alt="A row of nine greyscale portraits of the same held-out person, labelled 1, 2, 5, 10, 25, 50, 100, 200 and 4096. The first two are unrecognisable blurs; by 25 the face is identifiable; by 100 it is close to the original.">
   </figure>
-  <p class="takeaway muted">Recognisable well before @@l10_d95@@ components. The
+  <p class="takeaway muted">Recognisable well before 123 components. The
   identity survives compression that the pixel values do not.</p>
 </section>
 
@@ -352,8 +352,8 @@ assert abs(lhs - rhs) / rhs &lt; 1e-5
       <p class="smaller">The dimension you are starting from.</p>
     </div>
   </div>
-  <p class="fix">@@l09_n_images@@ points need the same target dimension whether
-  they live in @@l09_n_features:,@@ dimensions or in four million.</p>
+  <p class="fix">400 points need the same target dimension whether
+  they live in 4,096 dimensions or in four million.</p>
   <aside class="notes">Stop here. Ask the room to say what is missing before
   advancing. Most will look for $n$ and not find it, which is the moment.</aside>
 </section>
@@ -366,11 +366,11 @@ from sklearn.random_projection import johnson_lindenstrauss_min_dim
 johnson_lindenstrauss_min_dim(400, eps=0.2)
   </code></pre>
   <table class="smaller">
-    <tr><th>$\varepsilon$</th><th class="num">@@l09_n_images@@ points</th><th class="num">One million points</th></tr>
-    <tr><td>0.1</td><td class="num fail">@@l10_jl.n400.0.1:,@@</td><td class="num">@@l10_jl.n1m.0.1:,@@</td></tr>
-    <tr><td>0.2</td><td class="num">@@l10_jl.n400.0.2:,@@</td><td class="num">@@l10_jl.n1m.0.2:,@@</td></tr>
-    <tr><td>0.3</td><td class="num">@@l10_jl.n400.0.3:,@@</td><td class="num">@@l10_jl.n1m.0.3:,@@</td></tr>
-    <tr><td>0.5</td><td class="num">@@l10_jl.n400.0.5@@</td><td class="num">@@l10_jl.n1m.0.5:,@@</td></tr>
+    <tr><th>$\varepsilon$</th><th class="num">400 points</th><th class="num">One million points</th></tr>
+    <tr><td>0.1</td><td class="num fail">5,135</td><td class="num">11,841</td></tr>
+    <tr><td>0.2</td><td class="num">1,382</td><td class="num">3,188</td></tr>
+    <tr><td>0.3</td><td class="num">665</td><td class="num">1,535</td></tr>
+    <tr><td>0.5</td><td class="num">287</td><td class="num">663</td></tr>
   </table>
   <p class="small">Two and a half thousand times as many points costs about
   twice the dimension. That is the $\log m$.</p>
@@ -379,13 +379,13 @@ johnson_lindenstrauss_min_dim(400, eps=0.2)
 <!-- 23 -->
 <section data-menu-title="The bound is vacuous here">
   <h2>And be honest about the top-left cell</h2>
-  <p class="big-num bad">@@l10_jl.n400.0.1:,@@</p>
-  <p>dimensions, to hold every pairwise distance among @@l09_n_images@@ faces to
+  <p class="big-num bad">5,135</p>
+  <p>dimensions, to hold every pairwise distance among 400 faces to
   within 10% &mdash; which is <strong>more</strong> than the
-  @@l09_n_features:,@@ we started with.</p>
+  4,096 we started with.</p>
   <div class="panel panel-fail">
     <span class="panel-title">The bound is a worst case over all point sets</span>
-    It has to work for the nastiest configuration of @@l09_n_images@@ points
+    It has to work for the nastiest configuration of 400 points
     anyone can construct. Ours is a photographic archive, which is not that. So
     the bound is <em>sufficient</em>, never <em>necessary</em> &mdash; and the
     reason to teach it is not the constant.
@@ -400,7 +400,7 @@ johnson_lindenstrauss_min_dim(400, eps=0.2)
          alt="Required dimension plotted against the number of points on a logarithmic x-axis, for three tolerances. All three curves rise slowly and almost linearly in log n. A dashed horizontal line marks 4096, crossed only by the tightest tolerance.">
   </figure>
   <p class="takeaway muted">Neither axis is the original dimension. The dashed
-  line at @@l09_n_features:,@@ is drawn only to show that the bound never asks
+  line at 4,096 is drawn only to show that the bound never asks
   about it.</p>
 </section>
 
@@ -412,8 +412,8 @@ johnson_lindenstrauss_min_dim(400, eps=0.2)
          alt="Relative distortion of pairwise distances after Gaussian random projection, plotted against projected dimension on a logarithmic x-axis. Three falling curves for the worst pair, the 95th percentile and the mean, all well below a dashed line at 0.2 by a few hundred dimensions.">
   </figure>
   <p class="takeaway muted">At $d = 200$ the worst-distorted pair of the
-  @@l09_n_pairs:,@@ is off by @@l10_jl_measured_max_at_200:.2f@@ &mdash; a
-  tolerance the bound would only guarantee at @@l10_jl.n400.0.2:,@@ dimensions.</p>
+  79,800 is off by 0.53 &mdash; a
+  tolerance the bound would only guarantee at 1,382 dimensions.</p>
 </section>
 
 <!-- 26 -->
@@ -441,7 +441,7 @@ johnson_lindenstrauss_min_dim(400, eps=0.2)
 <!-- 27 -->
 <section class="divider" data-menu-title="◆ Diagnose">
   <p class="kicker">Part two</p>
-  <h1>What @@l09_n_features:,@@ dimensions<br>did to every number</h1>
+  <h1>What 4,096 dimensions<br>did to every number</h1>
   <p class="clock">20 minutes</p>
 </section>
 
@@ -450,14 +450,14 @@ johnson_lindenstrauss_min_dim(400, eps=0.2)
   <h2>Defect 1 &mdash; the clock</h2>
   <table class="smaller">
     <tr><th>Step</th><th class="num">Seconds</th><th>Scales as</th></tr>
-    <tr><td>@@l09_sweep_n_fits:,@@ runs of Lloyd's algorithm</td><td class="num">@@l09_sweep_fit_seconds:.0f@@</td><td>$O(\text{iter}\times m\, k\, n)$</td></tr>
-    <tr><td>@@l09_k_max@@ silhouette scores</td><td class="num">@@l09_sweep_sil_seconds:.0f@@</td><td>$O(m^{2} n)$</td></tr>
+    <tr><td>590 runs of Lloyd's algorithm</td><td class="num">64</td><td>$O(\text{iter}\times m\, k\, n)$</td></tr>
+    <tr><td>60 silhouette scores</td><td class="num">1</td><td>$O(m^{2} n)$</td></tr>
   </table>
   <p>Both are <strong>linear in $n$</strong>. We were carrying
-  @@l09_n_features:,@@ features and, by the scree plot, about
-  @@l10_d95@@ of them were load-bearing.</p>
+  4,096 features and, by the scree plot, about
+  123 of them were load-bearing.</p>
   <div class="panel panel-fail">
-    Roughly @@l10_compression_95:.0f@@ times more arithmetic than the problem
+    Roughly 33 times more arithmetic than the problem
     required &mdash; not because anything was written badly, but because nobody
     chose the representation. It was the size of the image.
   </div>
@@ -475,7 +475,7 @@ johnson_lindenstrauss_min_dim(400, eps=0.2)
     <em>ratio</em> approaches one, so $s_i$ approaches zero for every point.
     A flat, low silhouette curve is what dimensional concentration looks like.
   </div>
-  <p class="small">Our best silhouette was @@l09_best_silhouette:.4f@@. That is
+  <p class="small">Our best silhouette was 0.1707. That is
   well above the random anchor and still very close to zero, and now you know
   one reason why.</p>
 </section>
@@ -487,8 +487,8 @@ johnson_lindenstrauss_min_dim(400, eps=0.2)
   $k$ and zero at $k = m$. Nothing in it knows how many people are in the
   archive.</p>
   <ul class="tight small">
-    <li>The kneedle rule picked $k = @@l09_elbow.k_knee@@</li>
-    <li>At $k = 40$, @@l09_elbow.frac_remaining_at_40:.0%@@ of the inertia at
+    <li>The kneedle rule picked $k = 19</li>
+    <li>At $k = 40$, 46% of the inertia at
         $k=2$ was still there</li>
   </ul>
   <p class="small fix">This one is not repaired by reducing the dimension. It is
@@ -499,8 +499,8 @@ johnson_lindenstrauss_min_dim(400, eps=0.2)
 <section data-menu-title="Defect 4 — the metric was noisy">
   <h2>Defect 4 &mdash; the number we report is measured on forty photographs</h2>
   <ul class="tight small">
-    <li>@@l09_audit_pairs@@ pairs, of which only
-        @@l09_audit_same_pairs@@ are the same person</li>
+    <li>780 pairs, of which only
+        22 are the same person</li>
     <li>Every one of those pairs moves the ARI by a visible amount</li>
     <li>So a difference of a few hundredths between two clusterings is not
         evidence of anything</li>
@@ -518,7 +518,7 @@ johnson_lindenstrauss_min_dim(400, eps=0.2)
   <h2>The diagnosis</h2>
   <table class="smaller">
     <tr><th>Symptom</th><th>Cause</th><th>Repaired by</th></tr>
-    <tr><td>@@l09_sweep_minutes:.1f@@ minutes per sweep</td><td>cost linear in @@l09_n_features:,@@ features</td><td class="hit">PCA</td></tr>
+    <tr><td>1.1 minutes per sweep</td><td>cost linear in 4,096 features</td><td class="hit">PCA</td></tr>
     <tr><td>Silhouette near zero everywhere</td><td>distance concentration</td><td class="hit">PCA</td></tr>
     <tr><td>Clusters group lighting</td><td>lighting is the largest variance direction</td><td class="miss">not by PCA alone</td></tr>
     <tr><td>No elbow</td><td>inertia is monotone in $k$</td><td class="hit">silhouette, already</td></tr>
@@ -553,7 +553,7 @@ for k in range(2, 61):
 </code></pre>
   <p class="small"><code>n_components=0.95</code> &mdash; a float between 0 and 1
   is read as a <em>variance target</em> rather than a component count, and
-  scikit-learn chooses $d$ for you. Here it chooses @@l10_d95@@.</p>
+  scikit-learn chooses $d$ for you. Here it chooses 123.</p>
   <p class="small muted">The clustering code is unchanged. Only what it is
   looking at changed.</p>
 </section>
@@ -565,8 +565,8 @@ for k in range(2, 61):
     <img src="../assets/figures/l10-speed-quality.svg"
          alt="Two panels with logarithmic x-axes. Left: seconds for the whole sweep rising with the number of dimensions, with a dashed line marking the time at 4096. Right: adjusted Rand index against the number of dimensions, flat or slightly higher than the dashed 4096 reference.">
   </figure>
-  <p class="takeaway muted">The sweep gets @@l10_speedup:.0f@@ times faster at
-  @@l10_d95@@ dimensions, and the agreement with the true identities does not
+  <p class="takeaway muted">The sweep gets 21 times faster at
+  123 dimensions, and the agreement with the true identities does not
   fall.</p>
 </section>
 
@@ -575,12 +575,12 @@ for k in range(2, 61):
   <h2>The trade-off, measured rather than asserted</h2>
   <table class="smaller">
     <tr><th>Dimensions</th><th class="num">Sweep, seconds</th><th class="num">Best $k$</th><th class="num">Silhouette</th><th class="num">ARI, all 400</th></tr>
-    <tr><td>@@l09_n_features:,@@ (raw pixels)</td><td class="num fail">@@l09_sweep_seconds:.0f@@</td><td class="num">@@l09_best_k@@</td><td class="num">@@l09_best_silhouette:.3f@@</td><td class="num">@@l09_ari_full_at_best:.3f@@</td></tr>
-    <tr><td>@@l10_sweep_speed.ds.0@@</td><td class="num">@@l10_sweep_speed.time.0:.0f@@</td><td class="num">@@l10_sweep_speed.best_k.0@@</td><td class="num">@@l10_sweep_speed.best_sil.0:.3f@@</td><td class="num">@@l10_sweep_speed.ari_full.0:.3f@@</td></tr>
-    <tr><td>@@l10_sweep_speed.ds.1@@</td><td class="num">@@l10_sweep_speed.time.1:.0f@@</td><td class="num">@@l10_sweep_speed.best_k.1@@</td><td class="num">@@l10_sweep_speed.best_sil.1:.3f@@</td><td class="num">@@l10_sweep_speed.ari_full.1:.3f@@</td></tr>
-    <tr><td>@@l10_sweep_speed.ds.2@@</td><td class="num">@@l10_sweep_speed.time.2:.0f@@</td><td class="num">@@l10_sweep_speed.best_k.2@@</td><td class="num">@@l10_sweep_speed.best_sil.2:.3f@@</td><td class="num">@@l10_sweep_speed.ari_full.2:.3f@@</td></tr>
-    <tr><td>@@l10_sweep_speed.ds.3@@ &mdash; 95% of the variance</td><td class="num fix">@@l10_sweep_speed.time.3:.0f@@</td><td class="num">@@l10_sweep_speed.best_k.3@@</td><td class="num">@@l10_sweep_speed.best_sil.3:.3f@@</td><td class="num">@@l10_sweep_speed.ari_full.3:.3f@@</td></tr>
-    <tr><td>@@l10_sweep_speed.ds.4@@</td><td class="num">@@l10_sweep_speed.time.4:.0f@@</td><td class="num">@@l10_sweep_speed.best_k.4@@</td><td class="num">@@l10_sweep_speed.best_sil.4:.3f@@</td><td class="num">@@l10_sweep_speed.ari_full.4:.3f@@</td></tr>
+    <tr><td>4,096 (raw pixels)</td><td class="num fail">65</td><td class="num">59</td><td class="num">0.171</td><td class="num">0.537</td></tr>
+    <tr><td>20</td><td class="num">2</td><td class="num">58</td><td class="num">0.286</td><td class="num">0.540</td></tr>
+    <tr><td>50</td><td class="num">2</td><td class="num">59</td><td class="num">0.256</td><td class="num">0.493</td></tr>
+    <tr><td>100</td><td class="num">4</td><td class="num">60</td><td class="num">0.218</td><td class="num">0.547</td></tr>
+    <tr><td>123 &mdash; 95% of the variance</td><td class="num fix">3</td><td class="num">60</td><td class="num">0.205</td><td class="num">0.524</td></tr>
+    <tr><td>399</td><td class="num">12</td><td class="num">59</td><td class="num">0.171</td><td class="num">0.537</td></tr>
   </table>
   <p class="small">The ARI column is the audit, on all 400 identities. It is
   here because a speed-up that quietly costs quality is not a speed-up.</p>
@@ -661,7 +661,7 @@ for k in range(2, 61):
       </div>
     </div>
   </div>
-  <p class="small">Here, PCA. @@l09_n_images@@ &times; @@l09_n_features:,@@ is a
+  <p class="small">Here, PCA. 400 &times; 4,096 is a
   small matrix and the components are interpretable images.</p>
 </section>
 
@@ -710,7 +710,7 @@ n_noise    = (db.labels_ == -1).sum()
   </figure>
   <p class="takeaway muted">At small <code>eps</code> everything is noise; at
   large <code>eps</code> everything is one cluster. The most it ever finds is
-  @@l10_dbscan.max_clusters@@, and never 40.</p>
+  50, and never 40.</p>
 </section>
 
 <!-- 45 -->
@@ -718,9 +718,9 @@ n_noise    = (db.labels_ == -1).sum()
   <h2>Reporting a method that did not work</h2>
   <div class="panel panel-fail">
     <span class="panel-title">DBSCAN, best over the whole grid</span>
-    ARI @@l10_dbscan.best_ari:.3f@@ at <code>eps</code> =
-    @@l10_dbscan.best_eps:.2f@@, with @@l10_dbscan.clusters_at_best@@ clusters
-    and @@l10_dbscan.noise_at_best@@ faces called noise.
+    ARI 0.133 at <code>eps</code> =
+    6.00, with 41 clusters
+    and 97 faces called noise.
   </div>
   <p class="small">DBSCAN needs a single density scale that separates clusters
   from the gaps between them. Forty groups of ten faces, all lit by the same
@@ -755,10 +755,10 @@ n_noise    = (db.labels_ == -1).sum()
   parameters.</p>
   <table class="smaller">
     <tr><th>Setting</th><th class="num">Parameters</th></tr>
-    <tr><td>One full covariance in @@l09_n_features:,@@ dimensions</td><td class="num">@@l10_gmm_full_params_per_component:,@@</td></tr>
-    <tr><td>Forty of them</td><td class="num fail">@@l10_gmm_full_params_40:,@@</td></tr>
-    <tr><td>Estimated from</td><td class="num">@@l09_n_images@@ photographs</td></tr>
-    <tr><td>Forty diagonal covariances in @@l10_d95@@ dimensions</td><td class="num fix">@@l10_gmm_diag_params_40:,@@</td></tr>
+    <tr><td>One full covariance in 4,096 dimensions</td><td class="num">8,390,656</td></tr>
+    <tr><td>Forty of them</td><td class="num fail">335,626,240</td></tr>
+    <tr><td>Estimated from</td><td class="num">400 photographs</td></tr>
+    <tr><td>Forty diagonal covariances in 123 dimensions</td><td class="num fix">9,880</td></tr>
   </table>
   <p class="fail">The first is not slow. It is undefined: every covariance
   estimate is singular.</p>
@@ -775,8 +775,8 @@ n_noise    = (db.labels_ == -1).sum()
     <img src="../assets/figures/l10-gmm.svg"
          alt="Two panels. Left: BIC and AIC against the number of mixture components, with a dotted line at forty. Right: adjusted Rand index against the number of components, rising to a peak and falling.">
   </figure>
-  <p class="takeaway muted">BIC picks @@l10_gmm.k_bic@@ components; the ARI peaks
-  at @@l10_gmm.k_best_ari@@. The criterion you can compute and the answer you
+  <p class="takeaway muted">BIC picks 5 components; the ARI peaks
+  at 55. The criterion you can compute and the answer you
   want are not the same function.</p>
 </section>
 
@@ -832,8 +832,8 @@ err = ((R - Xa) ** 2).mean(axis=1)
          alt="Two rows of ten greyscale images. The top row, ranked by reconstruction error, is dominated by sideways and double-exposed faces outlined in green. The bottom row, ranked by lowest mixture density, contains a mixture of corrupted and ordinary faces.">
   </figure>
   <p class="takeaway muted">Reconstruction error caught
-  @@l10_anomaly.caught_recon@@ of the @@l10_anomaly.n_planted@@ planted images;
-  the mixture density caught @@l10_anomaly.caught_density@@.</p>
+  12 of the 12 planted images;
+  the mixture density caught 6.</p>
 </section>
 
 <!-- 52 -->
@@ -842,8 +842,8 @@ err = ((R - Xa) ** 2).mean(axis=1)
   <ul class="tight small">
     <li>A rotated or double-exposed face is <strong>outside the subspace</strong>
         the eigenfaces span, so its reconstruction error is large &mdash; median
-        @@l10_anomaly.median_err_bad:.4f@@ against
-        @@l10_anomaly.median_err_clean:.4f@@ for a genuine face</li>
+        0.0017 against
+        0.0002 for a genuine face</li>
     <li>The mixture density is estimated <em>inside</em> that subspace, so a
         corruption that projects onto an ordinary-looking point is invisible
         to it</li>
@@ -859,8 +859,8 @@ err = ((R - Xa) ** 2).mean(axis=1)
 <!-- 53 -->
 <section data-menu-title="Spending the forty labels">
   <h2>Finally: the forty labels</h2>
-  <p class="small">Split the corpus @@l10_n_train@@ / @@l10_n_test@@, stratified
-  by identity. We may label forty of the @@l10_n_train@@ training photographs.
+  <p class="small">Split the corpus 280 / 120, stratified
+  by identity. We may label forty of the 280 training photographs.
   Where we spend them turns out to matter more than what we do with them.</p>
   <ol class="tight small">
     <li>Forty <strong>at random</strong></li>
@@ -868,7 +868,7 @@ err = ((R - Xa) ** 2).mean(axis=1)
     <li>The representative's label <strong>propagated</strong> to its whole
         cluster &mdash; 280 labels from 40</li>
     <li>Propagated only to the 75% of each cluster closest to the centroid</li>
-    <li>All @@l10_n_train@@ true labels &mdash; the ceiling, which the project
+    <li>All 280 true labels &mdash; the ceiling, which the project
         cannot buy</li>
   </ol>
 </section>
@@ -908,11 +908,11 @@ keep = own &lt;= np.percentile(own[km.labels_ == c], 75)   # per cluster
   <h2>The numbers</h2>
   <table class="smaller">
     <tr><th>Labels used</th><th class="num">Held-out accuracy</th><th class="num">sd over 20 splits</th></tr>
-    <tr><td>40 at random</td><td class="num">@@l10_labelprop.40 at random.mean:.1%@@</td><td class="num">@@l10_labelprop.40 at random.sd:.1%@@</td></tr>
-    <tr><td>40, one per cluster</td><td class="num">@@l10_labelprop.40, one per cluster.mean:.1%@@</td><td class="num">@@l10_labelprop.40, one per cluster.sd:.1%@@</td></tr>
-    <tr><td>Propagated to the whole cluster</td><td class="num">@@l10_labelprop.propagated to whole cluster.mean:.1%@@</td><td class="num">@@l10_labelprop.propagated to whole cluster.sd:.1%@@</td></tr>
-    <tr><td>Propagated to the closest 75%</td><td class="num">@@l10_labelprop.propagated to closest 75%.mean:.1%@@</td><td class="num">@@l10_labelprop.propagated to closest 75%.sd:.1%@@</td></tr>
-    <tr><td>All @@l10_n_train@@ true labels</td><td class="num fix">@@l10_labelprop.all 280 labels.mean:.1%@@</td><td class="num">@@l10_labelprop.all 280 labels.sd:.1%@@</td></tr>
+    <tr><td>40 at random</td><td class="num">48.1%</td><td class="num">3.8%</td></tr>
+    <tr><td>40, one per cluster</td><td class="num">60.5%</td><td class="num">4.9%</td></tr>
+    <tr><td>Propagated to the whole cluster</td><td class="num">55.7%</td><td class="num">4.7%</td></tr>
+    <tr><td>Propagated to the closest 75%</td><td class="num">55.1%</td><td class="num">4.8%</td></tr>
+    <tr><td>All 280 true labels</td><td class="num fix">97.4%</td><td class="num">1.6%</td></tr>
   </table>
   <p class="small">Twenty splits, because the differences between the middle
   rows are of the same order as the spread &mdash; and a comparison that turns on
@@ -967,14 +967,14 @@ print(f"reconstruction error {((rec - X_te) ** 2).mean():.5f}")
   <p><em>Reviewer question 2: what was fitted, and on what?</em></p>
   <div class="panel panel-fail">
     <span class="panel-title">Line 1, before the split on line 4</span>
-    <code>PCA(...).fit(X)</code> &mdash; all @@l09_n_images@@ photographs,
-    including the @@l10_n_test@@ we are about to call held out. The subspace
+    <code>PCA(...).fit(X)</code> &mdash; all 400 photographs,
+    including the 120 we are about to call held out. The subspace
     those faces are projected onto was chosen partly <em>by</em> those faces.
   </div>
   <p class="small">You met the same shape in the first application, where it was
   worth about a dollar. Here it is not, and the reason is arithmetic: the
-  @@l10_n_train@@ training faces span at most a @@l10_n_train@@-dimensional
-  subspace of @@l09_n_features:,@@, so adding @@l10_n_test@@ more points
+  280 training faces span at most a 280-dimensional
+  subspace of 4,096, so adding 120 more points
   genuinely changes which directions survive.</p>
 </section>
 
@@ -1004,8 +1004,8 @@ for seed in range(20):
          alt="Two bar charts. Left: held-out reconstruction error, clearly lower for the version fitted on everything. Right: classification accuracy with error bars, the two bars nearly identical and their intervals overlapping heavily.">
   </figure>
   <p class="takeaway muted">The leak makes the reconstruction error look
-  @@l10_pca_leak.err_drop_pct:.0f@@% better and moves the accuracy by
-  @@l10_pca_leak.acc_gap_mean:+.1%@@.</p>
+  61% better and moves the accuracy by
+  -0.0%.</p>
 </section>
 
 <!-- 63 -->
@@ -1013,13 +1013,13 @@ for seed in range(20):
   <h2>Why the two behave differently</h2>
   <table class="smaller">
     <tr><th></th><th class="num">Fitted on train</th><th class="num">Fitted on everything</th><th class="num">Difference</th></tr>
-    <tr><td>Reconstruction error, held out</td><td class="num">@@l10_pca_leak.err_honest:.5f@@</td><td class="num">@@l10_pca_leak.err_leaky:.5f@@</td><td class="num fail">&minus;@@l10_pca_leak.err_drop_pct:.0f@@%</td></tr>
-    <tr><td>Accuracy, held out</td><td class="num">@@l10_pca_leak.acc_honest:.1%@@</td><td class="num">@@l10_pca_leak.acc_leaky:.1%@@</td><td class="num">@@l10_pca_leak.acc_gap_mean:+.1%@@</td></tr>
+    <tr><td>Reconstruction error, held out</td><td class="num">0.00243</td><td class="num">0.00096</td><td class="num fail">&minus;61%</td></tr>
+    <tr><td>Accuracy, held out</td><td class="num">97.4%</td><td class="num">97.4%</td><td class="num">-0.0%</td></tr>
   </table>
   <ul class="tight small">
     <li>Reconstruction error <em>is the objective PCA optimises</em>. Letting the
         held-out faces help choose the subspace optimises it on them directly:
-        lower in @@l10_pca_leak.err_wins@@ of @@l10_pca_leak.n_seeds@@ splits</li>
+        lower in 20 of 20 splits</li>
     <li>Accuracy is a different objective, several steps downstream, and the
         classifier is refitted honestly either way &mdash; so the effect is
         small and inside the noise</li>
@@ -1038,7 +1038,7 @@ for seed in range(20):
   <p class="small">Compare with the first application, where scaling before the
   split cost about a dollar: centring and scaling is an invertible affine map, a
   least-squares fit is equivariant under one, and there were 20,640 rows. None
-  of those three protections applies to a rank-@@l10_d95@@ projection of 400
+  of those three protections applies to a rank-123 projection of 400
   points.</p>
   <p class="small fail">And the procedural rule does not change either way,
   because you cannot tell which case you are in without doing the split.</p>
@@ -1079,10 +1079,10 @@ Pipeline([("pca", PCA(n_components=0.95, random_state=42)),
   <h2>Where this application ends up</h2>
   <table class="smaller">
     <tr><th></th><th class="num">Previous lecture</th><th class="num">Now</th></tr>
-    <tr><td>Features per photograph</td><td class="num">@@l09_n_features:,@@</td><td class="num fix">@@l10_d95@@</td></tr>
-    <tr><td>One model-selection sweep</td><td class="num">@@l09_sweep_seconds:.0f@@ s</td><td class="num fix">@@l10_sweep_seconds_at_95:.0f@@ s</td></tr>
-    <tr><td>ARI against all 400 identities</td><td class="num">@@l09_ari_full_at_best:.3f@@</td><td class="num">@@l10_ari_at_95:.3f@@</td></tr>
-    <tr><td>Accuracy from 40 labels</td><td class="num">&mdash;</td><td class="num fix">@@l10_labelprop.propagated to closest 75%.mean:.1%@@</td></tr>
+    <tr><td>Features per photograph</td><td class="num">4,096</td><td class="num fix">123</td></tr>
+    <tr><td>One model-selection sweep</td><td class="num">65 s</td><td class="num fix">3 s</td></tr>
+    <tr><td>ARI against all 400 identities</td><td class="num">0.537</td><td class="num">0.524</td></tr>
+    <tr><td>Accuracy from 40 labels</td><td class="num">&mdash;</td><td class="num fix">55.1%</td></tr>
   </table>
   <p class="small">The clustering itself is only slightly better. What changed
   is that the pipeline now runs in seconds, and that forty labels became a
@@ -1154,12 +1154,12 @@ Pipeline([("pca", PCA(n_components=0.95, random_state=42)),
         themselves images</li>
     <li>It minimises squared reconstruction error exactly, leaving the tail of
         the spectrum &mdash; a theorem you can check to machine precision</li>
-    <li>The explained variance ratio chooses $d$: @@l10_d95@@ components hold
-        95% of @@l09_n_features:,@@ pixels</li>
+    <li>The explained variance ratio chooses $d$: 123 components hold
+        95% of 4,096 pixels</li>
     <li>Johnson&ndash;Lindenstrauss bounds the target dimension by the number of
         points and the tolerance, never by the dimension you started in &mdash;
         and it is a loose worst case, so measure the distortion you actually get</li>
-    <li>Compressing first made one sweep @@l10_speedup:.0f@@ times faster without
+    <li>Compressing first made one sweep 21 times faster without
         costing agreement with the identities</li>
     <li>k-means still assumes convex equal-sized clusters; DBSCAN and mixtures
         drop that, and here DBSCAN fails for a stateable reason</li>

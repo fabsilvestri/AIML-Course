@@ -693,7 +693,11 @@ def fig_degree_features(ds):
             color=ACCENT, fontweight="bold")
     ax.set_xlabel("polynomial degree")
     ax.set_ylabel("columns entering the model")
-    ax.set_ylim(0, max(nf) * 1.18)
+    # the 712-row reference line has to be INSIDE the limits, or it is invisible
+    # and its label floats above the axes — which bbox_inches="tight" then
+    # expands the figure to include, wrecking the aspect ratio and shrinking
+    # every label to 10.6px on the slide
+    ax.set_ylim(0, max(max(nf), 712) * 1.18)
     ax.set_title("Degree 6 asks 712 rows to determine 484 weights")
     ax.grid(axis="x", alpha=0)
     fig.tight_layout()

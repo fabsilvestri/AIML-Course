@@ -91,6 +91,22 @@ def n_params(hidden=HIDDEN, n_in=784, n_out=10) -> int:
     return sum(sizes[i] * sizes[i + 1] + sizes[i + 1] for i in range(len(sizes) - 1))
 
 
+def layer_params(hidden=HIDDEN, n_in=784, n_out=10) -> dict:
+    """The per-layer breakdown the slide shows as a worked sum.
+
+    The slide prints each line of the arithmetic, so every one of those numbers
+    is a quantity check_provenance.py must be able to trace — not only the
+    total. The middle layer was missing while its neighbours were exported,
+    which is exactly the kind of gap a per-line check catches and a per-total
+    one does not."""
+    sizes = (n_in,) + tuple(hidden) + (n_out,)
+    rows = [{"in": sizes[i], "out": sizes[i + 1],
+             "params": sizes[i] * sizes[i + 1] + sizes[i + 1]}
+            for i in range(len(sizes) - 1)]
+    return {"sizes": list(sizes), "layers": rows,
+            "total": sum(r["params"] for r in rows)}
+
+
 # --------------------------------------------------- Lecture 11 · the figures
 
 def fig_grid(d):
@@ -961,6 +977,7 @@ def main() -> int:
     facts["l12_checkpoint_kb"] = float(size_kb)
     print(f"      state_dict is {size_kb:,.0f} KB")
 
+    facts["l11_layer_params"] = layer_params()
     export(**facts)
 
     bad = validate_diagrams()

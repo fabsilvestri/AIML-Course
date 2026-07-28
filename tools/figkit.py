@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -78,9 +79,31 @@ def export(**values) -> None:
     Every quantity a slide quotes must land here or tools/check_provenance.py
     fails the build. Merging rather than overwriting is what lets each
     application own its own script.
+
+    **Keys are a shared namespace and a collision is silent data loss.** Three
+    scripts exported a bare `n_test`; the last to run set it to MNIST's 12,000
+    and Lectures 1-2 quietly lost housing's 4,128, so seven slides in two decks
+    became unprovenanced with nothing to say why. Prefix your keys with the
+    lecture (`l09_n_test`), and this refuses to overwrite an existing key with a
+    different value rather than letting it happen again.
     """
     path = OUT / "figures.json"
     data = json.loads(path.read_text()) if path.is_file() else {}
+    for k, v in values.items():
+        # A namespaced key (l07_*, l19_*) belongs to one lecture, so its owner
+        # may update it freely — timings and anything else measured on the
+        # machine legitimately change between runs. An UNPREFIXED key is the
+        # dangerous case: it is the one two scripts can both claim, and the
+        # collision is silent.
+        if re.match(r"l\d\d_", k):
+            continue
+        if k in data and data[k] != v:
+            raise RuntimeError(
+                f"export('{k}') would overwrite a value another script wrote:\n"
+                f"    was {data[k]!r}\n    now {v!r}\n"
+                f"figures.json is a shared namespace. Prefix the key with the "
+                f"lecture it belongs to — e.g. 'l09_{k}' — which also marks you "
+                f"as its owner and makes future updates to it free.")
     data.update(values)
     path.write_text(json.dumps(data, indent=2, sort_keys=False))
     for k in values:

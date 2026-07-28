@@ -1256,7 +1256,14 @@ def _natural_css_px(path: Path) -> tuple[float, float]:
     plain = re.search(r'width="([\d.]+)"\s+height="([\d.]+)"', head)
     if plain:
         return float(plain.group(1)), float(plain.group(2))
-    raise RuntimeError(f"{path.name}: cannot read intrinsic size from the header")
+    # An SVG with no width/height takes its intrinsic size from the viewBox —
+    # that is the spec, not a fallback, and several hand-drawn diagrams rely on
+    # it deliberately so they scale cleanly.
+    vb = re.search(r'viewBox="[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)"', head)
+    if vb:
+        return float(vb.group(1)), float(vb.group(2))
+    raise RuntimeError(f"{path.name}: no width/height and no viewBox — the "
+                       f"browser cannot size it, and neither can this check")
 
 
 def check_text_floor() -> list[str]:
@@ -1425,9 +1432,22 @@ def main():
             print("  " + p_)
         raise SystemExit(1)
 
+    # MERGE, do not overwrite. figures.json is shared with every
+    # tools/figures_appNN.py, so writing it wholesale here would silently
+    # delete several hundred values belonging to other lectures, and the only
+    # symptom would be a flood of provenance failures with no obvious cause.
     out = OUT / "figures.json"
-    out.write_text(json.dumps(facts, indent=2))
-    print(f"\nNumbers written to {out.relative_to(ROOT)}")
+    existing = json.loads(out.read_text()) if out.is_file() else {}
+    clobbered = {k for k in facts if k in existing and existing[k] != facts[k]}
+    existing.update(facts)
+    out.write_text(json.dumps(existing, indent=2))
+    print(f"\nNumbers merged into {out.relative_to(ROOT)} "
+          f"({len(facts)} from Lectures 1-2, {len(existing)} total)")
+    if clobbered:
+        print(f"  note: replaced {len(clobbered)} key(s) another script had "
+              f"also written: {', '.join(sorted(clobbered))}")
+        print("  bare names are a shared namespace — prefix new ones with the "
+              "lecture, e.g. l09_n_test")
 
 
 if __name__ == "__main__":

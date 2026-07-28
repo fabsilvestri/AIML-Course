@@ -156,11 +156,11 @@ X, y, images = faces.data, faces.target, faces.images
   </code></pre>
   <table class="smaller">
     <tr><th>Quantity</th><th class="num">Value</th></tr>
-    <tr><td>Photographs</td><td class="num">@@l09_n_images@@</td></tr>
-    <tr><td>Distinct people</td><td class="num">@@l09_n_people@@</td></tr>
-    <tr><td>Photographs per person</td><td class="num">@@l09_per_person@@</td></tr>
-    <tr><td>Pixels per photograph</td><td class="num">@@l09_side@@ &times; @@l09_side@@ = @@l09_n_features:,@@</td></tr>
-    <tr><td>The whole corpus in memory</td><td class="num">@@l09_bytes_mb:.1f@@ MB</td></tr>
+    <tr><td>Photographs</td><td class="num">400</td></tr>
+    <tr><td>Distinct people</td><td class="num">40</td></tr>
+    <tr><td>Photographs per person</td><td class="num">10</td></tr>
+    <tr><td>Pixels per photograph</td><td class="num">64 &times; 64 = 4,096</td></tr>
+    <tr><td>The whole corpus in memory</td><td class="num">6.6 MB</td></tr>
   </table>
   <p class="small muted">Small enough to fit in a browser tab. That is
   deliberate: nothing today fails because the data is large.</p>
@@ -211,12 +211,12 @@ X, y, images = faces.data, faces.target, faces.images
 <!-- 12 -->
 <section data-menu-title="A face is a point">
   <h2>A photograph is a point</h2>
-  <p>Flatten the @@l09_side@@ &times; @@l09_side@@ grid and a photograph is a
+  <p>Flatten the 64 &times; 64 grid and a photograph is a
   vector</p>
   <div class="eqn-box">
-    $$\mathbf{x}^{(i)} \in \mathbb{R}^{@@l09_n_features@@},\qquad x_j \in [0,1]$$
+    $$\mathbf{x}^{(i)} \in \mathbb{R}^{4,096},\qquad x_j \in [0,1]$$
   </div>
-  <p>The corpus is @@l09_n_images@@ points in a space of @@l09_n_features:,@@
+  <p>The corpus is 400 points in a space of 4,096
   dimensions. Every method today measures the distance between two of them.</p>
   <p class="small fail">More dimensions than points, by a factor of ten. Hold on
   to that; it is the whole of the next lecture.</p>
@@ -235,8 +235,8 @@ iu = np.triu_indices(len(X), k=1)
 same = y[iu[0]] == y[iu[1]]               # AUDIT: the hidden labels
 within, between = D[iu][same], D[iu][~same]
   </code></pre>
-  <p class="small muted">@@l09_n_pairs:,@@ pairs in total;
-  @@l09_dist_n_within:,@@ of them are the same person.</p>
+  <p class="small muted">79,800 pairs in total;
+  1,800 of them are the same person.</p>
 </section>
 
 <!-- 14 · FIG -->
@@ -253,7 +253,7 @@ within, between = D[iu][same], D[iu][~same]
 <!-- 15 -->
 <section data-menu-title="The ceiling">
   <h2>The number that sets the ceiling</h2>
-  <p class="big-num bad">@@l09_dist_overlap:.0%@@</p>
+  <p class="big-num bad">6%</p>
   <p>of same-person pairs sit <strong>further apart</strong> than the median
   different-person pair.</p>
   <div class="panel panel-fail">
@@ -262,8 +262,8 @@ within, between = D[iu][same], D[iu][~same]
     forty people cleanly. Not because the method is bad &mdash; because the
     representation puts a lamp and a nose on the same axis.
   </div>
-  <p class="small muted">Mean distance: @@l09_dist_within_mean:.2f@@ within a
-  person, @@l09_dist_between_mean:.2f@@ between people. The gap is real, and it
+  <p class="small muted">Mean distance: 8.38 within a
+  person, 12.41 between people. The gap is real, and it
   is small.</p>
 </section>
 
@@ -369,7 +369,7 @@ within, between = D[iu][same], D[iu][~same]
   <h2>What the silhouette costs</h2>
   <p>$a$ and $b$ need the distance from every point to every other point.</p>
   <div class="eqn-box">
-    $$\underbrace{\binom{m}{2}}_{@@l09_n_pairs:,@@\ \text{pairs}} \times \underbrace{n}_{@@l09_n_features:,@@\ \text{dimensions}}$$
+    $$\underbrace{\binom{m}{2}}_{79,800\ \text{pairs}} \times \underbrace{n}_{4,096\ \text{dimensions}}$$
   </div>
   <p class="small">Quadratic in the number of photographs, linear in the number
   of pixels. Both factors matter later: the archive is bigger than 400, and the
@@ -391,9 +391,9 @@ audit = np.sort(rng.choice(400, size=40, replace=False))
 y_audit = y[audit]              # the only labels the project owns
   </code></pre>
   <ul class="tight small">
-    <li>@@l09_audit_pairs@@ pairs among the forty</li>
-    <li>@@l09_audit_same_pairs@@ of those pairs are the same person</li>
-    <li>@@l09_labelled_pct:.0f@@% of the corpus is labelled</li>
+    <li>780 pairs among the forty</li>
+    <li>22 of those pairs are the same person</li>
+    <li>10% of the corpus is labelled</li>
   </ul>
   <p class="small fail">Forty labels is a small evaluation set. Remember that
   when the number it produces looks decisive.</p>
@@ -424,7 +424,7 @@ y_audit = y[audit]              # the only labels the project owns
   <table class="smaller">
     <tr><th></th><th>Silhouette</th><th>ARI on the forty</th></tr>
     <tr><td>Needs labels</td><td>no</td><td>forty of them</td></tr>
-    <tr><td>Computed on</td><td>all @@l09_n_images@@</td><td>@@l09_label_budget@@</td></tr>
+    <tr><td>Computed on</td><td>all 400</td><td>40</td></tr>
     <tr><td>Job</td><td>choose $k$</td><td>report to the stakeholder</td></tr>
     <tr><td>Measures</td><td>geometry</td><td>agreement with a human</td></tr>
     <tr><td>Can be gamed by</td><td>choosing $k$ to maximise it</td><td>nothing &mdash; but it is noisy</td></tr>
@@ -459,9 +459,9 @@ for seed in range(20):
   <h2>The anchor</h2>
   <table class="smaller">
     <tr><th>Random assignment</th><th class="num">Silhouette</th><th class="num">ARI on the forty</th></tr>
-    <tr><td>$k = 10$</td><td class="num">@@l09_random_baseline.10.sil_mean:+.4f@@ &plusmn; @@l09_random_baseline.10.sil_sd:.4f@@</td><td class="num">@@l09_random_baseline.10.ari_mean:+.4f@@ &plusmn; @@l09_random_baseline.10.ari_sd:.4f@@</td></tr>
-    <tr><td>$k = 40$</td><td class="num">@@l09_random_baseline.40.sil_mean:+.4f@@ &plusmn; @@l09_random_baseline.40.sil_sd:.4f@@</td><td class="num">@@l09_random_baseline.40.ari_mean:+.4f@@ &plusmn; @@l09_random_baseline.40.ari_sd:.4f@@</td></tr>
-    <tr><td>$k = 60$</td><td class="num">@@l09_random_baseline.60.sil_mean:+.4f@@ &plusmn; @@l09_random_baseline.60.sil_sd:.4f@@</td><td class="num">@@l09_random_baseline.60.ari_mean:+.4f@@ &plusmn; @@l09_random_baseline.60.ari_sd:.4f@@</td></tr>
+    <tr><td>$k = 10$</td><td class="num">-0.0422 &plusmn; 0.0045</td><td class="num">-0.0040 &plusmn; 0.0205</td></tr>
+    <tr><td>$k = 40$</td><td class="num">-0.1288 &plusmn; 0.0107</td><td class="num">-0.0089 &plusmn; 0.0244</td></tr>
+    <tr><td>$k = 60$</td><td class="num">-0.1805 &plusmn; 0.0124</td><td class="num">-0.0075 &plusmn; 0.0261</td></tr>
   </table>
   <p class="fix">Both anchors sit at zero, and now you know the width of the
   noise around zero.</p>
@@ -484,7 +484,7 @@ for seed in range(20):
   <div class="panel">
     An ARI in the high tenths would let a human confirm a group in one glance
     each. Somewhere near zero means the human is back to looking at
-    @@l09_n_images@@ photographs one at a time, which is the situation we were
+    400 photographs one at a time, which is the situation we were
     hired to remove.
   </div>
   <p class="small muted">That is an order of magnitude, not a target. Turning it
@@ -504,7 +504,7 @@ for seed in range(20):
     </p>
   </div>
   <p class="small">You are not guessing in the dark: random assignment scores
-  @@l09_random_baseline.40.ari_mean:.2f@@ on both, perfect agreement scores
+  -0.01 on both, perfect agreement scores
   1.00, and you have seen how much the pixel distances overlap.</p>
   <aside class="notes">Do not move on until pens have moved. Do not say anything
   about whether the number will turn out to be right.</aside>
@@ -547,7 +547,7 @@ for seed in range(20):
     <div>
       <ul class="tight smaller">
         <li><strong>Input</strong> &mdash; <code>X</code>, shape
-            (@@l09_n_images@@, @@l09_n_features@@), floats in $[0,1]$</li>
+            (400, 4,096), floats in $[0,1]$</li>
         <li><strong>Output</strong> &mdash; one integer group per photograph, and
             the $k$ that produced it</li>
       </ul>
@@ -593,7 +593,7 @@ km = KMeans(n_clusters=40, n_init=10, random_state=42).fit(X)
 print(km.inertia_, km.labels_[:12], km.cluster_centers_.shape)
   </code></pre>
   <pre><code class="language-text" data-trim>
-@@l09_elbow.inertia_k40:.1f@@ [ 4 4 4 4 4 4 4 4 4 4 27 27] (40, 4096)
+12139.7 [ 4 4 4 4 4 4 4 4 4 4 27 27] (40, 4096)
   </code></pre>
   <p class="small">The centroids live in the same space as the photographs, so
   <code>cluster_centers_</code> is forty images. That is worth remembering: the
@@ -611,7 +611,7 @@ for k in range(2, 61):
     km = KMeans(n_clusters=k, n_init=10, random_state=42).fit(X)
     inertia.append(km.inertia_)
   </code></pre>
-  <p class="small muted">@@l09_sweep_n_fits:,@@ runs of Lloyd's algorithm.
+  <p class="small muted">590 runs of Lloyd's algorithm.
   Start it now; it is still running when we come back to it.</p>
 </section>
 
@@ -637,9 +637,9 @@ for k in range(2, 61):
   </div>
   <ul class="tight small">
     <li>The <em>kneedle</em> rule &mdash; the point furthest below the chord
-        joining the ends &mdash; picks $k = @@l09_elbow.k_knee@@</li>
+        joining the ends &mdash; picks $k = 19</li>
     <li>The truth, which we are not supposed to know, is $k = 40$</li>
-    <li>At $k = 40$, @@l09_elbow.frac_remaining_at_40:.0%@@ of the inertia at
+    <li>At $k = 40$, 46% of the inertia at
         $k = 2$ is still there</li>
   </ul>
   <p class="small fail">The elbow is not a criterion. It is a picture of a
@@ -680,9 +680,9 @@ best_k = 2 + int(np.argmax(sil))
   <h2>What it chose</h2>
   <table class="smaller">
     <tr><th></th><th class="num">$k$</th><th class="num">Silhouette</th><th class="num">ARI on the forty</th></tr>
-    <tr><td>Random assignment</td><td class="num">40</td><td class="num">@@l09_random_baseline.40.sil_mean:+.4f@@</td><td class="num">@@l09_random_baseline.40.ari_mean:+.4f@@</td></tr>
-    <tr><td>Silhouette&rsquo;s choice</td><td class="num">@@l09_best_k@@</td><td class="num">@@l09_best_silhouette:+.4f@@</td><td class="num">@@l09_ari_audit_at_best:+.4f@@</td></tr>
-    <tr><td>The true $k$</td><td class="num">40</td><td class="num">@@l09_sil_at_40:+.4f@@</td><td class="num">@@l09_ari_audit_at_40:+.4f@@</td></tr>
+    <tr><td>Random assignment</td><td class="num">40</td><td class="num">-0.1288</td><td class="num">-0.0089</td></tr>
+    <tr><td>Silhouette&rsquo;s choice</td><td class="num">59</td><td class="num">+0.1707</td><td class="num">+0.3954</td></tr>
+    <tr><td>The true $k$</td><td class="num">40</td><td class="num">+0.1465</td><td class="num">+0.2978</td></tr>
   </table>
   <p class="small">Well above the anchor, so the clustering is doing something.
   Whether it is doing the <em>right</em> thing is not in this table.</p>
@@ -735,7 +735,7 @@ for c in range(k):
 <!-- 44 -->
 <section data-menu-title="Now look at the faces">
   <h2>Now do the thing that gets skipped</h2>
-  <p class="lead">A silhouette of @@l09_best_silhouette:.3f@@ means nothing until
+  <p class="lead">A silhouette of 0.171 means nothing until
   you see what it grouped.</p>
   <pre><code class="language-python" data-trim>
 lab = km.labels_
@@ -765,19 +765,19 @@ for c in [best_cluster, worst_cluster]:
 <section data-menu-title="What it grouped instead">
   <h2>What it grouped instead of identity</h2>
   <div class="panel panel-fail">
-    <span class="panel-title">In @@l09_n_features:,@@ raw pixels, a lamp is bigger than a nose</span>
+    <span class="panel-title">In 4,096 raw pixels, a lamp is bigger than a nose</span>
     Moving the light source changes hundreds of pixel values by a large amount.
     Changing the person changes a few dozen by a small one. Euclidean distance
     adds them all up with equal weight.
   </div>
   <ul class="tight small">
-    <li>Cleanest cluster: @@l09_clusters.best_size@@ photographs, purity
-        @@l09_clusters.best_purity:.2f@@</li>
-    <li>Worst cluster: @@l09_clusters.worst_size@@ photographs of
-        @@l09_clusters.worst_identities@@ different people, purity
-        @@l09_clusters.worst_purity:.2f@@</li>
-    <li>Mean purity across all @@l09_clusters.k@@ clusters:
-        @@l09_clusters.mean_purity:.2f@@</li>
+    <li>Cleanest cluster: 10 photographs, purity
+        1.00</li>
+    <li>Worst cluster: 24 photographs of
+        10 different people, purity
+        0.21</li>
+    <li>Mean purity across all 40 clusters:
+        0.74</li>
   </ul>
 </section>
 
@@ -789,8 +789,8 @@ for c in [best_cluster, worst_cluster]:
          alt="Two bar charts. The left shows cluster sizes sorted descending, ranging from a large maximum down to one, with a dashed line at ten. The right shows how many clusters contain one, two, three or more distinct people, with the tallest bar not at one.">
   </figure>
   <p class="takeaway muted">Every true group has exactly ten members. The
-  clustering produces sizes from @@l09_cluster_sizes.smallest@@ to
-  @@l09_cluster_sizes.largest@@.</p>
+  clustering produces sizes from 4 to
+  25.</p>
 </section>
 
 <!-- 48 -->
@@ -798,10 +798,10 @@ for c in [best_cluster, worst_cluster]:
   <h2>Counting it, rather than describing it</h2>
   <table class="smaller">
     <tr><th>Question</th><th class="num">Answer</th></tr>
-    <tr><td>Clusters holding exactly one person</td><td class="num">@@l09_clusters.n_pure@@ of @@l09_clusters.k@@</td></tr>
-    <tr><td>Clusters with exactly ten members</td><td class="num">@@l09_cluster_sizes.n_size_10@@ of @@l09_clusters.k@@</td></tr>
-    <tr><td>Clusters with a single member</td><td class="num">@@l09_clusters.n_singleton@@</td></tr>
-    <tr><td>ARI against the forty labels</td><td class="num">@@l09_ari_audit_at_best:.3f@@</td></tr>
+    <tr><td>Clusters holding exactly one person</td><td class="num">16 of 40</td></tr>
+    <tr><td>Clusters with exactly ten members</td><td class="num">7 of 40</td></tr>
+    <tr><td>Clusters with a single member</td><td class="num">0</td></tr>
+    <tr><td>ARI against the forty labels</td><td class="num">0.395</td></tr>
   </table>
   <p class="small">Write these down. Every one of them is repaired, or shown not
   to be repairable, in the next ninety minutes.</p>
@@ -889,19 +889,19 @@ for seed in range(20):
     <div>
       <table class="smaller">
         <tr><th></th><th class="num">Silhouette</th></tr>
-        <tr><td>Reported (chose <em>and</em> scored on the same half)</td><td class="num">@@l09_selection_optimism.selected_mean:.4f@@ &plusmn; @@l09_selection_optimism.selected_sd:.4f@@</td></tr>
-        <tr><td>Held out (had no vote)</td><td class="num">@@l09_selection_optimism.heldout_mean:.4f@@ &plusmn; @@l09_selection_optimism.heldout_sd:.4f@@</td></tr>
-        <tr><td>Optimism</td><td class="num fail">@@l09_selection_optimism.optimism_mean:+.4f@@ &plusmn; @@l09_selection_optimism.optimism_sd:.4f@@</td></tr>
+        <tr><td>Reported (chose <em>and</em> scored on the same half)</td><td class="num">0.1777 &plusmn; 0.0123</td></tr>
+        <tr><td>Held out (had no vote)</td><td class="num">0.0878 &plusmn; 0.0154</td></tr>
+        <tr><td>Optimism</td><td class="num fail">+0.0899 &plusmn; 0.0229</td></tr>
       </table>
     </div>
     <div>
-      <p class="big-num bad">@@l09_selection_optimism.optimism_pct:.0f@@%</p>
+      <p class="big-num bad">50%</p>
       <p class="small">of the reported score, over
-      @@l09_selection_optimism.n_seeds@@ seeds.</p>
+      20 seeds.</p>
     </div>
   </div>
-  <p class="small">Worse in @@l09_selection_optimism.n_worse@@ of
-  @@l09_selection_optimism.n_seeds@@ splits. Report it honestly: this is not a
+  <p class="small">Worse in 20 of
+  20 splits. Report it honestly: this is not a
   catastrophe, it is a bias &mdash; and you could not have known its size without
   measuring it.</p>
 </section>
@@ -931,8 +931,8 @@ for seed in range(20):
 <!-- 56 -->
 <section data-menu-title="How long did that take?">
   <h2>One more measurement, and it is not about quality</h2>
-  <p>Everything above ran on @@l09_n_images@@ photographs &mdash; a corpus that
-  fits in @@l09_bytes_mb:.1f@@ MB.</p>
+  <p>Everything above ran on 400 photographs &mdash; a corpus that
+  fits in 6.6 MB.</p>
   <pre><code class="language-python" data-trim>
 t0 = time.perf_counter()
 for k in range(2, 61):
@@ -952,7 +952,7 @@ print(time.perf_counter() - t0)
     <img src="../assets/figures/l09-timing.svg"
          alt="A single horizontal stacked bar showing wall-clock seconds for one sweep over k, split into a large blue segment for the k-means fits and a smaller purple segment for the silhouette scores.">
   </figure>
-  <p class="takeaway muted">@@l09_sweep_minutes:.0f@@ minutes for one sweep over
+  <p class="takeaway muted">1 minutes for one sweep over
   400 photographs &mdash; and the answer it gave was still ambiguous.</p>
 </section>
 
@@ -961,12 +961,12 @@ print(time.perf_counter() - t0)
   <h2>Where the time went</h2>
   <table class="smaller">
     <tr><th>Step</th><th class="num">Seconds</th><th>Cost model</th></tr>
-    <tr><td>@@l09_sweep_n_fits:,@@ runs of Lloyd's algorithm</td><td class="num">@@l09_sweep_fit_seconds:.0f@@</td><td>$O(\text{iterations} \times m \times k \times n)$</td></tr>
-    <tr><td>@@l09_k_max@@ silhouette scores</td><td class="num">@@l09_sweep_sil_seconds:.0f@@</td><td>$O(m^{2} n)$</td></tr>
-    <tr><td>Total</td><td class="num fail">@@l09_sweep_seconds:.0f@@</td><td></td></tr>
+    <tr><td>590 runs of Lloyd's algorithm</td><td class="num">64</td><td>$O(\text{iterations} \times m \times k \times n)$</td></tr>
+    <tr><td>60 silhouette scores</td><td class="num">1</td><td>$O(m^{2} n)$</td></tr>
+    <tr><td>Total</td><td class="num fail">65</td><td></td></tr>
   </table>
   <p>Both cost models are <strong>linear in $n$</strong>, the number of
-  features. We are carrying @@l09_n_features:,@@ of them.</p>
+  features. We are carrying 4,096 of them.</p>
   <p class="small fail">Nothing here was slow because 400 is a large number.</p>
 </section>
 
@@ -978,7 +978,7 @@ print(time.perf_counter() - t0)
         times the fitting</li>
     <li>The silhouette is <strong>quadratic</strong> in $m$, so ten times the
         photographs is a hundred times the scoring</li>
-    <li>Both are linear in the @@l09_n_features:,@@ features, and that factor is
+    <li>Both are linear in the 4,096 features, and that factor is
         the one nobody chose &mdash; it is just the size of the image</li>
   </ul>
   <div class="panel">
@@ -1043,9 +1043,9 @@ print(time.perf_counter() - t0)
     <li>In raw pixels, a lighting condition is a larger vector than a face</li>
     <li>The score that selected a model is an optimistic estimate of that
         model's performance &mdash; measured here at
-        @@l09_selection_optimism.optimism_pct:.0f@@%</li>
-    <li>One model-selection sweep cost @@l09_sweep_minutes:.0f@@ minutes on
-        @@l09_bytes_mb:.1f@@ MB of data</li>
+        50%</li>
+    <li>One model-selection sweep cost 1 minutes on
+        6.6 MB of data</li>
   </ol>
 </section>
 
@@ -1121,7 +1121,7 @@ print(f"chose k={best}, silhouette={max(scores):.3f}")
   <div class="panel">
     <span class="panel-title">One thing to think about</span>
     Every cost model on this deck was linear in the number of features. Nothing
-    said @@l09_n_features:,@@ of them were necessary.
+    said 4,096 of them were necessary.
   </div>
 </section>
 

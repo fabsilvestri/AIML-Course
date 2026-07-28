@@ -105,10 +105,19 @@ def quantities(src: str):
     body = re.sub(r"<!--.*?-->", blank, body, flags=re.S)
     body = re.sub(r'\b(?:alt|title|content)="[^"]*"', blank, body)
     body = html.unescape(body)
-    # KaTeX, not currency: "$7.1\times10^{-6}$" is an expression, and the same
-    # backslash test check_decks.py uses tells the two apart.
+    # Strip KaTeX before looking for money. A $...$ pair is maths if it holds a
+    # backslash ("$7.1\times10^{-6}$") OR is a bare symbolic token with neither
+    # a thousands separator nor a real word — "$0.909$", "$t^2$", "$[0,1]$".
+    # Currency reads the other way: "$120,000 and " has both.
+    def _is_maths(text: str) -> bool:
+        inner = text[1:-1]
+        if "\\" in inner:
+            return True
+        return not (re.search(r"\d{1,3}(,\d{3})+", inner)
+                    or re.search(r"[A-Za-z]{2,}", inner))
+
     body = re.sub(r"(?<!\$)\$[^$\n]{1,160}?\$(?!\$)",
-                  lambda m: blank(m) if "\\" in m.group() else m.group(), body)
+                  lambda m: blank(m) if _is_maths(m.group()) else m.group(), body)
 
     pattern = re.compile(r"\$\s?(\d[\d,]*(?:\.\d+)?)|(?<![\d.])(\d{1,3}(?:,\d{3})+)")
     for m in pattern.finditer(body):
