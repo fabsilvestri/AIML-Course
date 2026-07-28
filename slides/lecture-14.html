@@ -44,15 +44,15 @@
   <h2>Where we left off</h2>
   <table>
     <tr><th>Model</th><th class="num">Test accuracy</th></tr>
-    <tr><td>Always predict one class</td><td class="num">@@l13_baseline_acc:.1%@@</td></tr>
-    <tr><td>2 hidden layers</td><td class="num hit">@@l13_shallow.test_acc:.1%@@</td></tr>
-    <tr><td class="fail">@@l13_depth:.0f@@ hidden layers, @@l13_n_params:,@@ parameters</td><td class="num fail">@@l13_deep.test_acc:.1%@@</td></tr>
+    <tr><td>Always predict one class</td><td class="num">10.0%</td></tr>
+    <tr><td>2 hidden layers</td><td class="num hit">39.3%</td></tr>
+    <tr><td class="fail">20 hidden layers, 500,210 parameters</td><td class="num fail">10.0%</td></tr>
   </table>
   <p class="lead">And one measurement you could not explain.</p>
   <p class="small">The gradient norm falls by a factor of about
-  @@l13_per_layer_attenuation:.3f@@ <em>at every layer</em>, so over
-  @@l13_n_ratios:.0f@@ layers it falls by
-  @@l13_attenuation:.1e@@.</p>
+  0.159 <em>at every layer</em>, so over
+  19 layers it falls by
+  1.4e+15.</p>
 </section>
 
 <!-- 3 -->
@@ -69,7 +69,7 @@
     <li>Re-measure and red-team <span class="muted small">(15 min)</span></li>
   </ol>
   <p class="small muted">The thread predicts
-  @@l13_per_layer_attenuation:.3f@@ from the shapes of the weight matrices
+  0.159 from the shapes of the weight matrices
   alone. That is the whole lecture; everything after it is application.</p>
 </section>
 
@@ -87,7 +87,7 @@
 <!-- 5 -->
 <section data-menu-title="The question">
   <h2>The question</h2>
-  <p class="lead">Why @@l13_per_layer_attenuation:.4f@@?</p>
+  <p class="lead">Why 0.1593?</p>
   <p>Not &ldquo;why is it small&rdquo;. Why is it <em>that number</em>, and
   what would it have to be instead?</p>
   <div class="panel panel-math">
@@ -107,8 +107,8 @@
   </div>
   <p class="small">$a$ is what arrives, $z$ is what leaves,
   $n_{\text{in}}$ is the fan-in &mdash; the number of inputs each output unit
-  sums over. For our hidden layers that is @@l13_width:.0f@@; for the first
-  layer it is @@l13_n_features:,@@.</p>
+  sums over. For our hidden layers that is 100; for the first
+  layer it is 3,072.</p>
 </section>
 
 <!-- 7 -->
@@ -148,12 +148,12 @@
 <section data-menu-title="Check it">
   <h2>Check it before believing it</h2>
   <pre><code class="language-text" data-trim>
-Var(w) = 0.001   predicted Var(z) = 0.1000   measured 0.0999
-Var(w) = 0.010   predicted Var(z) = 1.0000   measured 1.0011
-Var(w) = 0.020   predicted Var(z) = 2.0000   measured 2.0029
-Var(w) = 0.050   predicted Var(z) = 5.0000   measured 5.0072
+Var(w) = 0.001   predicted Var(z) = 0.1000   measured 0.1002
+Var(w) = 0.010   predicted Var(z) = 1.0000   measured 0.9727
+Var(w) = 0.020   predicted Var(z) = 2.0000   measured 2.0502
+Var(w) = 0.050   predicted Var(z) = 5.0000   measured 5.0050
   </code></pre>
-  <p class="small">One layer, fan-in @@l13_width:.0f@@, twenty thousand random
+  <p class="small">One layer, fan-in 100, twenty thousand random
   inputs of unit variance. Four lines of NumPy, and the same habit as Lecture
   2's orthogonality test: <em>verify the identity you are about to reason
   with</em>.</p>
@@ -162,7 +162,7 @@ Var(w) = 0.050   predicted Var(z) = 5.0000   measured 5.0072
 <!-- 10 -->
 <section data-menu-title="Forward requirement">
   <h2>What the forward pass wants</h2>
-  <p>We want the signal to arrive at layer @@l13_depth:.0f@@ with the spread it
+  <p>We want the signal to arrive at layer 20 with the spread it
   had at layer 1. Otherwise, whichever way it drifts, twenty layers of drift is
   a factor of $r^{20}$.</p>
   <div class="eqn-box">
@@ -229,9 +229,9 @@ Var(w) = 0.050   predicted Var(z) = 5.0000   measured 5.0072
   are the same number only when $n_{\text{in}} = n_{\text{out}}$.</p>
   <table>
     <tr><th>Layer</th><th class="num">$n_{\text{in}}$</th><th class="num">$n_{\text{out}}$</th><th>Can both be satisfied?</th></tr>
-    <tr><td>First</td><td class="num">@@l13_n_features:,@@</td><td class="num">@@l13_width:.0f@@</td><td class="fail">no &mdash; they differ by a factor of 30</td></tr>
-    <tr><td>Each hidden</td><td class="num">@@l13_width:.0f@@</td><td class="num">@@l13_width:.0f@@</td><td class="fix">yes, exactly</td></tr>
-    <tr><td>Head</td><td class="num">@@l13_width:.0f@@</td><td class="num">@@l13_n_classes:.0f@@</td><td class="fail">no</td></tr>
+    <tr><td>First</td><td class="num">3,072</td><td class="num">100</td><td class="fail">no &mdash; they differ by a factor of 30</td></tr>
+    <tr><td>Each hidden</td><td class="num">100</td><td class="num">100</td><td class="fix">yes, exactly</td></tr>
+    <tr><td>Head</td><td class="num">100</td><td class="num">10</td><td class="fail">no</td></tr>
   </table>
   <p class="small">Every network whose layers change width &mdash; which is
   every network &mdash; has to give something up.</p>
@@ -265,9 +265,9 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
   $6/3 = 2$. Choose either; nothing in the
   derivation cares about the shape of the distribution, only its variance.</p>
   <p class="small muted">On our hidden layers this gives
-  $\operatorname{Var}(w) =$ @@l14_glorot_var:.4f@@, a standard deviation of
-  @@l14_glorot_sd:.4f@@ &mdash; against the default's
-  @@l14_default_sd:.4f@@.</p>
+  $\operatorname{Var}(w) =$ 0.0100, a standard deviation of
+  0.1000 &mdash; against the default's
+  0.0577.</p>
 </section>
 
 <!-- 16 -->
@@ -296,9 +296,9 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
   <p>Not &ldquo;usually small&rdquo;. <strong>Bounded above by a quarter,
   everywhere</strong>, and equal to a quarter only at $z = 0$.</p>
   <p class="lead fail">So the logistic multiplies $\rho$ by at most
-  @@l14_sigmoid_dmax:.2f@@, before any weight has been chosen.</p>
+  0.25, before any weight has been chosen.</p>
   <p class="small muted">That is the ceiling. Over
-  @@l13_n_ratios:.0f@@ layers, even a perfectly initialised logistic stack
+  19 layers, even a perfectly initialised logistic stack
   cannot do better than $(1/4)^{19}$.</p>
 </section>
 
@@ -339,10 +339,10 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
     <span class="eqn-label">He initialisation, for ReLU</span>
   </div>
   <p class="small">On our hidden layers, $\operatorname{Var}(w) =$
-  @@l14_he_var:.4f@@ and $\operatorname{sd}(w) =$
-  @@l14_he_sd:.4f@@ &mdash; against Glorot's
-  @@l14_glorot_sd:.4f@@ and the default's
-  @@l14_default_sd:.4f@@.</p>
+  0.0200 and $\operatorname{sd}(w) =$
+  0.1414 &mdash; against Glorot's
+  0.1000 and the default's
+  0.0577.</p>
   <p class="lead fix">Then
   $\rho = \sqrt{n\cdot(2/n)\cdot\tfrac12} = 1$, exactly.</p>
 </section>
@@ -352,10 +352,10 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
   <h2>Four schemes, predicted from the shapes alone</h2>
   <table class="small">
     <tr><th>Scheme</th><th class="num">$\operatorname{Var}(w)$</th><th class="num">$\mathbb{E}[\varphi'^2]$</th><th class="num">predicted $\rho$</th></tr>
-    <tr><td class="fail">default, logistic</td><td class="num">@@l14_default_var:.5f@@</td><td class="num">@@l14_sigmoid_dmax_sq:.4f@@</td><td class="num fail">@@l14_theory.default_sigmoid:.4f@@</td></tr>
-    <tr><td>Glorot, logistic</td><td class="num">@@l14_glorot_var:.5f@@</td><td class="num">@@l14_sigmoid_dmax_sq:.4f@@</td><td class="num">@@l14_theory.glorot_sigmoid:.4f@@</td></tr>
-    <tr><td>Glorot, ReLU</td><td class="num">@@l14_glorot_var:.5f@@</td><td class="num">0.5000</td><td class="num">@@l14_theory.glorot_relu:.4f@@</td></tr>
-    <tr><td class="fix">He, ReLU</td><td class="num">@@l14_he_var:.5f@@</td><td class="num">0.5000</td><td class="num hit">@@l14_theory.he_relu:.4f@@</td></tr>
+    <tr><td class="fail">default, logistic</td><td class="num">0.00333</td><td class="num">0.0625</td><td class="num fail">0.1443</td></tr>
+    <tr><td>Glorot, logistic</td><td class="num">0.01000</td><td class="num">0.0625</td><td class="num">0.2500</td></tr>
+    <tr><td>Glorot, ReLU</td><td class="num">0.01000</td><td class="num">0.5000</td><td class="num">0.7071</td></tr>
+    <tr><td class="fix">He, ReLU</td><td class="num">0.02000</td><td class="num">0.5000</td><td class="num hit">1.0000</td></tr>
   </table>
   <p class="small">Nothing in that table came from running anything. It is the
   fan-in, the fan-out, and one expectation.</p>
@@ -369,21 +369,23 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
   </div>
   <p class="lead">There is no safe value of $\rho$ except one.</p>
   <table>
-    <tr><th class="num">$\rho$</th><th class="num">over @@l13_n_ratios:.0f@@ layers</th><th>what you see</th></tr>
-    <tr><td class="num fail">0.144</td><td class="num fail">$10^{-16}$</td><td class="fail">the loss does not move</td></tr>
-    <tr><td class="num">0.707</td><td class="num">$10^{-3}$</td><td>trains, slowly, badly</td></tr>
-    <tr><td class="num hit">1.000</td><td class="num hit">1</td><td class="fix">every layer learns</td></tr>
-    <tr><td class="num fail">1.400</td><td class="num fail">$10^{3}$</td><td class="fail"><code>NaN</code></td></tr>
+    <tr><th class="num">$\rho$</th><th class="num">over 19 layers</th><th>what you see</th><th>where</th></tr>
+    <tr><td class="num fail">0.144</td><td class="num fail">$10^{-16}$</td><td class="fail">the loss does not move</td><td class="fail">the previous lecture</td></tr>
+    <tr><td class="num">0.707</td><td class="num">$10^{-3}$</td><td>trains, slowly, badly</td><td>in forty minutes</td></tr>
+    <tr><td class="num hit">1.000</td><td class="num hit">1</td><td class="fix">every layer learns</td><td class="fix">the target</td></tr>
+    <tr><td class="num fail">1.400</td><td class="num fail">$10^{3}$</td><td class="fail"><code>NaN</code></td><td class="muted">illustrative</td></tr>
   </table>
+  <p class="small muted">The last row is the other side of one, and the reason
+  gradient clipping exists.</p>
 </section>
 
 <!-- 22 -->
 <section data-menu-title="The knife edge">
   <h2>Why depth is different in kind</h2>
-  <p>At three layers, $\rho = 0.144$ costs you a factor of fifty. Annoying, and
-  a smaller learning rate hides it.</p>
-  <p>At @@l13_depth:.0f@@ layers the same $\rho$ costs
-  @@l13_attenuation:.0e@@, and nothing hides that.</p>
+  <p>At three layers, $\rho =$ 0.144 costs you a
+  factor of about fifty. Annoying, and a smaller learning rate hides it.</p>
+  <p>At 20 layers the same $\rho$ costs
+  1e+15, and nothing hides that.</p>
   <div class="panel panel-math">
     <span class="panel-title">The general shape of the argument</span>
     A constant error, repeated $L$ times, is not a constant error. This is the
@@ -394,18 +396,61 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
 
 <!-- 23 -->
 <section data-menu-title="★ The prediction">
-  <h2>Now put your own number beside it</h2>
+  <h2>Now put the measurement beside it</h2>
+  <p class="small">$\rho$ measured directly &mdash; the norm of
+  $\partial L/\partial z_\ell$ at every layer, over eight batches, in
+  float64.</p>
   <table>
-    <tr><th>Scheme</th><th class="num">predicted $\rho$</th><th class="num">measured $\rho$</th><th class="num">measured, end to end</th></tr>
-    <tr><td class="fail">default, logistic</td><td class="num">@@l14_theory.default_sigmoid:.4f@@</td><td class="num fail">@@l14_per_layer.default_sigmoid.per_layer:.4f@@</td><td class="num fail">@@l14_per_layer.default_sigmoid.attenuation:.2e@@</td></tr>
-    <tr><td>Glorot, logistic</td><td class="num">@@l14_theory.glorot_sigmoid:.4f@@</td><td class="num">@@l14_per_layer.glorot_sigmoid.per_layer:.4f@@</td><td class="num">@@l14_per_layer.glorot_sigmoid.attenuation:.2e@@</td></tr>
-    <tr><td>Glorot, ReLU</td><td class="num">@@l14_theory.glorot_relu:.4f@@</td><td class="num">@@l14_glorot_relu.per_layer:.4f@@</td><td class="num">@@l14_glorot_relu.attenuation:.2e@@</td></tr>
-    <tr><td class="fix">He, ReLU</td><td class="num">@@l14_theory.he_relu:.4f@@</td><td class="num hit">@@l14_per_layer.he_relu.per_layer:.4f@@</td><td class="num hit">@@l14_per_layer.he_relu.attenuation:.2e@@</td></tr>
+    <tr><th>Scheme</th><th class="num">predicted $\rho$</th><th class="num">measured $\rho$</th><th class="num">error</th><th class="num">$\delta_1 / \delta_{20}$</th></tr>
+    <tr><td class="fail">default, logistic</td><td class="num">0.1443</td><td class="num fail">0.1390</td><td class="num">3.7%</td><td class="num fail">5.24e-17</td></tr>
+    <tr><td>Glorot, logistic</td><td class="num">0.2500</td><td class="num">0.2340</td><td class="num">6.4%</td><td class="num">1.03e-12</td></tr>
+    <tr><td>Glorot, ReLU</td><td class="num">0.7071</td><td class="num">0.7045</td><td class="num">0.4%</td><td class="num">1.29e-03</td></tr>
+    <tr><td class="fix">He, ReLU</td><td class="num">1.0000</td><td class="num hit">0.9970</td><td class="num">0.3%</td><td class="num hit">9.44e-01</td></tr>
   </table>
-  <p class="lead fix">The first row is the number on your sheet.</p>
+  <p class="lead fix">Two indices and one expectation, and the worst row is
+  out by 6.4%.</p>
   <aside class="notes">Stop here. Ask someone to read out what they wrote down
   last time. This is the moment the thread pays for itself, and it is worth a
   full minute of silence.</aside>
+</section>
+
+<!-- 23b -->
+<section data-menu-title="★ And your own number">
+  <h2>But your sheet says 0.1593</h2>
+  <p>Because you logged the gradient of the <strong>weights</strong>, and the
+  thread is about the gradient of the <strong>signal</strong>. Those are not
+  the same quantity:</p>
+  <div class="eqn-box">
+    $$\left\lVert \frac{\partial L}{\partial W_\ell} \right\rVert
+      \;\sim\; \lVert \delta_\ell \rVert \cdot \lVert a_{\ell-1} \rVert$$
+  </div>
+  <p class="small">The weight-gradient ratio therefore carries <em>both</em>
+  factors &mdash; the backward one, $\rho$, and the forward one. Divide them
+  and the discrepancy closes:
+  0.1390 over a forward scale of
+  0.9682 gives
+  0.1436, against the
+  0.1593 you measured.</p>
+</section>
+
+<!-- 23c -->
+<section data-menu-title="Where the forward factor hides">
+  <h2>And when that distinction bites</h2>
+  <table>
+    <tr><th>Scheme</th><th class="num">$\rho$, backward</th><th class="num">forward scale</th><th class="num">weight-gradient ratio</th></tr>
+    <tr><td>default, logistic</td><td class="num">0.139</td><td class="num">0.968</td><td class="num fail">0.159</td></tr>
+    <tr><td class="fail">Glorot, ReLU</td><td class="num fail">0.705</td><td class="num fail">0.683</td><td class="num hit">1.105</td></tr>
+    <tr><td class="fix">He, ReLU</td><td class="num hit">0.997</td><td class="num hit">0.965</td><td class="num hit">1.091</td></tr>
+  </table>
+  <p class="lead fail">Look at the middle row.</p>
+  <p class="small">Its weight-gradient profile is flat, so the diagnostic from
+  the previous lecture gives it a clean bill of health &mdash; because the
+  backward attenuation and the forward attenuation cancel in that one number.
+  <strong>A flat gradient profile does not certify an initialisation.</strong>
+  Remember this in forty minutes.</p>
+  <aside class="notes">This is the sharpest thing in the lecture and the
+  easiest to lose. The middle row is the assistant failure, planted twenty
+  minutes before it arrives.</aside>
 </section>
 
 <!-- 24 -->
@@ -415,7 +460,7 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
   assumptions are weakest:</p>
   <ul class="tight small">
     <li>$\mathbb{E}[\sigma'^2]$ is not quite
-        @@l14_sigmoid_dmax_sq:.4f@@, because the pre-activations are not all
+        0.0625, because the pre-activations are not all
         at zero</li>
     <li>Successive components of the gradient are not exactly uncorrelated
         after the first layer</li>
@@ -446,8 +491,8 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
   $r = n_{\text{in}}\operatorname{Var}(w)/2$ for ReLU.</p>
   <p class="small">Easy to falsify: fix the activation to ReLU, set the weight
   standard deviation by hand, and watch the activation spread against depth.
-  He's value for @@l13_width:.0f@@ units is
-  $\sqrt{2/100} =$ @@l14_he_sd:.4f@@.</p>
+  He's value for 100 units is
+  $\sqrt{2/100} =$ 0.1414.</p>
 </section>
 
 <!-- FIG -->
@@ -503,8 +548,8 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
   </div>
   <table>
     <tr><th>Reality</th><th class="num">Test accuracy</th></tr>
-    <tr><td>Always one class</td><td class="num">@@l13_baseline_acc:.1%@@</td></tr>
-    <tr><td class="fail">@@l13_depth:.0f@@ hidden layers</td><td class="num fail">@@l13_deep.test_acc:.1%@@</td></tr>
+    <tr><td>Always one class</td><td class="num">10.0%</td></tr>
+    <tr><td class="fail">20 hidden layers</td><td class="num fail">10.0%</td></tr>
   </table>
   <p class="small muted">Score it out loud. The instructive answer is not who
   was closest &mdash; it is how many people wrote a number above the baseline
@@ -518,8 +563,8 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
     <span class="panel-title">One sentence</span>
     Two defaults nobody chose &mdash; a uniform initialisation scaled to
     $1/\sqrt{n_{\text{in}}}$ and a logistic activation whose derivative never
-    exceeds @@l14_sigmoid_dmax:.2f@@ &mdash; give
-    $\rho =$ @@l14_theory.default_sigmoid:.3f@@, and
+    exceeds 0.25 &mdash; give
+    $\rho =$ 0.144, and
     $\rho$ compounds.
   </div>
   <p class="small">Note the form of the answer. It is not &ldquo;the network is
@@ -531,7 +576,7 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
 <section data-menu-title="What initialisation cannot do">
   <h2>What initialisation cannot do</h2>
   <p class="lead">It fixes $\rho$ at <strong>step zero</strong>.</p>
-  <p>By step @@l13_steps:,@@ the weights have moved, the assumption that they
+  <p>By step 1,580 the weights have moved, the assumption that they
   are independent of the activations is gone, and nothing guarantees the
   variances are still balanced.</p>
   <div class="panel">
@@ -564,8 +609,8 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
   <h2>The protocol for the next 35 minutes</h2>
   <div class="panel panel-fix">
     <span class="panel-title">One change per row</span>
-    Same seed, same @@l13_n_fit:,@@ images, same
-    @@l13_epochs:.0f@@ epochs, same batch size. Every row differs from its
+    Same seed, same 10,000 images, same
+    20 epochs, same batch size. Every row differs from its
     neighbour in <strong>exactly one argument</strong>.
   </div>
   <ul class="tight small">
@@ -629,13 +674,13 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
   <h2>Glorot alone, measured</h2>
   <table>
     <tr><th></th><th class="num">$\rho$</th><th class="num">End to end</th><th class="num">Test accuracy</th></tr>
-    <tr><td class="fail">Default, logistic</td><td class="num fail">@@l14_per_layer.default_sigmoid.per_layer:.4f@@</td><td class="num fail">@@l14_per_layer.default_sigmoid.attenuation:.1e@@</td><td class="num fail">@@l14_ladder.0.test_acc:.1%@@</td></tr>
-    <tr><td>Glorot, logistic</td><td class="num">@@l14_per_layer.glorot_sigmoid.per_layer:.4f@@</td><td class="num">@@l14_per_layer.glorot_sigmoid.attenuation:.1e@@</td><td class="num">@@l14_ladder.1.test_acc:.1%@@</td></tr>
+    <tr><td class="fail">Default, logistic</td><td class="num fail">0.1593</td><td class="num fail">1.4e+15</td><td class="num fail">10.0%</td></tr>
+    <tr><td>Glorot, logistic</td><td class="num">0.2531</td><td class="num">2.2e+11</td><td class="num">10.0%</td></tr>
   </table>
   <p class="lead fail">Eleven orders of magnitude better, and still hopeless.</p>
   <p class="small">Because the measured $\rho$ is now
-  @@l14_per_layer.glorot_sigmoid.per_layer:.3f@@ &mdash; which is
-  @@l14_sigmoid_dmax:.2f@@, the logistic's own ceiling, with the weight scale
+  0.253 &mdash; which is
+  0.25, the logistic's own ceiling, with the weight scale
   perfectly neutralised. <strong>You cannot initialise your way out of the
   activation function.</strong></p>
 </section>
@@ -678,27 +723,24 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
   <h2>Six activations, measured</h2>
   <table class="small">
     <tr><th>Activation</th><th>Initialisation</th><th class="num">Test accuracy</th></tr>
-    <tr><td class="fail">logistic</td><td>Glorot</td><td class="num fail">@@l14_activations.sigmoid.test_acc:.1%@@</td></tr>
-    <tr><td>tanh</td><td>Glorot</td><td class="num">@@l14_activations.tanh.test_acc:.1%@@</td></tr>
-    <tr><td class="fix">ReLU</td><td>He</td><td class="num hit">@@l14_activations.relu.test_acc:.1%@@</td></tr>
-    <tr><td>Leaky ReLU</td><td>He</td><td class="num">@@l14_activations.leaky.test_acc:.1%@@</td></tr>
-    <tr><td>ELU</td><td>He</td><td class="num">@@l14_activations.elu.test_acc:.1%@@</td></tr>
-    <tr><td>SELU</td><td>Glorot</td><td class="num">@@l14_activations.selu.test_acc:.1%@@</td></tr>
+    <tr><td>logistic</td><td>Glorot</td><td class="num">40.4%</td></tr>
+    <tr><td>tanh</td><td>Glorot</td><td class="num">38.5%</td></tr>
+    <tr><td>ReLU</td><td>He</td><td class="num">36.8%</td></tr>
+    <tr><td>Leaky ReLU</td><td>He</td><td class="num">37.1%</td></tr>
+    <tr><td class="fix">ELU</td><td>He</td><td class="num hit">43.2%</td></tr>
+    <tr><td>SELU</td><td>Glorot</td><td class="num">41.0%</td></tr>
   </table>
-  <p class="small">All six with batch normalisation, so this is a comparison of
-  the activation and nothing else. The gap between the top and the bottom of
-  this table is larger than any other single choice today.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Repaired gradients">
-  <h2>The figure the previous lecture ended on, repaired</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l14-grad-fixed.svg"
-         alt="Gradient norm per weight matrix against layer index on a log axis: the red Lecture 13 curve falling steeply, and a green curve for He initialisation with ReLU and batch normalisation that is nearly flat across all twenty-one layers.">
-  </figure>
-  <p class="takeaway fix">Same axes, same scale, same network shape. Layer 1
-  now receives a gradient of the same order as layer 20.</p>
+  <p class="lead">Spread: 6.4% points &mdash; and the
+  logistic is not last.</p>
+  <p class="small">All six <strong>with batch normalisation</strong>, which is
+  why the logistic survives: normalisation puts the pre-activations back where
+  its derivative is largest, at every step. Without normalisation, moving off
+  the logistic was worth 31.1% points. With it, the choice
+  of activation is worth 6.4%.</p>
+  <aside class="notes">This is the slide that most needs saying out loud: the
+  size of an effect depends on what else is in the system. Nobody can rank
+  these seven repairs in the abstract, which is exactly why the ablation table
+  exists.</aside>
 </section>
 
 <!-- 40 -->
@@ -732,8 +774,8 @@ layers += [nn.Linear(prev, width),
     <li>The bias in the <code>Linear</code> is now redundant &mdash;
         $\beta$ does the same job. Harmless, and worth knowing</li>
   </ul>
-  <p class="small muted">@@l14_bn_params:,@@ extra parameters across the whole
-  network, against @@l13_n_params:,@@. Under one per cent.</p>
+  <p class="small muted">4,000 extra parameters across the whole
+  network, against 500,210. Under one per cent.</p>
 </section>
 
 <!-- 42 -->
@@ -778,15 +820,49 @@ layers += [nn.Linear(prev, width),
 <section data-menu-title="Norms measured">
   <h2>Normalisation, measured</h2>
   <table>
-    <tr><th>On the ReLU + He network</th><th class="num">Test accuracy</th><th class="num">Wall clock</th><th class="num">Parameters</th></tr>
-    <tr><td>No normalisation</td><td class="num">@@l14_norms.none.test_acc:.1%@@</td><td class="num">@@l14_norms.none.seconds:.0f@@ s</td><td class="num">@@l14_norms.none.n_params:,@@</td></tr>
-    <tr><td class="fix">Batch normalisation</td><td class="num hit">@@l14_norms.batch.test_acc:.1%@@</td><td class="num fail">@@l14_norms.batch.seconds:.0f@@ s</td><td class="num">@@l14_norms.batch.n_params:,@@</td></tr>
-    <tr><td>Layer normalisation</td><td class="num">@@l14_norms.layer.test_acc:.1%@@</td><td class="num">@@l14_norms.layer.seconds:.0f@@ s</td><td class="num">@@l14_norms.layer.n_params:,@@</td></tr>
+    <tr><th>On the ReLU + He network</th><th class="num">Test accuracy</th><th class="num">Parameters</th><th class="num">Seconds, 3 epochs</th></tr>
+    <tr><td class="fix">No normalisation</td><td class="num hit">41.1%</td><td class="num">500,210</td><td class="num">5.24</td></tr>
+    <tr><td class="fail">Batch normalisation</td><td class="num fail">36.8%</td><td class="num">504,210</td><td class="num fail">11.30</td></tr>
+    <tr><td class="fix">Layer normalisation</td><td class="num hit">41.6%</td><td class="num">504,210</td><td class="num">9.49</td></tr>
   </table>
-  <p class="small">The real cost is the clock, not the parameters:
-  @@l14_bn_overhead:.2f@@&times; the wall time for the same number of epochs.
-  Whether that is worth it depends on whether the accuracy moved &mdash; which
-  is why the column is there.</p>
+  <p class="lead fail">Batch normalisation made it <strong>worse</strong>, by
+  -4.3% accuracy points.</p>
+  <p class="small">The timing is the <em>minimum</em> of
+  3 repeats: these figures were generated on a shared
+  machine, contention can only make a run slower, so the smallest reading is
+  the closest to the true cost. Batch normalisation costs
+  1.10&times; the epoch.</p>
+</section>
+
+<!-- 44b -->
+<section data-menu-title="Why BN did not pay">
+  <h2>Why the repair everyone reaches for first did not pay</h2>
+  <p>Two measurements, and they are not in conflict.</p>
+  <table>
+    <tr><th>Batch normalisation applied to&hellip;</th><th class="num">Test accuracy</th></tr>
+    <tr><td class="fix">the <em>broken</em> network, on its own</td><td class="num hit">10.0% &rarr; 37.9%</td></tr>
+    <tr><td class="fail">the <em>already repaired</em> network</td><td class="num fail">41.1% &rarr; 36.8%</td></tr>
+  </table>
+  <div class="panel panel-fix">
+    <span class="panel-title">The reading</span>
+    Normalisation exists to hold $\rho$ near 1 when something else has pushed
+    it away. He initialisation had already put it there, so there was nothing
+    left to correct &mdash; and what remained was the cost.
+  </div>
+  <p class="small muted">On a wider network, a longer run, or one whose weights
+  drift further, that trade goes the other way. The point is that you can tell
+  which case you are in, because you measured both.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Repaired gradients">
+  <h2>The figure the previous lecture ended on, repaired</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-grad-fixed.svg"
+         alt="Gradient norm per weight matrix against layer index on a log axis: the red Lecture 13 curve falling steeply, and a green curve for He initialisation with ReLU and batch normalisation that is nearly flat across all twenty-one layers.">
+  </figure>
+  <p class="takeaway fix">Same axes, same scale, same network shape. Layer 1
+  now receives a gradient of the same order as layer 20.</p>
 </section>
 
 <!-- 45 -->
@@ -812,9 +888,27 @@ opt.step()
     <img src="../assets/figures/l14-clip.svg"
          alt="Overlaid histograms of the total gradient norm per optimiser step on a log axis, one for He initialisation clustered near one and one for N(0,1) initialisation spread over several orders of magnitude, with a dashed line marking a clip threshold of one.">
   </figure>
-  <p class="takeaway">Median @@l14_clip_median:.2f@@ with He, against a maximum
-  of @@l14_clip_bad_max:.0f@@ with a badly scaled initialisation. Choose the
-  threshold from this picture, not from a blog post.</p>
+  <p class="takeaway">Median 3.19 with He, against a median
+  of 4.6e+17 with N(0, 1). The threshold of 1.0 used in the
+  ladder sits <em>below</em> the He median &mdash; deliberately, and the next
+  slide says what that bought.</p>
+</section>
+
+<!-- 45b -->
+<section data-menu-title="Clipping measured">
+  <h2>What clipping bought, and what it did not</h2>
+  <table>
+    <tr><th>Gradient clipping at 1.0</th><th class="num">Test accuracy</th></tr>
+    <tr><td class="fail">applied alone to the Lecture 13 network</td><td class="num fail">10.0% &mdash; nothing</td></tr>
+    <tr><td class="fix">added to the repaired network</td><td class="num hit">36.8% &rarr; 39.6%</td></tr>
+  </table>
+  <p class="small">Alone it cannot help: you cannot bound your way out of a
+  gradient that is 1e+15 times too <em>small</em>. On the
+  repaired network a threshold below the median acts as a step-size limiter
+  rather than a safety net, and here that was worth
+  +2.8% points.</p>
+  <p class="fail small">Which is a useful effect obtained for the wrong reason.
+  If you want a smaller step, set a smaller learning rate and say so.</p>
 </section>
 
 <!-- 46 -->
@@ -825,16 +919,16 @@ opt.step()
   nothing.</p>
   <table class="small">
     <tr><th>Optimiser</th><th>Idea</th><th class="num">Test accuracy</th></tr>
-    <tr><td>SGD</td><td>step along the gradient</td><td class="num">@@l14_optims.sgd.test_acc:.1%@@</td></tr>
-    <tr><td>Momentum</td><td>accumulate a velocity</td><td class="num">@@l14_optims.momentum.test_acc:.1%@@</td></tr>
-    <tr><td>Nesterov</td><td>measure the gradient ahead of the step</td><td class="num">@@l14_optims.nesterov.test_acc:.1%@@</td></tr>
-    <tr><td>RMSProp</td><td>divide by a running gradient scale</td><td class="num">@@l14_optims.rmsprop.test_acc:.1%@@</td></tr>
-    <tr><td class="fix">Adam</td><td>momentum and RMSProp together</td><td class="num hit">@@l14_optims.adam.test_acc:.1%@@</td></tr>
-    <tr><td>AdamW</td><td>Adam, with the weight decay decoupled</td><td class="num">@@l14_optims.adamw.test_acc:.1%@@</td></tr>
+    <tr><td>SGD</td><td>step along the gradient</td><td class="num">27.5%</td></tr>
+    <tr><td>Momentum</td><td>accumulate a velocity</td><td class="num">33.6%</td></tr>
+    <tr><td>Nesterov</td><td>measure the gradient ahead of the step</td><td class="num">35.2%</td></tr>
+    <tr><td>RMSProp</td><td>divide by a running gradient scale</td><td class="num">36.8%</td></tr>
+    <tr><td class="fix">Adam</td><td>momentum and RMSProp together</td><td class="num hit">36.8%</td></tr>
+    <tr><td>AdamW</td><td>Adam, with the weight decay decoupled</td><td class="num">36.1%</td></tr>
   </table>
-  <p class="small">SGD and momentum at
-  @@l14_optims.sgd.lr:g@@; the adaptive three at
-  @@l14_optims.adam.lr:g@@ &mdash; the same learning rate would not be a fair
+  <p class="small">SGD, momentum and Nesterov at
+  0.01; the adaptive three at
+  0.001 &mdash; the same learning rate would not be a fair
   comparison.</p>
 </section>
 
@@ -873,9 +967,9 @@ opt.step()
     <img src="../assets/figures/l14-schedules.svg"
          alt="Left panel: learning rate against epoch for a constant, exponential, cosine and one-cycle schedule. Right panel: validation accuracy against epoch for the same four runs.">
   </figure>
-  <p class="takeaway">Constant @@l14_schedules.None.test_acc:.1%@@, cosine
-  @@l14_schedules.cosine.test_acc:.1%@@, 1-cycle
-  @@l14_schedules.onecycle.test_acc:.1%@@ &mdash; on a twenty-epoch run.</p>
+  <p class="takeaway">Constant 39.6%, cosine
+  38.8%, 1-cycle
+  43.9% &mdash; on a twenty-epoch run.</p>
 </section>
 
 <!-- 48 -->
@@ -888,7 +982,7 @@ layers += [nn.Linear(prev, width), nn.BatchNorm1d(width),
            nn.ReLU(), nn.Dropout(0.1)]
   </code></pre>
   <p class="fail small">This is a regulariser &mdash; it fights overfitting.
-  A network sitting at @@l13_baseline_acc:.0%@@ is not overfitting, so applying
+  A network sitting at 10% is not overfitting, so applying
   it to the Lecture 13 network should do nothing. We are going to check that
   it does nothing rather than assume it.</p>
 </section>
@@ -900,7 +994,7 @@ layers += [nn.Linear(prev, width), nn.BatchNorm1d(width),
   <h2>An assistant repairs the network</h2>
   <div class="panel panel-fail">
     <span class="panel-title">The prompt</span>
-    &ldquo;My @@l13_depth:.0f@@-layer network isn&rsquo;t learning &mdash; the
+    &ldquo;My 20-layer network isn&rsquo;t learning &mdash; the
     gradients vanish. Switch it to ReLU and initialise the weights
     properly.&rdquo;
   </div>
@@ -933,9 +1027,9 @@ for m in model:
   <h2>And it looks fixed</h2>
   <table>
     <tr><th></th><th class="num">Test accuracy</th></tr>
-    <tr><td>Baseline</td><td class="num">@@l13_baseline_acc:.1%@@</td></tr>
-    <tr><td>Lecture 13&rsquo;s network</td><td class="num">@@l13_deep.test_acc:.1%@@</td></tr>
-    <tr><td class="fix">The assistant&rsquo;s repair</td><td class="num hit">@@l14_glorot_relu.test_acc:.1%@@</td></tr>
+    <tr><td>Baseline</td><td class="num">10.0%</td></tr>
+    <tr><td>Lecture 13&rsquo;s network</td><td class="num">10.0%</td></tr>
+    <tr><td class="fix">The assistant&rsquo;s repair</td><td class="num hit">39.6%</td></tr>
   </table>
   <p class="lead">The loss falls, the accuracy is several times the baseline,
   and the request was answered.</p>
@@ -944,6 +1038,21 @@ for m in model:
 </section>
 
 <!-- 52 -->
+<section data-menu-title="Assistant failure · the check passes">
+  <h2>First: run the check we agreed on</h2>
+  <p>The previous lecture ended with a diagnostic &mdash; the per-layer
+  gradient norm ratio. Run it on the assistant&rsquo;s network.</p>
+  <table>
+    <tr><th></th><th class="num">Weight-gradient ratio</th><th>Verdict</th></tr>
+    <tr><td>Lecture 13&rsquo;s network</td><td class="num fail">0.159</td><td class="fail">broken, obviously</td></tr>
+    <tr><td class="fail">The assistant&rsquo;s repair</td><td class="num hit">1.105</td><td class="fix">flat &mdash; passes</td></tr>
+    <tr><td>He + ReLU</td><td class="num hit">1.091</td><td class="fix">flat &mdash; passes</td></tr>
+  </table>
+  <p class="lead fail">The diagnostic that found the bug cannot find this
+  one.</p>
+</section>
+
+<!-- 52b -->
 <section data-menu-title="Assistant failure · review">
   <h2>The review question that catches it</h2>
   <p class="lead">Xavier and Glorot are the same person and the same formula.</p>
@@ -952,10 +1061,10 @@ for m in model:
     <strong>Which activation was that initialisation derived for?</strong>
   </div>
   <p>Glorot's constant assumes $\mathbb{E}[\varphi'^2] \approx 1$. ReLU gives
-  $\tfrac12$. Put it in the formula from the thread:</p>
+  $\tfrac12$. Put that in the formula from the thread:</p>
   <div class="eqn-box">
     $$\rho = \sqrt{n\cdot\frac{1}{n}\cdot\frac12}
-      = @@l14_theory.glorot_relu:.4f@@
+      = 0.7071
       \qquad\text{not } 1$$
   </div>
 </section>
@@ -963,14 +1072,32 @@ for m in model:
 <!-- 53 -->
 <section data-menu-title="Assistant failure · damage">
   <h2>The damage, measured</h2>
-  <table>
-    <tr><th></th><th class="num">$\rho$ predicted</th><th class="num">$\rho$ measured</th><th class="num">End to end</th><th class="num">Test accuracy</th></tr>
-    <tr><td class="fail">Xavier + ReLU</td><td class="num">@@l14_theory.glorot_relu:.4f@@</td><td class="num">@@l14_glorot_relu.per_layer:.4f@@</td><td class="num fail">@@l14_glorot_relu.attenuation:.1e@@</td><td class="num fail">@@l14_glorot_relu.test_acc:.1%@@</td></tr>
-    <tr><td class="fix">He + ReLU</td><td class="num">@@l14_theory.he_relu:.4f@@</td><td class="num">@@l14_per_layer.he_relu.per_layer:.4f@@</td><td class="num hit">@@l14_per_layer.he_relu.attenuation:.1e@@</td><td class="num hit">@@l14_he_relu_test:.1%@@</td></tr>
+  <table class="small">
+    <tr><th></th><th class="num">$\rho$ predicted</th><th class="num">$\rho$ measured</th><th class="num">forward scale</th><th class="num">$\delta_1/\delta_{20}$</th><th class="num">Test</th></tr>
+    <tr><td class="fail">Xavier + ReLU</td><td class="num">0.7071</td><td class="num fail">0.7045</td><td class="num fail">0.6826</td><td class="num fail">1.3e-03</td><td class="num fail">39.6%</td></tr>
+    <tr><td class="fix">He + ReLU</td><td class="num">1.0000</td><td class="num hit">0.9970</td><td class="num hit">0.9653</td><td class="num hit">9.4e-01</td><td class="num hit">41.1%</td></tr>
   </table>
-  <p class="big-num bad">@@l14_xavier_cost:.1%@@</p>
-  <p class="small">Accuracy points, for one constant. A factor of $\sqrt{2}$
-  per layer, nineteen times over.</p>
+  <p class="big-num bad">1.5%</p>
+  <p class="small">Accuracy points, for one constant &mdash; and, more
+  importantly, a backward signal three orders of magnitude down and a forward
+  signal three orders down with it. On a stack twice as deep those two would
+  not be a point and a half.</p>
+</section>
+
+<!-- 53b -->
+<section data-menu-title="The check that does catch it">
+  <h2>The check that <em>does</em> catch it</h2>
+  <p>The two attenuations cancelled in the weight gradient. They do not cancel
+  in either factor on its own, so log either one.</p>
+  <table>
+    <tr><th>Log this</th><th>Xavier + ReLU</th><th>He + ReLU</th></tr>
+    <tr><td>Activation sd, layer 20 over layer 1</td><td class="num fail">0.683 per layer</td><td class="num hit">0.965 per layer</td></tr>
+    <tr><td>$\lVert\partial L/\partial z_\ell\rVert$ ratio</td><td class="num fail">0.705</td><td class="num hit">0.997</td></tr>
+  </table>
+  <p class="small">Both are four lines of code, and this application has now
+  needed all three probes: activation statistics, weight-gradient norms and
+  signal-gradient norms. Add the third to your instrumentation, because the
+  first two together still missed this.</p>
 </section>
 
 <!-- 54 -->
@@ -980,13 +1107,14 @@ for m in model:
     <span class="panel-title">The sentence that makes it checkable</span>
     &ldquo;Switch to ReLU and use the initialisation derived for ReLU &mdash;
     He normal, $\operatorname{Var}(w) = 2/n_{\text{in}}$. <strong>Then print
-    the per-layer gradient norm ratio and show me it is within 20% of
-    1.0</strong>, so I can see the initialisation did what it claims.&rdquo;
+    the per-layer ratio of the activation standard deviation <em>and</em> of
+    the gradient with respect to each layer's output, and show me both are
+    within 20% of 1.0.</strong>&rdquo;
   </div>
   <p class="small">&ldquo;Initialise it properly&rdquo; is not a
-  specification. A per-layer ratio near 1 is &mdash; it is a number, it is
-  cheap to compute, and it is wrong in an obvious way when the constant is
-  wrong.</p>
+  specification. Two ratios near 1 is &mdash; they are numbers, they are cheap,
+  and unlike the weight-gradient ratio they are wrong in an obvious way when
+  the constant is wrong.</p>
 </section>
 
 <!-- ==================================================================== -->
@@ -1004,16 +1132,23 @@ for m in model:
 <section data-menu-title="★ THE ABLATION TABLE">
   <h2>Each row adds one change to the row above</h2>
   <table class="small">
-    <tr><th>Configuration</th><th class="num">Test accuracy</th><th class="num">Change</th><th class="num">Wall clock</th></tr>
-    <tr><td class="fail">@@l14_ladder.0.label:s@@</td><td class="num fail">@@l14_ladder.0.test_acc:.1%@@</td><td class="num">&mdash;</td><td class="num">@@l14_ladder.0.seconds:.0f@@ s</td></tr>
-    <tr><td>@@l14_ladder.1.label:s@@</td><td class="num">@@l14_ladder.1.test_acc:.1%@@</td><td class="num">@@l14_ladder.1.delta:+.1%@@</td><td class="num">@@l14_ladder.1.seconds:.0f@@ s</td></tr>
-    <tr><td class="fix">@@l14_ladder.2.label:s@@</td><td class="num hit">@@l14_ladder.2.test_acc:.1%@@</td><td class="num hit">@@l14_ladder.2.delta:+.1%@@</td><td class="num">@@l14_ladder.2.seconds:.0f@@ s</td></tr>
-    <tr><td>@@l14_ladder.3.label:s@@</td><td class="num">@@l14_ladder.3.test_acc:.1%@@</td><td class="num">@@l14_ladder.3.delta:+.1%@@</td><td class="num">@@l14_ladder.3.seconds:.0f@@ s</td></tr>
-    <tr><td>@@l14_ladder.4.label:s@@</td><td class="num">@@l14_ladder.4.test_acc:.1%@@</td><td class="num">@@l14_ladder.4.delta:+.1%@@</td><td class="num">@@l14_ladder.4.seconds:.0f@@ s</td></tr>
-    <tr><td>@@l14_ladder.5.label:s@@</td><td class="num">@@l14_ladder.5.test_acc:.1%@@</td><td class="num">@@l14_ladder.5.delta:+.1%@@</td><td class="num">@@l14_ladder.5.seconds:.0f@@ s</td></tr>
-    <tr><td>@@l14_ladder.6.label:s@@</td><td class="num">@@l14_ladder.6.test_acc:.1%@@</td><td class="num">@@l14_ladder.6.delta:+.1%@@</td><td class="num">@@l14_ladder.6.seconds:.0f@@ s</td></tr>
+    <tr><th>Configuration</th><th class="num">Test accuracy</th><th class="num">Change</th><th class="num">Final training loss</th></tr>
+    <tr><td class="fail">Lecture 13, unchanged</td><td class="num fail">10.0%</td><td class="num">&mdash;</td><td class="num fail">2.3036</td></tr>
+    <tr><td>+ Glorot initialisation</td><td class="num">10.0%</td><td class="num">+0.0%</td><td class="num fail">2.3066</td></tr>
+    <tr><td class="fix">+ ReLU and He initialisation</td><td class="num hit">41.1%</td><td class="num hit">+31.1%</td><td class="num hit">1.1388</td></tr>
+    <tr><td>+ batch normalisation</td><td class="num">36.8%</td><td class="num fail">-4.3%</td><td class="num">1.6016</td></tr>
+    <tr><td>+ gradient clipping</td><td class="num">39.6%</td><td class="num">+2.8%</td><td class="num">1.1285</td></tr>
+    <tr><td class="fix">+ a 1-cycle schedule</td><td class="num hit">43.9%</td><td class="num">+4.2%</td><td class="num hit">1.0945</td></tr>
+    <tr><td>+ dropout 0.1</td><td class="num">33.4%</td><td class="num fail">-10.4%</td><td class="num">1.6374</td></tr>
   </table>
-  <p class="small">This table is the deliverable of the lecture. Photograph it.</p>
+  <p class="small">This table is the deliverable of the lecture. Photograph it.
+  <strong>Two of the six steps are negative</strong>, and the best
+  configuration is not the last row.</p>
+  <aside class="notes">There is deliberately no wall-clock column: these
+  figures were generated on a heavily shared machine and the per-run times were
+  not comparable with one another. The normalisation slide carries a timing
+  that was measured properly, as a minimum over repeats. Say that out loud
+  rather than printing a number that measures the neighbours.</aside>
 </section>
 
 <!-- FIG -->
@@ -1023,8 +1158,8 @@ for m in model:
     <img src="../assets/figures/l14-ladder.svg"
          alt="Horizontal bar chart of test accuracy for each cumulative configuration, from the unchanged Lecture 13 network at the baseline to the fully repaired network, each bar labelled with its value and the change from the row above.">
   </figure>
-  <p class="takeaway fix">One row moves the number more than all the others put
-  together, and it is the row the mathematics pointed at.</p>
+  <p class="takeaway fix">One row moves the number further than the whole
+  journey, and it is the row the mathematics pointed at.</p>
 </section>
 
 <!-- 57 -->
@@ -1032,14 +1167,16 @@ for m in model:
   <h2>Where the gain came from</h2>
   <table>
     <tr><th></th><th class="num">Accuracy points</th></tr>
-    <tr><td class="fix">The largest single step</td><td class="num hit">@@l14_biggest_step:.1%@@</td></tr>
-    <tr><td>Everything, start to finish</td><td class="num">@@l14_total_gain:.1%@@</td></tr>
+    <tr><td class="fix">The largest single step &mdash; ReLU with He</td><td class="num hit">+31.1%</td></tr>
+    <tr><td class="fix">Best configuration, against the start</td><td class="num hit">+33.9%</td></tr>
+    <tr><td class="fail">The worst single step</td><td class="num fail">-10.4%</td></tr>
+    <tr><td>The last row, against the start</td><td class="num">+23.4%</td></tr>
   </table>
-  <p class="lead">One change accounts for most of it.</p>
+  <p class="lead">One change is worth more than the whole ladder.</p>
   <p class="small">Which is the answer to &ldquo;should I add batch
   normalisation, or dropout, or a schedule?&rdquo; &mdash; the question is
   malformed until you know which failure you have. Ours was
-  $\rho \ne 1$, and the repairs that address $\rho$ are the ones that paid.</p>
+  $\rho \ne 1$, and only the repairs that address $\rho$ paid.</p>
 </section>
 
 <!-- FIG -->
@@ -1049,8 +1186,9 @@ for m in model:
     <img src="../assets/figures/l14-alone.svg"
          alt="Horizontal bar chart of test accuracy for each repair applied on its own to the Lecture 13 network; some bars rise well above the ten per cent line and others sit on it.">
   </figure>
-  <p class="takeaway">Three of these do nothing at all on their own. That is
-  not a disappointment &mdash; it is what tells you what each one is for.</p>
+  <p class="takeaway">Four of these leave the network exactly where it was.
+  That is not a disappointment &mdash; it is what tells you what each one is
+  for.</p>
 </section>
 
 <!-- 58 -->
@@ -1058,17 +1196,22 @@ for m in model:
   <h2>One at a time, as numbers</h2>
   <table class="small">
     <tr><th>Applied alone to the Lecture 13 network</th><th class="num">Test accuracy</th></tr>
-    <tr><td>@@l14_alone.0.label:s@@</td><td class="num">@@l14_alone.0.test_acc:.1%@@</td></tr>
-    <tr><td class="fix">@@l14_alone.1.label:s@@</td><td class="num hit">@@l14_alone.1.test_acc:.1%@@</td></tr>
-    <tr><td class="fix">@@l14_alone.2.label:s@@</td><td class="num hit">@@l14_alone.2.test_acc:.1%@@</td></tr>
-    <tr><td>@@l14_alone.3.label:s@@</td><td class="num">@@l14_alone.3.test_acc:.1%@@</td></tr>
-    <tr><td class="fail">@@l14_alone.4.label:s@@</td><td class="num fail">@@l14_alone.4.test_acc:.1%@@</td></tr>
-    <tr><td class="fail">@@l14_alone.5.label:s@@</td><td class="num fail">@@l14_alone.5.test_acc:.1%@@</td></tr>
-    <tr><td class="fail">@@l14_alone.6.label:s@@</td><td class="num fail">@@l14_alone.6.test_acc:.1%@@</td></tr>
+    <tr><td>Glorot initialisation</td><td class="num">10.0%</td></tr>
+    <tr><td class="fix">ReLU (with He)</td><td class="num hit">41.1%</td></tr>
+    <tr><td class="fix">Batch normalisation</td><td class="num hit">37.9%</td></tr>
+    <tr><td class="fail">Layer normalisation</td><td class="num fail">10.0%</td></tr>
+    <tr><td class="fail">Gradient clipping</td><td class="num fail">10.0%</td></tr>
+    <tr><td class="fail">A 1-cycle schedule</td><td class="num fail">10.0%</td></tr>
+    <tr><td class="fail">Dropout 0.1</td><td class="num fail">10.0%</td></tr>
   </table>
-  <p class="small">Clipping, the schedule and dropout are answers to problems
-  this network does not have. Applied alone they leave it exactly where it
-  was.</p>
+  <p class="small">Clipping, the schedule and dropout answer problems this
+  network does not have. Glorot buys eleven orders of magnitude of gradient and
+  is still not enough.</p>
+  <aside class="notes">Flag the row we cannot explain: layer normalisation does
+  nothing here while batch normalisation rescues the network completely, yet on
+  the repaired network the two are within a point of each other. Report it
+  rather than accounting for it; the experiment that would start to settle it
+  is in the notebook.</aside>
 </section>
 
 <!-- 59 -->
@@ -1076,13 +1219,13 @@ for m in model:
   <h2>The row worth arguing about</h2>
   <p>Batch normalisation, applied to the <em>unrepaired</em> network &mdash;
   logistic activation, default initialisation, nothing else changed &mdash;
-  reaches @@l14_alone.2.test_acc:.1%@@.</p>
+  reaches 37.9%.</p>
   <p class="lead">So it can rescue a badly scaled network on its own.</p>
   <div class="panel">
     <span class="panel-title">And that is why it is not the first repair</span>
-    It works, it costs @@l14_bn_overhead:.2f@@&times; the wall clock, and it
-    conceals the fact that the initialisation was wrong. Fixing the cause is
-    free; compensating for it is not.
+    It works, it costs 1.10&times; the epoch, and it
+    <strong>conceals</strong> the fact that the initialisation was wrong.
+    Fixing the cause is free; compensating for it is not.
   </div>
 </section>
 
@@ -1102,21 +1245,26 @@ for m in model:
   <h2>Re-measure</h2>
   <table>
     <tr><th>Model</th><th class="num">Test accuracy</th></tr>
-    <tr><td>Always predict one class</td><td class="num">@@l13_baseline_acc:.1%@@</td></tr>
-    <tr><td class="fail">@@l13_depth:.0f@@ layers, as built</td><td class="num fail">@@l13_deep.test_acc:.1%@@</td></tr>
-    <tr><td>2 layers, as built</td><td class="num">@@l13_shallow.test_acc:.1%@@</td></tr>
-    <tr><td class="fix">@@l13_depth:.0f@@ layers, repaired</td><td class="num hit">@@l14_fixed.test_acc:.1%@@</td></tr>
+    <tr><td>Always predict one class</td><td class="num">10.0%</td></tr>
+    <tr><td class="fail">20 layers, as built</td><td class="num fail">10.0%</td></tr>
+    <tr><td>2 layers, as built</td><td class="num">39.3%</td></tr>
+    <tr><td>20 layers, every repair applied</td><td class="num">33.4%</td></tr>
+    <tr><td class="fix">20 layers, the best row of the table</td><td class="num hit">43.9%</td></tr>
   </table>
-  <p class="small">@@l14_fixed.seconds:.0f@@ seconds,
-  @@l13_epochs:.0f@@ epochs, @@l13_n_fit:,@@ images &mdash; identical to the
-  broken run in every one of those respects.</p>
+  <p class="lead">The number we report is
+  43.9%, not 33.4%.</p>
+  <p class="small">Same 20 epochs, same 10,000 images,
+  same seed as the broken run &mdash; identical in every respect except the
+  four lines that decide how the signal propagates. <strong>The ablation table
+  is what entitles us to drop the last rung</strong>; without it we would have
+  shipped 33.4% and called it the repaired model.</p>
 </section>
 
 <!-- 61 -->
 <section data-menu-title="Is that good">
   <h2>Is that good?</h2>
-  <p class="lead">It is @@l14_total_gain:.1%@@ better than the network you
-  built, and still not a system anyone would deploy.</p>
+  <p class="lead">It is 33.9% points better than the network
+  you built, and still not a system anyone would deploy.</p>
   <div class="panel panel-fix">
     <span class="panel-title">What a defensible report says</span>
     The architecture is now training correctly &mdash; the gradient reaches
@@ -1162,7 +1310,7 @@ for m in model:
     <div>
       <div class="panel panel-fix small">
         &ldquo;My per-layer gradient ratio is
-        @@l14_per_layer.default_sigmoid.per_layer:.3f@@. Derive what it should
+        0.159. Derive what it should
         be for this architecture, name the single change that gets it closest
         to 1, and give me the one-line check that would prove it
         worked.&rdquo;
@@ -1182,8 +1330,8 @@ for m in model:
     <tr><td>Accuracy under class imbalance</td><td>Lecture 4</td><td class="num">a useless model above 90%</td></tr>
     <tr><td>Missing <code>optimizer.zero_grad()</code></td><td>Lecture 12</td><td class="num">76.7 points</td></tr>
     <tr><td>Metric averaged per batch</td><td>Lecture 12</td><td class="num">0.382 points</td></tr>
-    <tr><td class="fail">A deep stack on default initialisation</td><td class="fail">Lecture 13</td><td class="num fail">@@l14_total_gain:.1%@@ points</td></tr>
-    <tr><td class="fail">Glorot&rsquo;s constant used with ReLU</td><td class="fail">today</td><td class="num fail">@@l14_xavier_cost:.1%@@ points</td></tr>
+    <tr><td class="fail">A deep stack on default initialisation</td><td class="fail">Lecture 13</td><td class="num fail">33.9% points</td></tr>
+    <tr><td class="fail">Glorot&rsquo;s constant used with ReLU</td><td class="fail">today</td><td class="num fail">1.5% points</td></tr>
   </table>
   <p class="small muted">Every one of them ran to completion and printed a
   plausible number. The last two are the first in which no line of code is
@@ -1240,7 +1388,7 @@ for m in model:
   <h1>Visual inspection</h1>
   <p class="small" style="color:#cfe2f0">
     The network now trains, and it is still looking at
-    @@l13_n_features:,@@ unrelated numbers<br>
+    3,072 unrelated numbers<br>
     Next: a layer that knows two pixels are next to each other<br>
     and what that is worth, measured
   </p>

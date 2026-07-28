@@ -336,21 +336,67 @@ def grad_profile(n_batches=8, dtype=torch.float64, **kw):
         acc += np.array([float(m.weight.grad.norm()) for m in lins])
     return acc / n_batches
 
+def delta_profile(n_batches=8, dtype=torch.float64, **kw):
+    """Norm of dL/dz at every layer -- the quantity the thread is about.
+
+    NOT the same as the weight gradient. See the markdown cell below; getting
+    these two confused is the single easiest way to misread this lecture.
+    """
+    torch.manual_seed(RANDOM_STATE)
+    net = make_net(dtype=dtype, **kw); net.train()
+    lossf = nn.CrossEntropyLoss()
+    g = torch.Generator().manual_seed(RANDOM_STATE)
+    acc = None
+    for _ in range(n_batches):
+        idx = torch.randperm(len(X_fit), generator=g)[:BATCH].numpy()
+        h = torch.as_tensor(X_fit[idx], dtype=dtype)
+        yb = torch.as_tensor(y_fit[idx])
+        zs = []
+        for m in net:
+            h = m(h)
+            if isinstance(m, nn.Linear):
+                h.retain_grad(); zs.append(h)
+        net.zero_grad()
+        lossf(h, yb).backward()
+        vals = np.array([float(z.grad.norm()) for z in zs])
+        acc = vals if acc is None else acc + vals
+    return acc / n_batches
+
+def act_sd(dtype=torch.float64, **kw):
+    torch.manual_seed(RANDOM_STATE)
+    net = make_net(dtype=dtype, **kw); net.eval()
+    h, sds = torch.as_tensor(X_fit[:BATCH], dtype=dtype), []
+    with torch.no_grad():
+        for m in net:
+            h = m(h)
+            if isinstance(m, (nn.Sigmoid, nn.Tanh, nn.ReLU)):
+                sds.append(float(h.std()))
+    return np.array(sds)
+
+def geo(a):
+    return float(np.exp(np.mean(np.log(a))))
+
 schemes = {
     "default, logistic": dict(act="sigmoid", init="torch"),
     "Glorot,  logistic": dict(act="sigmoid", init="glorot"),
     "Glorot,  ReLU":     dict(act="relu",    init="glorot"),
     "He,      ReLU":     dict(act="relu",    init="he"),
 }
-profiles = {k: grad_profile(**v) for k, v in schemes.items()}
-
-print(f"{'':18s} {'measured rho':>13s} {'predicted':>10s} "
-      f"{'end to end':>12s}")
-for k, g in profiles.items():
-    r = g[1:DEPTH] / g[0:DEPTH-1]
-    gain = float(np.exp(np.mean(np.log(r))))     # geometric mean
-    print(f"{k:18s} {1/gain:13.4f} {theory[k]:10.4f} "
-          f"{g[0]/g[DEPTH-1]:12.3e}")
+profiles, deltas, forwards = {}, {}, {}
+print(f"{'':18s} {'predicted':>10s} {'measured rho':>13s} {'error':>8s} "
+      f"{'fwd scale':>10s} {'d1/d20':>11s}")
+for k, v in schemes.items():
+    profiles[k] = grad_profile(**v)
+    d = delta_profile(**v)
+    sd = act_sd(**v)
+    rho = geo(d[0:DEPTH-1] / d[1:DEPTH])
+    fwd = geo(sd[1:DEPTH] / sd[0:DEPTH-1])
+    deltas[k], forwards[k] = rho, fwd
+    print(f"{k:18s} {theory[k]:10.4f} {rho:13.4f} "
+          f"{abs(rho-theory[k])/theory[k]:7.1%} {fwd:10.4f} "
+          f"{d[0]/d[DEPTH-1]:11.3e}")
+    assert abs(rho - theory[k]) / theory[k] < 0.15, \
+        f"{k}: prediction and measurement disagree by more than 15%"
 '''),
         code('''
 plt.figure(figsize=(8.5, 3.6))
@@ -360,18 +406,40 @@ plt.xlabel("layer  (1 = nearest the input)"); plt.ylabel("||dL/dW||")
 plt.legend(fontsize=8); plt.tight_layout(); plt.show()
 '''),
         md("""
-Compare the two middle columns of that table with the sheet of paper from the
-previous lecture.
-
 The prediction came from counting rows and columns of matrices. The measurement
 came from a backward pass through twenty layers of a real network on real
-photographs. They agree to within a few per cent, and the residual gap is
-exactly where the assumptions are weakest: `E[φ′²]` is not quite (1/4)² because
-the pre-activations are not exactly at zero, and successive components of the
+photographs. They agree to within a few per cent, and the residual is exactly
+where the assumptions are weakest: `E[φ′²]` is not quite (1/4)² because the
+pre-activations are not exactly at zero, and successive components of the
 gradient are not exactly uncorrelated.
 
 **This is the whole lecture.** Everything below is applying it.
+
+### But that is not the number on your sheet
+
+The previous lecture logged `||dL/dW||`, not `||dL/dz||`. They differ, because
+
+    || dL/dW_l ||  ~  || delta_l || . || a_(l-1) ||
+
+so the weight-gradient ratio carries the backward factor **and** the forward
+one. For the logistic the forward pass is scale-stable, so the two nearly
+coincide. For an unnormalised ReLU stack they do not — and that is not a
+technicality, as the next cell shows.
 """),
+        code('''
+print(f"{'':18s} {'rho':>8s} {'fwd':>8s} {'rho/fwd':>9s} {'||dW|| ratio':>13s}")
+for k in schemes:
+    g = profiles[k]
+    w = geo(g[0:DEPTH-1] / g[1:DEPTH])       # descending the stack
+    print(f"{k:18s} {deltas[k]:8.4f} {forwards[k]:8.4f} "
+          f"{deltas[k]/forwards[k]:9.4f} {w:13.4f}")
+
+print()
+print("Read the 'Glorot, ReLU' row. Its weight-gradient ratio is close to 1 —")
+print("the diagnostic from the previous lecture would pass it — because the")
+print("backward attenuation and the forward attenuation cancel in that one")
+print("number. A flat gradient profile does NOT certify an initialisation.")
+'''),
 
         md("""
 ## 5 · The training harness
@@ -519,7 +587,14 @@ for label, kw in ladder:
     curves[label] = h["loss"]
     prev = h["test_acc"]
 
-assert rows[-1][1] > 3 * rows[0][1], "the repaired network should not be at chance"
+best = max(rows, key=lambda r: r[1])
+print(f"\\nbest row: {best[0]} at {best[1]:.4f}")
+print(f"last row: {rows[-1][0]} at {rows[-1][1]:.4f}")
+assert best[1] > 3 * rows[0][1], "the repaired network should not be at chance"
+if best is not rows[-1]:
+    print("\\nThe last rung is NOT the best configuration. Report the best row,")
+    print("and say which rungs you dropped and why. That is what the table is")
+    print("for; without it you would ship the bottom row by default.")
 '''),
         code('''
 fig, ax = plt.subplots(1, 2, figsize=(13, 4))
@@ -667,6 +742,30 @@ print(f"model.eval()   {eval_mode:.4f}   <- running averages from training")
 print(f"difference     {100*(eval_mode - train_mode):+.2f} points")
 print("\\nUnlike dropout it does not wobble between calls, so running the "
       "evaluation twice does NOT catch it.")
+'''),
+
+        md("""
+### The row we do not explain
+
+Applied on their own to the Lecture 13 network, batch normalisation rescues it
+completely and layer normalisation does nothing at all — yet on the *repaired*
+network the two are within a point of each other.
+
+We are not going to account for that here, because we have not measured enough
+to. Below is the measurement that would start to: run both, on the broken
+network, and look at where the per-layer backward factor ends up.
+"""),
+        code('''
+for label, kw in [("none",  dict(act="sigmoid", init="torch")),
+                  ("batch", dict(act="sigmoid", init="torch", norm="batch")),
+                  ("layer", dict(act="sigmoid", init="torch", norm="layer"))]:
+    d = delta_profile(**kw)
+    print(f"{label:6s} rho {geo(d[0:DEPTH-1] / d[1:DEPTH]):.4f}   "
+          f"delta_1/delta_20 {d[0]/d[DEPTH-1]:.3e}")
+print()
+print("Whatever you conclude, write down the measurement that supports it.")
+print("An explanation with no number attached is the thing this course is")
+print("trying to replace.")
 '''),
 
         md("""

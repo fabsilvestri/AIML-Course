@@ -43,7 +43,40 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from figkit import (setup, save, cached, load_cache, export, OUT, SEED,   # noqa: E402
                     PRIMARY, ACCENT, SUCCESS, MATH, MUTED, RULE, AXIS,
-                    BODY, SMALL, TICK, check_text_floor)
+                    BODY, SMALL, TICK, check_text_floor, plain_log)
+
+
+class _Pow10:
+    """A format-string stand-in for figkit.plain_log's `fmt`.
+
+    Every log axis in this application spans between four and eighteen decades,
+    so a digit format ("{:,.0f}") is useless: the labels would be 0 and
+    100000000000000000000. plain_log calls `fmt.format(v)`, and anything with a
+    `.format` method satisfies that, so this writes the decade with unicode
+    superscripts instead. The three static Source Sans 3 cuts all carry U+207B
+    and U+2070-2079; checked, not assumed.
+    """
+
+    _SUP = str.maketrans("-0123456789", "\u207b\u2070\u00b9\u00b2\u00b3"
+                                        "\u2074\u2075\u2076\u2077\u2078"
+                                        "\u2079")
+
+    def format(self, v: float) -> str:
+        e = int(round(math.log10(v)))
+        return "10" + str(e).translate(self._SUP)
+
+
+POW10 = _Pow10()
+
+
+def decades(values, step=4):
+    """Decade ticks spanning `values`, thinned so the labels do not collide."""
+    a = np.asarray([v for v in np.ravel(values) if v > 0])
+    lo, hi = int(np.floor(np.log10(a.min()))), int(np.ceil(np.log10(a.max())))
+    ticks = list(range(lo, hi + 1, step))
+    if ticks[-1] != hi:
+        ticks.append(hi)
+    return [10.0 ** e for e in ticks]
 
 import torch                                                    # noqa: E402
 import torch.nn as nn                                           # noqa: E402
@@ -189,6 +222,48 @@ def grad_profile(X, y, *, n_batches=8, dtype=torch.float64, **kw) -> np.ndarray:
         net.zero_grad()
         lossf(net(xb), yb).backward()
         acc += np.array([float(m.weight.grad.norm()) for m in lins])
+    return acc / n_batches
+
+
+def delta_profile(X, y, *, n_batches=8, dtype=torch.float64, **kw) -> np.ndarray:
+    """Norm of the gradient with respect to each layer's OUTPUT, not its weights.
+
+    This distinction cost an afternoon and is worth the extra function. The
+    thread predicts the per-layer factor for the *backward signal*
+
+        delta_l = dL/dz_l ,
+
+    but what a practitioner logs — and what Lecture 13 plots — is the gradient
+    of the WEIGHTS, and
+
+        || dL/dW_l ||  ~  || delta_l || . || a_(l-1) || .
+
+    So the weight-gradient ratio is the backward factor divided by the forward
+    activation-scale factor. Those two are equal only when the forward pass is
+    scale-stable, which the logistic is (it settles at a fixed point) and an
+    unnormalised ReLU stack is not. Measure both, and the discrepancy stops
+    being a mystery and becomes the second half of the thread.
+    """
+    torch.manual_seed(SEED)
+    net = make_net(dtype=dtype, **kw)
+    net.train()
+    lossf = nn.CrossEntropyLoss()
+    g = torch.Generator().manual_seed(SEED)
+    acc = None
+    for _ in range(n_batches):
+        idx = torch.randperm(len(X), generator=g)[:BATCH]
+        h = torch.as_tensor(X[idx.numpy()], dtype=dtype)
+        yb = torch.as_tensor(y[idx.numpy()])
+        zs = []
+        for m in net:
+            h = m(h)
+            if isinstance(m, nn.Linear):
+                h.retain_grad()
+                zs.append(h)
+        net.zero_grad()
+        lossf(h, yb).backward()
+        vals = np.array([float(z.grad.norm()) for z in zs])
+        acc = vals if acc is None else acc + vals
     return acc / n_batches
 
 
@@ -408,12 +483,82 @@ def run_l13_extra(d) -> dict:
     # to be produced here rather than typed from memory (TRICKS section 4).
     assistant = _strip(train(d, epochs=5, act="sigmoid", init="torch"))
 
+    # Can the loop memorise a handful of examples? If not, the bug is the loop.
+    # The slide claims a number for this, so measure it.
+    n_mem, steps_mem = 200, 200
+    torch.manual_seed(SEED)
+    tiny = make_net(depth=2, act="sigmoid", init="torch").to(DEVICE)
+    opt2 = torch.optim.Adam(tiny.parameters(), lr=LR)
+    Xm = torch.tensor(d["X_fit"][:n_mem], device=DEVICE)
+    ym = torch.tensor(d["y_fit"][:n_mem], device=DEVICE)
+    tiny.train()
+    for _ in range(steps_mem):
+        opt2.zero_grad()
+        lossf(tiny(Xm), ym).backward()
+        opt2.step()
+    memorise = accuracy(tiny, d["X_fit"][:n_mem], d["y_fit"][:n_mem])
+
     return {"wchange": [float((a - b).norm() / b.norm())
                         for a, b in zip(after, before)],
             "assistant": {"loss": assistant["loss"],
                           "test_acc": assistant["test_acc"],
                           "seconds": assistant["seconds"],
-                          "epochs": 5}}
+                          "epochs": 5},
+            "memorise": {"n": n_mem, "steps": steps_mem, "acc": memorise}}
+
+
+def run_deltas(d) -> dict:
+    """The true backward factor rho, and the forward scale factor beside it."""
+    schemes = {
+        "default_sigmoid": dict(act="sigmoid", init="torch"),
+        "normal1_sigmoid": dict(act="sigmoid", init="normal1"),
+        "glorot_sigmoid":  dict(act="sigmoid", init="glorot"),
+        "glorot_relu":     dict(act="relu",    init="glorot"),
+        "he_relu":         dict(act="relu",    init="he"),
+    }
+    out = {}
+    for name, kw in schemes.items():
+        delta = delta_profile(d["X_fit"], d["y_fit"], **kw)
+        sd = np.array(act_profile(d["X_fit"], **kw)["sd"])
+        # delta[l] is the gradient at layer l's output; descending the stack
+        # means going from index l to index l-1.
+        r_back = delta[0:DEPTH - 1] / delta[1:DEPTH]
+        r_fwd = sd[1:DEPTH] / sd[0:DEPTH - 1]
+        out[name] = {
+            "delta": [float(v) for v in delta],
+            "rho": float(np.exp(np.mean(np.log(r_back)))),
+            "forward_ratio": float(np.exp(np.mean(np.log(r_fwd)))),
+            "delta_attenuation": float(delta[0] / delta[DEPTH - 1]),
+        }
+        print(f"      {name:16s} rho {out[name]['rho']:.4f}   "
+              f"forward scale {out[name]['forward_ratio']:.4f}   "
+              f"delta_1/delta_20 {out[name]['delta_attenuation']:.3e}")
+    return out
+
+
+def run_timing(d, repeats: int = 3, epochs: int = 3) -> dict:
+    """What normalisation costs on the clock, measured robustly.
+
+    The figures for this application were generated on a heavily shared
+    machine, where a single wall-clock reading says more about what else was
+    running than about the configuration. The minimum of several repeats is the
+    standard defence: contention can only ever make a run slower, so the
+    smallest observation is the closest to the uncontended cost.
+
+    Three epochs rather than twenty, because this measures the per-epoch cost
+    and nothing else.
+    """
+    out = {"repeats": repeats, "epochs": epochs}
+    for label, kw in [("none", {}), ("batch", dict(norm="batch")),
+                      ("layer", dict(norm="layer"))]:
+        times = [train(d, epochs=epochs, act="relu", init="he", **kw)["seconds"]
+                 for _ in range(repeats)]
+        out[label] = {"min": float(min(times)), "all": [float(t) for t in times]}
+        print(f"      {label:6s} {min(times):.2f} s for {epochs} epochs "
+              f"(min of {repeats}; saw {[round(t, 2) for t in times]})")
+    out["batch_overhead"] = out["batch"]["min"] / out["none"]["min"]
+    out["layer_overhead"] = out["layer"]["min"] / out["none"]["min"]
+    return out
 
 
 def run_l14_extra(d) -> dict:
@@ -552,6 +697,25 @@ def run_l14(d) -> dict:
     return out
 
 
+def var_check(n_rows: int = 20_000) -> dict:
+    """The thread's central identity, checked on one random layer.
+
+    The deck prints this block verbatim, so it is produced here rather than
+    typed from memory. Cheap enough not to be cached.
+    """
+    torch.manual_seed(SEED)
+    out = {"var_w": [], "predicted": [], "measured": [], "n_rows": n_rows,
+           "fan_in": WIDTH}
+    for var_w in (0.001, 0.01, 0.02, 0.05):
+        W = torch.randn(WIDTH, WIDTH, dtype=torch.float64) * math.sqrt(var_w)
+        a = torch.randn(n_rows, WIDTH, dtype=torch.float64)   # Var(a) = 1
+        z = a @ W.T
+        out["var_w"].append(var_w)
+        out["predicted"].append(float(WIDTH * var_w))
+        out["measured"].append(float(z.var()))
+    return out
+
+
 def _var_sweep(d) -> dict:
     """Activation sd against layer index, for a range of weight standard
     deviations, with the theory's prediction beside it.
@@ -660,6 +824,7 @@ def fig_grad_by_depth(l13):
     x = np.arange(1, len(g) + 1)
     ax.semilogy(x, g, color=ACCENT, lw=2.5, marker="o", ms=5)
     ax.set_yscale("log")
+    plain_log(ax, "y", decades(g, 3), fmt=POW10)
     ax.set_xticks([1, 5, 10, 15, 20, 21])
     ax.set_xticklabels(["1", "5", "10", "15", "20", "out"])
     ax.set_xlabel("layer  (1 = nearest the input)")
@@ -747,6 +912,8 @@ def fig_init_grads(l14):
     for key, label, colour, ls in style:
         ax.semilogy(x, g[key], color=colour, lw=2.4, ls=ls, marker="o", ms=3.5,
                     label=label)
+    plain_log(ax, "y", decades([v for vs in g.values() for v in vs], 4),
+              fmt=POW10)
     ax.set_xticks([1, 5, 10, 15, 20, 21])
     ax.set_xticklabels(["1", "5", "10", "15", "20", "out"])
     ax.set_xlabel("layer  (1 = nearest the input)")
@@ -770,6 +937,9 @@ def fig_var_vs_depth(l14):
         ax.semilogy(x, v["sd"], color=colours[label], lw=2.4, marker="o", ms=4,
                     label=f"{name}   (r = {v['ratio']:.2f})")
         ax.semilogy(x, v["predicted"], color=colours[label], lw=1.2, ls=":")
+    plain_log(ax, "y",
+              decades([v for s_ in sw.values() for v in s_["sd"]], 3),
+              fmt=POW10)
     ax.set_xlabel("hidden layer")
     ax.set_ylabel("activation standard deviation")
     ax.legend(loc="lower left", fontsize=TICK)
@@ -818,17 +988,27 @@ def fig_curves(l14, l13):
 
 
 def fig_clip(l14):
+    bad = np.asarray(l14["norm_dist_bad"])
+    good = np.asarray(l14["norm_dist_deep"])
+    # Log-spaced bins: the two distributions span different orders of
+    # magnitude, and linear bins on a log axis pile everything into one column.
+    lo = min(bad.min(), good.min()) * 0.8
+    hi = max(bad.max(), good.max()) * 1.2
+    bins = np.logspace(np.log10(lo), np.log10(hi), 70)
+
     fig, ax = plt.subplots(figsize=(11.0, 3.2))
-    ax.hist(l14["norm_dist_bad"], bins=70, color=ACCENT, alpha=0.85,
+    ax.hist(bad, bins=bins, color=ACCENT, alpha=0.85,
             label="N(0, 1) initialisation")
-    ax.hist(l14["norm_dist_deep"], bins=70, color=SUCCESS, alpha=0.85,
+    ax.hist(good, bins=bins, color=SUCCESS, alpha=0.85,
             label="He initialisation")
+    ax.set_xscale("log")
+    plain_log(ax, "x", decades(np.concatenate([bad, good]), 4), fmt=POW10)
     ax.axvline(1.0, color=PRIMARY, lw=2.2, ls="--")
-    ax.annotate("clip at 1.0", xy=(1.0, ax.get_ylim()[1] * 0.6),
-                xytext=(6.0, ax.get_ylim()[1] * 0.72), color=PRIMARY,
+    top = ax.get_ylim()[1]
+    ax.annotate("clip at 1.0", xy=(1.0, top * 0.55),
+                xytext=(8.0, top * 0.72), color=PRIMARY,
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=PRIMARY),
                 arrowprops=dict(arrowstyle="->", color=PRIMARY, lw=1.6))
-    ax.set_xscale("log")
     ax.set_xlabel("total gradient norm, one optimiser step")
     ax.set_ylabel("steps")
     ax.legend()
@@ -929,6 +1109,8 @@ def fig_grad_fixed(l14, l13):
                 label="Lecture 13's network")
     ax.semilogy(x, l14["grads_fixed"], color=SUCCESS, lw=2.5, marker="s", ms=4,
                 label="He, ReLU, batch normalisation")
+    plain_log(ax, "y", decades(list(l13["grad64"]) + list(l14["grads_fixed"]), 4),
+              fmt=POW10)
     ax.set_xticks([1, 5, 10, 15, 20, 21])
     ax.set_xticklabels(["1", "5", "10", "15", "20", "out"])
     ax.set_xlabel("layer  (1 = nearest the input)")
@@ -1032,6 +1214,10 @@ def main() -> int:
     facts["l13_per_layer_attenuation"] = 1.0 / geo
     facts["l13_n_ratios"] = int(len(ratios))
     facts["l13_gain_check"] = float(geo ** len(ratios))
+    # The same thing read downwards, which is how the slide states it:
+    # rho^19, where rho is the per-layer attenuation.
+    facts["l13_attenuation_down"] = float(g[0] / g[19])
+    facts["l13_per_layer_check"] = float((1.0 / geo) ** len(ratios))
     facts["l13_f32_zero_layers"] = int((g32 == 0).sum())
     print(f"    gradient at layer 1  {g[0]:.3e}")
     print(f"    gradient at layer 20 {g[19]:.3e}")
@@ -1064,6 +1250,7 @@ def main() -> int:
     extra = cached("app07_l13_extra", lambda: run_l13_extra(d))
     facts["l13_wchange"] = extra["wchange"]
     facts["l13_assistant"] = extra["assistant"]
+    facts["l13_memorise"] = extra["memorise"]
     print(f"    weights moved: layer 1 {extra['wchange'][0]:.4f}   "
           f"head {extra['wchange'][-1]:.4f}")
     print(f"    deep: loss {l13['deep']['first_loss']:.4f} -> "
@@ -1099,6 +1286,32 @@ def main() -> int:
         "he_relu": math.sqrt(WIDTH * (2 / WIDTH) * 0.5),
     }
 
+    print("    the backward factor rho, measured directly")
+    deltas = cached("app07_deltas", lambda: run_deltas(d))
+    facts["l14_delta"] = {
+        k: {"rho": v["rho"], "forward_ratio": v["forward_ratio"],
+            "delta_attenuation": v["delta_attenuation"]}
+        for k, v in deltas.items()}
+    facts["l14_theory_fwd"] = {
+        "glorot_relu": math.sqrt(WIDTH * (2 / (2 * WIDTH)) / 2),
+        "he_relu": math.sqrt(WIDTH * (2 / WIDTH) / 2),
+    }
+    facts["l14_glorot_relu_fwd_over19"] = (
+        facts["l14_theory_fwd"]["glorot_relu"] ** (DEPTH - 1))
+
+    # How far the prediction is from the measurement, as a relative error, and
+    # what the theory says the weight-gradient ratio should therefore be.
+    facts["l14_err"] = {}
+    facts["l14_wratio_pred"] = {}
+    for k, th in facts["l14_theory"].items():
+        m = deltas[k]["rho"]
+        facts["l14_err"][k] = abs(m - th) / th
+        facts["l14_wratio_pred"][k] = m / deltas[k]["forward_ratio"]
+    facts["l14_err_max"] = max(facts["l14_err"].values())
+    print("    prediction error: "
+          + ", ".join(f"{k} {100 * v:.1f}%"
+                      for k, v in facts["l14_err"].items()))
+
     xtra = cached("app07_l14_extra", lambda: run_l14_extra(d))
     gx = np.array(xtra["grad_glorot_relu"])
     rx = gx[1:DEPTH] / gx[0:DEPTH - 1]
@@ -1118,6 +1331,10 @@ def main() -> int:
           f"{100 * facts['l14_xavier_cost']:+.2f} points")
     facts["l14_sigmoid_dmax"] = 0.25
     facts["l14_sigmoid_dmax_sq"] = 0.0625
+    facts["l14_var_check"] = var_check()
+    print("    variance identity: predicted "
+          f"{facts['l14_var_check']['predicted']} against measured "
+          f"{[round(v, 4) for v in facts['l14_var_check']['measured']]}")
     facts["l14_glorot_var"] = 2.0 / (WIDTH + WIDTH)
     facts["l14_he_var"] = 2.0 / WIDTH
     facts["l14_he_sd"] = math.sqrt(2.0 / WIDTH)
@@ -1160,11 +1377,32 @@ def main() -> int:
     facts["l14_clip_bad_median"] = float(np.median(l14["norm_dist_bad"]))
     facts["l14_bn_params"] = (l14["norms"]["batch"]["n_params"]
                               - l14["norms"]["none"]["n_params"])
-    facts["l14_bn_overhead"] = (l14["norms"]["batch"]["seconds"]
-                                / l14["norms"]["none"]["seconds"])
-    facts["l14_total_seconds"] = sum(
-        r["seconds"] for r in l14["ladder"]) + sum(
-        r["seconds"] for r in l14["alone"])
+    facts["l14_bn_params_per_layer"] = 2 * WIDTH
+    facts["l14_bn_cost"] = (l14["norms"]["batch"]["test_acc"]
+                            - l14["norms"]["none"]["test_acc"])
+    facts["l14_ln_gain"] = (l14["norms"]["layer"]["test_acc"]
+                            - l14["norms"]["none"]["test_acc"])
+
+    print("    the clock cost of normalisation, min of several repeats")
+    timing = cached("app07_timing", lambda: run_timing(d))
+    facts["l14_timing"] = timing
+    facts["l14_bn_overhead"] = timing["batch_overhead"]
+    facts["l14_ln_overhead"] = timing["layer_overhead"]
+
+    # The best row of the ladder is not always the last one. Say which.
+    best = max(l14["ladder"], key=lambda r: r["test_acc"])
+    facts["l14_best_label"] = best["label"]
+    facts["l14_best_gain"] = best["test_acc"] - l14["ladder"][0]["test_acc"]
+    facts["l14_last_row_gain"] = (l14["ladder"][-1]["test_acc"]
+                                  - best["test_acc"])
+    facts["l14_worst_step"] = min(r["delta"] for r in l14["ladder"])
+    facts["l14_act_spread"] = (max(v["test_acc"] for v in
+                                   l14["activations"].values())
+                               - min(v["test_acc"] for v in
+                                     l14["activations"].values()))
+    print(f"    best rung: {best['label']} at {best['test_acc']:.4f} "
+          f"(+{100 * facts['l14_best_gain']:.1f} points); the last rung is "
+          f"{100 * facts['l14_last_row_gain']:+.1f}")
 
     print("Figures:")
     fig_grid(d)
