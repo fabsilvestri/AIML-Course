@@ -12,7 +12,9 @@ Checks
    dollar signs and the spaces. Wrap each amount: <span class="usd">$120,000</span>.
 2. Weekday names. Lectures refer to one another relatively, never by day.
 3. Third-party notebooks. The course uses no notebook it did not write.
-4. Referenced figures that do not exist.
+4. Referenced figures that do not exist, or SVG diagrams with no intrinsic
+   size — a <svg> carrying only a viewBox renders at 0x0 through an <img>, so
+   the slide shows nothing and every other check still passes.
 5. Decks under the 70-slide minimum.
 6. Leftover drafting placeholders. Three different templating syntaxes have been
    used by different authors; 432 tokens once reached the repository unreplaced,
@@ -107,11 +109,17 @@ def check(path: Path) -> list[str]:
         out.append(f"{rel}:{src[:m.start()].count(chr(10)) + 1}: "
                    f"third-party notebook reference ({m.group()})")
 
-    # 4. missing figures
+    # 4. missing figures, and figures the browser cannot size
     for m in re.finditer(r'src="([^"]*assets/figures/[^"]+)"', src):
         target = (path.parent / m.group(1)).resolve()
         if not target.exists():
             out.append(f"{rel}: missing figure {m.group(1)}")
+        elif target.suffix == ".svg":
+            tag = re.search(r"<svg\b[^>]*>", target.read_text()[:800])
+            if tag and not re.search(r'\bwidth="', tag.group()):
+                out.append(f"{rel}: {target.name} has no width/height — a "
+                           f"viewBox alone is not an intrinsic size for an "
+                           f"<img>, and it renders blank")
 
     # 5. deck length
     if path.parent.name == "slides":

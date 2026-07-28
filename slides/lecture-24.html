@@ -1,0 +1,1480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 24 — Closing the loop, and closing the course</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- ==================================================================== -->
+<!-- OPENING                                                              -->
+<!-- ==================================================================== -->
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Closing the loop,<br>and closing the course</h1>
+  <p class="subtitle">Application 12 &middot; the multimodal catalogue</p>
+  <p><span class="badge badge-fix">Lecture 24 &middot; Fix</span>
+     <span class="badge badge-math">Thread 12</span>
+     <span class="badge badge-ch">Géron Ch. 15&ndash;16</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Ask for every commitment sheet from the whole semester on
+  the desk, not just the last one. The final block needs them.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we left off">
+  <h2>Where we left off</h2>
+  <table>
+    <tr><th>System, text to image</th><th class="num">R@1</th><th class="num">R@10</th></tr>
+    <tr><td>Random ranking (exact)</td><td class="num">@@l23_random.r1:.1%@@</td><td class="num">@@l23_random.r10:.1%@@</td></tr>
+    <tr><td>Two separately trained encoders</td><td class="num miss">@@l23_mismatch.jl.r1:.1%@@</td><td class="num miss">@@l23_mismatch.jl.r10:.1%@@</td></tr>
+    <tr><td>One jointly trained pair</td><td class="num hit">@@l23_clip.t2i.r1:.1%@@</td><td class="num hit">@@l23_clip.t2i.r10:.1%@@</td></tr>
+  </table>
+  <p class="small">Over @@l23_corpus.n_catalogue@@ candidates &mdash; always say
+  the number.</p>
+  <p class="lead">One objective turned the middle row into the bottom row. Today
+  we take that objective apart.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today, and then the end</h2>
+  <ol>
+    <li><span class="badge badge-math">Thread 12</span> The contrastive
+        objective and its temperature
+        <span class="muted small">(20 min)</span></li>
+    <li>Diagnose &mdash; score the commitment, find the two weak spots
+        <span class="muted small">(20 min)</span></li>
+    <li>Repair &mdash; automatic captions, and retrieval-augmented answers
+        <span class="muted small">(25 min)</span></li>
+    <li>The course, as a single argument
+        <span class="muted small">(25 min)</span></li>
+  </ol>
+  <p class="small muted">The last block is not a revision list. It is the
+  argument the first lecture promised, with the measurements attached.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- MATHEMATICAL THREAD 12 (20 min)                                      -->
+<!-- ==================================================================== -->
+
+<!-- 4 -->
+<section class="divider" data-menu-title="◆ Thread 12">
+  <p class="kicker">Mathematical thread 12 &middot; the last one</p>
+  <h1>The contrastive objective<br>and its temperature</h1>
+  <p class="clock">20 minutes</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="The question">
+  <h2>The question</h2>
+  <p class="lead">Two encoders trained apart gave us
+  @@l23_mismatch.jl.r1:.1%@@. Two encoders trained together gave us
+  @@l23_clip.t2i.r1:.1%@@.</p>
+  <p class="lead"><em>What is the loss that did that?</em></p>
+  <div class="panel panel-math">
+    <span class="panel-title">Four decisions, none of them obvious</span>
+    Where the vectors live; what an unrelated pair should score; how a cosine
+    becomes a logit; and how many wrong answers the loss compares against.
+    Each one is measurable, and we measure all four.
+  </div>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="The setup">
+  <h2>The setup</h2>
+  <p class="small">A batch of $B$ pairs. Image tower $f$, text tower $g$, each
+  ending in a linear map into $\mathbb{R}^{d}$:</p>
+  <div class="eqn-box">
+    $$\mathbf{u}_i = \frac{f(x_i)}{\lVert f(x_i)\rVert}, \qquad
+      \mathbf{v}_j = \frac{g(t_j)}{\lVert g(t_j)\rVert}, \qquad
+      S_{ij} = \mathbf{u}_i^{\top}\mathbf{v}_j$$
+    <div class="eqn-label">a B × B matrix of cosines</div>
+  </div>
+  <p class="small">$S_{ii}$ is a pair that belongs together. Every $S_{ij}$ with
+  $i \neq j$ is a pair that does not. The loss only ever sees this matrix.</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="§1 Why the sphere">
+  <h2>1 &middot; Why normalise at all</h2>
+  <p class="small">The unnormalised inner product factorises:</p>
+  <div class="eqn-box">
+    $$\langle a, b\rangle = \lVert a\rVert\,\lVert b\rVert\cos\theta$$
+  </div>
+  <ul class="tight small">
+    <li>Two quantities are mixed: <em>which direction</em> the encoder chose,
+        and <em>how loudly</em> it said it</li>
+    <li>Only the direction carries the semantics. The length is whatever the
+        last linear layer happened to scale to</li>
+    <li>Measured on our catalogue: the longest image embedding is
+        @@l24_normalisation.norm_ratio:.2f@@&times; the shortest</li>
+  </ul>
+  <p class="small">Divide both by their norms and $S_{ij}$ is a pure cosine, in
+  $[-1, 1]$, comparable across pairs, models and runs.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="§1 What normalising costs">
+  <h2>What normalising costs, and buys</h2>
+  <div class="cols">
+    <div>
+      <p><strong>Costs</strong></p>
+      <ul class="tight small">
+        <li>One degree of freedom per vector: $d$ numbers describe a point on
+            $S^{d-1}$, which has dimension $d-1$</li>
+        <li>The model can no longer express confidence by shouting</li>
+      </ul>
+    </div>
+    <div>
+      <p><strong>Buys</strong></p>
+      <ul class="tight small">
+        <li>A bounded score, so a single temperature is meaningful for every
+            pair</li>
+        <li>A geometry we can reason about &mdash; and the reasoning is the next
+            section</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small muted">Confidence comes back through the temperature instead,
+  as one number shared by the whole model rather than one per example.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="§2 The naive answer">
+  <h2>2 &middot; What should an <em>unrelated</em> pair score?</h2>
+  <p class="lead">Matching pairs should score 1. Unrelated pairs should
+  score &hellip; ?</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">The answer everybody gives first</span>
+    &minus;1. Opposite meaning, opposite vector. It is the wrong answer, and the
+    reason is geometry you already measured &mdash; in Lecture 10.
+  </div>
+  <aside class="notes">Take the vote. It is usually two-thirds for &minus;1.
+  Write the count on the board and come back to it in four slides.</aside>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="§2 Why not −1">
+  <h2>Why &minus;1 is impossible to ask for</h2>
+  <ul class="tight small">
+    <li>For a given $\mathbf{u}$, there is <strong>exactly one</strong> unit
+        vector at cosine &minus;1: the point $-\mathbf{u}$</li>
+    <li>A catalogue of @@l23_corpus.n_catalogue@@ entries would need all
+        @@l23_corpus.n_catalogue@@ of its non-matching captions to sit on that
+        one point &mdash; and then they would all be identical to each other</li>
+    <li>Wanting every unrelated pair at &minus;1 is asking for a configuration
+        that does not exist for more than two items</li>
+  </ul>
+  <div class="panel panel-math">
+    <span class="panel-title">The right question</span>
+    Not &ldquo;what is the most different?&rdquo; but &ldquo;what does a pair
+    with <em>no relationship at all</em> look like?&rdquo; That is a question
+    about a random vector, and Lecture 10 answered it.
+  </div>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="§2 Callback to Lecture 10">
+  <h2>Thread 5, returning</h2>
+  <p class="small">In Lecture 10 the Johnson&ndash;Lindenstrauss bound worked
+  because a random projection nearly preserves inner products. Underneath that
+  is one fact about high dimensions:</p>
+  <div class="panel panel-math">
+    <span class="panel-title">Concentration on the sphere</span>
+    Draw $\mathbf{u}, \mathbf{v}$ uniformly on $S^{d-1}$. Then
+    $\mathbb{E}[\mathbf{u}^{\top}\mathbf{v}] = 0$ and
+    $\operatorname{Var}(\mathbf{u}^{\top}\mathbf{v}) = 1/d$. Almost all of the
+    sphere's area sits within $O(1/\sqrt{d})$ of the equator of any fixed point.
+  </div>
+  <p class="small"><strong>In high dimensions, two unrelated things are
+  orthogonal, not opposite.</strong></p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="§2 The derivation">
+  <h2>Where the $1/d$ comes from</h2>
+  <p class="small">Fix $\mathbf{u} = e_1$ by rotational symmetry, and write
+  $\mathbf{v} = \mathbf{z}/\lVert \mathbf{z}\rVert$ with
+  $\mathbf{z} \sim \mathcal{N}(0, I_d)$. Then $\mathbf{u}^{\top}\mathbf{v} =
+  z_1/\lVert \mathbf{z}\rVert$, and</p>
+  <div class="eqn-box">
+    $$\mathbb{E}\!\left[\left(\tfrac{z_1}{\lVert \mathbf{z}\rVert}\right)^{2}\right]
+      = \mathbb{E}\!\left[\frac{z_1^2}{\sum_{k} z_k^2}\right]
+      = \frac{1}{d}$$
+    <div class="eqn-label">by symmetry: the d coordinates share the total equally</div>
+  </div>
+  <p class="small">The expectation is zero by the symmetry
+  $\mathbf{v} \mapsto -\mathbf{v}$, so the standard deviation is exactly
+  $1/\sqrt{d}$. No approximation anywhere.</p>
+</section>
+
+<!-- 13 -->
+<section class="figslide" data-menu-title="◆ Concentration">
+  <h2>Measured, over twelve dimensions</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l24-concentration.svg"
+         alt="Left: log-log plot of the measured standard deviation of the cosine between random unit vectors against dimension, lying on the one-over-root-d line. Right: a histogram of those cosines at d = 512, a narrow spike at zero, with the point minus one marked far away and empty.">
+  </figure>
+  <p class="takeaway muted">At $d$ = @@l24_concentration.d@@ the measured
+  spread is @@l24_concentration.gauss_sd:.4f@@ against a predicted
+  @@l24_concentration.gauss_theory_sd:.4f@@ &mdash; and over
+  @@l24_concentration.n_pairs:,@@ pairs the most negative cosine seen was
+  @@l24_concentration.gauss_min:+.3f@@.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="§2 The number that settles it">
+  <h2>The number that settles the vote</h2>
+  <table>
+    <tr><th>Random unit vectors in $\mathbb{R}^{512}$, @@l24_concentration.n_pairs:,@@ pairs</th><th class="num">Value</th></tr>
+    <tr><td>Mean cosine</td><td class="num">@@l24_concentration.gauss_mean:+.5f@@</td></tr>
+    <tr><td>Standard deviation, measured</td><td class="num">@@l24_concentration.gauss_sd:.4f@@</td></tr>
+    <tr><td>Standard deviation, $1/\sqrt{d}$</td><td class="num">@@l24_concentration.gauss_theory_sd:.4f@@</td></tr>
+    <tr><td>Most negative cosine observed</td><td class="num">@@l24_concentration.gauss_min:+.3f@@</td></tr>
+    <tr><td>Fraction with $|\cos| > 0.5$</td><td class="num">@@l24_concentration.frac_beyond_half.8:.1%@@</td></tr>
+  </table>
+  <p class="small fail">Nothing came within
+  @@l24_concentration.gauss_min:.2f@@ of &minus;1, and nothing ever will. That
+  is why the loss targets zero.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="§2 On our own embeddings">
+  <h2>And on the embeddings we actually used</h2>
+  <table>
+    <tr><th>Cosine, in the trained joint space</th><th class="num">Mean</th><th class="num">sd</th></tr>
+    <tr><td>Two unrelated images</td><td class="num">@@l24_geometry.img_img.mean:+.3f@@</td><td class="num">@@l24_geometry.img_img.sd:.3f@@</td></tr>
+    <tr><td>An image and an unrelated caption</td><td class="num">@@l24_geometry.img_txt_unrelated.mean:+.3f@@</td><td class="num">@@l24_geometry.img_txt_unrelated.sd:.3f@@</td></tr>
+    <tr><td class="fix">An image and its own caption</td><td class="num fix">@@l24_geometry.img_txt_matched.mean:+.3f@@</td><td class="num">@@l24_geometry.img_txt_matched.sd:.3f@@</td></tr>
+    <tr><td>Most negative unrelated pair seen</td><td class="num">@@l24_geometry.img_txt_unrelated.min:+.3f@@</td><td class="num">&mdash;</td></tr>
+  </table>
+  <p class="small">Unrelated pairs are near zero and nowhere near &minus;1 &mdash;
+  exactly as the geometry says. But they are not <em>at</em> zero either, and
+  that deviation has a name.</p>
+</section>
+
+<!-- 16 -->
+<section class="figslide" data-menu-title="◆ The modality gap">
+  <h2>One space, two cones</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l24-geometry.svg"
+         alt="Left: three overlaid histograms of cosine similarity — random unit vectors centred on zero, unrelated CLIP image-caption pairs shifted right, and unrelated CLIP image-image pairs shifted further right. Right: a two-dimensional projection showing image embeddings and caption embeddings in two separated clouds.">
+  </figure>
+  <p class="takeaway muted">Images occupy one region of the sphere and captions
+  another: the two centroids are @@l24_geometry.modality_gap:.2f@@ apart. The
+  objective aligns pairs <em>relatively</em>, and never asks the two clouds to
+  coincide.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="§2 The gap, honestly">
+  <h2>The gap, stated honestly</h2>
+  <ul class="tight small">
+    <li>Only the <em>ranking within a row</em> is trained. Adding the same
+        constant offset to every image embedding changes no ranking and no loss</li>
+    <li>So the loss has no reason to remove the gap, and it does not</li>
+    <li>Consequence you can be caught by: an absolute cosine threshold tuned on
+        image&ndash;image pairs is meaningless for image&ndash;text pairs. The
+        two distributions are @@l24_geometry.img_img.mean:.2f@@ and
+        @@l24_geometry.img_txt_unrelated.mean:.2f@@ apart <em>before</em> any
+        semantics</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">Where this sits</span>
+    Why the gap exists and what it costs is an open research question, outside
+    Chapters 1&ndash;16 and not examinable. That it exists, and that it makes
+    raw cosines incomparable across modality, is measurable and is on the exam.
+  </div>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="§3 From cosine to logit">
+  <h2>3 &middot; From a cosine to a logit</h2>
+  <p class="small">Thread 11 gave us the machinery: softmax over logits,
+  cross-entropy against the correct index. Row $i$ of $S$ is a
+  $B$-class problem whose correct answer is column $i$:</p>
+  <div class="eqn-box">
+    $$\mathcal{L} = -\frac{1}{B}\sum_{i}\log
+      \frac{\exp(S_{ii}/\tau)}{\sum_{j}\exp(S_{ij}/\tau)}$$
+    <div class="eqn-label">InfoNCE, one direction; the loss is the average of both</div>
+  </div>
+  <p class="small">Everything is familiar except $\tau$. Set it to 1 and see
+  what happens.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="§3 Why τ = 1 fails">
+  <h2>Why $\tau = 1$ cannot work</h2>
+  <ul class="tight small">
+    <li>The logits are cosines, so they live in $[-1, 1]$. The whole spread of
+        the row is at most 2</li>
+    <li>$\exp$ of a range of 2 is a ratio of at most $e^{2} \approx 7.4$,
+        across @@l24_temperature.n@@ competitors</li>
+    <li>So the softmax is nearly uniform whatever the model says, the correct
+        answer gets probability near $1/B$, and the loss sits near
+        $\log B$ &mdash; the value for a model that has learned nothing</li>
+  </ul>
+  <table>
+    <tr><th>At $\tau = 1$, on our @@l24_temperature.n@@ pairs</th><th class="num">Value</th></tr>
+    <tr><td>Loss</td><td class="num">@@l24_temperature.at_one.loss:.3f@@</td></tr>
+    <tr><td>A scorer that knows nothing: $\log$ @@l24_temperature.n@@</td><td class="num">@@l24_temperature.chance_loss:.3f@@</td></tr>
+    <tr><td>Mean probability on the correct entry</td><td class="num">@@l24_temperature.at_one.p_positive:.4f@@</td></tr>
+  </table>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="§3 What τ does">
+  <h2>What dividing by $\tau$ actually does</h2>
+  <div class="eqn-box">
+    $$\frac{\partial \mathcal{L}_i}{\partial S_{ij}}
+      = \frac{1}{\tau}\left(p_{ij} - \mathbf{1}[j = i]\right),
+      \qquad p_{ij} = \operatorname{softmax}_j\!\left(S_{ij}/\tau\right)$$
+    <div class="eqn-label">thread 11's result, prediction minus target, scaled by 1/τ</div>
+  </div>
+  <ul class="tight small">
+    <li>$\tau$ does <strong>not</strong> change which column is largest, so it
+        cannot change the top-1 accuracy of a fixed model</li>
+    <li>It changes <em>where the gradient goes</em>. Small $\tau$ concentrates
+        $p$ on the few hardest negatives; those get almost all the push</li>
+    <li>Too small and the loss is dominated by one negative per row, which may be
+        a mislabelled pair rather than an informative one</li>
+  </ul>
+</section>
+
+<!-- 21 -->
+<section class="figslide" data-menu-title="◆ Temperature">
+  <h2>Twelve temperatures, one set of cosines</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l24-temperature.svg"
+         alt="Left: contrastive loss against temperature on a log axis, falling steeply as the temperature drops, with the learned value marked and a dotted line at log 200. Right: probability mass on the correct answer and on the hardest wrong answer against temperature, with a flat line showing top-1 accuracy unchanged.">
+  </figure>
+  <p class="takeaway muted">The flat line is the point: the temperature moves
+  the loss by orders of magnitude and moves the accuracy of a fixed model not at
+  all.</p>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="§3 The learned temperature">
+  <h2>The temperature is a parameter</h2>
+  <p class="small">It is not a hyperparameter anybody tunes by hand. The model
+  stores $\log(1/\tau)$ and learns it by gradient descent along with everything
+  else, clamped from above so it cannot run away.</p>
+  <pre><code class="language-python" data-trim>scale = model.logit_scale.exp()      # a single learnable scalar
+print(f"logit scale {scale:.2f}   tau = {1 / scale:.5f}")
+</code></pre>
+  <table>
+    <tr><th>Read off the checkpoint</th><th class="num">Value</th></tr>
+    <tr><td>Learned logit scale $1/\tau$</td><td class="num">@@l24_temperature.learned_logit_scale:.2f@@</td></tr>
+    <tr><td>Learned temperature $\tau$</td><td class="num">@@l24_temperature.learned_tau:.5f@@</td></tr>
+    <tr><td>Loss on our batch at that $\tau$</td><td class="num">@@l24_temperature.at_learned.loss:.3f@@</td></tr>
+    <tr><td>Mean probability on the correct entry</td><td class="num">@@l24_temperature.at_learned.p_positive:.3f@@</td></tr>
+  </table>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="§3 Too cold">
+  <h2>And if you make it colder still</h2>
+  <table>
+    <tr><th>$\tau$</th><th class="num">Loss</th><th class="num">p(correct)</th><th class="num">p(hardest wrong)</th></tr>
+    <tr><td>1</td><td class="num">@@l24_temperature.at_one.loss:.3f@@</td><td class="num">@@l24_temperature.at_one.p_positive:.4f@@</td><td class="num">@@l24_temperature.at_one.p_hardest_negative:.4f@@</td></tr>
+    <tr><td class="fix">@@l24_temperature.learned_tau:.4f@@ (learned)</td><td class="num fix">@@l24_temperature.at_learned.loss:.3f@@</td><td class="num fix">@@l24_temperature.at_learned.p_positive:.3f@@</td><td class="num">@@l24_temperature.at_learned.p_hardest_negative:.3f@@</td></tr>
+    <tr><td>0.002</td><td class="num">@@l24_temperature.at_tiny.loss:.3f@@</td><td class="num">@@l24_temperature.at_tiny.p_positive:.3f@@</td><td class="num">@@l24_temperature.at_tiny.p_hardest_negative:.3f@@</td></tr>
+  </table>
+  <p class="small">Colder is not simply better. As $\tau \to 0$ the softmax
+  becomes a hard maximum: the gradient sees one negative per row, and any label
+  noise in that one pair is amplified rather than averaged away.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="§4 The negatives">
+  <h2>4 &middot; Where the negatives come from</h2>
+  <p class="lead">Nowhere. That is the elegant part.</p>
+  <p class="small">The loss needs, for each image, a set of captions it should
+  <em>not</em> match. Nobody labels those. They are simply the other members of
+  the batch &mdash; free, and correct with high probability on a large corpus.</p>
+  <div class="panel">
+    <span class="panel-title">The consequence, in one line</span>
+    The batch is the label set. So the batch size is not a memory setting. It
+    is the number of classes in the classification problem you are solving.
+  </div>
+</section>
+
+<!-- 25 -->
+<section class="figslide" data-menu-title="◆ The matrix">
+  <h2>One batch, drawn</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-contrastive.svg"
+         alt="A five by five grid of similarity cells with the diagonal picked out in green, an arrow to a note explaining that each row is a five-class classification problem, and two boxes on bigger batches and on failing to normalise.">
+  </figure>
+  <p class="takeaway muted">Each row is a $B$-class problem. Each column is the
+  same problem in the other direction. The loss averages both.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="§4 Batch size measured">
+  <h2>Bigger batch, harder task</h2>
+  <table>
+    <tr><th>Batch size $B$</th><th class="num">In-batch top-1</th><th class="num">Chance, $1/B$</th><th class="num">Loss</th></tr>
+    <tr><td>@@l24_batch.batch.0@@</td><td class="num">@@l24_batch.accuracy.0:.1%@@</td><td class="num">@@l24_batch.chance.0:.1%@@</td><td class="num">@@l24_batch.loss.0:.3f@@</td></tr>
+    <tr><td>@@l24_batch.batch.3@@</td><td class="num">@@l24_batch.accuracy.3:.1%@@</td><td class="num">@@l24_batch.chance.3:.1%@@</td><td class="num">@@l24_batch.loss.3:.3f@@</td></tr>
+    <tr><td>@@l24_batch.batch.5@@</td><td class="num">@@l24_batch.accuracy.5:.1%@@</td><td class="num">@@l24_batch.chance.5:.1%@@</td><td class="num">@@l24_batch.loss.5:.3f@@</td></tr>
+    <tr><td>@@l24_batch.batch.7@@</td><td class="num">@@l24_batch.accuracy.7:.1%@@</td><td class="num">@@l24_batch.chance.7:.1%@@</td><td class="num">@@l24_batch.loss.7:.3f@@</td></tr>
+  </table>
+  <p class="small">Same model, same embeddings, same temperature. Only the
+  number of distractors changed.</p>
+</section>
+
+<!-- 27 -->
+<section class="figslide" data-menu-title="◆ Batch size">
+  <h2>The number of negatives <em>is</em> the difficulty</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l24-batch.svg"
+         alt="Left: in-batch top-1 accuracy falling as batch size grows on a log-2 axis, against a much faster falling one-over-B chance line. Right: contrastive loss rising with batch size alongside the log B reference curve.">
+  </figure>
+  <p class="takeaway muted">Accuracy falls with $B$ and chance falls faster, so
+  the gap &mdash; the learning signal &mdash; widens. That is the whole argument
+  for a large batch.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="§4 The consequence">
+  <h2>Two consequences worth carrying away</h2>
+  <ul class="tight small">
+    <li><strong>A contrastive loss value is not comparable across papers.</strong>
+        It is measured against a batch-dependent ceiling of $\log B$. Two
+        systems at loss 2.5 with batches of 256 and 32,768 are not
+        comparable at all</li>
+    <li><strong>Batch size stops being an optimisation detail.</strong> Doubling
+        it changes the task, not just the gradient noise &mdash; which is why
+        these models are trained with batches in the tens of thousands, across
+        many devices</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The engineering, flagged as engineering</span>
+    Gathering embeddings across devices to build one large similarity matrix is
+    real and necessary and outside Chapters 1&ndash;16. Not examinable.
+  </div>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Thread 12 summary">
+  <h2>Thread 12 &mdash; what to keep</h2>
+  <ol class="tight small">
+    <li>Normalise, because only the direction is semantic and a bounded score
+        makes one temperature meaningful</li>
+    <li>Unrelated pairs target <strong>zero</strong>, because in $d$ dimensions
+        random directions are orthogonal with spread
+        $1/\sqrt{d}$ &mdash; measured at
+        @@l24_concentration.gauss_sd:.4f@@ for $d$ = @@l24_concentration.d@@</li>
+    <li>$\tau$ rescales cosines into usable logits. It cannot change a fixed
+        model's ranking; it decides which negatives the gradient listens to</li>
+    <li>The batch <em>is</em> the label set, so $B$ sets both the difficulty and
+        the chance level $1/B$</li>
+  </ol>
+  <p class="small muted">Thread 5 supplied point 2. Thread 11 supplied points 3
+  and 4. The twelve were meant to be taken in order, and this is why.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- DIAGNOSE (20 min)                                                    -->
+<!-- ==================================================================== -->
+
+<!-- 30 -->
+<section class="divider" data-menu-title="◆ Diagnose">
+  <p class="kicker">Part two</p>
+  <h1>Score the sheet,<br>then find the weak spots</h1>
+  <p class="clock">20 minutes</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="★ Your numbers">
+  <h2>Compare with your sheet</h2>
+  <div class="commit">
+    <span class="commit-label">From the previous lecture</span>
+    <p class="small" style="text-align:left; line-height:1.8">
+      Recall@1 a good system should reach: <span class="blank"></span><br>
+      Recall@1 I expected from what we built: <span class="blank"></span><br>
+      Best Recall@1 I obtained: <span class="blank"></span>
+    </p>
+  </div>
+  <table>
+    <tr><th>Reality, over @@l23_corpus.n_catalogue@@ candidates</th><th class="num">R@1</th></tr>
+    <tr><td>Shuffle the catalogue</td><td class="num">@@l23_random.r1:.1%@@</td></tr>
+    <tr><td>Two separately trained encoders</td><td class="num">@@l23_mismatch.jl.r1:.1%@@</td></tr>
+    <tr><td>One jointly trained pair</td><td class="num hit">@@l23_clip.t2i.r1:.1%@@</td></tr>
+  </table>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="The verdict">
+  <h2>The verdict</h2>
+  <p class="small">For the first time in twelve applications, the number you
+  committed to was probably <em>too low</em> rather than too high &mdash;
+  because the failure this time was not in the evaluation. It was in the
+  geometry, and the repair was somebody else&rsquo;s pretraining run.</p>
+  <div class="panel">
+    <span class="panel-title">Still worth checking</span>
+    @@l23_clip.t2i.r1:.1%@@ over @@l23_corpus.n_catalogue@@ candidates is not
+    @@l23_clip.t2i.r1:.1%@@ over fifty thousand. Recall rises as the haystack
+    shrinks, and a catalogue is a haystack that grows.
+  </div>
+  <aside class="notes">Do not let the room leave believing this number
+  transfers. Ask what they would expect at n = 50,000 and why.</aside>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="Two weak spots">
+  <h2>Two things we measured and did not fix</h2>
+  <table>
+    <tr><th>#</th><th>Measured last lecture</th><th class="num">Number</th></tr>
+    <tr><td>1</td><td>Text search R@1 on entries with no description</td><td class="num fail">@@l23_textroute.missing_on_blanked:.0%@@</td></tr>
+    <tr><td>2</td><td>Ambiguous queries with a single right answer</td><td class="num fail">none exist</td></tr>
+  </table>
+  <p class="small">The first is a hole in the index. The second is a mismatch
+  between what the customer asked and what a ranked list can say.</p>
+  <p class="small muted">Both are repaired in the next thirty minutes, and both
+  are re-measured before we leave.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- THE WORKED ASSISTANT FAILURE                                         -->
+<!-- ==================================================================== -->
+
+<!-- 34 -->
+<section class="divider" data-menu-title="◇ Assistant failure">
+  <p class="kicker">The worked assistant failure</p>
+  <h1>The loss without<br>the sphere</h1>
+  <p class="clock">the failure this lecture is about</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="◇ The prompt">
+  <h2>Beat 1 &mdash; the under-specified prompt</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">What was typed</span>
+    &ldquo;Write the symmetric contrastive loss for a batch of image and text
+    embeddings, with a temperature of @@l24_temperature.learned_tau:.2f@@.&rdquo;
+  </div>
+  <p class="small">One clause missing. It is the clause section 1 of the thread
+  spent five minutes on, which is exactly why this is the failure for this
+  lecture.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="◇ The code">
+  <h2>Beat 2 &mdash; the plausible code it returns</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>import torch, torch.nn.functional as F
+
+def contrastive_loss(img, txt, tau=0.01):
+    """Symmetric InfoNCE over a batch of paired embeddings."""
+    logits = img @ txt.T / tau                 # (B, B)
+    target = torch.arange(len(img), device=img.device)
+    return 0.5 * (F.cross_entropy(logits, target) +
+                  F.cross_entropy(logits.T, target))
+
+I = model.get_image_features(**image_batch)
+T = model.get_text_features(**text_batch)
+print(f"loss {contrastive_loss(I, T).item():.3f}")
+</code></pre>
+  <p class="small">It runs. The docstring is accurate. The shapes are right. The
+  target is right. It even has the factor of one half.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="◇ The review question">
+  <h2>Beat 3 &mdash; the review question</h2>
+  <p class="lead">&ldquo;Is <code>img @ txt.T</code> a cosine?&rdquo;</p>
+  <p class="small">Only if both sides are unit vectors, and
+  <code>get_image_features</code> does not return unit vectors. So the entries
+  are $\lVert a\rVert\lVert b\rVert\cos\theta$, the temperature is dividing a
+  quantity with no fixed scale, and the row-wise softmax is comparing lengths as
+  much as directions.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Which of the five questions is this?</span>
+    Number 5 again: <em>what is the default I did not ask for?</em> The default
+    of <code>get_*_features</code> is &ldquo;unnormalised&rdquo;, and no line of
+    that function says so.
+  </div>
+</section>
+
+<!-- 38 -->
+<section class="figslide" data-menu-title="◆ Damage">
+  <h2>Beat 3b &mdash; measure the damage</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l24-normalisation.svg"
+         alt="Left: two bars comparing in-batch top-1 accuracy with normalised and with raw embeddings. Right: a scatter of embedding length against how many queries ranked that image first, rising steeply.">
+  </figure>
+  <p class="takeaway muted">Top-1 falls from
+  @@l24_normalisation.normalised.accuracy:.1%@@ to
+  @@l24_normalisation.unnormalised.accuracy:.1%@@, and one image alone captures
+  @@l24_normalisation.max_wins_one_image@@ of the
+  @@l24_normalisation.n@@ queries.</p>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="◇ The damage, tabulated">
+  <h2>Beat 3c &mdash; the numbers</h2>
+  <table>
+    <tr><th>At the same $\tau$ = @@l24_temperature.learned_tau:.4f@@</th><th class="num">On the sphere</th><th class="num">Raw</th></tr>
+    <tr><td>Contrastive loss</td><td class="num">@@l24_normalisation.normalised.loss:.3f@@</td><td class="num fail">@@l24_normalisation.unnormalised.loss:.3f@@</td></tr>
+    <tr><td>In-batch top-1</td><td class="num">@@l24_normalisation.normalised.accuracy:.1%@@</td><td class="num fail">@@l24_normalisation.unnormalised.accuracy:.1%@@</td></tr>
+    <tr><td>Images never ranked first by any query</td><td class="num">&mdash;</td><td class="num fail">@@l24_normalisation.n_images_never_first@@ of @@l24_normalisation.n@@</td></tr>
+  </table>
+  <p class="small fail">Rank correlation between an image&rsquo;s embedding
+  length and how often it wins:
+  @@l24_normalisation.spearman_norm_vs_wins:+.2f@@. The system is ranking by
+  loudness.</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="◇ The fix">
+  <h2>Beat 4 &mdash; the corrected specification</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">What to type instead</span>
+    &ldquo;Symmetric InfoNCE. <strong>L2-normalise both embedding sets along the
+    feature axis before the matrix product</strong>, so the logits are cosines
+    divided by $\tau$. Assert that every row of both matrices has unit norm to
+    within 1e-5. Report the loss <em>and</em> the in-batch top-1 accuracy, and
+    print $\log B$ beside the loss.&rdquo;
+  </div>
+  <p class="small muted">The assertion is the part that would have caught it in
+  silence. Two lines, and the bug becomes a crash.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- REPAIR 1 — AUTOMATIC CAPTIONS (12 min)                               -->
+<!-- ==================================================================== -->
+
+<!-- 41 -->
+<section class="divider" data-menu-title="◆ Repair 1">
+  <p class="kicker">Part three, first half</p>
+  <h1>Entries with<br>no description</h1>
+  <p class="clock">12 minutes</p>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="The hole">
+  <h2>The hole in the index</h2>
+  <p class="small">@@l23_textroute.n_blanked@@ of @@l23_textroute.n@@ catalogue
+  entries have no description. A text index cannot rank a document that does not
+  exist, so those entries score exactly
+  @@l23_textroute.missing_on_blanked:.0%@@ &mdash; structurally, not
+  statistically.</p>
+  <div class="panel">
+    <span class="panel-title">The idea</span>
+    We have a model that maps images to text: Lecture 23 measured it running in
+    the image-to-text direction. Use a model built for <em>generating</em> the
+    text rather than retrieving it, and write the missing descriptions.
+  </div>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="The captioner">
+  <h2>The captioner</h2>
+  <table>
+    <tr><th>Component</th><th>What it is</th></tr>
+    <tr><td>Image encoder</td><td>a vision transformer &mdash; Chapter 16</td></tr>
+    <tr><td>Text decoder</td><td>a transformer decoder with cross-attention to the image &mdash; Chapter 15</td></tr>
+    <tr><td>Training</td><td>image&ndash;caption pairs, next-token prediction</td></tr>
+    <tr><td>Size</td><td>@@l24_captions.blip_params_m@@ million parameters</td></tr>
+  </table>
+  <p class="small muted">Architecturally this is the encoder&ndash;decoder of
+  Chapter 15 with an image encoder in place of the text one. Nothing new; a
+  different pair of modalities in the same box.</p>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Captioning code">
+  <h2>The repair, in nine lines</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>from transformers import BlipForConditionalGeneration, BlipProcessor
+
+proc = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+cap  = BlipForConditionalGeneration.from_pretrained(
+    "Salesforce/blip-image-captioning-base").to(device).eval()
+
+with torch.no_grad():
+    batch = proc(images=missing_images, return_tensors="pt").to(device)
+    ids   = cap.generate(**batch, max_new_tokens=30, num_beams=3)
+
+generated = proc.batch_decode(ids, skip_special_tokens=True)
+assert len(generated) == len(missing_images)
+</code></pre>
+  <p class="small muted">Expected wall clock:
+  @@l24_captions.blip_seconds:.0f@@ s for @@l24_captions.n_blanked@@ images with
+  beam search. Not instant; run it offline, once, per new entry.</p>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="What it writes">
+  <h2>What it writes</h2>
+  <table class="smaller">
+    <tr><th>Human description (deleted)</th><th>Generated description</th></tr>
+    <tr><td>@@l24_captions.examples.0.human@@</td><td>@@l24_captions.examples.0.generated@@</td></tr>
+    <tr><td>@@l24_captions.examples.1.human@@</td><td>@@l24_captions.examples.1.generated@@</td></tr>
+    <tr><td>@@l24_captions.examples.2.human@@</td><td>@@l24_captions.examples.2.generated@@</td></tr>
+  </table>
+  <p class="small">Blunter, more generic, and less specific than a person's
+  sentence. The question is not whether they are as good. It is whether they are
+  better than nothing &mdash; and that is a measurement.</p>
+</section>
+
+<!-- 46 -->
+<section class="figslide" data-menu-title="◆ Captions measured">
+  <h2>Better than nothing, measured</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l24-captions.svg"
+         alt="Three bars of Recall@1 on the sixty entries whose description was deleted: high with the human description, zero with none, and part-way back with an automatic caption. A dashed line marks CLIP's image route, which is unaffected.">
+  </figure>
+  <p class="takeaway muted">From
+  @@l23_textroute.missing_on_blanked:.0%@@ to
+  @@l24_captions.filled_on_blanked:.1%@@ on the
+  @@l24_captions.n_blanked@@ affected entries &mdash; against
+  @@l23_textroute.full_on_blanked:.1%@@ if a person had written them.</p>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="Captions, tabulated">
+  <h2>The whole catalogue, three ways</h2>
+  <table>
+    <tr><th>Text-only route, all @@l23_textroute.n@@ queries</th><th class="num">R@1</th><th class="num">R@10</th></tr>
+    <tr><td>Every entry described by a person</td><td class="num">@@l23_textroute.full.r1:.1%@@</td><td class="num">@@l23_textroute.full.r10:.1%@@</td></tr>
+    <tr><td class="fail">@@l23_textroute.n_blanked@@ entries with nothing</td><td class="num fail">@@l23_textroute.missing.r1:.1%@@</td><td class="num fail">@@l23_textroute.missing.r10:.1%@@</td></tr>
+    <tr><td class="fix">Those @@l23_textroute.n_blanked@@ auto-captioned</td><td class="num fix">@@l24_captions.filled.r1:.1%@@</td><td class="num fix">@@l24_captions.filled.r10:.1%@@</td></tr>
+  </table>
+  <p class="small">A generated caption recovers part of the loss and not all of
+  it. Report the part, not the direction.</p>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="The other route was fine">
+  <h2>Meanwhile, the route that never read a description</h2>
+  <table>
+    <tr><th>On the same @@l24_captions.n_blanked@@ entries</th><th class="num">R@1</th></tr>
+    <tr><td>Text index, description deleted</td><td class="num fail">@@l23_textroute.missing_on_blanked:.0%@@</td></tr>
+    <tr><td>Text index, auto-captioned</td><td class="num">@@l24_captions.filled_on_blanked:.1%@@</td></tr>
+    <tr><td class="fix">Joint-space image route</td><td class="num fix">@@l24_captions.clip_on_blanked:.1%@@</td></tr>
+  </table>
+  <div class="panel">
+    <span class="panel-title">The design lesson</span>
+    Two routes that fail for different reasons are worth more than one better
+    route. The image route is immune to missing text; the text route is immune
+    to a photograph that does not show the distinguishing feature.
+  </div>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="Caveats">
+  <h2>Three things not to claim</h2>
+  <ul class="tight small">
+    <li>A generated caption is <strong>not evidence about the product</strong>.
+        It is a restatement of the photograph, and it will confidently name
+        things that are not there</li>
+    <li>The recovery is measured on
+        @@l24_captions.n_blanked@@ entries of @@l23_textroute.n@@. That is a
+        small sample and the interval around it is wide</li>
+    <li>We are scoring generated captions against human captions of the same
+        image &mdash; a friendly test. A customer&rsquo;s wording is not a COCO
+        caption</li>
+  </ul>
+  <div class="panel panel-fail">
+    <span class="panel-title">The failure mode to watch for</span>
+    An auto-caption that is wrong makes an entry <em>findable under the wrong
+    query</em>, which is worse than unfindable. Nothing we measured today
+    detects that.
+  </div>
+</section>
+
+<!-- ==================================================================== -->
+<!-- REPAIR 2 — RAG (13 min)                                              -->
+<!-- ==================================================================== -->
+
+<!-- 50 -->
+<section class="divider" data-menu-title="◆ Repair 2">
+  <p class="kicker">Part three, second half</p>
+  <h1>Queries with no<br>single right answer</h1>
+  <p class="clock">13 minutes</p>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="The ambiguous query">
+  <h2>What the customer actually types</h2>
+  <ul class="tight small">
+    <li>&ldquo;something to sit on&rdquo;</li>
+    <li>&ldquo;gear for bad weather&rdquo;</li>
+    <li>&ldquo;an animal that would suit a small flat&rdquo;</li>
+  </ul>
+  <p class="small">A ranked list of pictures is a poor answer to any of these.
+  The customer wants a shortlist <em>with reasons</em> &mdash; and a ranking has
+  no place to put a reason.</p>
+  <p class="small muted">Twelve such queries, written by hand and listed in the
+  notebook. There is no dataset of ambiguous queries; inventing them and saying
+  so is the honest option.</p>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="Two bad options">
+  <h2>Two options that do not work</h2>
+  <div class="cols">
+    <div>
+      <p><span class="badge badge-fail">Option A</span></p>
+      <p class="small">Show the top ten pictures and let the customer decide.
+      That is what we already have, and it is why they asked in words.</p>
+    </div>
+    <div>
+      <p><span class="badge badge-fail">Option B</span></p>
+      <p class="small">Ask a language model. It has never seen our catalogue, so
+      anything it recommends is invented &mdash; and it will invent it
+      fluently.</p>
+    </div>
+  </div>
+  <p class="lead">Retrieval-augmented generation is the composition of the two:
+  <strong>retrieve first, then generate strictly from what was
+  retrieved.</strong></p>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="The check must be mechanical">
+  <h2>First, decide how you will check it</h2>
+  <p class="small">&ldquo;The answer is good&rdquo; is not measurable in a
+  lecture. So give every entry a stock number and require the assistant to cite
+  them:</p>
+  <div class="panel">
+    <span class="panel-title">The metric</span>
+    A cited SKU either exists in the catalogue or it does not. Count the
+    citations, count the ones that exist, report the fraction. No judgement
+    call anywhere in the loop.
+  </div>
+  <p class="small muted">This measures <em>grounding</em>, not helpfulness. Say
+  which one you measured; they are not the same thing and only one of them is
+  cheap.</p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="RAG code">
+  <h2>Retrieve, then generate</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>q = unit(clip_text(["something to sit on"]))      # (1, 512)
+top5 = np.argsort(-(q @ I.T)[0])[:5]              # I: catalogue images
+
+shortlist = "\n".join(f"- {cat[j]['sku']}: {cat[j]['captions'][0]}"
+                      for j in top5)
+
+prompt = (f'Here are the catalogue entries our search returned for '
+          f'"something to sit on":\n{shortlist}\n\n'
+          f'Recommend the best ones, citing only SKUs from the list above. '
+          f'If none fit, say so.')
+
+answer = generate(prompt)                          # a 0.5B instruction model
+cited  = re.findall(r"CAT-\d{6}", answer)
+print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
+</code></pre>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="Closed book">
+  <h2>Closed book &mdash; what it does without retrieval</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Asked the same question with no catalogue</span>
+    The model produces a fluent recommendation and cites stock numbers in
+    exactly the right format. Across @@l24_rag.n_queries@@ queries it emitted
+    @@l24_rag.closed.citations@@ citations, of which
+    <strong>@@l24_rag.closed.valid@@</strong> correspond to an entry that exists.
+  </div>
+  <p class="small">The failure is not that it refuses. It is that it does not
+  refuse, and nothing in the output distinguishes an invented SKU from a real
+  one.</p>
+</section>
+
+<!-- 56 -->
+<section class="figslide" data-menu-title="◆ RAG measured">
+  <h2>With the catalogue in the prompt</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l24-rag.svg"
+         alt="Two bars showing the percentage of cited stock numbers that exist in the catalogue: low for the closed-book model, high for the retrieval-augmented one, with the raw counts printed above each.">
+  </figure>
+  <p class="takeaway muted">@@l24_rag.closed.valid_pct:.0f@@% of closed-book
+  citations exist against @@l24_rag.grounded.valid_pct:.0f@@% when the
+  shortlist is in the prompt &mdash; over @@l24_rag.n_queries@@ queries and a
+  @@l24_rag.catalogue_size@@-entry catalogue.</p>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="RAG tabulated">
+  <h2>The numbers</h2>
+  <table>
+    <tr><th>Over @@l24_rag.n_queries@@ ambiguous queries</th><th class="num">Closed book</th><th class="num">Retrieval-augmented</th></tr>
+    <tr><td>Queries that cited at least one SKU</td><td class="num">@@l24_rag.closed.queries_with_a_citation@@</td><td class="num">@@l24_rag.grounded.queries_with_a_citation@@</td></tr>
+    <tr><td>Citations emitted</td><td class="num">@@l24_rag.closed.citations@@</td><td class="num">@@l24_rag.grounded.citations@@</td></tr>
+    <tr><td>Citations that exist</td><td class="num fail">@@l24_rag.closed.valid@@</td><td class="num fix">@@l24_rag.grounded.valid@@</td></tr>
+    <tr><td>Grounding rate</td><td class="num fail">@@l24_rag.closed.valid_pct:.0f@@%</td><td class="num fix">@@l24_rag.grounded.valid_pct:.0f@@%</td></tr>
+  </table>
+  <p class="small muted">The generator is a @@l24_rag.n_params_m@@-million
+  parameter instruction model, chosen so the whole thing runs on a laptop. A
+  larger one would follow the citation instruction more reliably; it would not
+  change the shape of the result.</p>
+</section>
+
+<!-- 58 -->
+<section data-menu-title="What RAG does not fix">
+  <h2>What this does <span class="fail">not</span> fix</h2>
+  <ul class="tight small">
+    <li><strong>Grounding is not correctness.</strong> A cited entry can exist
+        and still be a bad recommendation. We measured the cheap half</li>
+    <li><strong>The retriever is now the ceiling.</strong> If the right entry is
+        not in the top five, no amount of generation will recover it &mdash;
+        which is why the R@5 we measured last lecture is the number that
+        matters here</li>
+    <li><strong>Fluency is unchanged.</strong> A wrong answer built from real
+        SKUs reads better than a wrong answer built from invented ones</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">Where this sits in the field</span>
+    Evaluating generated answers &mdash; faithfulness, attribution, judging with
+    another model &mdash; is a live research area and entirely outside Chapters
+    1&ndash;16. Not examinable, and worth knowing exists.
+  </div>
+</section>
+
+<!-- ==================================================================== -->
+<!-- RE-MEASURE AND RED TEAM                                              -->
+<!-- ==================================================================== -->
+
+<!-- 59 -->
+<section data-menu-title="Re-measure">
+  <h2>Everything, re-measured</h2>
+  <table>
+    <tr><th>Route</th><th class="num">Before</th><th class="num">After</th></tr>
+    <tr><td>Text query &rarr; image, joint space</td><td class="num">@@l23_clip.t2i.r1:.1%@@</td><td class="num">@@l23_clip.t2i.r1:.1%@@ <span class="muted small">(untouched)</span></td></tr>
+    <tr><td>Text index, on the entries with no description</td><td class="num fail">@@l23_textroute.missing_on_blanked:.0%@@</td><td class="num fix">@@l24_captions.filled_on_blanked:.1%@@</td></tr>
+    <tr><td>Ambiguous queries, grounding rate</td><td class="num fail">@@l24_rag.closed.valid_pct:.0f@@%</td><td class="num fix">@@l24_rag.grounded.valid_pct:.0f@@%</td></tr>
+  </table>
+  <p class="small">Two repairs, two measured deltas, one number deliberately
+  unchanged as a control. That last row is what makes the other two
+  believable.</p>
+</section>
+
+<!-- 60 -->
+<section data-menu-title="Red team">
+  <h2>Red team &mdash; four questions for this notebook</h2>
+  <ol class="tight small">
+    <li>Are the embeddings on both sides unit vectors? Assert it, do not read it</li>
+    <li>Is the recall reported with its candidate-set size?</li>
+    <li>Were the auto-captions generated for entries that are <em>also</em> in
+        the evaluation queries &mdash; and does that matter here?</li>
+    <li>Does the grounding metric count a SKU cited twice as two citations? What
+        would that do to the percentage?</li>
+  </ol>
+  <aside class="notes">Question 3 is the interesting one: the captioner never
+  saw the query, so this is not leakage, but a student who cannot say why is not
+  yet reading carefully. Let them argue.</aside>
+</section>
+
+<!-- ==================================================================== -->
+<!-- THE COURSE (25 min)                                                  -->
+<!-- ==================================================================== -->
+
+<!-- 61 -->
+<section class="divider" data-menu-title="◆ The course">
+  <p class="kicker">Part four &middot; the end</p>
+  <h1>The course,<br>as one argument</h1>
+  <p class="clock">25 minutes</p>
+</section>
+
+<!-- 62 -->
+<section data-menu-title="The promise">
+  <h2>What the first lecture promised</h2>
+  <div class="panel">
+    <span class="panel-title">Slide 2, Lecture 1</span>
+    &ldquo;Twelve real applications, each built until it breaks, then repaired
+    with the method that fixes it. No chapter introduces itself. Every technique
+    arrives because something <em>you measured</em> went wrong without it.&rdquo;
+  </div>
+  <p class="lead">That was a claim, not a plan. Here is the evidence.</p>
+</section>
+
+<!-- 63 -->
+<section data-menu-title="The claim">
+  <h2>The claim, stated precisely</h2>
+  <p class="lead">Every method you met in this course was introduced at the
+  moment a number <em>you produced</em> was wrong without it.</p>
+  <p class="small">Not &ldquo;was useful&rdquo;. Not &ldquo;is standard&rdquo;.
+  <strong>Was wrong, and measurably so, and you were the one holding the wrong
+  number.</strong></p>
+  <p class="small muted">The rest of this block is that claim, twelve times,
+  with the measurement attached each time.</p>
+</section>
+
+<!-- 64 -->
+<section class="figslide" data-menu-title="◆ The arc">
+  <h2>Twelve applications, twelve first failures</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-course-arc.svg"
+         alt="Twelve boxes, one per application, each naming the application and the measurement that failed first, with the method that repaired it underneath.">
+  </figure>
+  <p class="takeaway muted">Read the middle line of each box. That is the
+  syllabus &mdash; the chapter order is a consequence of it.</p>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="Applications 1–2">
+  <h2>Applications 1 and 2 &mdash; the two that set the rules</h2>
+  <table>
+    <tr><th>What broke</th><th class="num">Measured</th><th>Method it forced</th></tr>
+    <tr><td>Predict the mean price</td><td class="num"><span class="usd">$@@baseline.mean_train_rmse:,.0f@@</span> RMSE</td><td>a baseline before a model</td></tr>
+    <tr><td>A tree scored zero error</td><td class="num">0</td><td>train error is not generalisation error</td></tr>
+    <tr><td>Honest cross-validated best</td><td class="num"><span class="usd">$@@best_cv_rmse:,.0f@@</span></td><td>k-fold, pipelines, grid search</td></tr>
+    <tr><td>Never fires, on the rare class</td><td class="num">@@never_fires_accuracy_train:.1%@@ accurate</td><td>precision, recall, the threshold</td></tr>
+  </table>
+  <p class="small">Lecture 2 also gave us the one rule everything else rests on:
+  <strong>split before anything is fitted</strong>.</p>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="Applications 3–5">
+  <h2>Applications 3, 4 and 5</h2>
+  <table>
+    <tr><th>What broke</th><th class="num">Measured</th><th>Method it forced</th></tr>
+    <tr><td>@@headline.accuracy:.1%@@ accurate, and it missed</td><td class="num">@@headline.missed_fives_pct:.1f@@% of the fives</td><td>the confusion matrix, PR and ROC</td></tr>
+    <tr><td>Degree 5, log loss on held-out data</td><td class="num">@@l06_final.committed_degree5_unregularised.log_loss:.2f@@</td><td>bias&ndash;variance, learning curves</td></tr>
+    <tr><td>Degree 2, the same measurement</td><td class="num">@@l06_final.best_unregularised_degree2.log_loss:.2f@@</td><td>ridge, lasso, early stopping</td></tr>
+    <tr><td>One tree, refit twenty times</td><td class="num">@@instability_disagree_mean:.1%@@ of predictions changed</td><td>bagging, forests, extra-trees</td></tr>
+  </table>
+  <p class="small muted">Application 4&rsquo;s thread &mdash; variance falls when
+  you average uncorrelated predictors &mdash; is the reason all three ensemble
+  variants exist and differ.</p>
+</section>
+
+<!-- 67 -->
+<section data-menu-title="Applications 5–6">
+  <h2>Applications 5 and 6</h2>
+  <table>
+    <tr><th>What broke</th><th class="num">Measured</th><th>Method it forced</th></tr>
+    <tr><td>Clustering 400 faces in 4,096 dimensions</td><td class="num">@@l09_sweep_seconds:.0f@@ s per sweep</td><td>SVD, PCA, random projection</td></tr>
+    <tr><td>The same sweep after compressing</td><td class="num">@@l10_speedup:.0f@@&times; faster</td><td>Johnson&ndash;Lindenstrauss</td></tr>
+    <tr><td>A network fitted by Scikit-Learn</td><td class="num">@@l12_sk_seconds:.0f@@ s, and unmodifiable</td><td>PyTorch, autograd, the explicit loop</td></tr>
+    <tr><td>Forgetting <code>zero_grad()</code></td><td class="num">@@l12_zero_grad.acc_cost_pts:.0f@@ points of accuracy</td><td>reading a loop you wrote</td></tr>
+  </table>
+  <p class="small fail">That last one raised no exception, printed a loss every
+  epoch, and finished successfully.</p>
+</section>
+
+<!-- 68 -->
+<section data-menu-title="Applications 7–10">
+  <h2>Applications 7 to 10</h2>
+  <table>
+    <tr><th>What broke</th><th>Method it forced</th></tr>
+    <tr><td>Twenty layers, and the loss barely moved</td><td>initialisation, batch norm, better optimisers</td></tr>
+    <tr><td>A convolutional net trained from scratch on a small labelled set</td><td>transfer learning, freezing, augmentation</td></tr>
+    <tr><td>Boxes that were visibly wrong, with no number for <em>how</em> wrong</td><td>IoU, GIoU, average precision, mAP</td></tr>
+    <tr><td>A random split across an autocorrelated series</td><td>stationarity, differencing, backtesting</td></tr>
+  </table>
+  <p class="small">The forecasting one is worth one more slide, because it is
+  the failure that most looks like success.</p>
+</section>
+
+<!-- 69 -->
+<section data-menu-title="Temporal leakage">
+  <h2>Application 10, in numbers</h2>
+  <table>
+    <tr><th>Same model, same rows, different protocol</th><th class="num">MAE</th></tr>
+    <tr><td>Random cross-validation split</td><td class="num miss">@@app10.margins.linear.random_mae:,.0f@@</td></tr>
+    <tr><td>Honest, time-ordered split</td><td class="num hit">@@app10.margins.linear.honest_mae:,.0f@@</td></tr>
+    <tr><td class="fail">Optimism from shuffling time</td><td class="num fail">@@app10.margins.linear.gap_pct:.1f@@%</td></tr>
+  </table>
+  <p class="small">Nothing was fitted on the test set. No preprocessing crossed
+  the split. The leak was the <em>ordering</em>, and with positive
+  autocorrelation a point&rsquo;s own near-future was in its training set.</p>
+</section>
+
+<!-- 70 -->
+<section data-menu-title="Applications 11–12">
+  <h2>Applications 11 and 12</h2>
+  <table>
+    <tr><th>What broke</th><th class="num">Measured</th><th>Method it forced</th></tr>
+    <tr><td>Embeddings learned from one small labelled corpus</td><td class="num">&mdash;</td><td>pretraining, fine-tuning, subword tokens</td></tr>
+    <tr><td>Two encoders, two spaces</td><td class="num">@@l23_mismatch.jl.r1:.1%@@ R@1</td><td>the contrastive objective</td></tr>
+    <tr><td>The same task, one joint space</td><td class="num hit">@@l23_clip.t2i.r1:.1%@@ R@1</td><td>temperature, negatives, the sphere</td></tr>
+  </table>
+  <p class="small muted">And the last one closed a loop: the concentration
+  result from Application 5&rsquo;s thread came back seven applications later as
+  the reason a loss targets zero.</p>
+</section>
+
+<!-- 71 -->
+<section data-menu-title="The six failures">
+  <h2>Six failures, and where they live outside this course</h2>
+  <table class="smaller">
+    <tr><th>Failure</th><th>Met in</th><th>Where it recurs</th></tr>
+    <tr><td>Leakage from fitting before splitting</td><td>L2</td><td>any target encoding, oversampling, feature selection or imputation done on the full frame</td></tr>
+    <tr><td>Accuracy under imbalance</td><td>L4</td><td>fraud, medical screening, click prediction, defect detection &mdash; anywhere the interesting class is rare</td></tr>
+    <tr><td>Variance mistaken for signal</td><td>L6, L8</td><td>a single-seed comparison; a leaderboard whose top ten are within noise of each other</td></tr>
+    <tr><td>Signal vanishing with depth</td><td>L14</td><td>any deep stack without residual connections or normalisation, including very long sequences</td></tr>
+    <tr><td>The wrong metric</td><td>L4, L18, L23</td><td>a ranked list scored with accuracy; a detector scored without IoU; a recall quoted without its candidate set</td></tr>
+    <tr><td>Temporal leakage</td><td>L20</td><td>any user-level split where the same user appears in both halves; any shuffled panel data</td></tr>
+  </table>
+</section>
+
+<!-- 72 -->
+<section data-menu-title="The silent-failure catalogue">
+  <h2>The catalogue of silent failures, closed</h2>
+  <table class="smaller">
+    <tr><th>It runs, and produces a plausible number</th><th>Diagnosed in</th></tr>
+    <tr><td>Scaler fitted before the split</td><td>L2</td></tr>
+    <tr><td>Evaluating on training data</td><td>L2</td></tr>
+    <tr><td>Accuracy under class imbalance</td><td>L4</td></tr>
+    <tr><td>Hyperparameters chosen on the test set</td><td>L2, L6, and again on a prompt template in L23</td></tr>
+    <tr><td>Missing <code>model.eval()</code> / <code>optimizer.zero_grad()</code></td><td>L12</td></tr>
+    <tr><td>Metric averaged per batch, not over the set</td><td>L12</td></tr>
+    <tr><td>Random split on an autocorrelated series</td><td>L20</td></tr>
+    <tr><td>Embeddings compared without normalising</td><td>L24</td></tr>
+  </table>
+  <p class="small fail">Every row of that table runs to completion. Not one of
+  them raises.</p>
+</section>
+
+<!-- 73 -->
+<section data-menu-title="The threads">
+  <h2>The twelve threads were one argument too</h2>
+  <div class="cols">
+    <div>
+      <ol class="tight smaller">
+        <li>Least squares and the normal equation</li>
+        <li>Imbalance; precision is not monotone</li>
+        <li>The bias&ndash;variance decomposition</li>
+        <li>Impurity; variance under averaging</li>
+        <li>SVD, PCA, Johnson&ndash;Lindenstrauss</li>
+        <li>Reverse-mode automatic differentiation</li>
+      </ol>
+    </div>
+    <div>
+      <ol start="7" class="tight smaller">
+        <li>Variance propagation and initialisation</li>
+        <li>Weight sharing, equivariance, memory</li>
+        <li>IoU&rsquo;s vanishing gradient; mAP</li>
+        <li>Stationarity and temporal leakage</li>
+        <li>Cross-entropy, softmax and logits</li>
+        <li>The contrastive objective and $\tau$</li>
+      </ol>
+    </div>
+  </div>
+  <p class="small">1 is completed by 3. 2 is used by 9. 11 is used by 12.
+  <strong>5 is used by 12</strong> &mdash; that is the one that closed today, and
+  it was eight applications apart.</p>
+</section>
+
+<!-- 74 -->
+<section data-menu-title="What did not change">
+  <h2>What never changed, application to application</h2>
+  <ol class="tight small">
+    <li>Split before anything is fitted</li>
+    <li>All preprocessing inside the object that is cross-validated</li>
+    <li>Nothing derived from the test set in the training path</li>
+    <li>Fixed seeds; report per-fold scores, not only the mean</li>
+    <li>Every number gets a baseline, and every baseline gets stated</li>
+  </ol>
+  <p class="small muted">Five rules, twelve applications, twenty-four lectures.
+  They did not need extending for images, for sequences, or for two modalities
+  at once.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- WHAT WE DID NOT COVER                                                -->
+<!-- ==================================================================== -->
+
+<!-- 75 -->
+<section class="divider" data-menu-title="◆ The gaps">
+  <p class="kicker">Being explicit</p>
+  <h1>What this course<br>did not cover</h1>
+  <p class="clock">and where those gaps sit</p>
+</section>
+
+<!-- 76 -->
+<section data-menu-title="Why say this at all">
+  <h2>Why this slide exists</h2>
+  <p class="small">Because &ldquo;I took a machine learning course&rdquo; is
+  read by other people as a claim about what you can do. You should be able to
+  say precisely what it does and does not mean.</p>
+  <div class="panel">
+    <span class="panel-title">The scope, one last time</span>
+    Chapters 1&ndash;16 of one book, thoroughly, on twelve applications. That is
+    a large and useful slice of applied machine learning. It is not the field.
+  </div>
+</section>
+
+<!-- 77 -->
+<section data-menu-title="Gaps — in the book">
+  <h2>Gaps that are in the book, past our chapter</h2>
+  <table>
+    <tr><th>Topic</th><th>Where it sits</th></tr>
+    <tr><td>Autoencoders, GANs, diffusion models</td><td>generation rather than prediction; the same encoders, a different objective</td></tr>
+    <tr><td>Reinforcement learning</td><td>learning from a reward signal instead of labelled examples &mdash; a different problem class entirely</td></tr>
+    <tr><td>Training and serving at scale</td><td>data pipelines, distributed training, deployment</td></tr>
+  </table>
+  <p class="small muted">Nothing above is examinable. All three are the natural
+  next chapters of the same book, and you now have the vocabulary for them.</p>
+</section>
+
+<!-- 78 -->
+<section data-menu-title="Gaps — beyond the book">
+  <h2>Gaps that are beyond the book entirely</h2>
+  <table class="smaller">
+    <tr><th>Topic</th><th>Why it matters, in one line</th></tr>
+    <tr><td>Causal inference</td><td>every model here answers &ldquo;what is associated with what&rdquo;; deciding an <em>intervention</em> needs different assumptions and different data</td></tr>
+    <tr><td>Uncertainty quantification</td><td>we produced one confidence interval, in Lecture 2. Calibrated predictive uncertainty is its own subject</td></tr>
+    <tr><td>Fairness and harm</td><td>we ran one fairness check. Who a system fails, and what that costs them, is not a metric you can pick off a list</td></tr>
+    <tr><td>Privacy</td><td>differential privacy, federated learning, and what a model memorises about its training data</td></tr>
+    <tr><td>Monitoring and drift</td><td>a model is fitted once and lives for years. Detecting that the world moved is a permanent job</td></tr>
+    <tr><td>Experimental design</td><td>an offline metric improving is not a business improving. That is an A/B test, and it is a statistics problem</td></tr>
+  </table>
+</section>
+
+<!-- 79 -->
+<section data-menu-title="Gaps — the frontier">
+  <h2>And the part that moves fastest</h2>
+  <ul class="tight small">
+    <li><strong>Pretraining at scale.</strong> We used four pretrained models
+        today and trained none of them. What it takes to make one &mdash; the
+        data, the cost, the failure modes &mdash; is not in this course</li>
+    <li><strong>Instruction tuning and alignment.</strong> The generator in the
+        last section behaves the way it does because of a training stage we
+        never discussed</li>
+    <li><strong>Evaluating generated text.</strong> We measured grounding
+        because grounding is checkable. Measuring whether an answer is
+        <em>good</em> is unsolved</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The transferable part</span>
+    Every one of those still fails in the ways this course taught you to look
+    for: the wrong metric, a missing baseline, a test set that leaked, and a
+    number quoted from one run.
+  </div>
+</section>
+
+<!-- ==================================================================== -->
+<!-- CLOSING                                                              -->
+<!-- ==================================================================== -->
+
+<!-- 80 -->
+<section data-menu-title="The five questions">
+  <h2>The five questions, for the last time</h2>
+  <ol class="tight">
+    <li>What touched the test set?</li>
+    <li>What was fitted, and on what?</li>
+    <li>What is the shape here?</li>
+    <li>What was dropped &mdash; rows, columns, NaNs? Count them</li>
+    <li>What is the default I did not ask for?</li>
+  </ol>
+  <p class="small muted">Question 3 caught a crash in Lecture 23. Question 5
+  caught two assistant failures in two consecutive lectures. They keep
+  working.</p>
+</section>
+
+<!-- 81 -->
+<section data-menu-title="The four rules">
+  <h2>The four rules, unchanged since the first lecture</h2>
+  <ol class="tight">
+    <li><strong>You may not submit code you cannot explain line by line</strong></li>
+    <li><strong>Every number needs a baseline</strong></li>
+    <li><strong>Every model needs an ablation</strong></li>
+    <li><strong>Report the failure cases</strong></li>
+  </ol>
+  <p class="small">Rule 2 did the most work this application: the difference
+  between &ldquo;cosine @@l23_mismatch.jl.matched_mean:.3f@@&rdquo; and
+  &ldquo;cosine @@l23_mismatch.jl.matched_mean:.3f@@, against
+  @@l23_mismatch.jl.random_mean:.3f@@ for unrelated pairs&rdquo; is the whole of
+  Lecture 23.</p>
+</section>
+
+<!-- 82 -->
+<section data-menu-title="What you can do now">
+  <h2>What you can do that you could not in the first lecture</h2>
+  <ul class="tight small">
+    <li>Take a brief, choose a metric, and defend the choice against two
+        alternatives</li>
+    <li>Compute the trivial baseline <em>before</em> the model, every time</li>
+    <li>Read generated code as a reviewer and find the missing constraint</li>
+    <li>Recognise a number that is a draw from a distribution rather than a
+        measurement</li>
+    <li>Say what your system cannot do, with a number attached</li>
+  </ul>
+  <p class="small muted">None of those is a chapter. All of them are what the
+  twelve applications were for.</p>
+</section>
+
+<!-- 83 -->
+<section data-menu-title="★ All notebooks">
+  <h2>Every notebook in the course</h2>
+  <div class="nb-index">
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-01.ipynb">01 · Prices — build</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-02.ipynb">02 · Prices — fix</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-23.ipynb">23 · Catalogue — build</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-24.ipynb">24 · Catalogue — fix</a></p>
+  </div>
+  <p class="small muted">The full index of all twenty-four is on the course
+  site. Every one of them is ours, written from a specification, in the
+  lecture.</p>
+</section>
+
+<!-- 84 -->
+<section data-menu-title="References">
+  <h2>In the book</h2>
+  <table>
+    <tr><th>Topic</th><th>Chapter</th></tr>
+    <tr><td>Softmax, cross-entropy, logits</td><td>4, 15</td></tr>
+    <tr><td>Transformer encoders and decoders; cross-attention</td><td>15</td></tr>
+    <tr><td>Vision transformers; text&ndash;image models; zero-shot</td><td>16</td></tr>
+    <tr><td>Image captioning</td><td>16</td></tr>
+    <tr><td>Random projection and concentration</td><td>7</td></tr>
+  </table>
+  <p class="small muted">Retrieval-augmented generation, the modality gap, and
+  the evaluation of generated answers are outside Chapters 1&ndash;16. They are
+  here because the application needed them, and they are flagged as
+  non-examinable.</p>
+</section>
+
+<!-- 85 -->
+<section data-menu-title="Summary">
+  <h2>What we did today</h2>
+  <ol class="tight small">
+    <li>Took the contrastive objective apart: the sphere, the target of zero,
+        the temperature, the negatives</li>
+    <li>Measured the concentration result on
+        @@l24_concentration.n_pairs:,@@ random pairs and on our own embeddings,
+        and found the modality gap</li>
+    <li>Read the learned temperature off the checkpoint:
+        @@l24_temperature.learned_tau:.5f@@</li>
+    <li>Watched the same loss lose
+        @@l24_normalisation.acc_drop_pts:.0f@@ points of top-1 accuracy from one
+        missing normalisation</li>
+    <li>Filled @@l24_captions.n_blanked@@ missing descriptions automatically and
+        recovered R@1 from @@l23_textroute.missing_on_blanked:.0%@@ to
+        @@l24_captions.filled_on_blanked:.1%@@ on those entries</li>
+    <li>Grounded an assistant in the catalogue and moved its citation validity
+        from @@l24_rag.closed.valid_pct:.0f@@% to
+        @@l24_rag.grounded.valid_pct:.0f@@%</li>
+  </ol>
+</section>
+
+<!-- 86 -->
+<section class="divider" data-menu-title="The end">
+  <p class="kicker">Twelve applications &middot; twenty-four lectures</p>
+  <h1>Every method arrived<br>because something broke</h1>
+  <p class="small" style="color:#cfe2f0">
+    You will forget most of the syntax. Keep the five questions,<br>
+    the four rules, and the habit of writing the number down first.
+  </p>
+  <p class="clock">Thank you</p>
+</section>
+
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 24
+  <span class="sep">&middot;</span> Closing the loop, and closing the course
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

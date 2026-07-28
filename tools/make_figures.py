@@ -1256,14 +1256,16 @@ def _natural_css_px(path: Path) -> tuple[float, float]:
     plain = re.search(r'width="([\d.]+)"\s+height="([\d.]+)"', head)
     if plain:
         return float(plain.group(1)), float(plain.group(2))
-    # An SVG with no width/height takes its intrinsic size from the viewBox —
-    # that is the spec, not a fallback, and several hand-drawn diagrams rely on
-    # it deliberately so they scale cleanly.
-    vb = re.search(r'viewBox="[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)"', head)
-    if vb:
-        return float(vb.group(1)), float(vb.group(2))
-    raise RuntimeError(f"{path.name}: no width/height and no viewBox — the "
-                       f"browser cannot size it, and neither can this check")
+    # NO viewBox fallback. I added one, reasoning that viewBox gives the
+    # intrinsic size per the SVG spec — it does not, for an SVG loaded through
+    # <img>. Measured in Chrome: a diagram with only a viewBox reports
+    # naturalWidth 300 (the CSS replaced-element default) and renders at 0x0,
+    # completely invisible on the slide. The fallback made this check pass
+    # against dimensions the browser never uses, which is worse than no check.
+    raise RuntimeError(
+        f"{path.name}: no width/height on the <svg> tag. A viewBox alone is not "
+        f"an intrinsic size for an <img>, and the figure renders blank. Add "
+        f"width and height matching the viewBox.")
 
 
 def check_text_floor() -> list[str]:

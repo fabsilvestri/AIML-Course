@@ -7,8 +7,9 @@ train, and the variance argument that explains why.
 
 Everything printed on slides/lecture-13.html and slides/lecture-14.html comes
 from here, via figkit.export() into assets/figures/figures.json. Expensive runs
-are cached (figkit.cached) so a cosmetic re-run takes seconds; delete
-/private/tmp/claude-501/aiml-data/fits-app07.pkl to retrain from scratch.
+are cached (figkit.cached, which shares
+/private/tmp/claude-501/aiml-data/fits-v2.pkl with the other applications —
+hence the `app07_` prefix on every key) so a cosmetic re-run takes seconds.
 
 Two measurement decisions worth stating, because both were nearly got wrong.
 
@@ -371,6 +372,55 @@ def run_l13(d) -> dict:
                                  dtype=torch.float32).tolist()
     print("    the activation profile")
     out["acts"] = act_profile(d["X_fit"])
+    return out
+
+
+def run_l13_extra(d) -> dict:
+    """How far each layer's weights actually moved over the whole run.
+
+    A gradient norm is a rate; this is the distance travelled. They are not the
+    same claim and the slide makes the second one, so it is measured
+    separately rather than inferred.
+    """
+    torch.manual_seed(SEED)
+    before = [m.weight.detach().clone()
+              for m in linear_layers(make_net(act="sigmoid", init="torch"))]
+
+    torch.manual_seed(SEED)
+    net = make_net(act="sigmoid", init="torch").to(DEVICE)
+    lossf = nn.CrossEntropyLoss()
+    optim = torch.optim.Adam(net.parameters(), lr=LR)
+    Xf = torch.tensor(d["X_fit"], device=DEVICE)
+    yf = torch.tensor(d["y_fit"], device=DEVICE)
+    g = torch.Generator().manual_seed(SEED)
+    for _ in range(EPOCHS):
+        net.train()
+        perm = torch.randperm(len(Xf), generator=g).to(DEVICE)
+        for i in range(0, len(Xf), BATCH):
+            idx = perm[i:i + BATCH]
+            optim.zero_grad()
+            lossf(net(Xf[idx]), yf[idx]).backward()
+            optim.step()
+    after = [m.weight.detach().cpu() for m in linear_layers(net)]
+    return {"wchange": [float((a - b).norm() / b.norm())
+                        for a, b in zip(after, before)]}
+
+
+def run_l14_extra(d) -> dict:
+    """The Lecture 14 assistant failure: Glorot's constant, on ReLU.
+
+    Xavier and Glorot are the same person and the same formula, so a request to
+    'initialise it properly' with ReLU very often returns xavier_uniform_. It
+    is not nothing — it is exactly a factor of sqrt(2) per layer wrong, which
+    is three orders of magnitude over nineteen layers rather than fifteen.
+    """
+    out = {}
+    out["grad_glorot_relu"] = grad_profile(d["X_fit"], d["y_fit"],
+                                           act="relu", init="glorot").tolist()
+    out["glorot_relu"] = _strip(train(d, act="relu", init="glorot"))
+    out["he_relu"] = _strip(train(d, act="relu", init="he"))
+    print(f"      Xavier + ReLU test {out['glorot_relu']['test_acc']:.4f}   "
+          f"He + ReLU test {out['he_relu']['test_acc']:.4f}")
     return out
 
 
@@ -915,6 +965,8 @@ def main() -> int:
     facts["l13_n_features"] = N_IN
     facts["l13_n_classes"] = N_OUT
     facts["l13_n_train_full"] = 50_000
+    facts["l13_n_total"] = 60_000
+    facts["l13_n_hidden_minus1"] = DEPTH - 1
     facts["l13_n_test"] = int(len(d["X_test"]))
     facts["l13_n_fit"] = int(len(d["X_fit"]))
     facts["l13_n_val"] = int(len(d["X_val"]))
@@ -933,6 +985,19 @@ def main() -> int:
     facts["l13_head_params"] = WIDTH * N_OUT + N_OUT
     facts["l13_default_bound"] = 1.0 / math.sqrt(WIDTH)
     facts["l13_default_bound_in"] = 1.0 / math.sqrt(N_IN)
+    facts["l13_steps_per_epoch"] = math.ceil(N_FIT / BATCH)
+    facts["l13_steps"] = math.ceil(N_FIT / BATCH) * EPOCHS
+
+    # What nn.Linear actually put in a hidden weight matrix, measured rather
+    # than quoted from the documentation. The slide prints all four numbers.
+    torch.manual_seed(SEED)
+    _w = linear_layers(make_net())[1].weight.detach()
+    facts["l13_init"] = {
+        "min": float(_w.min()), "max": float(_w.max()),
+        "mean": float(_w.mean()), "sd": float(_w.std()),
+        "sd_predicted": (1.0 / math.sqrt(WIDTH)) / math.sqrt(3.0),
+        "var": float(_w.var()),
+    }
 
     print("Lecture 13 — the build:")
     l13 = cached("app07_l13", lambda: run_l13(d))
@@ -981,6 +1046,15 @@ def main() -> int:
     facts["l13_loss_drop"] = float(l13["deep"]["first_loss"]
                                    - l13["deep"]["last_loss"])
     facts["l13_depth_sweep"] = l13["depth_sweep"]
+    facts["l13_deep_grad_ep1_l1"] = float(l13["deep"]["grad"][0][0])
+    facts["l13_deep_grad_last_l1"] = float(l13["deep"]["grad"][-1][0])
+    facts["l13_deep_grad_ep1_head"] = float(l13["deep"]["grad"][0][-1])
+    facts["l13_deep_grad_last_head"] = float(l13["deep"]["grad"][-1][-1])
+
+    extra = cached("app07_l13_extra", lambda: run_l13_extra(d))
+    facts["l13_wchange"] = extra["wchange"]
+    print(f"    weights moved: layer 1 {extra['wchange'][0]:.4f}   "
+          f"head {extra['wchange'][-1]:.4f}")
     print(f"    deep: loss {l13['deep']['first_loss']:.4f} -> "
           f"{l13['deep']['last_loss']:.4f}, test "
           f"{l13['deep']['test_acc']:.4f}")
@@ -1010,8 +1084,27 @@ def main() -> int:
     facts["l14_theory"] = {
         "default_sigmoid": math.sqrt(WIDTH * (1 / (3 * WIDTH)) * 0.0625),
         "glorot_sigmoid": math.sqrt(WIDTH * (2 / (2 * WIDTH)) * 0.0625),
+        "glorot_relu": math.sqrt(WIDTH * (2 / (2 * WIDTH)) * 0.5),
         "he_relu": math.sqrt(WIDTH * (2 / WIDTH) * 0.5),
     }
+
+    xtra = cached("app07_l14_extra", lambda: run_l14_extra(d))
+    gx = np.array(xtra["grad_glorot_relu"])
+    rx = gx[1:DEPTH] / gx[0:DEPTH - 1]
+    facts["l14_glorot_relu"] = {
+        "gain": float(np.exp(np.mean(np.log(rx)))),
+        "per_layer": float(1 / np.exp(np.mean(np.log(rx)))),
+        "attenuation": float(gx[19] / gx[0]),
+        "test_acc": xtra["glorot_relu"]["test_acc"],
+        "last_loss": xtra["glorot_relu"]["last_loss"],
+    }
+    facts["l14_he_relu_test"] = xtra["he_relu"]["test_acc"]
+    facts["l14_xavier_cost"] = (xtra["he_relu"]["test_acc"]
+                                - xtra["glorot_relu"]["test_acc"])
+    facts["l14_grad_glorot_relu"] = [float(v) for v in gx]
+    print(f"    Xavier+ReLU per-layer {facts['l14_glorot_relu']['per_layer']:.4f} "
+          f"(theory {facts['l14_theory']['glorot_relu']:.4f}), costs "
+          f"{100 * facts['l14_xavier_cost']:+.2f} points")
     facts["l14_sigmoid_dmax"] = 0.25
     facts["l14_glorot_var"] = 2.0 / (WIDTH + WIDTH)
     facts["l14_he_var"] = 2.0 / WIDTH

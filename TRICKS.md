@@ -565,7 +565,11 @@ Seven diagrams used ten corner radii, six stroke widths and fourteen font sizes.
 With 22 decks still to draw, fix it now. Start every `d-*.svg` with:
 
 ```xml
+<!-- width and height are REQUIRED and must match the viewBox. Without them the
+     figure renders at 0x0 through an <img> and the slide shows nothing — see
+     the warning below this block. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 420"
+     width="1080" height="420"
      font-family="'Source Sans 3','Source Sans Pro',Helvetica,sans-serif">
   <style>
     .box   { fill:#fff; stroke:#0b3d62; stroke-width:2; }
@@ -580,6 +584,18 @@ With 22 decks still to draw, fix it now. Start every `d-*.svg` with:
 ```
 
 `rx="7"` everywhere; strokes 2 / 2.5 / 3 only; those three text classes only.
+
+**A `viewBox` alone is not an intrinsic size.** This snippet originally omitted
+`width` and `height`, and fourteen diagrams inherited the omission. Measured in
+Chrome: an SVG loaded through `<img>` with only a `viewBox` reports
+`naturalWidth` 300 — the CSS replaced-element default — and renders at **0×0**.
+The slide shows nothing.
+
+It survived because every check agreed with it. The file exists, so the
+missing-figure check passed. And the text-floor check read the same wrong
+intrinsic size, so it computed the floor against 300px of width and passed
+trivially — a check passing for the wrong reason, which is worse than no check.
+Both now reject an SVG with no `width`.
 
 **Do not re-implement `.panel` inside an SVG.** Explanatory boxes belong in HTML
 above or below the figure, or the same idea exists in two visual languages.

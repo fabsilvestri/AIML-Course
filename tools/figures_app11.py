@@ -238,8 +238,8 @@ def fig_lengths(cf):
     ax.axvline(MAXLEN, color=ACCENT, lw=2.2, ls="--")
     ax.annotate(f"cut at {MAXLEN} tokens\n{cf['over_maxlen']*100:.0f}% of reviews "
                 f"are longer\nbut {cf['tokens_kept']*100:.0f}% of all words survive",
-                xy=(MAXLEN, ax.get_ylim()[1] * 0.62),
-                xytext=(470, ax.get_ylim()[1] * 0.72),
+                xy=(MAXLEN, ax.get_ylim()[1] * 0.30),
+                xytext=(470, ax.get_ylim()[1] * 0.42),
                 color=ACCENT, fontsize=SMALL,
                 bbox=dict(fc="white", ec=ACCENT, lw=1.0, boxstyle="round,pad=0.35"),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
@@ -254,9 +254,9 @@ def fig_oov(oc):
     fig, ax = plt.subplots(figsize=(7.6, 3.2))
     x = np.arange(len(oc["sizes"]))
     ax.plot(x, 100 * np.array(oc["token_oov"]), "o-", color=ACCENT, lw=2.4,
-            ms=7, label="word tokenizer — tokens unseen")
+            ms=7, label="word tokenizer, tokens unseen")
     ax.plot(x, 100 * np.array(oc["type_oov"]), "s--", color=MUTED, lw=1.8,
-            ms=6, label="word tokenizer — distinct words unseen")
+            ms=6, label="word tokenizer, distinct words unseen")
     ax.axhline(100 * oc["subword_oov"], color=SUCCESS, lw=2.6)
     ax.set_xticks(x)
     ax.set_xticklabels([f"{v//1000}k" if v >= 1000 else str(v)
@@ -265,12 +265,13 @@ def fig_oov(oc):
     ax.set_ylabel("out of vocabulary, %")
     ax.annotate(f"subword, {oc['subword_vocab']:,} pieces: "
                 f"{100*oc['subword_oov']:.2f}%",
-                xy=(0.4, 100 * oc["subword_oov"]), xytext=(0.4, 14),
-                color=SUCCESS, fontsize=SMALL,
+                xy=(1.6, 100 * oc["subword_oov"]), xytext=(1.6, 16),
+                color=SUCCESS, fontsize=SMALL, ha="center",
                 bbox=dict(fc="white", ec=SUCCESS, lw=1.0,
                           boxstyle="round,pad=0.35"),
                 arrowprops=dict(arrowstyle="->", color=SUCCESS, lw=1.8))
-    ax.legend(loc="upper right")
+    ax.set_ylim(-6, 108)
+    ax.legend(loc="center left", bbox_to_anchor=(0.015, 0.60), fontsize=SMALL)
     ax.set_title("measured on the 25,000 test reviews")
     fig.tight_layout()
     save(fig, "l21-oov")
@@ -446,10 +447,14 @@ def softmax_shift() -> dict:
     small = np.array([1.0, 2.0, 3.0], dtype=np.float32)
     a = np.exp(small) / np.exp(small).sum()
     b = np.exp(small + 50) / np.exp(small + 50).sum()
+    # inf and nan are exactly the point here, but they are not JSON, so the
+    # broken column is exported as the strings a student would see printed.
+    show = lambda a: [("inf" if np.isposinf(v) else "nan" if np.isnan(v)
+                       else float(v)) for v in a]
     return {
         "z": z.tolist(),
-        "naive_numerator": [float(v) for v in naive_num],
-        "naive": [float(v) for v in naive],
+        "naive_numerator": show(naive_num),
+        "naive": show(naive),
         "shifted": [float(v) for v in shifted],
         "small": small.tolist(),
         "p_small": [float(v) for v in a],
@@ -512,32 +517,37 @@ def ce_stability() -> dict:
         rows.append({
             "scale": s,
             "naive_nonfinite": float(bad.mean()),
-            "naive_rel_err": rel(naive.astype(np.float64)) if (~bad).any() else float("nan"),
+            "naive_rel_err": rel(naive.astype(np.float64)) if (~bad).any() else None,
             "stable_rel_err": rel(stable.astype(np.float64)),
         })
         print(f"      sd {s:>3}: naive non-finite {bad.mean()*100:5.1f}%  "
-              f"naive rel err {rows[-1]['naive_rel_err']:.3e}  "
+              f"naive rel err {rows[-1]['naive_rel_err']}  "
               f"stable {rows[-1]['stable_rel_err']:.3e}")
 
-    # one concrete row, small enough to print on a slide
-    z = np.array([12.0, 0.0, -12.0], dtype=np.float32)
+    # one concrete row, small enough to print on a slide and to check by hand
+    z = np.array([100.0, 0.0, -100.0], dtype=np.float32)
+    tgt = 2
     with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
         e = np.exp(z)
         p32 = e / e.sum()
-        naive_one = float(-np.log(p32[2]))
-    m = z.max()
-    stable_one = float(-(z[2] - (m + np.log(np.exp(z - m).sum()))))
-    exact = float(-(np.float64(-12.0)
-                    - (12.0 + np.log(np.exp(np.array([0.0, -12.0, -24.0],
-                                                     dtype=np.float64)).sum()))))
-    return {"rows": rows, "example_logits": z.tolist(),
-            "example_naive": naive_one, "example_stable": stable_one,
+        naive_one = float(-np.log(p32[tgt]))
+    lse = lambda v: v.max() + np.log(np.exp(v - v.max()).sum())
+    stable_one = float(-(z[tgt] - lse(z)))
+    z64 = z.astype(np.float64)
+    exact = float(-(z64[tgt] - lse(z64)))
+    finite = lambda v: float(v) if np.isfinite(v) else (
+        "inf" if np.isposinf(v) else "-inf" if np.isneginf(v) else "nan")
+    return {"rows": rows,
+            "example_logits": z.tolist(), "example_target": tgt,
+            "example_naive_numerator": finite(e[tgt]),
+            "example_naive_denominator": finite(e.sum()),
+            "example_naive": finite(naive_one),
+            "example_stable": stable_one,
             "example_exact": exact,
-            "example_naive_err": abs(naive_one - exact),
             "example_stable_err": abs(stable_one - exact),
             "torch_agrees": float(
                 abs(float(nn.CrossEntropyLoss()(torch.tensor(z)[None, :],
-                                                torch.tensor([2]))) - exact))}
+                                                torch.tensor([tgt]))) - exact))}
 
 
 def ce_vs_kl() -> dict:
@@ -591,7 +601,8 @@ def fig_softmax_shift(ss):
 def fig_ce_stability(cs):
     rows = cs["rows"]
     s = np.array([r["scale"] for r in rows], dtype=float)
-    naive = np.array([r["naive_rel_err"] for r in rows])
+    naive = np.array([np.nan if r["naive_rel_err"] is None else r["naive_rel_err"]
+                      for r in rows])
     stable = np.array([r["stable_rel_err"] for r in rows])
     frac = np.array([r["naive_nonfinite"] for r in rows])
 
@@ -1020,6 +1031,20 @@ def fig_final(bl, scratch, swap, ft, zs):
 
 # ----------------------------------------------------------------- diagrams
 
+def _snippet(text: str, n: int = 150) -> str:
+    """A quotable fragment: no HTML, no line breaks, no dollar amounts.
+
+    A retrieved review goes straight onto a slide, so it has to survive both
+    KaTeX (TRICKS 9.1) and the HTML parser without a manual clean-up step that
+    someone will forget.
+    """
+    t = " ".join(text.replace("<br />", " ").split())
+    t = t.replace("&", "and").replace("<", "(").replace(">", ")").replace("$", "")
+    if len(t) > n:
+        t = t[:n].rsplit(" ", 1)[0] + "..."
+    return t
+
+
 def validate_diagrams() -> list[str]:
     bad = []
     for name in ("d-tokenise.svg", "d-cetrap.svg"):
@@ -1056,6 +1081,7 @@ def main() -> int:
     facts["l21_n_val"] = N_VAL
     facts["l21_maxlen"] = MAXLEN
     facts["l21_word_vocab"] = WORD_VOCAB
+    facts["l21_under_maxlen"] = 1 - cf["over_maxlen"]
 
     print("Lecture 21 — tokenisation:")
     oc = cached("app11_oov", lambda: oov_curve(d))
@@ -1150,9 +1176,11 @@ def main() -> int:
     facts["l22_gain_over_scratch"] = 100 * (ft["test_acc"]
                                             - runs["word_random"]["test_acc"])
     facts["l22_gain_over_bow"] = 100 * (ft["test_acc"] - bl["bigram"]["acc"])
-    facts["l22_error_drop"] = 100 * ((1 - runs["word_random"]["test_acc"])
-                                     - (1 - ft["test_acc"])) \
-        / (100 * (1 - runs["word_random"]["test_acc"]))
+    e_scratch = 1 - runs["word_random"]["test_acc"]
+    e_ft = 1 - ft["test_acc"]
+    facts["l22_error_drop"] = (e_scratch - e_ft) / e_scratch    # errors removed
+    facts["l22_errors_scratch"] = round(e_scratch * cf["n_test"])
+    facts["l22_errors_finetuned"] = round(e_ft * cf["n_test"])
     fig_final(bl, runs["word_random"], runs["wp_tuned"], ft, zs)
 
     print("Lecture 22 — search and grouping:")
@@ -1168,6 +1196,14 @@ def main() -> int:
     cl = cached("app11_clusters", lambda: cluster_complaints(sr))
     fig_clusters(cl)
     facts["l22_clusters"] = {k: v for k, v in cl.items() if k != "labels"}
+    # display-ready strings, so the deck quotes the measurement rather than a
+    # lecturer's memory of it
+    facts["l22_cluster_terms"] = [", ".join(g["terms"][:4]) for g in cl["groups"]]
+    facts["l22_best_silhouette"] = cl["silhouette"][cl["best_k"]]
+    facts["l22_query"] = [h["query"] for h in sr["hits"]]
+    facts["l22_hit_text"] = [_snippet(h["top_text"][0]) for h in sr["hits"]]
+    facts["l22_keyword_text"] = [_snippet(h["keyword_top_text"][0])
+                                 for h in sr["hits"]]
 
     print("Lecture 22 — the tokeniser leak:")
     lk = cached("app11_leak", lambda: tokeniser_leak(d))
