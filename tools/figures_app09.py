@@ -832,9 +832,14 @@ def fig_nms_before_after(corpus, raw, iid, path, *, nms_t=0.5, score_t=0.5):
     boxes, labels, scores = p["boxes"][m], p["labels"][m], p["scores"][m]
     keep = batched_nms(torch.tensor(boxes), torch.tensor(scores),
                        torch.tensor(labels), nms_t).numpy()
+    # The un-suppressed run keeps at most 300 candidates. When every one of
+    # them survives the score filter the cap is binding, and the left-hand
+    # count is a floor rather than a total — say so on the figure.
+    capped = " (the 300-candidate cap)" if len(p["scores"]) == 300 else ""
     fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.0))
     for ax, (bx, lb, sc, ttl) in zip(axes, [
-            (boxes, labels, scores, f"no suppression: {len(boxes)} boxes"),
+            (boxes, labels, scores,
+             f"no suppression: {len(boxes)} boxes{capped}"),
             (boxes[keep], labels[keep], scores[keep],
              f"NMS at IoU {nms_t}: {len(keep)} boxes")]):
         ax.imshow(pic)
