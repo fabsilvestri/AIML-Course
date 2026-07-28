@@ -1444,10 +1444,15 @@ def main():
     print(f"\nNumbers merged into {out.relative_to(ROOT)} "
           f"({len(facts)} from Lectures 1-2, {len(existing)} total)")
     if clobbered:
-        print(f"  note: replaced {len(clobbered)} key(s) another script had "
-              f"also written: {', '.join(sorted(clobbered))}")
-        print("  bare names are a shared namespace — prefix new ones with the "
-              "lecture, e.g. l09_n_test")
+        raise SystemExit(
+            f"\nfigures.json collision: {len(clobbered)} key(s) already held a "
+            f"different value —\n    {', '.join(sorted(clobbered))}\n"
+            f"Another script wrote them, and merging here destroys its numbers "
+            f"silently. This happened once: figures_app04.py exported a bare "
+            f"n_train/n_test for CoverType, this file overwrote them with "
+            f"housing's, and Lectures 7-8 quoted values figures.json no longer "
+            f"contained.\nPrefix the other script's keys with its lecture "
+            f"(l07_n_train) and re-run it.")
 
 
 if __name__ == "__main__":
