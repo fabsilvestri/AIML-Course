@@ -1005,6 +1005,14 @@ def main() -> int:
                              "mae": sweep["mae"].tolist()},
         l17_best_threshold=float(ts[best_k]),
         l17_best_mae=float(sweep["mae"][best_k]),
+        # "predict the corpus mean, every image" — the detection analogue of
+        # predicting the mean in Lecture 1. Rounded to an integer because a
+        # count of objects is an integer.
+        l17_baseline_mean_count=mae(
+            np.full_like(counts_true, int(round(counts_true.mean()))),
+            counts_true),
+        l17_failure_cost=abs(mae(counts_raw, counts_true)
+                             - mae(counts_50, counts_true)),
         l17_baseline_one_box={"mae": mae(baseline_counts, counts_true),
                               "overlap_recall": float(whole_hits / whole_total),
                               "mean_iou": float(whole_ious.mean()),
@@ -1021,7 +1029,11 @@ def main() -> int:
     print("Separation study (synthetic boxes)…")
     sep = separation_study()
     first_zero = int(np.flatnonzero(sep["iou"] <= 0.0)[0])
-    disjoint = sep["d"] >= 100
+    # strictly greater: at exactly 100 the two boxes share an edge, the
+    # intersection has zero area, and autograd still returns the one-sided
+    # derivative from the overlapping side. The claim being made is about the
+    # interior of the disjoint region.
+    disjoint = sep["d"] > 100
 
     # The clamp bug, pushed until it is undeniable. Separate the two boxes
     # DIAGONALLY and both differences go negative, so their product is a
@@ -1166,6 +1178,7 @@ def main() -> int:
                        "n_tp": n_tp, "n_fp": int(len(p_prec)) - n_tp,
                        "steps_down": steps_down, "steps_up": steps_up,
                        "steps_flat": steps_flat, "leading_run": leading_run,
+                       "steps_total": int(len(p_prec)) - 1,
                        "max_precision": float(p_prec.max()),
                        "final_recall": float(p_rec[-1])},
         l18_map50=map50, l18_map75=map75, l18_map5095=map5095,
@@ -1174,6 +1187,8 @@ def main() -> int:
         l18_per_class_ap={n: float(v) for n, v in ranked},
         l18_ap_spread={"best": ranked[0][1], "worst": ranked[-1][1],
                        "n_zero": len(zero_ap),
+                       "n_perfect": sum(1 for _n, v in ranked if v == 1.0),
+                       "n_below_mean": sum(1 for _n, v in ranked if v < map50),
                        "best_name": ranked[0][0], "worst_name": ranked[-1][0],
                        "median": float(np.median([v for _n, v in ranked]))},
         l18_map_per_image=map_per_image,
@@ -1186,6 +1201,18 @@ def main() -> int:
                           float(nms_boxes[int(np.argmax(nms_map))])},
         l18_raw_boxes_per_image=raw_mean_boxes,
         l18_tv_reported_map=TV_REPORTED_MAP,
+        # torchvision's own reported numbers for the Mask R-CNN weights, on the
+        # full 5,000-image val2017. Read out of the weights metadata rather than
+        # typed in from a web page.
+        l18_maskrcnn_reported=MaskRCNN_ResNet50_FPN_Weights
+            .COCO_V1.meta["_metrics"]["COCO-val2017"],
+        # our 128-image estimate against the same model on all 5,000, in points
+        l18_map_gap_vs_full=abs(map5095 * 100 - TV_REPORTED_MAP),
+        # the window the right-hand panel of l18-pr-sawtooth.svg zooms into
+        l18_sawtooth_window={
+            "lo": 51, "hi": 140,
+            "down": int((np.diff(p_prec[50:140]) < -1e-12).sum()),
+            "up": int((np.diff(p_prec[50:140]) > 1e-12).sum())},
     )
 
     # ------------------------------------------------------------- figures

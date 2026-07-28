@@ -1,0 +1,1470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 18 — Scoring a box, scoring a detector</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- ==================================================================== -->
+<!-- OPENING                                                              -->
+<!-- ==================================================================== -->
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Scoring a box,<br>scoring a detector</h1>
+  <p class="subtitle">Application 9 &middot; COCO val2017, 128 images</p>
+  <p><span class="badge badge-fix">Lecture 18 &middot; Fix</span>
+     <span class="badge badge-math">Thread 9</span>
+     <span class="badge badge-ch">Géron Ch. 12</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Sheets on desks before anything else. Two commitments
+  on each: a count MAE and a proposed box-quality formula. Collect three of the
+  formulas out loud in the first five minutes — you will use them.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Score the commitment">
+  <h2>Score the first commitment</h2>
+  <table>
+    <tr><th>Count MAE, 128 images</th><th class="num">Value</th></tr>
+    <tr><td>One box per image</td><td class="num">6.02</td></tr>
+    <tr><td>Predict the corpus mean for every image</td><td class="num">4.88</td></tr>
+    <tr><td class="fix">Faster R-CNN at score $\geq 0.5$</td><td class="num fix">3.00</td></tr>
+    <tr><td>What you wrote down</td><td class="num">&mdash;</td></tr>
+  </table>
+  <p class="small">Read yours out. The question is not whether you were close;
+  it is whether your number was anchored to 6.02 rather than to a feeling.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="The second commitment">
+  <h2>And the second one</h2>
+  <p class="lead">You were asked for a formula that says how right a box is.</p>
+  <ul class="tight small">
+    <li>It should be 1 for identical boxes and 0 for boxes that do not touch</li>
+    <li>It should punish a box for being too large and for being too small</li>
+    <li>It should have no units</li>
+  </ul>
+  <p class="small">Three of you will read yours out. At least one will have
+  written the right thing without knowing its name. At least one will have
+  written something that breaks for disjoint boxes &mdash; and that one is the
+  more useful contribution today.</p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li><span class="badge badge-math">Thread 9</span> Intersection over union,
+        its missing gradient, average precision and mAP
+        <span class="muted small">(20 min)</span></li>
+    <li>Diagnose &mdash; why counting was the wrong metric
+        <span class="muted small">(20 min)</span></li>
+    <li>Re-measure, then extend: suppression, tracking, per-pixel prediction
+        <span class="muted small">(35 min)</span></li>
+    <li>Red-team <span class="muted small">(15 min)</span></li>
+  </ol>
+  <p class="small muted">Block 1 is dense. It is four ideas that depend on each
+  other in order, and the deck says at the end which three things were cut.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- THREAD 9 (20 min)                                                    -->
+<!-- ==================================================================== -->
+
+<!-- 5 -->
+<section class="divider" data-menu-title="◆ Thread 9">
+  <p class="kicker">Mathematical thread 9</p>
+  <h1>Intersection over union,<br>and the mean of a mean</h1>
+  <p class="clock">20 minutes</p>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="One quantity">
+  <h2>One quantity, four requirements</h2>
+  <p>From the end of the last lecture. Whatever we write must:</p>
+  <ol class="tight small">
+    <li>be 1 for coincident boxes and 0 for disjoint ones</li>
+    <li>punish a box for being too large</li>
+    <li>punish a box for being too small</li>
+    <li>be dimensionless, so a cup and a sofa are on one scale</li>
+  </ol>
+  <div class="panel panel-math">
+    <span class="panel-title">The construction</span>
+    Requirement 2 says the <em>predicted</em> area must be in the denominator.
+    Requirement 3 says the <em>true</em> area must be too. Requirement 4 says
+    the numerator must be an area as well. There is essentially one candidate.
+  </div>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="IoU">
+  <h2>Intersection over union</h2>
+  <div class="eqn-box">
+    $$\mathrm{IoU}(A,B) \;=\; \frac{|A \cap B|}{|A \cup B|}
+      \;=\; \frac{|A \cap B|}{|A| + |B| - |A \cap B|}$$
+    <span class="eqn-label">also called the Jaccard index</span>
+  </div>
+  <ul class="tight small">
+    <li>The second form is the one you compute: the union is never built</li>
+    <li>Subtracting the intersection is not an optimisation &mdash; add the two
+        areas and you have counted the overlap twice</li>
+    <li>Range $[0,1]$, and it is exactly 1 only when $A = B$</li>
+  </ul>
+</section>
+
+<!-- 8 -->
+<section class="figslide" data-menu-title="◆ Intersection and union">
+  <h2>The two areas</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-iou.svg"
+         alt="Three panels. Left: a green ground-truth box overlapping a dashed red predicted box. Middle: the intersection rectangle shaded purple. Right: the union of the two rectangles shaded blue, with the note that it equals area A plus area B minus the intersection.">
+  </figure>
+  <p class="takeaway">The intersection of two axis-aligned boxes is another
+  axis-aligned box, which is what makes this cheap.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="Computing it">
+  <h2>Computing it, and the one line that matters</h2>
+  <pre><code class="language-python" data-line-numbers="1-13|6|7-8">def iou(a, b):
+    """a, b are [x1, y1, x2, y2]."""
+    lt = np.maximum(a[:2], b[:2])          # top-left of the overlap
+    rb = np.minimum(a[2:], b[2:])          # bottom-right of the overlap
+    wh = np.clip(rb - lt, 0.0, None)       # <- the whole lecture
+    inter = wh[0] * wh[1]
+    area_a = (a[2] - a[0]) * (a[3] - a[1])
+    area_b = (b[2] - b[0]) * (b[3] - b[1])
+    return inter / (area_a + area_b - inter)
+
+assert iou(np.array([0, 0, 10, 10.]), np.array([0, 0, 10, 10.])) == 1.0
+assert iou(np.array([0, 0, 10, 10.]), np.array([20, 20, 30, 30.])) == 0.0</code></pre>
+  <p class="small">Without the clamp, two disjoint boxes give a negative width
+  and a negative height, whose product is a <strong>positive</strong>
+  intersection. We come back to that in twenty minutes with a measurement.</p>
+</section>
+
+<!-- 10 -->
+<section class="figslide" data-menu-title="◆ IoU by example">
+  <h2>Four pairs, four values</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l18-iou-examples.svg"
+         alt="Four panels of two 100 by 100 boxes: 300 pixels apart with IoU 0.000, edge to edge with IoU 0.000, half overlapping with IoU 0.333, and nearly identical with IoU 0.681.">
+  </figure>
+  <p class="takeaway fail">The first two panels are very different pictures and
+  the same number. Hold on to that.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="It meets all four">
+  <h2>It meets all four requirements</h2>
+  <table class="smaller">
+    <tr><th>Requirement</th><th>Why IoU satisfies it</th></tr>
+    <tr><td>1 when coincident</td><td>numerator equals denominator</td></tr>
+    <tr><td class="fix">punishes too large</td><td class="fix">$|B|$ grows, so the denominator grows</td></tr>
+    <tr><td class="fix">punishes too small</td><td class="fix">the numerator shrinks with $|A \cap B|$</td></tr>
+    <tr><td>dimensionless</td><td>area over area</td></tr>
+  </table>
+  <p class="lead fix">And the whole-image baseline scores <strong>0.086</strong>
+  on our corpus, which is the number that was left unexplained last time.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="Three jobs">
+  <h2>IoU does three different jobs</h2>
+  <ol class="tight small">
+    <li><strong>Matching.</strong> Decide whether a detection counts as the
+        same object as an annotation &mdash; today, at a threshold</li>
+    <li><strong>Suppression.</strong> Decide whether two detections are
+        duplicates of each other &mdash; later this lecture</li>
+    <li><strong>Training.</strong> Serve as the loss a regression head descends
+        &mdash; and this is the one that breaks</li>
+  </ol>
+  <p class="small muted">The first two use IoU as a comparison. Only the third
+  needs it to have a derivative, and that is where thread 9 has its teeth.</p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="IoU as a loss">
+  <h2>IoU as a loss</h2>
+  <div class="eqn-box">
+    $$\mathcal{L}_{\mathrm{IoU}} \;=\; 1 - \mathrm{IoU}(A, B)$$
+    <span class="eqn-label">$B$ is predicted; $A$ is fixed</span>
+  </div>
+  <p>Attractive, because it optimises the thing that is reported. The
+  alternative &mdash; a squared error on the four coordinates &mdash; optimises
+  something else and hopes.</p>
+  <p class="lead">So: take the derivative with respect to the predicted box and
+  descend.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Pull them apart">
+  <h2>The experiment</h2>
+  <p>Two boxes, each $100 \times 100$. Fix the first at the origin. Slide the
+  second to the right by $d$ pixels and record the value and the gradient.</p>
+  <div class="eqn-box">
+    $$A = [\,0,\; 0,\; 100,\; 100\,], \qquad
+      B(d) = [\,d,\; 0,\; d{+}100,\; 100\,]$$
+    <span class="eqn-label">synthetic boxes — no data, no model, no noise</span>
+  </div>
+  <p class="small">Synthetic on purpose. Nothing here depends on a dataset, and
+  the conclusion is a property of the formula rather than of COCO.</p>
+</section>
+
+<!-- 15 -->
+<section class="figslide" data-menu-title="◆ IoU is flat">
+  <h2>Past 100 pixels there is nothing to descend</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l18-iou-flat.svg"
+         alt="Left: IoU against separation falls from 1.0 to 0 at 100 pixels and is a flat line at zero out to 300. Right: the autograd derivative of IoU is zero for every separation past 100, while the derivative of GIoU stays negative and decays slowly.">
+  </figure>
+  <p class="takeaway">Twenty separations past 100 px, every one of them
+  IoU $= 0$ and gradient exactly $0$.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="The numbers">
+  <h2>The same thing as numbers, from autograd</h2>
+  <table class="smaller">
+    <tr><th class="num">$d$</th><th class="num">IoU</th><th class="num">$\partial\,$IoU$/\partial d$</th><th class="num">GIoU</th><th class="num">$\partial\,$GIoU$/\partial d$</th></tr>
+    <tr><td class="num">0</td><td class="num">1.000</td><td class="num">0.000</td><td class="num">1.000</td><td class="num">0.000</td></tr>
+    <tr><td class="num">50</td><td class="num">0.333</td><td class="num">&minus;0.0089</td><td class="num">0.333</td><td class="num">&minus;0.0089</td></tr>
+    <tr><td class="num">90</td><td class="num">0.053</td><td class="num">&minus;0.0055</td><td class="num">0.053</td><td class="num">&minus;0.0055</td></tr>
+    <tr><td class="num fail">150</td><td class="num fail">0.000</td><td class="num fail">0.000</td><td class="num fix">&minus;0.200</td><td class="num fix">&minus;0.0032</td></tr>
+    <tr><td class="num fail">300</td><td class="num fail">0.000</td><td class="num fail">0.000</td><td class="num fix">&minus;0.500</td><td class="num fix">&minus;0.0013</td></tr>
+  </table>
+  <p class="small">Rows four and five are the point. Two boxes 150 px apart and
+  two boxes 300 px apart are, to IoU, exactly equally wrong.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="Why it is exactly zero">
+  <h2>Why the gradient is exactly zero, not merely small</h2>
+  <p>For $d \geq 100$ the overlap width is $\max(0,\,100-d) = 0$, so</p>
+  <div class="eqn-box">
+    $$|A \cap B| \equiv 0 \quad\Longrightarrow\quad
+      \mathrm{IoU} \equiv 0 \quad\Longrightarrow\quad
+      \frac{\partial\,\mathrm{IoU}}{\partial d} \equiv 0$$
+  </div>
+  <ul class="tight small">
+    <li>The clamp makes the function <em>constant</em> on the whole disjoint
+        region, not just small there</li>
+    <li>A constant has no descent direction. Not a weak one &mdash; none</li>
+    <li>This is a property of the formula. No optimiser, learning rate or
+        initialisation repairs it</li>
+  </ul>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="Consequence">
+  <h2>What that costs you in practice</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">The failure mode</span>
+    A proposal that starts anywhere outside the object it should find receives
+    the same loss and the same zero gradient wherever it is. It cannot be moved
+    towards the object, because nothing in the loss knows which way the object
+    lies.
+  </div>
+  <p class="small">This is why detectors are not trained on IoU alone. It is
+  also why the coordinate regression they <em>are</em> trained on needs anchors
+  close enough to overlap in the first place.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="GIoU">
+  <h2>The repair: put the empty space back in</h2>
+  <p>Let $C$ be the smallest axis-aligned box containing both $A$ and $B$.</p>
+  <div class="eqn-box">
+    $$\mathrm{GIoU}(A,B) \;=\; \mathrm{IoU}(A,B)
+      \;-\; \frac{|C| - |A \cup B|}{|C|}$$
+    <span class="eqn-label">generalised IoU</span>
+  </div>
+  <ul class="tight small">
+    <li>The subtracted term is the fraction of the enclosing box that is
+        <em>neither</em> prediction nor truth</li>
+    <li>When the boxes are disjoint and move apart, $|C|$ grows and
+        $|A \cup B|$ does not, so the penalty grows</li>
+    <li>Range $(-1, 1]$, and it equals IoU whenever $C = A \cup B$</li>
+  </ul>
+</section>
+
+<!-- 20 -->
+<section class="figslide" data-menu-title="◆ GIoU">
+  <h2>The enclosing box does the work</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-giou.svg"
+         alt="Two panels of a green and a dashed red box with the purple enclosing box C drawn around them. On the left they are close and GIoU is minus 0.14; on the right they are far apart, C has grown, and GIoU is minus 0.48. Both have IoU zero.">
+  </figure>
+  <p class="takeaway">Same IoU on both sides, different GIoU &mdash; and the
+  difference points in the direction the box has to move.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="CIoU">
+  <h2>CIoU: two more terms, for two more faults</h2>
+  <div class="eqn-box">
+    $$\mathrm{CIoU} \;=\; \mathrm{IoU}
+      \;-\; \frac{\rho^{2}(\mathbf{c}_A, \mathbf{c}_B)}{\ell^{2}}
+      \;-\; \alpha\, v$$
+    <span class="eqn-label">$\rho$ centre distance, $\ell$ diagonal of $C$</span>
+  </div>
+  <ul class="tight small">
+    <li>The middle term is centre distance, normalised by the enclosing
+        diagonal so it stays dimensionless</li>
+    <li>$v$ measures disagreement in aspect ratio; $\alpha$ weights it so that
+        it matters more once the boxes already overlap</li>
+    <li>It converges faster than GIoU because it moves the centre directly
+        rather than shrinking a gap</li>
+  </ul>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="The aspect term">
+  <h2>The aspect term, measured</h2>
+  <div class="eqn-box">
+    $$v \;=\; \frac{4}{\pi^{2}}
+      \left(\arctan\frac{w_A}{h_A} - \arctan\frac{w_B}{h_B}\right)^{2}$$
+  </div>
+  <table class="smaller">
+    <tr><th>Two boxes with IoU 0, 20 px apart</th><th class="num">$v$</th><th class="num">CIoU</th></tr>
+    <tr><td>same shape, $100 \times 100$ against $100 \times 100$</td><td class="num">0.000</td><td class="num">&minus;0.247</td></tr>
+    <tr><td>different shape, $100 \times 100$ against $200 \times 50$</td><td class="num">0.118</td><td class="num">&minus;0.275</td></tr>
+  </table>
+  <p class="small">$v$ is exactly zero whenever the shapes agree, which is why
+  it is invisible in the figure on the next slide &mdash; every pair there is
+  square.</p>
+</section>
+
+<!-- 23 -->
+<section class="figslide" data-menu-title="◆ Both repairs">
+  <h2>Both repairs keep moving where IoU has stopped</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l18-giou-ciou.svg"
+         alt="IoU, GIoU and CIoU plotted against separation from 0 to 300 pixels. All three coincide until 100 pixels; past it IoU is flat at zero while GIoU falls to minus 0.5 and CIoU falls slightly faster.">
+  </figure>
+  <p class="takeaway">Past 100 px, IoU is a horizontal line and the other two
+  are still descending.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Honest caveat">
+  <h2>An honest caveat about all three</h2>
+  <div class="panel">
+    <span class="panel-title">We are not training anything today</span>
+    GIoU and CIoU are <em>losses</em>. Their value is in the backward pass of a
+    detector you are fitting. Nothing in this application fits a detector, so
+    the demonstration above is a property of the functions rather than a
+    measured improvement in a model we built.
+  </div>
+  <p class="small">Saying that is the difference between a lecture and an
+  advertisement. What we <em>can</em> measure today is the evaluation, and that
+  is the rest of the hour.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="From one box to a detector">
+  <h2>From one box to a whole detector</h2>
+  <p class="lead">IoU scores one pair. A detector emits 1,206 boxes over 128
+  images, most of them wrong, all of them carrying a score.</p>
+  <ul class="tight small">
+    <li>Fixing a score threshold gives one precision and one recall &mdash; and
+        throws away everything the ranking knew</li>
+    <li>Lecture 4 already solved this shape of problem</li>
+  </ul>
+  <p class="lead fix">A detector is a ranking. Score it as one.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Matching">
+  <h2>Turning detections into true and false positives</h2>
+  <ol class="tight small">
+    <li>Fix a class and an IoU threshold $t$</li>
+    <li>Sort every detection of that class, over the whole corpus, by score,
+        highest first</li>
+    <li>Walk down the list. For each detection, find the best
+        <em>unmatched</em> annotation in the same image</li>
+    <li>If that IoU is at least $t$: a true positive, and the annotation is now
+        matched. Otherwise: a false positive</li>
+  </ol>
+  <p class="small">Step 3's word <em>unmatched</em> is what makes a second box
+  on the same bottle a false positive rather than a second success.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Precision and recall again">
+  <h2>Precision and recall, unchanged from Lecture 4</h2>
+  <div class="eqn-box">
+    $$\text{precision} = \frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FP}}, \qquad
+      \text{recall} = \frac{\mathrm{TP}}{\text{annotations of this class}}$$
+  </div>
+  <ul class="tight small">
+    <li>Both are computed <em>cumulatively</em>, after each detection in the
+        ranking &mdash; so a corpus of 1,209 person detections gives 1,209
+        points</li>
+    <li>The recall denominator is fixed, so recall is non-decreasing as you go
+        down the list</li>
+    <li>Precision has both a numerator and a denominator moving</li>
+  </ul>
+</section>
+
+<!-- 28 -->
+<section class="figslide" data-menu-title="◆ The sawtooth">
+  <h2>Precision is not monotone here either</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l18-pr-sawtooth.svg"
+         alt="Left: the precision-recall curve for the person class at IoU 0.5, with the maximum-precision envelope drawn over it and the area shaded, labelled AP equals 0.751. Right: a zoom on steps 51 to 140 showing precision sagging and recovering while the envelope holds a staircase of flat maxima.">
+  </figure>
+  <p class="takeaway">The right-hand panel is Lecture 4's counterexample on
+  boxes instead of digits: 7 steps down and 77 up, in 90 steps.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Every step accounted for">
+  <h2>Every step accounted for, exactly</h2>
+  <table class="smaller">
+    <tr><th>Walking the person ranking, one detection at a time</th><th class="num">Steps</th></tr>
+    <tr><td>the detection is a false positive &mdash; precision falls</td><td class="num fail">899</td></tr>
+    <tr><td>it is a true positive and precision was below 1 &mdash; precision rises</td><td class="num hit">254</td></tr>
+    <tr><td>it is a true positive and precision was already 1 &mdash; no change</td><td class="num">55</td></tr>
+  </table>
+  <ul class="tight smaller">
+    <li>899 is exactly the number of false positives</li>
+    <li>$254 + 55 = 309$, which is the 310 true positives less the one at the
+        very top of the ranking, which has no step above it</li>
+    <li>The 55 flat steps are one contiguous run: the top 56 person detections
+        in the whole corpus are all correct</li>
+  </ul>
+  <p class="small fix">This is not a tendency. It is an exact classification of
+  all 1,208 steps, in the same form as Lecture 4.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="The repair">
+  <h2>The repair Lecture 4 promised you</h2>
+  <div class="panel panel-book">
+    From Lecture 4, thread 2: &ldquo;Average precision is defined using the
+    <em>maximum</em> precision at or above each recall level. That maximum is
+    there for exactly one reason: to replace a non-monotone quantity by a
+    monotone one. Thread 9, in Lecture 18, builds mAP on top of it.&rdquo;
+  </div>
+  <div class="eqn-box">
+    $$p_{\text{env}}(r) \;=\; \max_{\tilde r \,\geq\, r} p(\tilde r)$$
+    <span class="eqn-label">the envelope — non-increasing by construction</span>
+  </div>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Why a maximum">
+  <h2>Why a maximum, and not a smoothing</h2>
+  <ul class="tight small">
+    <li>It has an operational reading: <em>if you are willing to accept recall
+        $r$, here is the best precision available to you at that recall or
+        better</em></li>
+    <li>It is monotone by construction, so the area under it is well defined
+        and does not depend on where you sampled</li>
+    <li>It is one line of code and has no parameters &mdash; nothing to tune,
+        nothing to report</li>
+  </ul>
+  <pre><code class="language-python" data-line-numbers>env = precision.copy()
+for i in range(len(env) - 2, -1, -1):
+    env[i] = max(env[i], env[i + 1])       # sweep right to left</code></pre>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="AP defined">
+  <h2>Average precision</h2>
+  <div class="eqn-box">
+    $$\mathrm{AP} \;=\; \int_0^1 p_{\text{env}}(r)\,\mathrm{d}r
+      \;=\; \sum_k \bigl(r_k - r_{k-1}\bigr)\, p_{\text{env}}(r_k)$$
+    <span class="eqn-label">area under the enveloped curve</span>
+  </div>
+  <ul class="tight small">
+    <li>The sum only has terms where recall actually changed, which is exactly
+        at the true positives</li>
+    <li><strong>No threshold appears anywhere.</strong> That is the whole point:
+        the number does not depend on a cut-off nobody chose</li>
+  </ul>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="Two definitions">
+  <h2>Two definitions, and which one COCO uses</h2>
+  <table class="smaller">
+    <tr><th>Variant</th><th>How</th><th class="num">person, IoU 0.5</th></tr>
+    <tr><td>all-point</td><td>exact area under the envelope</td><td class="num">0.751</td></tr>
+    <tr><td>101-point</td><td>envelope sampled at $r = 0, 0.01, \ldots, 1$</td><td class="num">0.748</td></tr>
+  </table>
+  <ul class="tight small">
+    <li>COCO reports the second. Older PASCAL VOC papers used an 11-point
+        version, which is the same idea sampled more coarsely</li>
+    <li>They differ by 0.003 here. Quoting one and comparing against a paper
+        that used the other is a real, small, avoidable error</li>
+  </ul>
+  <p class="small muted">Non-examinable: which benchmark uses which sampling.
+  Examinable: that the envelope and the area are the definition.</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="AP for person">
+  <h2>Average precision for one class, on 128 images</h2>
+  <table>
+    <tr><th>person, IoU $\geq 0.5$</th><th class="num">Value</th></tr>
+    <tr><td>Annotated instances</td><td class="num">350</td></tr>
+    <tr><td>Detections in the ranking</td><td class="num">1,209</td></tr>
+    <tr><td>True positives</td><td class="num">310</td></tr>
+    <tr><td>Highest recall reached</td><td class="num">0.886</td></tr>
+    <tr><td class="fix">AP</td><td class="num fix">0.751</td></tr>
+  </table>
+  <p class="small">Recall stops at 0.886 because 40 annotated people are never
+  detected at all, at any score. No threshold can recover them, and AP is
+  honest about that.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="mAP over classes">
+  <h2>The first mean: over classes</h2>
+  <div class="eqn-box">
+    $$\mathrm{mAP}(t) \;=\; \frac{1}{|\mathcal{C}|}\sum_{c \in \mathcal{C}}
+      \mathrm{AP}_c(t)$$
+    <span class="eqn-label">$\mathcal{C}$ = the classes present in the corpus</span>
+  </div>
+  <ul class="tight small">
+    <li>Unweighted. A class with one annotation counts as much as
+        <code>person</code> with 350</li>
+    <li>We average over the 73 classes that appear in our 128 images. The other
+        7 of COCO's 80 have no annotations here and no AP to average</li>
+  </ul>
+  <p class="small fail">That choice &mdash; which classes are in the mean
+  &mdash; is a decision, it changes the number, and papers do not always say
+  which one they made.</p>
+</section>
+
+<!-- 36 -->
+<section class="figslide" data-menu-title="◆ Per-class AP">
+  <h2>What the first mean hides</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l18-per-class-ap.svg"
+         alt="Left: all 73 class APs sorted best to worst, thirteen of them at exactly 1.0, twenty-nine below the mAP line of 0.659, one at zero. Right: AP scattered against the number of annotated instances on a log axis, showing the perfect scores clustered at one to three instances and person at 350 instances scoring 0.75.">
+  </figure>
+  <p class="takeaway">Thirteen classes score exactly 1.000, and they are the
+  ones with one or two instances in the whole corpus.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="The spread">
+  <h2>The spread behind 0.659</h2>
+  <table>
+    <tr><th>Across the 73 classes</th><th class="num">AP at IoU $\geq 0.5$</th></tr>
+    <tr><td>Best (<code>bus</code>, and twelve others tied)</td><td class="num good">1.000</td></tr>
+    <tr><td>Median</td><td class="num">0.673</td></tr>
+    <tr><td class="fix">Mean &mdash; this is the mAP</td><td class="num fix">0.659</td></tr>
+    <tr><td>Classes below the mean</td><td class="num">29</td></tr>
+    <tr><td>Worst (<code>hot dog</code>)</td><td class="num bad">0.000</td></tr>
+  </table>
+  <p class="small">A class with a single annotation scores 1.000 or 0.000 and
+  nothing in between. Thirteen ones and one zero are not measurements of the
+  detector; they are measurements of our corpus.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="mAP over thresholds">
+  <h2>The second mean: over IoU thresholds</h2>
+  <div class="eqn-box">
+    $$\mathrm{mAP}_{[.5:.95]} \;=\; \frac{1}{10}\sum_{t \in \{0.50,\,0.55,\,\ldots,\,0.95\}}
+      \mathrm{mAP}(t)$$
+  </div>
+  <ul class="tight small">
+    <li>At $t = 0.50$ a box that half-covers the object counts as correct</li>
+    <li>At $t = 0.95$ it must be very nearly exact</li>
+    <li>Averaging the ten is COCO's headline number, and it is what
+        &ldquo;mAP&rdquo; means unqualified in a modern paper</li>
+  </ul>
+</section>
+
+<!-- 39 -->
+<section class="figslide" data-menu-title="◆ AP against threshold">
+  <h2>What the second mean hides</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l18-ap-by-iou.svg"
+         alt="mAP plotted against IoU threshold from 0.50 to 0.95, falling from 0.659 to 0.040, with a dashed line at the mean over the ten thresholds, 0.439.">
+  </figure>
+  <p class="takeaway">0.659 at the loosest threshold and 0.040 at the tightest.
+  One number in the middle stands for both.</p>
+</section>
+
+<!-- 40 -->
+<section class="figslide" data-menu-title="◆ A mean of a mean">
+  <h2>A mean of a mean of an area</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-mapmean.svg"
+         alt="A four-stage flow: one class and one IoU threshold gives a precision-recall curve, which gives AP as the area under the envelope, which is averaged over classes, which is averaged over ten thresholds. Below, three red panels state what each stage hides.">
+  </figure>
+  <p class="takeaway">Three collapses, one number. Each collapse throws away a
+  different thing, and none of them is recoverable from the result.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="The three numbers">
+  <h2>Our detector, on 128 images</h2>
+  <table>
+    <tr><th>Metric</th><th class="num">Value</th></tr>
+    <tr><td>mAP at IoU 0.50</td><td class="num">0.659</td></tr>
+    <tr><td>mAP at IoU 0.75</td><td class="num">0.475</td></tr>
+    <tr><td class="fix">mAP averaged over 0.50 to 0.95</td><td class="num fix">0.439</td></tr>
+  </table>
+  <p class="lead">Every one of these is a measurement on <strong>128</strong>
+  images and 73 classes, and is quoted with that attached.</p>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Thread 9 summary">
+  <h2>Thread 9 &middot; Summary</h2>
+  <ul class="tight small">
+    <li>IoU is intersection over union: dimensionless, 1 for identical boxes,
+        and it punishes a box for being too large or too small</li>
+    <li>It is <strong>constant at zero</strong> for every disjoint pair, so its
+        gradient there is exactly zero and there is nothing to descend</li>
+    <li>GIoU adds the empty part of the enclosing box; CIoU adds centre
+        distance and aspect ratio. Both keep a gradient where IoU has none</li>
+    <li>Average precision is the area under the <em>maximum</em> precision at
+        or above each recall &mdash; the maximum exists to repair the
+        non-monotonicity proved in Lecture 4</li>
+    <li>mAP averages AP over classes and then over ten IoU thresholds. It is a
+        mean of a mean of an area, and each level hides something different</li>
+  </ul>
+</section>
+
+<!-- ==================================================================== -->
+<!-- DIAGNOSE (20 min)                                                    -->
+<!-- ==================================================================== -->
+
+<!-- 43 -->
+<section class="divider" data-menu-title="◆ Diagnose">
+  <p class="kicker">Part two</p>
+  <h1>Why 3.00 was<br>the wrong number</h1>
+  <p class="clock">20 minutes</p>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Fault one">
+  <h2>Fault one &middot; The metric is blind to location</h2>
+  <table>
+    <tr><th></th><th>System A</th><th>System B</th></tr>
+    <tr><td>Boxes</td><td class="num">9</td><td class="num">9</td></tr>
+    <tr><td>Boxes on the right objects</td><td class="num good">9</td><td class="num bad">0</td></tr>
+    <tr><td>Count MAE</td><td class="num">0.00</td><td class="num">0.00</td></tr>
+    <tr><td class="fix">AP at IoU $\geq 0.5$</td><td class="num fix">1.000</td><td class="num fix">0.000</td></tr>
+  </table>
+  <p class="lead fix">The last row is the repair. It is the row that could not
+  be written last time.</p>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="Fault two">
+  <h2>Fault two &middot; The number depended on a cut-off</h2>
+  <ul class="tight small">
+    <li>Count MAE was 3.00 at threshold 0.5, 27.51 at 0.05, and 1.92 at
+        0.75</li>
+    <li>A metric with a knob is a metric with an argument attached, and the
+        argument is usually settled by whoever reports it</li>
+    <li>AP consumes the entire ranking, so there is no knob to settle</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">The general rule</span>
+    When a system produces a score, evaluate the ranking, not one thresholding
+    of it. You met this in Lecture 4 with ROC and PR curves; the detection case
+    is the same argument with a matching rule in front of it.
+  </div>
+</section>
+
+<!-- 46 -->
+<section data-menu-title="Fault three">
+  <h2>Fault three &middot; 1.92 was a tuned number</h2>
+  <ul class="tight small">
+    <li>The minimum of the error curve sat at threshold 0.75</li>
+    <li>That minimum was found <em>on the 128 images we then report on</em></li>
+    <li>Reporting it would be choosing a hyperparameter on the evaluation set
+        &mdash; Lecture 2's error, and Lecture 6's, in a third costume</li>
+  </ul>
+  <p class="small">We flagged this at the time and quoted 0.5 anyway. That was
+  the right call, and it is worth noticing that the discipline cost us a
+  number that looked better.</p>
+</section>
+
+<!-- 47 -->
+<section class="divider" data-menu-title="◆ Assistant failure">
+  <p class="kicker">The worked assistant failure</p>
+  <h1>&ldquo;Write me a function<br>that computes IoU&rdquo;</h1>
+  <p class="clock">four beats</p>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="Beat 1 — the prompt">
+  <h2>Beat 1 &middot; The prompt</h2>
+  <div class="panel">
+    <span class="panel-title">What was asked</span>
+    &ldquo;Write a NumPy function that takes two bounding boxes in
+    <code>[x1, y1, x2, y2]</code> format and returns their intersection over
+    union.&rdquo;
+  </div>
+  <p class="small">Format specified, library specified, return value specified.
+  It is a better prompt than most. One thing is missing and it is not
+  obvious.</p>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="Beat 2 — the code">
+  <h2>Beat 2 &middot; The code it returns &mdash; and it runs</h2>
+  <pre><code class="language-python" data-line-numbers>def iou(a, b):
+    x1 = max(a[0], b[0]);  y1 = max(a[1], b[1])
+    x2 = min(a[2], b[2]);  y2 = min(a[3], b[3])
+
+    inter = (x2 - x1) * (y2 - y1)          # <- no clamp
+    area_a = (a[2] - a[0]) * (a[3] - a[1])
+    area_b = (b[2] - b[0]) * (b[3] - b[1])
+    return inter / (area_a + area_b - inter)
+
+print(iou([0, 0, 100, 100], [50, 0, 150, 100]))    # 0.3333333333333333
+print(iou([0, 0, 100, 100], [10, 10, 110, 110]))   # 0.6806722689075631</code></pre>
+  <p class="small">Both printed values are <strong>correct</strong>. Every test
+  a reasonable person writes first is a pair of overlapping boxes, and it
+  passes all of them.</p>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Beat 3 — the question">
+  <h2>Beat 3 &middot; The review question that catches it</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Test against a case whose answer you know</span>
+    <em>What does it return for two boxes that do not touch?</em>
+  </div>
+  <pre><code class="language-python" data-line-numbers>print(iou([0, 0, 100, 100], [300, 0, 400, 100]))    # -0.5
+print(iou([0, 0, 100, 100], [150, 150, 250, 250]))  # 0.14285714285714285
+print(iou([0, 0, 100, 100], [200, 200, 300, 300]))  # 1.0</code></pre>
+  <p class="small fail">The last line reports two boxes 200 pixels apart in both
+  directions as a <strong>perfect match</strong>. Two negative differences
+  multiply to a positive intersection.</p>
+</section>
+
+<!-- 51 -->
+<section class="figslide" data-menu-title="◆ The damage">
+  <h2>Measure the damage</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l18-clamp-bug.svg"
+         alt="Reported overlap against diagonal separation for two 100 by 100 boxes. The clamped version falls to zero at 100 pixels and stays there. The unclamped version falls to zero and then climbs back to 1.0 at 200 pixels separation.">
+  </figure>
+  <p class="takeaway fail">The defective function is symmetric about 100 px: it
+  reports more overlap the further apart the boxes get.</p>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="Why it never raises">
+  <h2>Why nothing ever raised</h2>
+  <ul class="tight small">
+    <li>It is arithmetic on floats. There is no invalid operation anywhere</li>
+    <li>It returns a number in a plausible range for the cases you test</li>
+    <li>Used for <em>matching</em>, it silently accepts detections that are
+        nowhere near the object &mdash; and mAP goes <strong>up</strong></li>
+    <li>An evaluation bug that improves your score is the hardest kind to find,
+        because nobody goes looking</li>
+  </ul>
+  <p class="small muted">This is the same species as the metric averaged per
+  batch in Lecture 12: no exception, a plausible number, and a bias in the
+  flattering direction.</p>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="Beat 4 — the fix">
+  <h2>Beat 4 &middot; The corrected specification</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">What should have been asked</span>
+    &ldquo;&hellip; returns their intersection over union. <strong>Clamp the
+    overlap width and height at zero.</strong> Include tests for: identical
+    boxes returning 1, boxes sharing an edge returning 0, <strong>boxes
+    separated along one axis</strong>, and <strong>boxes separated along both
+    axes</strong>. Assert that the result is always in $[0,1]$.&rdquo;
+  </div>
+  <p class="small">The last assertion is the one that would have failed
+  immediately, on the very first disjoint pair, without anyone having to think
+  of the diagonal case.</p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="The corrected test">
+  <h2>Beat 4 &middot; The test that makes it safe</h2>
+  <pre><code class="language-python" data-line-numbers="1-12|3-5|7-12">import itertools
+
+def iou_checked(a, b):
+    v = iou_clamped(a, b)
+    assert 0.0 &lt;= v &lt;= 1.0, f"IoU out of range: {v}"
+    return v
+
+box = np.array([0., 0., 100., 100.])
+for dx, dy in itertools.product([0, 100, 150, 200], repeat=2):
+    other = box + np.array([dx, dy, dx, dy])
+    v = iou_checked(box, other)
+    assert (v == 0.0) == (dx &gt;= 100 or dy &gt;= 100), (dx, dy, v)</code></pre>
+  <p class="small">Sixteen pairs, one loop, and the property is stated rather
+  than the values: <em>zero if and only if the boxes are disjoint on some
+  axis.</em></p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- RE-MEASURE AND EXTEND (35 min)                                       -->
+<!-- ==================================================================== -->
+
+<!-- 55 -->
+<section class="divider" data-menu-title="◆ Re-measure and extend">
+  <p class="kicker">Part three</p>
+  <h1>Re-measure, then<br>suppress, track and segment</h1>
+  <p class="clock">35 minutes</p>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="Check it against something">
+  <h2>Before quoting our own number, check it against someone else's</h2>
+  <p>We derived AP on these slides and implemented it ourselves. That is
+  exactly the situation in which a result should not be believed.</p>
+  <table class="smaller">
+    <tr><th>mAP on our 128 images</th><th class="num">Ours</th><th class="num">Reference evaluator</th></tr>
+    <tr><td>at IoU 0.50</td><td class="num">0.659</td><td class="num">0.660</td></tr>
+    <tr><td>at IoU 0.75</td><td class="num">0.475</td><td class="num">0.476</td></tr>
+    <tr><td>averaged 0.50 to 0.95</td><td class="num">0.439</td><td class="num">0.440</td></tr>
+  </table>
+  <p class="small fix">Largest disagreement: 0.0014. The reference is the
+  official COCO evaluator, run on the same predictions and the same
+  annotations, by a library we did not write.</p>
+  <p class="small muted">Non-examinable: the reference library. Examinable:
+  that you check an implementation against one.</p>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="128 against 5,000">
+  <h2>Now compare 128 images against 5,000</h2>
+  <table>
+    <tr><th>mAP, averaged 0.50 to 0.95</th><th class="num">Value</th><th class="num">Images</th></tr>
+    <tr><td>Ours</td><td class="num">43.9</td><td class="num">128</td></tr>
+    <tr><td>Reported by torchvision for these weights</td><td class="num">37.0</td><td class="num">5,000</td></tr>
+  </table>
+  <p class="lead fail">Our number is 6.9 points higher, and the model is
+  identical.</p>
+  <p class="small">Nothing about the detector changed. The difference is the
+  sample: 128 images, of which many are easy, and 73 classes several of which
+  have a single instance that happened to be found. This is what a small
+  evaluation set does, and it does it in the flattering direction more often
+  than not.</p>
+  <aside class="notes">This is the most important slide in the deck for
+  professional practice. Spend three minutes. Ask what would have happened if
+  we had reported 43.9 without the comparison.</aside>
+</section>
+
+<!-- 58 -->
+<section data-menu-title="Sampling, not the model">
+  <h2>How to tell a sampling difference from a real one</h2>
+  <ul class="tight small">
+    <li>The direction is not guaranteed &mdash; a different 128 images would
+        give a different answer, in either direction</li>
+    <li>You cannot compute a confidence interval for mAP by staring at it: the
+        detections are not independent within an image</li>
+    <li>The practical rule: <strong>never compare two mAPs measured on
+        different sets</strong>, and say the set size whenever you quote one</li>
+  </ul>
+  <p class="small muted">Bootstrapping over <em>images</em> is the usual
+  remedy, and it is outside Chapter 12. Non-examinable, and worth knowing.</p>
+</section>
+
+<!-- 59 -->
+<section data-menu-title="A second failure">
+  <h2>A second failure, this one from the catalogue</h2>
+  <p>An assistant asked to &ldquo;report mAP over the dataset&rdquo; will
+  sometimes compute AP for each image and average those.</p>
+  <table>
+    <tr><th>mAP at IoU 0.50, 128 images</th><th class="num">Value</th></tr>
+    <tr><td class="fix">accumulated over the whole corpus, correctly</td><td class="num fix">0.659</td></tr>
+    <tr><td class="fail">computed per image, then averaged</td><td class="num fail">0.817</td></tr>
+  </table>
+  <p class="small fail">0.157 of free mAP. It is <em>the metric averaged per
+  batch rather than over the set</em> &mdash; the same entry in the
+  silent-failure catalogue you met in Lecture 12, wearing detection clothes.</p>
+  <p class="small">Why it inflates: a single image usually contains one or two
+  classes and a handful of objects, so its own AP is often 1.0. Averaging a lot
+  of easy 1.0s is not the same as ranking every detection against every other.</p>
+</section>
+
+<!-- 60 -->
+<section class="divider" data-menu-title="◆ NMS">
+  <p class="kicker">Extension one</p>
+  <h1>Non-maximum<br>suppression</h1>
+  <p class="clock">10 minutes</p>
+</section>
+
+<!-- 61 -->
+<section data-menu-title="How many candidates">
+  <h2>How many boxes are there really?</h2>
+  <div class="big-num">231.7</div>
+  <p class="lead center">candidate boxes per image, with suppression switched
+  off</p>
+  <p class="small center">against 23.6 after suppression at IoU 0.5, and 7.02
+  actual objects</p>
+  <p class="small">The detector you ran last lecture had already thrown away
+  nine tenths of its own output before you saw it, using IoU, at a threshold
+  you did not set.</p>
+</section>
+
+<!-- 62 -->
+<section class="figslide" data-menu-title="◆ Suppression">
+  <h2>The rule</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-nms.svg"
+         alt="Left: four overlapping candidate boxes labelled with scores 0.98, 0.91, 0.86 and 0.77. Middle: the three-step greedy rule. Right: two boxes survive, 0.98 and 0.77. Below, a red panel stating that two genuinely different overlapping objects become one box.">
+  </figure>
+  <p class="takeaway">Greedy, per class, and it deletes information that cannot
+  be recovered afterwards.</p>
+</section>
+
+<!-- 63 -->
+<section data-menu-title="NMS in code">
+  <h2>Suppression, in code</h2>
+  <pre><code class="language-python" data-line-numbers>from torchvision.ops import batched_nms
+
+keep = batched_nms(torch.tensor(boxes),      # (N, 4), corners
+                   torch.tensor(scores),     # (N,)
+                   torch.tensor(labels),     # (N,) — per class
+                   iou_threshold=0.5)
+
+boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
+assert len(keep) &lt;= len(scores) + len(keep)  # keep is an index array</code></pre>
+  <p class="small"><code>batched_nms</code> rather than <code>nms</code>: a
+  bottle overlapping a glass must not suppress it, because they are different
+  classes and both are true.</p>
+</section>
+
+<!-- 64 -->
+<section class="figslide" data-menu-title="◆ Before and after">
+  <h2>Before and after, on one image</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l18-nms.png"
+         alt="The same crowded photograph twice. Left: every candidate box above score 0.5 with no suppression, a dense thicket of overlapping rectangles. Right: after non-maximum suppression at IoU 0.5, far fewer boxes.">
+  </figure>
+  <p class="takeaway">Same model, same image, same score threshold. The only
+  difference is one IoU comparison between pairs of boxes.</p>
+</section>
+
+<!-- 65 -->
+<section class="figslide" data-menu-title="◆ The NMS knob">
+  <h2>And it is another knob</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l18-nms-sweep.svg"
+         alt="Left: boxes kept per image rises from 14.6 at NMS threshold 0.1 to 134.1 at 0.9. Right: mAP at IoU 0.5 peaks at 0.648 around NMS threshold 0.5 and falls away on both sides.">
+  </figure>
+  <p class="takeaway">The default of 0.5 happens to be near the best value on
+  our corpus. That is a fact about this corpus, not a law.</p>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="What NMS costs">
+  <h2>What suppression costs</h2>
+  <ul class="tight small">
+    <li>Too low a threshold and two people standing close together become one
+        person</li>
+    <li>Too high and every object keeps its duplicates, which are all false
+        positives</li>
+    <li>Crowded scenes are exactly where detection matters and exactly where
+        this trade-off is worst</li>
+  </ul>
+  <p class="small muted">Soft-NMS, which decays scores instead of deleting
+  boxes, and learned alternatives are outside Chapter 12. Non-examinable, and
+  the direction the field went.</p>
+</section>
+
+<!-- 67 -->
+<section class="divider" data-menu-title="◆ Tracking">
+  <p class="kicker">Extension two</p>
+  <h1>Object tracking</h1>
+  <p class="clock">5 minutes</p>
+</section>
+
+<!-- 68 -->
+<section data-menu-title="Tracking, the question">
+  <h2>Detection on video is not tracking</h2>
+  <p class="lead">Run the detector on every frame and you have boxes. You do
+  not have <em>the same bottle</em> in frame 2 as in frame 1.</p>
+  <ul class="tight small">
+    <li>Tracking asks for an identity that persists across frames</li>
+    <li>Which turns each frame into an assignment problem: match this frame's
+        detections to the existing tracks</li>
+    <li>And the cheapest similarity between a track's predicted box and a new
+        detection is &mdash; IoU</li>
+  </ul>
+  <p class="small fix">Thread 9 pays for itself a third time.</p>
+</section>
+
+<!-- 69 -->
+<section data-menu-title="A tracker in four lines">
+  <h2>A tracker, in four lines of description</h2>
+  <ol class="tight small">
+    <li>Predict where each existing track's box will be in this frame</li>
+    <li>Compute IoU between every prediction and every new detection</li>
+    <li>Solve the assignment: pair them up to maximise total IoU</li>
+    <li>Unmatched detections start new tracks; unmatched tracks age and die</li>
+  </ol>
+  <div class="panel">
+    <span class="panel-title">Where it fails, and why it is IoU's fault again</span>
+    An object that is occluded for ten frames reappears somewhere its predicted
+    box does not overlap. IoU is zero, the assignment finds nothing, and the
+    object is issued a new identity. The same flatness, in a new place.
+  </div>
+</section>
+
+<!-- 70 -->
+<section data-menu-title="Tracking scope">
+  <h2>Tracking, scope</h2>
+  <ul class="tight small">
+    <li><strong>In the book:</strong> that detection plus association is what
+        tracking is, and that appearance features are added to IoU to survive
+        occlusion</li>
+    <li><strong>Not examinable:</strong> Kalman filters, the Hungarian
+        algorithm, DeepSORT's re-identification network, the MOT benchmark
+        metrics</li>
+  </ul>
+  <p class="small muted">We have not run a tracker in this course and we are not
+  going to. Five minutes on the shape of the problem is what the clock allows,
+  and this slide says so rather than pretending otherwise.</p>
+</section>
+
+<!-- 71 -->
+<section class="divider" data-menu-title="◆ Segmentation">
+  <p class="kicker">Extension three</p>
+  <h1>Per-pixel prediction</h1>
+  <p class="clock">15 minutes</p>
+</section>
+
+<!-- 72 -->
+<section data-menu-title="The box is an approximation">
+  <h2>A box was always an approximation</h2>
+  <ul class="tight small">
+    <li>A bicycle's box is mostly not bicycle</li>
+    <li>A person sitting cross-legged fills perhaps half of theirs</li>
+    <li>For a picking arm, &ldquo;somewhere in this rectangle&rdquo; may not be
+        good enough</li>
+  </ul>
+  <p class="lead">Ask instead for a label on every pixel.</p>
+</section>
+
+<!-- 73 -->
+<section class="figslide" data-menu-title="◆ Four questions">
+  <h2>Four questions, four output shapes</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-segmentation.svg"
+         alt="Four boxed panels: classification giving K numbers, detection giving N boxes and labels, semantic segmentation giving one label per pixel with two people merged into one region, and instance segmentation giving one mask per object with the two people separate.">
+  </figure>
+  <p class="takeaway">Semantic and instance segmentation differ in exactly one
+  place: whether two touching objects of the same class are one region or two.</p>
+</section>
+
+<!-- 74 -->
+<section data-menu-title="Semantic">
+  <h2>Semantic segmentation</h2>
+  <ul class="tight small">
+    <li>Output: one class label per pixel. Shape $H \times W$, not $N \times 4$</li>
+    <li>Two people standing together are one <code>person</code> region. You
+        cannot count them</li>
+    <li>The architectural problem is that pooling destroyed the resolution the
+        answer needs &mdash; which is thread 8's invariance, arriving as a
+        cost</li>
+    <li>The repair is upsampling with skip connections: transposed convolutions
+        that recover spatial detail from the earlier, higher-resolution layers</li>
+  </ul>
+</section>
+
+<!-- 75 -->
+<section data-menu-title="Instance">
+  <h2>Instance segmentation</h2>
+  <ul class="tight small">
+    <li>Output: one binary mask per detected object, plus its class and score</li>
+    <li>Mask R-CNN is Faster R-CNN with one extra head that predicts a small
+        mask inside each proposed box</li>
+    <li>Two lines of code away from what you already ran</li>
+  </ul>
+  <pre><code class="language-python" data-line-numbers>from torchvision.models.detection import (
+    maskrcnn_resnet50_fpn, MaskRCNN_ResNet50_FPN_Weights)
+
+model = maskrcnn_resnet50_fpn(
+    weights=MaskRCNN_ResNet50_FPN_Weights.COCO_V1).eval().to(DEVICE)
+out = model([preprocess(img).to(DEVICE)])[0]
+print(out["masks"].shape)      # (N, 1, H, W), soft masks in [0, 1]</code></pre>
+</section>
+
+<!-- 76 -->
+<section class="figslide" data-menu-title="◆ Semantic against instance">
+  <h2>The same image, both ways</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l18-masks.png"
+         alt="A school class photograph three times. Left: the original. Middle: semantic segmentation with every person in one blue and every tie in one orange. Right: instance segmentation with forty-five separately coloured people.">
+  </figure>
+  <p class="takeaway">Middle: two classes, two colours. Right: 45 objects, 45
+  colours. Only the right-hand picture can answer &ldquo;how many?&rdquo;</p>
+</section>
+
+<!-- 77 -->
+<section data-menu-title="The annotation problem">
+  <h2>And the annotation for that image says 22</h2>
+  <table>
+    <tr><th>The class photograph</th><th class="num">Count</th></tr>
+    <tr><td>People Mask R-CNN finds at score $\geq 0.7$</td><td class="num">45</td></tr>
+    <tr><td>People COCO annotates individually</td><td class="num">13</td></tr>
+    <tr><td>Crowd regions covering the rest</td><td class="num">1</td></tr>
+    <tr><td>Ties annotated</td><td class="num">9</td></tr>
+  </table>
+  <p class="lead fail">The detector is probably right and the ground truth is
+  probably not wrong. They answer different questions.</p>
+  <p class="small">Whoever annotated this image decided that thirteen children
+  were worth drawing and the rest were a crowd. Every metric in this lecture is
+  measured against that decision.</p>
+</section>
+
+<!-- 78 -->
+<section data-menu-title="Scoring a mask">
+  <h2>Scoring a mask is the same argument again</h2>
+  <ul class="tight small">
+    <li>Mask AP replaces box IoU with <strong>mask IoU</strong>: intersecting
+        pixel sets instead of rectangles</li>
+    <li>Everything above &mdash; the ranking, the envelope, the area, the two
+        means &mdash; is unchanged</li>
+    <li>torchvision reports 34.6 mask mAP for these weights on the full 5,000,
+        against 37.9 box mAP</li>
+  </ul>
+  <p class="small">A mask is harder than a box, which is what those two numbers
+  say. We do not measure mask AP on our corpus; the pixel-level annotations are
+  in the file and the code is an exercise.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- RED TEAM AND CLOSE (15 min)                                          -->
+<!-- ==================================================================== -->
+
+<!-- 79 -->
+<section class="divider" data-menu-title="◆ Red team">
+  <p class="kicker">Part four</p>
+  <h1>Swap notebooks</h1>
+  <p class="clock">15 minutes</p>
+</section>
+
+<!-- 80 -->
+<section data-menu-title="The five questions">
+  <h2>The five questions, in this order, every time</h2>
+  <ol class="tight small">
+    <li>What touched the test set?</li>
+    <li>What was fitted, and on what? (<code>fit</code> and
+        <code>transform</code> are different verbs)</li>
+    <li>What is the shape here?</li>
+    <li>What was dropped &mdash; rows, columns, NaNs? Count them</li>
+    <li>What is the default I did not ask for?</li>
+  </ol>
+  <p class="small muted">Report what you <strong>found</strong>, not what you
+  would have done differently.</p>
+</section>
+
+<!-- 81 -->
+<section data-menu-title="What to look for here">
+  <h2>What they mean in a detection notebook</h2>
+  <table class="smaller">
+    <tr><th>Question</th><th>Where it bites today</th></tr>
+    <tr><td>1</td><td>was any threshold chosen by looking at the 128 images?</td></tr>
+    <tr><td>2</td><td>nothing is fitted &mdash; so is the corpus doing any work it should not?</td></tr>
+    <tr><td>3</td><td><code>masks</code> is $(N,1,H,W)$; indexing it as $(N,H,W)$ silently gives you the first object</td></tr>
+    <tr><td>4</td><td>the 8 crowd regions, and every detection below the score cut-off</td></tr>
+    <tr><td>5</td><td>score 0.05, NMS 0.5, 100 detections per image, IoU 0.5 for matching</td></tr>
+  </table>
+</section>
+
+<!-- 82 -->
+<section data-menu-title="Three specific bugs">
+  <h2>Three bugs to hunt for by name</h2>
+  <ol class="tight small">
+    <li><strong>The missing clamp.</strong> Feed the partner's IoU function two
+        boxes separated diagonally. If it returns anything above zero, you have
+        found it in eight seconds</li>
+    <li><strong>Per-image AP.</strong> Look for a loop over images with an
+        <code>np.mean</code> at the end. Worth 0.157 on this corpus</li>
+    <li><strong>Corner against size.</strong> Assert
+        <code>x2 &gt;= x1</code> on every box in the notebook, wherever it came
+        from</li>
+  </ol>
+  <p class="small">All three run. All three produce a plausible number. Two of
+  the three make the score look better.</p>
+</section>
+
+<!-- 83 -->
+<section data-menu-title="What we cut">
+  <h2>What this lecture left out, and where it sits</h2>
+  <ul class="tight small">
+    <li><strong>How detectors are actually trained</strong> &mdash; anchors,
+        the region proposal network, the assignment of anchors to targets. In
+        the book at a level we did not have time for</li>
+    <li><strong>Single-shot detectors</strong> &mdash; the YOLO and SSD family,
+        where the whole grid is predicted in one pass. Named in Chapter 12</li>
+    <li><strong>Panoptic segmentation</strong>, soft-NMS, and modern
+        transformer detectors that have no NMS at all. Outside the book</li>
+  </ul>
+  <p class="small muted">Three things, said out loud, rather than left as an
+  impression that the field ends here.</p>
+</section>
+
+<!-- 84 -->
+<section data-menu-title="Re-measure">
+  <h2>Where we ended up</h2>
+  <table>
+    <tr><th>Application 9, 128 images of COCO val2017</th><th class="num">Value</th></tr>
+    <tr><td>Count MAE, the metric we committed to</td><td class="num">3.00</td></tr>
+    <tr><td class="fix">mAP at IoU 0.50</td><td class="num fix">0.659</td></tr>
+    <tr><td class="fix">mAP averaged 0.50 to 0.95</td><td class="num fix">0.439</td></tr>
+    <tr><td>The same weights on 5,000 images</td><td class="num fail">0.370</td></tr>
+  </table>
+  <p class="small">The first row is not wrong; it is blind. The last row is the
+  one that keeps the other two honest.</p>
+</section>
+
+<!-- 85 -->
+<section data-menu-title="Summary">
+  <h2>Summary</h2>
+  <ul class="tight small">
+    <li>IoU has no gradient for disjoint boxes &mdash; not a small one,
+        <em>none</em> &mdash; and GIoU and CIoU repair that by adding terms that
+        keep moving</li>
+    <li>Average precision scores a ranking, needs no threshold, and uses the
+        maximum precision at or above each recall precisely to repair Lecture
+        4's non-monotonicity</li>
+    <li>mAP is a mean of a mean of an area; each level hides the operating
+        point, the class imbalance, and the tightness of the boxes</li>
+    <li>Our implementation agrees with the reference evaluator to 0.0014, and
+        our 128-image estimate is 6.9 points above the same model's score on
+        5,000</li>
+    <li>Suppression, tracking and instance segmentation all rest on the same
+        overlap measure</li>
+  </ul>
+</section>
+
+<!-- 86 -->
+<section data-menu-title="Notebook">
+  <h2>The notebook</h2>
+  <p><a class="colab-btn" target="_blank"
+    href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-18.ipynb">Open
+    Lecture 18 in Colab</a></p>
+  <ul class="tight small">
+    <li>Builds IoU, GIoU and CIoU from the definitions, with assertions</li>
+    <li>Reproduces the flat-gradient table with autograd</li>
+    <li>Implements AP and mAP from scratch and checks them against a
+        hand-computable case</li>
+    <li>Carries the missing clamp, marked <strong>&#9888; read before
+        running</strong></li>
+  </ul>
+</section>
+
+<!-- 87 -->
+<section data-menu-title="Next">
+  <h2>Next</h2>
+  <p class="lead">Part IV. Sequences, language and multimodality.</p>
+  <ul class="tight small">
+    <li>A capacity-planning brief on a time series, where the naive forecast is
+        hard to beat</li>
+    <li>And where a random train/test split will hand you an excellent score for
+        a model that has forecast the past</li>
+  </ul>
+  <p class="small muted">Thread 10 is stationarity, differencing and
+  autocorrelation. It does not depend on thread 9.</p>
+</section>
+
+<!-- 88 -->
+<section data-menu-title="★ All notebooks">
+  <h2>Every notebook in the course</h2>
+  <div class="nb-index">
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-01.ipynb">01 · Prices — build</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-02.ipynb">02 · Prices — fix</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-17.ipynb">17 · Detection — build</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-18.ipynb">18 · Detection — fix</a></p>
+  </div>
+  <p class="small muted">The full index lives on the course site.</p>
+</section>
+
+<!-- 89 -->
+<section data-menu-title="Specimen — Part A">
+  <h2>Specimen exam question &mdash; Part A</h2>
+  <div class="panel">
+    A predicted box and a ground-truth box are both $100 \times 100$ pixels and
+    do not overlap.<br><br>
+    <strong>1.</strong> State the IoU, and its derivative with respect to the
+    horizontal position of the predicted box.<br>
+    <strong>2.</strong> Explain in one sentence why this makes IoU unusable as a
+    training loss on its own.<br>
+    <strong>3.</strong> Name one modification that repairs it and state which
+    quantity it adds.
+  </div>
+  <p class="small muted">Four marks. Worked answer on the next slide.</p>
+</section>
+
+<!-- 90 -->
+<section data-menu-title="◇ Answer — Part A">
+  <h2>Specimen answer &mdash; Part A</h2>
+  <ul class="tight small">
+    <li><strong>1.</strong> IoU $= 0$; the derivative is $0$. The intersection
+        is clamped at zero over the whole disjoint region, so IoU is
+        <em>constant</em> there</li>
+    <li><strong>2.</strong> A constant loss provides no descent direction, so
+        gradient descent cannot move the predicted box towards the target from
+        any starting point that does not already overlap it</li>
+    <li><strong>3.</strong> GIoU, which subtracts the fraction of the smallest
+        enclosing box occupied by neither box; or CIoU, which additionally
+        subtracts a normalised centre distance and an aspect-ratio term</li>
+  </ul>
+  <p class="small fail">The common wrong answer to part 1 is &ldquo;the
+  gradient is very small&rdquo;. It is not small. It is zero, and the
+  distinction is the entire question.</p>
+</section>
+
+<!-- 91 -->
+<section data-menu-title="Specimen — Part B">
+  <h2>Specimen exam question &mdash; Part B</h2>
+  <div class="panel">
+    A detector is evaluated on a corpus in which 30 of the classes present have
+    exactly one annotated instance each. Its reported mAP at IoU 0.5 is
+    0.72.<br><br>
+    <strong>1.</strong> State two distinct reasons why this number may be
+    optimistic.<br>
+    <strong>2.</strong> State one thing you would report alongside it.
+  </div>
+  <p class="small muted">Three marks.</p>
+</section>
+
+<!-- 92 -->
+<section data-menu-title="◇ Answer — Part B">
+  <h2>Specimen answer &mdash; Part B</h2>
+  <ul class="tight small">
+    <li><strong>1a.</strong> A class with one instance has AP either 1 or 0, so
+        30 near-coin-flips are averaged in with the same weight as a class with
+        hundreds of instances</li>
+    <li><strong>1b.</strong> IoU 0.5 is the loosest of the ten COCO thresholds;
+        a detector that localises badly still scores well there, and the
+        0.50-to-0.95 average would be much lower</li>
+    <li><strong>2.</strong> Any one of: the number of images, the per-class AP
+        distribution, the instance count per class, or the same metric averaged
+        over the ten IoU thresholds</li>
+  </ul>
+  <p class="small">Full marks for &ldquo;the sample size&rdquo; alone in part 2.
+  It is the single most informative thing missing from most reported
+  scores.</p>
+</section>
+
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 18
+  <span class="sep">&middot;</span> Scoring a box, scoring a detector
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>
