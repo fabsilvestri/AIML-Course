@@ -402,8 +402,18 @@ def run_l13_extra(d) -> dict:
             lossf(net(Xf[idx]), yf[idx]).backward()
             optim.step()
     after = [m.weight.detach().cpu() for m in linear_layers(net)]
+
+    # The assistant's version of the same network, run for the five epochs its
+    # snippet asks for. The deck prints its console output verbatim, so it has
+    # to be produced here rather than typed from memory (TRICKS section 4).
+    assistant = _strip(train(d, epochs=5, act="sigmoid", init="torch"))
+
     return {"wchange": [float((a - b).norm() / b.norm())
-                        for a, b in zip(after, before)]}
+                        for a, b in zip(after, before)],
+            "assistant": {"loss": assistant["loss"],
+                          "test_acc": assistant["test_acc"],
+                          "seconds": assistant["seconds"],
+                          "epochs": 5}}
 
 
 def run_l14_extra(d) -> dict:
@@ -1053,6 +1063,7 @@ def main() -> int:
 
     extra = cached("app07_l13_extra", lambda: run_l13_extra(d))
     facts["l13_wchange"] = extra["wchange"]
+    facts["l13_assistant"] = extra["assistant"]
     print(f"    weights moved: layer 1 {extra['wchange'][0]:.4f}   "
           f"head {extra['wchange'][-1]:.4f}")
     print(f"    deep: loss {l13['deep']['first_loss']:.4f} -> "
@@ -1106,6 +1117,7 @@ def main() -> int:
           f"(theory {facts['l14_theory']['glorot_relu']:.4f}), costs "
           f"{100 * facts['l14_xavier_cost']:+.2f} points")
     facts["l14_sigmoid_dmax"] = 0.25
+    facts["l14_sigmoid_dmax_sq"] = 0.0625
     facts["l14_glorot_var"] = 2.0 / (WIDTH + WIDTH)
     facts["l14_he_var"] = 2.0 / WIDTH
     facts["l14_he_sd"] = math.sqrt(2.0 / WIDTH)

@@ -627,10 +627,11 @@ almost entirely noise from the eight-batch spread. Check what the weights
 actually did over twenty epochs.
 """),
         code('''
+# Re-seeding reproduces exactly the weights `deep` started from, because
+# `train` does not re-initialise the network it is handed.
 torch.manual_seed(RANDOM_STATE)
 before = make_net()
 w_before = [m.weight.detach().clone() for m in before if isinstance(m, nn.Linear)]
-_, _ = None, None
 after = [m.weight.detach().cpu() for m in deep if isinstance(m, nn.Linear)]
 
 for i in (0, 9, 19, 20):

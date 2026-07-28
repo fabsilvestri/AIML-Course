@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 14 — Making it train</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- ==================================================================== -->
+<!-- OPENING                                                              -->
+<!-- ==================================================================== -->
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Making it train</h1>
+  <p class="subtitle">Application 7 &middot; CIFAR-10</p>
+  <p><span class="badge badge-fix">Lecture 14 &middot; Fix</span>
+     <span class="badge badge-math">Thread 7</span>
+     <span class="badge badge-ch">Géron Ch. 11</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Ask for the sheets before starting. Nobody proceeds
+  without one on the desk. The payoff slide is the one where the predicted
+  per-layer factor is put next to the measured one &mdash; do not rush the
+  twenty minutes that lead to it.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we left off">
+  <h2>Where we left off</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Test accuracy</th></tr>
+    <tr><td>Always predict one class</td><td class="num">@@l13_baseline_acc:.1%@@</td></tr>
+    <tr><td>2 hidden layers</td><td class="num hit">@@l13_shallow.test_acc:.1%@@</td></tr>
+    <tr><td class="fail">@@l13_depth:.0f@@ hidden layers, @@l13_n_params:,@@ parameters</td><td class="num fail">@@l13_deep.test_acc:.1%@@</td></tr>
+  </table>
+  <p class="lead">And one measurement you could not explain.</p>
+  <p class="small">The gradient norm falls by a factor of about
+  @@l13_per_layer_attenuation:.3f@@ <em>at every layer</em>, so over
+  @@l13_n_ratios:.0f@@ layers it falls by
+  @@l13_attenuation:.1e@@.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li><span class="badge badge-math">Thread 7</span> Variance propagation
+        through layers
+        <span class="muted small">(20 min)</span></li>
+    <li>Diagnose &mdash; score the commitment, name the quantity
+        <span class="muted small">(20 min)</span></li>
+    <li>Repair, one change at a time, and measure each
+        <span class="muted small">(35 min)</span></li>
+    <li>Re-measure and red-team <span class="muted small">(15 min)</span></li>
+  </ol>
+  <p class="small muted">The thread predicts
+  @@l13_per_layer_attenuation:.3f@@ from the shapes of the weight matrices
+  alone. That is the whole lecture; everything after it is application.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- MATHEMATICAL THREAD 7 (20 min)                                       -->
+<!-- ==================================================================== -->
+
+<!-- 4 -->
+<section class="divider" data-menu-title="◆ Thread 7">
+  <p class="kicker">Mathematical thread 7</p>
+  <h1>Variance propagation<br>through layers</h1>
+  <p class="clock">20 minutes</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="The question">
+  <h2>The question</h2>
+  <p class="lead">Why @@l13_per_layer_attenuation:.4f@@?</p>
+  <p>Not &ldquo;why is it small&rdquo;. Why is it <em>that number</em>, and
+  what would it have to be instead?</p>
+  <div class="panel panel-math">
+    <span class="panel-title">What we are going to do</span>
+    Track one quantity &mdash; the <strong>variance</strong> of what each layer
+    passes on &mdash; forwards and then backwards. Two lines of algebra each
+    way, and the answer falls out with the number in it.
+  </div>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="One layer">
+  <h2>One layer, written out</h2>
+  <p>Drop the activation for a moment and look at the linear part alone:</p>
+  <div class="eqn-box">
+    $$z_i \;=\; \sum_{j=1}^{n_{\text{in}}} w_{ij}\, a_j$$
+  </div>
+  <p class="small">$a$ is what arrives, $z$ is what leaves,
+  $n_{\text{in}}$ is the fan-in &mdash; the number of inputs each output unit
+  sums over. For our hidden layers that is @@l13_width:.0f@@; for the first
+  layer it is @@l13_n_features:,@@.</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="The assumptions">
+  <h2>Three assumptions, stated so they can be checked</h2>
+  <ol class="tight small">
+    <li>The weights are drawn <strong>independently</strong>, with mean zero
+        and variance $\operatorname{Var}(w)$</li>
+    <li>The weights are <strong>independent of the inputs</strong> &mdash;
+        true at initialisation, and only approximately true afterwards</li>
+    <li>The inputs have mean zero and are uncorrelated with each other</li>
+  </ol>
+  <p class="small">All three are idealisations. That is fine: the point of an
+  idealisation is that you can compute with it, and then check the answer
+  against a measurement. We will do exactly that in twelve slides.</p>
+  <p class="small muted">Assumption 3 is why we standardised the pixels in the
+  previous lecture rather than dividing by 255 and leaving them in
+  $[0,1]$.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="The recursion">
+  <h2>The one recursion</h2>
+  <p>Under those assumptions each term $w_{ij}a_j$ has mean zero, and the terms
+  are uncorrelated, so the variances add:</p>
+  <div class="eqn-box">
+    $$\operatorname{Var}(z) \;=\; n_{\text{in}} \cdot \operatorname{Var}(w)
+      \cdot \operatorname{Var}(a)$$
+    <span class="eqn-label">the forward variance recursion</span>
+  </div>
+  <p class="lead">Everything in this lecture is a consequence of that line.</p>
+  <p class="small muted">Note the shape of it: the input variance is
+  <em>multiplied</em> by a factor. That is what will make depth dangerous.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="Check it">
+  <h2>Check it before believing it</h2>
+  <pre><code class="language-text" data-trim>
+Var(w) = 0.001   predicted Var(z) = 0.1000   measured 0.0999
+Var(w) = 0.010   predicted Var(z) = 1.0000   measured 1.0011
+Var(w) = 0.020   predicted Var(z) = 2.0000   measured 2.0029
+Var(w) = 0.050   predicted Var(z) = 5.0000   measured 5.0072
+  </code></pre>
+  <p class="small">One layer, fan-in @@l13_width:.0f@@, twenty thousand random
+  inputs of unit variance. Four lines of NumPy, and the same habit as Lecture
+  2's orthogonality test: <em>verify the identity you are about to reason
+  with</em>.</p>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="Forward requirement">
+  <h2>What the forward pass wants</h2>
+  <p>We want the signal to arrive at layer @@l13_depth:.0f@@ with the spread it
+  had at layer 1. Otherwise, whichever way it drifts, twenty layers of drift is
+  a factor of $r^{20}$.</p>
+  <div class="eqn-box">
+    $$\operatorname{Var}(z) = \operatorname{Var}(a)
+      \quad\Longleftrightarrow\quad
+      n_{\text{in}} \operatorname{Var}(w) = 1
+      \quad\Longleftrightarrow\quad
+      \operatorname{Var}(w) = \frac{1}{n_{\text{in}}}$$
+  </div>
+  <p class="small">One equation, one unknown. If the fan-in were the only thing
+  in the network, we would be finished.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="Backward requirement">
+  <h2>What the backward pass wants</h2>
+  <p>The backward pass runs the same matrix <strong>transposed</strong>. Using
+  the adjoint notation from thread 6:</p>
+  <div class="eqn-box">
+    $$\bar a \;=\; W^{\mathsf T} \bar z
+      \qquad\Longrightarrow\qquad
+      \operatorname{Var}(\bar a) \;=\; n_{\text{out}} \cdot
+      \operatorname{Var}(w) \cdot \operatorname{Var}(\bar z)$$
+  </div>
+  <p>Identical algebra with <strong>one index swapped</strong>: the transpose
+  sums over the output dimension, so the fan-<em>out</em> appears where the
+  fan-in did.</p>
+  <div class="eqn-box">
+    $$\operatorname{Var}(w) = \frac{1}{n_{\text{out}}}$$
+    <span class="eqn-label">what preserving the gradient asks for</span>
+  </div>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="Why they swap">
+  <h2>Why the index swaps</h2>
+  <p>Because a row of $W$ and a column of $W$ are different sums.</p>
+  <ul class="tight small">
+    <li>Forward, each output unit sums over $n_{\text{in}}$ terms &mdash; one
+        per incoming connection</li>
+    <li>Backward, each input unit collects from $n_{\text{out}}$ terms &mdash;
+        one per outgoing connection</li>
+  </ul>
+  <p class="small">Exactly the fan-in / fan-out bookkeeping from thread 6: a
+  node's adjoint is the sum over its outgoing edges. Here we are counting how
+  many such edges there are.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The conflict">
+  <h2>Two requirements from one recursion</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-varprop.svg"
+         alt="A diagram: one box holding the recursion Var(z) equals n times Var(w) times Var(x), branching into a green forward requirement Var(w) equals one over fan-in and a red backward requirement Var(w) equals one over fan-out, the two meeting in a purple box giving Glorot's compromise.">
+  </figure>
+  <p class="takeaway">The same line of algebra, read in two directions, asks
+  for two different answers.</p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="The conflict">
+  <h2>The conflict</h2>
+  <p class="lead">$\dfrac{1}{n_{\text{in}}}$ and $\dfrac{1}{n_{\text{out}}}$
+  are the same number only when $n_{\text{in}} = n_{\text{out}}$.</p>
+  <table>
+    <tr><th>Layer</th><th class="num">$n_{\text{in}}$</th><th class="num">$n_{\text{out}}$</th><th>Can both be satisfied?</th></tr>
+    <tr><td>First</td><td class="num">@@l13_n_features:,@@</td><td class="num">@@l13_width:.0f@@</td><td class="fail">no &mdash; they differ by a factor of 30</td></tr>
+    <tr><td>Each hidden</td><td class="num">@@l13_width:.0f@@</td><td class="num">@@l13_width:.0f@@</td><td class="fix">yes, exactly</td></tr>
+    <tr><td>Head</td><td class="num">@@l13_width:.0f@@</td><td class="num">@@l13_n_classes:.0f@@</td><td class="fail">no</td></tr>
+  </table>
+  <p class="small">Every network whose layers change width &mdash; which is
+  every network &mdash; has to give something up.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Glorot">
+  <h2>Glorot&rsquo;s compromise</h2>
+  <p>Do not choose. Take the <strong>harmonic mean</strong> of the two demands:</p>
+  <div class="eqn-box">
+    $$\operatorname{Var}(w) \;=\;
+      \frac{2}{n_{\text{in}} + n_{\text{out}}}$$
+    <span class="eqn-label">Glorot (Xavier) initialisation</span>
+  </div>
+  <p class="small">A small error in both directions rather than a large error
+  in one. On a layer where the two fans are equal it is not a compromise at all
+  &mdash; it is exact, and reduces to $1/n$.</p>
+  <p class="small muted">Harmonic rather than arithmetic because the quantities
+  being averaged are reciprocals of the fans.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="Glorot in code">
+  <h2>Two forms of the same thing</h2>
+  <pre><code class="language-python" data-trim>
+nn.init.xavier_normal_(w)      # N(0, 2/(fan_in + fan_out))
+nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
+  </code></pre>
+  <p class="small">The uniform version has the same variance: a uniform on
+  $(-r, r)$ has variance $r^2/3$, and
+  $6/3 = 2$. Choose either; nothing in the
+  derivation cares about the shape of the distribution, only its variance.</p>
+  <p class="small muted">On our hidden layers this gives
+  $\operatorname{Var}(w) =$ @@l14_glorot_var:.4f@@, a standard deviation of
+  @@l14_glorot_sd:.4f@@ &mdash; against the default's
+  @@l14_default_sd:.4f@@.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="The activation enters">
+  <h2>Now put the activation back</h2>
+  <p>Between two linear maps sits $\varphi$, and the backward pass multiplies
+  by its derivative pointwise. So the true per-layer factor on the
+  <em>standard deviation</em> of the backward signal is</p>
+  <div class="eqn-box">
+    $$\rho \;=\; \sqrt{\, n_{\text{out}} \cdot \operatorname{Var}(w)
+      \cdot \mathbb{E}\!\left[\varphi'(z)^2\right] \,}$$
+    <span class="eqn-label">the number Lecture 13 measured</span>
+  </div>
+  <p class="small">Two factors we control &mdash; the shape of the matrix and
+  the variance we initialise it with &mdash; and one that belongs to the
+  activation function.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="The quarter">
+  <h2>The logistic&rsquo;s contribution</h2>
+  <div class="eqn-box">
+    $$\sigma'(z) = \sigma(z)\bigl(1 - \sigma(z)\bigr)
+      \;\le\; \tfrac14 \quad \text{for every } z$$
+  </div>
+  <p>Not &ldquo;usually small&rdquo;. <strong>Bounded above by a quarter,
+  everywhere</strong>, and equal to a quarter only at $z = 0$.</p>
+  <p class="lead fail">So the logistic multiplies $\rho$ by at most
+  @@l14_sigmoid_dmax:.2f@@, before any weight has been chosen.</p>
+  <p class="small muted">That is the ceiling. Over
+  @@l13_n_ratios:.0f@@ layers, even a perfectly initialised logistic stack
+  cannot do better than $(1/4)^{19}$.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Activations">
+  <h2>Four activations and their derivatives</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-activations.svg"
+         alt="Left panel: the logistic, tanh, ReLU and ELU functions. Right panel: their derivatives, with a dotted line at one quarter marking the logistic's maximum.">
+  </figure>
+  <p class="takeaway">Read the right-hand panel. Everything except the logistic
+  reaches a derivative of 1 somewhere; the logistic never does.</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="ReLU halves it">
+  <h2>ReLU discards exactly half the variance</h2>
+  <p>For a symmetric, zero-mean $z$, ReLU zeroes half the units and leaves the
+  rest alone:</p>
+  <div class="eqn-box">
+    $$\mathbb{E}\!\left[\operatorname{ReLU}(z)^2\right]
+      \;=\; \tfrac12\,\mathbb{E}\!\left[z^2\right],
+      \qquad
+      \mathbb{E}\!\left[\operatorname{ReLU}'(z)^2\right] \;=\; \tfrac12$$
+  </div>
+  <p class="small">Both statements are the same statement: half the time the
+  derivative is 1, half the time it is 0. Nothing is bounded away from 1 the
+  way the logistic is &mdash; the loss is a clean factor of two, and a factor
+  of two can be paid for.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="He">
+  <h2>He&rsquo;s adjustment</h2>
+  <p>Pay for it by doubling the weight variance:</p>
+  <div class="eqn-box">
+    $$\operatorname{Var}(w) \;=\; \frac{2}{n_{\text{in}}}$$
+    <span class="eqn-label">He initialisation, for ReLU</span>
+  </div>
+  <p class="small">On our hidden layers, $\operatorname{Var}(w) =$
+  @@l14_he_var:.4f@@ and $\operatorname{sd}(w) =$
+  @@l14_he_sd:.4f@@ &mdash; against Glorot's
+  @@l14_glorot_sd:.4f@@ and the default's
+  @@l14_default_sd:.4f@@.</p>
+  <p class="lead fix">Then
+  $\rho = \sqrt{n\cdot(2/n)\cdot\tfrac12} = 1$, exactly.</p>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="Four schemes predicted">
+  <h2>Four schemes, predicted from the shapes alone</h2>
+  <table class="small">
+    <tr><th>Scheme</th><th class="num">$\operatorname{Var}(w)$</th><th class="num">$\mathbb{E}[\varphi'^2]$</th><th class="num">predicted $\rho$</th></tr>
+    <tr><td class="fail">default, logistic</td><td class="num">@@l14_default_var:.5f@@</td><td class="num">@@l14_sigmoid_dmax_sq:.4f@@</td><td class="num fail">@@l14_theory.default_sigmoid:.4f@@</td></tr>
+    <tr><td>Glorot, logistic</td><td class="num">@@l14_glorot_var:.5f@@</td><td class="num">@@l14_sigmoid_dmax_sq:.4f@@</td><td class="num">@@l14_theory.glorot_sigmoid:.4f@@</td></tr>
+    <tr><td>Glorot, ReLU</td><td class="num">@@l14_glorot_var:.5f@@</td><td class="num">0.5000</td><td class="num">@@l14_theory.glorot_relu:.4f@@</td></tr>
+    <tr><td class="fix">He, ReLU</td><td class="num">@@l14_he_var:.5f@@</td><td class="num">0.5000</td><td class="num hit">@@l14_theory.he_relu:.4f@@</td></tr>
+  </table>
+  <p class="small">Nothing in that table came from running anything. It is the
+  fan-in, the fan-out, and one expectation.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="It compounds">
+  <h2>And then it compounds</h2>
+  <div class="eqn-box">
+    $$\frac{\lVert g_1 \rVert}{\lVert g_{L} \rVert} \;=\; \rho^{\,L-1}$$
+  </div>
+  <p class="lead">There is no safe value of $\rho$ except one.</p>
+  <table>
+    <tr><th class="num">$\rho$</th><th class="num">over @@l13_n_ratios:.0f@@ layers</th><th>what you see</th></tr>
+    <tr><td class="num fail">0.144</td><td class="num fail">$10^{-16}$</td><td class="fail">the loss does not move</td></tr>
+    <tr><td class="num">0.707</td><td class="num">$10^{-3}$</td><td>trains, slowly, badly</td></tr>
+    <tr><td class="num hit">1.000</td><td class="num hit">1</td><td class="fix">every layer learns</td></tr>
+    <tr><td class="num fail">1.400</td><td class="num fail">$10^{3}$</td><td class="fail"><code>NaN</code></td></tr>
+  </table>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="The knife edge">
+  <h2>Why depth is different in kind</h2>
+  <p>At three layers, $\rho = 0.144$ costs you a factor of fifty. Annoying, and
+  a smaller learning rate hides it.</p>
+  <p>At @@l13_depth:.0f@@ layers the same $\rho$ costs
+  @@l13_attenuation:.0e@@, and nothing hides that.</p>
+  <div class="panel panel-math">
+    <span class="panel-title">The general shape of the argument</span>
+    A constant error, repeated $L$ times, is not a constant error. This is the
+    same reason the course insists on per-fold scores rather than a mean, and
+    the same reason a leak that costs a dollar per split is still a bug.
+  </div>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="★ The prediction">
+  <h2>Now put your own number beside it</h2>
+  <table>
+    <tr><th>Scheme</th><th class="num">predicted $\rho$</th><th class="num">measured $\rho$</th><th class="num">measured, end to end</th></tr>
+    <tr><td class="fail">default, logistic</td><td class="num">@@l14_theory.default_sigmoid:.4f@@</td><td class="num fail">@@l14_per_layer.default_sigmoid.per_layer:.4f@@</td><td class="num fail">@@l14_per_layer.default_sigmoid.attenuation:.2e@@</td></tr>
+    <tr><td>Glorot, logistic</td><td class="num">@@l14_theory.glorot_sigmoid:.4f@@</td><td class="num">@@l14_per_layer.glorot_sigmoid.per_layer:.4f@@</td><td class="num">@@l14_per_layer.glorot_sigmoid.attenuation:.2e@@</td></tr>
+    <tr><td>Glorot, ReLU</td><td class="num">@@l14_theory.glorot_relu:.4f@@</td><td class="num">@@l14_glorot_relu.per_layer:.4f@@</td><td class="num">@@l14_glorot_relu.attenuation:.2e@@</td></tr>
+    <tr><td class="fix">He, ReLU</td><td class="num">@@l14_theory.he_relu:.4f@@</td><td class="num hit">@@l14_per_layer.he_relu.per_layer:.4f@@</td><td class="num hit">@@l14_per_layer.he_relu.attenuation:.2e@@</td></tr>
+  </table>
+  <p class="lead fix">The first row is the number on your sheet.</p>
+  <aside class="notes">Stop here. Ask someone to read out what they wrote down
+  last time. This is the moment the thread pays for itself, and it is worth a
+  full minute of silence.</aside>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Where the gap comes from">
+  <h2>The columns do not match exactly &mdash; good</h2>
+  <p>They agree to a few per cent, and the residual is exactly where the
+  assumptions are weakest:</p>
+  <ul class="tight small">
+    <li>$\mathbb{E}[\sigma'^2]$ is not quite
+        @@l14_sigmoid_dmax_sq:.4f@@, because the pre-activations are not all
+        at zero</li>
+    <li>Successive components of the gradient are not exactly uncorrelated
+        after the first layer</li>
+    <li>The first and last layers have unequal fans, so they are not in the
+        geometric part of the sequence at all</li>
+  </ul>
+  <p class="small">A model that reproduces a fifteen-order-of-magnitude effect
+  to within a few per cent, from two indices and one expectation, is doing
+  real work. Reporting the gap is what makes it a measurement.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Four initialisations">
+  <h2>The same twenty layers, four initialisations</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-init-grads.svg"
+         alt="Gradient norm per weight matrix against layer index on a log axis, for four schemes: N(0,1) with sigmoid nearly flat, PyTorch default with sigmoid falling steeply, Glorot with sigmoid falling less steeply, and He with ReLU flat.">
+  </figure>
+  <p class="takeaway">Four straight lines with four different slopes, and the
+  slope is $\log\rho$ in each case.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="The forward side">
+  <h2>The same argument, forwards</h2>
+  <p>The recursion was symmetric, so the forward activations must be geometric
+  in the depth too &mdash; with ratio
+  $r = n_{\text{in}}\operatorname{Var}(w)/2$ for ReLU.</p>
+  <p class="small">Easy to falsify: fix the activation to ReLU, set the weight
+  standard deviation by hand, and watch the activation spread against depth.
+  He's value for @@l13_width:.0f@@ units is
+  $\sqrt{2/100} =$ @@l14_he_sd:.4f@@.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Variance vs depth">
+  <h2>Measured against $\text{sd}_1 \cdot r^{\ell/2}$</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-var-vs-depth.svg"
+         alt="Activation standard deviation against hidden layer on a log axis, for four weight standard deviations, with dotted theoretical geometric decay lines lying on top of the solid measured curves.">
+  </figure>
+  <p class="takeaway">The dotted lines are the prediction, not a fit. One value
+  of the weight scale is flat; every other value is an exponential.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Thread summary">
+  <h2>Thread 7, summarised</h2>
+  <ol class="tight small">
+    <li>One layer multiplies the variance by
+        $n\cdot\operatorname{Var}(w)$ &mdash; forwards with the fan-in,
+        backwards with the fan-out</li>
+    <li>Preserving the signal and preserving the gradient are the
+        <strong>same condition only when the fans are equal</strong></li>
+    <li>Glorot takes the harmonic mean of the two; He doubles it because ReLU
+        discards half the variance</li>
+    <li>The per-layer factor compounds as $\rho^{L}$, so only
+        $\rho = 1$ survives depth</li>
+  </ol>
+  <p class="small muted">Point 4 is the one that makes deep networks a separate
+  subject rather than a bigger version of shallow ones.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- PART 2 — DIAGNOSE (20 min)                                           -->
+<!-- ==================================================================== -->
+
+<!-- 27 -->
+<section class="divider" data-menu-title="◆ Diagnose">
+  <p class="kicker">Part two</p>
+  <h1>Diagnose</h1>
+  <p class="clock">20 minutes &middot; and score the commitment</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="★ Your numbers">
+  <h2>Compare with your sheet</h2>
+  <div class="commit">
+    <span class="commit-label">From the previous lecture</span>
+    <p class="small" style="text-align:left; line-height:1.8">
+      Accuracy a useful auto-tagger would need: <span class="blank"></span> %<br>
+      Accuracy I expected from that model: <span class="blank"></span> %<br>
+      Accuracy I actually got: <span class="blank"></span> %
+    </p>
+  </div>
+  <table>
+    <tr><th>Reality</th><th class="num">Test accuracy</th></tr>
+    <tr><td>Always one class</td><td class="num">@@l13_baseline_acc:.1%@@</td></tr>
+    <tr><td class="fail">@@l13_depth:.0f@@ hidden layers</td><td class="num fail">@@l13_deep.test_acc:.1%@@</td></tr>
+  </table>
+  <p class="small muted">Score it out loud. The instructive answer is not who
+  was closest &mdash; it is how many people wrote a number above the baseline
+  without any argument for why the model would beat it.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="The diagnosis">
+  <h2>The diagnosis, now with a name</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">One sentence</span>
+    Two defaults nobody chose &mdash; a uniform initialisation scaled to
+    $1/\sqrt{n_{\text{in}}}$ and a logistic activation whose derivative never
+    exceeds @@l14_sigmoid_dmax:.2f@@ &mdash; give
+    $\rho =$ @@l14_theory.default_sigmoid:.3f@@, and
+    $\rho$ compounds.
+  </div>
+  <p class="small">Note the form of the answer. It is not &ldquo;the network is
+  too deep&rdquo;. It is a specific number, arrived at by a specific
+  calculation, and a statement of what it would have to be instead.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="What initialisation cannot do">
+  <h2>What initialisation cannot do</h2>
+  <p class="lead">It fixes $\rho$ at <strong>step zero</strong>.</p>
+  <p>By step @@l13_steps:,@@ the weights have moved, the assumption that they
+  are independent of the activations is gone, and nothing guarantees the
+  variances are still balanced.</p>
+  <div class="panel">
+    <span class="panel-title">Which is why there are seven repairs and not one</span>
+    Initialisation sets the condition. Normalisation <em>enforces</em> it, at
+    every step. The rest of the chapter is about what to do once the signal
+    reaches every layer.
+  </div>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="The map">
+  <h2>Seven repairs, and what each is for</h2>
+  <table class="small">
+    <tr><th>Repair</th><th>The failure it addresses</th></tr>
+    <tr><td>Initialisation</td><td class="fix">$\rho \ne 1$ at step zero</td></tr>
+    <tr><td>Better activations</td><td class="fix">$\mathbb{E}[\varphi'^2]$ bounded away from 1</td></tr>
+    <tr><td>Batch / layer normalisation</td><td class="fix">$\rho$ drifting during training</td></tr>
+    <tr><td>Gradient clipping</td><td>$\rho &gt; 1$ &mdash; the <em>other</em> failure</td></tr>
+    <tr><td>Faster optimisers</td><td>slow descent once the gradient is usable</td></tr>
+    <tr><td>Learning-rate schedules</td><td>one step size cannot suit the whole run</td></tr>
+    <tr><td>Dropout</td><td>overfitting &mdash; a problem we do not yet have</td></tr>
+  </table>
+  <p class="small">Two of those address a failure this network does not have.
+  We are going to apply them anyway, and measure that they buy nothing.</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="The protocol">
+  <h2>The protocol for the next 35 minutes</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">One change per row</span>
+    Same seed, same @@l13_n_fit:,@@ images, same
+    @@l13_epochs:.0f@@ epochs, same batch size. Every row differs from its
+    neighbour in <strong>exactly one argument</strong>.
+  </div>
+  <ul class="tight small">
+    <li>First each repair <strong>alone</strong>, against the broken network</li>
+    <li>Then a <strong>ladder</strong>, each row adding one change to the row
+        above</li>
+  </ul>
+  <p class="small">A stack of seven changes that works tells you nothing about
+  which of the seven mattered. That is the difference between a result and a
+  configuration.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- PART 3 — REPAIR (35 min)                                             -->
+<!-- ==================================================================== -->
+
+<!-- 33 -->
+<section class="divider" data-menu-title="◆ Repair">
+  <p class="kicker">Part three</p>
+  <h1>Repair</h1>
+  <p class="clock">35 minutes &middot; one change at a time</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="★ Colab notebook">
+  <h2>Today&rsquo;s notebook</h2>
+  <p style="margin:1.2em 0">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-14.ipynb">
+       Open Lecture 14 in Google Colab</a>
+  </p>
+  <div class="panel">
+    <span class="panel-title">Before you run anything</span>
+    Section 3 asks you to predict a number and then measures it. Do the
+    prediction first, in the markdown cell, with the sheet from the previous
+    lecture beside you. The whole exercise is worthless if you read the answer
+    first.
+  </div>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Repair 1 code">
+  <h2>Repair 1 &middot; initialisation</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-8|4-5|7-8">for m in net:
+    if not isinstance(m, nn.Linear):
+        continue
+    nn.init.xavier_normal_(m.weight)     # Var = 2/(fan_in + fan_out)
+    nn.init.zeros_(m.bias)
+
+    # or, for ReLU:
+    nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
+  </code></pre>
+  <p class="small">Two lines. <code>kaiming_normal_</code> is He; the argument
+  <code>nonlinearity</code> is what selects the factor of two, and its default
+  is <code>"leaky_relu"</code> with slope 0.01 &mdash; near enough, but say
+  what you mean.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Glorot alone">
+  <h2>Glorot alone, measured</h2>
+  <table>
+    <tr><th></th><th class="num">$\rho$</th><th class="num">End to end</th><th class="num">Test accuracy</th></tr>
+    <tr><td class="fail">Default, logistic</td><td class="num fail">@@l14_per_layer.default_sigmoid.per_layer:.4f@@</td><td class="num fail">@@l14_per_layer.default_sigmoid.attenuation:.1e@@</td><td class="num fail">@@l14_ladder.0.test_acc:.1%@@</td></tr>
+    <tr><td>Glorot, logistic</td><td class="num">@@l14_per_layer.glorot_sigmoid.per_layer:.4f@@</td><td class="num">@@l14_per_layer.glorot_sigmoid.attenuation:.1e@@</td><td class="num">@@l14_ladder.1.test_acc:.1%@@</td></tr>
+  </table>
+  <p class="lead fail">Eleven orders of magnitude better, and still hopeless.</p>
+  <p class="small">Because the measured $\rho$ is now
+  @@l14_per_layer.glorot_sigmoid.per_layer:.3f@@ &mdash; which is
+  @@l14_sigmoid_dmax:.2f@@, the logistic's own ceiling, with the weight scale
+  perfectly neutralised. <strong>You cannot initialise your way out of the
+  activation function.</strong></p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Repair 2">
+  <h2>Repair 2 &middot; the activation function</h2>
+  <p>Every requirement on $\varphi$ comes from the thread:</p>
+  <ul class="tight small">
+    <li>$\varphi'$ should reach 1 somewhere, and not be bounded below it</li>
+    <li>$\varphi$ should not saturate on both sides, or gradients die where it
+        does</li>
+    <li>Output roughly centred on zero, so assumption 3 holds at the next
+        layer</li>
+  </ul>
+  <p class="lead fix">ReLU satisfies the first two and fails the third. It is
+  still the right default.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="ReLU's problem">
+  <h2>ReLU&rsquo;s own failure mode</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Dying units</span>
+    A unit whose pre-activation is negative for every input in the dataset has
+    gradient exactly zero, forever. It never comes back.
+  </div>
+  <p>The repairs are all the same idea &mdash; give the negative side a
+  non-zero slope:</p>
+  <table class="small">
+    <tr><th>Variant</th><th>Negative side</th><th>Cost</th></tr>
+    <tr><td>Leaky ReLU</td><td>$\alpha z$, $\alpha \approx 0.01$</td><td>none</td></tr>
+    <tr><td>ELU</td><td>$\alpha(e^{z} - 1)$</td><td>an exponential per unit</td></tr>
+    <tr><td>SELU</td><td>ELU, scaled to self-normalise</td><td>strict conditions on the architecture</td></tr>
+  </table>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Activations measured">
+  <h2>Six activations, measured</h2>
+  <table class="small">
+    <tr><th>Activation</th><th>Initialisation</th><th class="num">Test accuracy</th></tr>
+    <tr><td class="fail">logistic</td><td>Glorot</td><td class="num fail">@@l14_activations.sigmoid.test_acc:.1%@@</td></tr>
+    <tr><td>tanh</td><td>Glorot</td><td class="num">@@l14_activations.tanh.test_acc:.1%@@</td></tr>
+    <tr><td class="fix">ReLU</td><td>He</td><td class="num hit">@@l14_activations.relu.test_acc:.1%@@</td></tr>
+    <tr><td>Leaky ReLU</td><td>He</td><td class="num">@@l14_activations.leaky.test_acc:.1%@@</td></tr>
+    <tr><td>ELU</td><td>He</td><td class="num">@@l14_activations.elu.test_acc:.1%@@</td></tr>
+    <tr><td>SELU</td><td>Glorot</td><td class="num">@@l14_activations.selu.test_acc:.1%@@</td></tr>
+  </table>
+  <p class="small">All six with batch normalisation, so this is a comparison of
+  the activation and nothing else. The gap between the top and the bottom of
+  this table is larger than any other single choice today.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Repaired gradients">
+  <h2>The figure the previous lecture ended on, repaired</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-grad-fixed.svg"
+         alt="Gradient norm per weight matrix against layer index on a log axis: the red Lecture 13 curve falling steeply, and a green curve for He initialisation with ReLU and batch normalisation that is nearly flat across all twenty-one layers.">
+  </figure>
+  <p class="takeaway fix">Same axes, same scale, same network shape. Layer 1
+  now receives a gradient of the same order as layer 20.</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="Repair 3">
+  <h2>Repair 3 &middot; batch normalisation</h2>
+  <p>Initialisation gets $\rho$ right once. Normalisation makes it right at
+  every step, by standardising each layer&rsquo;s inputs and then learning what
+  scale they should have had.</p>
+  <div class="eqn-box">
+    $$\hat z = \frac{z - \mu_B}{\sqrt{\sigma_B^2 + \varepsilon}},
+      \qquad
+      y = \gamma \hat z + \beta$$
+  </div>
+  <p class="small">$\mu_B$ and $\sigma_B$ are computed <strong>over the
+  batch</strong>; $\gamma$ and $\beta$ are learned. The second step is what
+  stops it from being a straitjacket: the network can undo the normalisation if
+  it needs to.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="BN in code">
+  <h2>Where it goes</h2>
+  <pre><code class="language-python" data-trim>
+layers += [nn.Linear(prev, width),
+           nn.BatchNorm1d(width),        # before the activation
+           nn.ReLU()]
+  </code></pre>
+  <ul class="tight small">
+    <li>Before or after the activation is a genuine argument in the
+        literature; the original paper puts it before, and so do we</li>
+    <li>The bias in the <code>Linear</code> is now redundant &mdash;
+        $\beta$ does the same job. Harmless, and worth knowing</li>
+  </ul>
+  <p class="small muted">@@l14_bn_params:,@@ extra parameters across the whole
+  network, against @@l13_n_params:,@@. Under one per cent.</p>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="BN train vs eval">
+  <h2>The bill for batch normalisation</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Its statistics depend on the other images in the batch</span>
+    At training time the prediction for one image depends on which images
+    happened to be batched with it. At evaluation time it uses running averages
+    instead. Those are <strong>two different functions</strong>.
+  </div>
+  <p class="small">Which is Lecture 12's <code>model.eval()</code> failure
+  again &mdash; and it is now much harder to catch. Dropout wobbles between
+  calls, so running the evaluation twice exposes it. Batch normalisation in
+  training mode is <em>deterministic</em> for a fixed batch, so the same trick
+  finds nothing.</p>
+  <p class="fail small">New reviewer question: if there is a normalisation
+  layer, was <code>eval()</code> called? Running it twice will not tell you.</p>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="Layer norm">
+  <h2>Layer normalisation</h2>
+  <p>Same idea, different axis. Standardise across the <strong>features of one
+  example</strong> rather than across the batch.</p>
+  <table>
+    <tr><th></th><th>Batch norm</th><th>Layer norm</th></tr>
+    <tr><td>Averages over</td><td>the batch</td><td>the features</td></tr>
+    <tr><td>Depends on other examples</td><td class="fail">yes</td><td class="fix">no</td></tr>
+    <tr><td>Train and eval differ</td><td class="fail">yes</td><td class="fix">no</td></tr>
+    <tr><td>Batch size 1</td><td class="fail">breaks</td><td class="fix">fine</td></tr>
+  </table>
+  <div class="panel">
+    <span class="panel-title">Scope</span>
+    Layer normalisation belongs to Chapter 13 and is not examinable from this
+    lecture. It is here because the contrast is what explains what batch
+    normalisation actually depends on.
+  </div>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Norms measured">
+  <h2>Normalisation, measured</h2>
+  <table>
+    <tr><th>On the ReLU + He network</th><th class="num">Test accuracy</th><th class="num">Wall clock</th><th class="num">Parameters</th></tr>
+    <tr><td>No normalisation</td><td class="num">@@l14_norms.none.test_acc:.1%@@</td><td class="num">@@l14_norms.none.seconds:.0f@@ s</td><td class="num">@@l14_norms.none.n_params:,@@</td></tr>
+    <tr><td class="fix">Batch normalisation</td><td class="num hit">@@l14_norms.batch.test_acc:.1%@@</td><td class="num fail">@@l14_norms.batch.seconds:.0f@@ s</td><td class="num">@@l14_norms.batch.n_params:,@@</td></tr>
+    <tr><td>Layer normalisation</td><td class="num">@@l14_norms.layer.test_acc:.1%@@</td><td class="num">@@l14_norms.layer.seconds:.0f@@ s</td><td class="num">@@l14_norms.layer.n_params:,@@</td></tr>
+  </table>
+  <p class="small">The real cost is the clock, not the parameters:
+  @@l14_bn_overhead:.2f@@&times; the wall time for the same number of epochs.
+  Whether that is worth it depends on whether the accuracy moved &mdash; which
+  is why the column is there.</p>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="Repair 4">
+  <h2>Repair 4 &middot; gradient clipping</h2>
+  <pre><code class="language-python" data-trim>
+loss.backward()
+torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+opt.step()
+  </code></pre>
+  <p>Rescale the whole gradient vector when its norm exceeds a threshold. It
+  preserves the direction and bounds the length.</p>
+  <p class="fail small">This is a defence against $\rho &gt; 1$. We have
+  $\rho &lt; 1$. Look at the distribution of norms before choosing a threshold
+  &mdash; a clip below the median silently turns your optimiser into
+  something else.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Gradient norms">
+  <h2>What the step norms actually are</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-clip.svg"
+         alt="Overlaid histograms of the total gradient norm per optimiser step on a log axis, one for He initialisation clustered near one and one for N(0,1) initialisation spread over several orders of magnitude, with a dashed line marking a clip threshold of one.">
+  </figure>
+  <p class="takeaway">Median @@l14_clip_median:.2f@@ with He, against a maximum
+  of @@l14_clip_bad_max:.0f@@ with a badly scaled initialisation. Choose the
+  threshold from this picture, not from a blog post.</p>
+</section>
+
+<!-- 46 -->
+<section data-menu-title="Repair 5">
+  <h2>Repair 5 &middot; faster optimisers</h2>
+  <p>Now that the gradient reaches every layer, the optimiser has something to
+  work with. Comparing them on the broken network would have measured
+  nothing.</p>
+  <table class="small">
+    <tr><th>Optimiser</th><th>Idea</th><th class="num">Test accuracy</th></tr>
+    <tr><td>SGD</td><td>step along the gradient</td><td class="num">@@l14_optims.sgd.test_acc:.1%@@</td></tr>
+    <tr><td>Momentum</td><td>accumulate a velocity</td><td class="num">@@l14_optims.momentum.test_acc:.1%@@</td></tr>
+    <tr><td>Nesterov</td><td>measure the gradient ahead of the step</td><td class="num">@@l14_optims.nesterov.test_acc:.1%@@</td></tr>
+    <tr><td>RMSProp</td><td>divide by a running gradient scale</td><td class="num">@@l14_optims.rmsprop.test_acc:.1%@@</td></tr>
+    <tr><td class="fix">Adam</td><td>momentum and RMSProp together</td><td class="num hit">@@l14_optims.adam.test_acc:.1%@@</td></tr>
+    <tr><td>AdamW</td><td>Adam, with the weight decay decoupled</td><td class="num">@@l14_optims.adamw.test_acc:.1%@@</td></tr>
+  </table>
+  <p class="small">SGD and momentum at
+  @@l14_optims.sgd.lr:g@@; the adaptive three at
+  @@l14_optims.adam.lr:g@@ &mdash; the same learning rate would not be a fair
+  comparison.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Optimisers">
+  <h2>Six optimisers on the repaired network</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-optims.svg"
+         alt="Training loss against epoch for SGD, momentum, Nesterov, RMSProp, Adam and AdamW, with the test accuracy of each in the legend.">
+  </figure>
+  <p class="takeaway">The spread between the best and the worst optimiser here
+  is far smaller than the effect of the initialisation. Order your effort by
+  the measurement, not by the novelty.</p>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="Repair 6">
+  <h2>Repair 6 &middot; learning-rate schedules</h2>
+  <p>One step size cannot suit both the start of training and the end. The book
+  gives five schedules; three are worth having.</p>
+  <ul class="tight small">
+    <li><strong>Exponential</strong> &mdash; multiply by a constant each epoch</li>
+    <li><strong>Cosine</strong> &mdash; anneal smoothly to zero over the run</li>
+    <li><strong>1-cycle</strong> &mdash; rise to a peak, then fall well below
+        the starting value</li>
+  </ul>
+  <p class="small">All three need to know how long the run is, which is why
+  they take <code>total_steps</code> and why changing the epoch count silently
+  changes the schedule.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Schedules">
+  <h2>What a schedule does, and what it buys</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-schedules.svg"
+         alt="Left panel: learning rate against epoch for a constant, exponential, cosine and one-cycle schedule. Right panel: validation accuracy against epoch for the same four runs.">
+  </figure>
+  <p class="takeaway">Constant @@l14_schedules.None.test_acc:.1%@@, cosine
+  @@l14_schedules.cosine.test_acc:.1%@@, 1-cycle
+  @@l14_schedules.onecycle.test_acc:.1%@@ &mdash; on a twenty-epoch run.</p>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="Repair 7">
+  <h2>Repair 7 &middot; dropout</h2>
+  <p>Zero a random fraction of each layer&rsquo;s units during training, and
+  scale the rest up so the expected value is unchanged.</p>
+  <pre><code class="language-python" data-trim>
+layers += [nn.Linear(prev, width), nn.BatchNorm1d(width),
+           nn.ReLU(), nn.Dropout(0.1)]
+  </code></pre>
+  <p class="fail small">This is a regulariser &mdash; it fights overfitting.
+  A network sitting at @@l13_baseline_acc:.0%@@ is not overfitting, so applying
+  it to the Lecture 13 network should do nothing. We are going to check that
+  it does nothing rather than assume it.</p>
+</section>
+
+<!-- ============================ ASSISTANT FAILURE ====================== -->
+
+<!-- 49 -->
+<section data-menu-title="Assistant failure · prompt">
+  <h2>An assistant repairs the network</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">The prompt</span>
+    &ldquo;My @@l13_depth:.0f@@-layer network isn&rsquo;t learning &mdash; the
+    gradients vanish. Switch it to ReLU and initialise the weights
+    properly.&rdquo;
+  </div>
+  <p class="small">A much better prompt than the previous lecture's: it names
+  the failure, and it asks for two specific changes. It is still
+  under-specified in one place.</p>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Assistant failure · code">
+  <h2>What comes back</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>layers, prev = [], 3072
+for _ in range(20):
+    layers += [nn.Linear(prev, 100), nn.ReLU()]
+    prev = 100
+layers.append(nn.Linear(prev, 10))
+model = nn.Sequential(*layers)
+
+for m in model:
+    if isinstance(m, nn.Linear):
+        nn.init.xavier_uniform_(m.weight)     # proper initialisation
+        nn.init.zeros_(m.bias)
+  </code></pre>
+  <p class="small muted">Thirty seconds. It runs, the loss falls, and the
+  accuracy is several times the baseline.</p>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="Assistant failure · looks fixed">
+  <h2>And it looks fixed</h2>
+  <table>
+    <tr><th></th><th class="num">Test accuracy</th></tr>
+    <tr><td>Baseline</td><td class="num">@@l13_baseline_acc:.1%@@</td></tr>
+    <tr><td>Lecture 13&rsquo;s network</td><td class="num">@@l13_deep.test_acc:.1%@@</td></tr>
+    <tr><td class="fix">The assistant&rsquo;s repair</td><td class="num hit">@@l14_glorot_relu.test_acc:.1%@@</td></tr>
+  </table>
+  <p class="lead">The loss falls, the accuracy is several times the baseline,
+  and the request was answered.</p>
+  <p class="small muted">If you stopped here you would ship it, and you would
+  never know there was anything left.</p>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="Assistant failure · review">
+  <h2>The review question that catches it</h2>
+  <p class="lead">Xavier and Glorot are the same person and the same formula.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">So ask</span>
+    <strong>Which activation was that initialisation derived for?</strong>
+  </div>
+  <p>Glorot's constant assumes $\mathbb{E}[\varphi'^2] \approx 1$. ReLU gives
+  $\tfrac12$. Put it in the formula from the thread:</p>
+  <div class="eqn-box">
+    $$\rho = \sqrt{n\cdot\frac{1}{n}\cdot\frac12}
+      = @@l14_theory.glorot_relu:.4f@@
+      \qquad\text{not } 1$$
+  </div>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="Assistant failure · damage">
+  <h2>The damage, measured</h2>
+  <table>
+    <tr><th></th><th class="num">$\rho$ predicted</th><th class="num">$\rho$ measured</th><th class="num">End to end</th><th class="num">Test accuracy</th></tr>
+    <tr><td class="fail">Xavier + ReLU</td><td class="num">@@l14_theory.glorot_relu:.4f@@</td><td class="num">@@l14_glorot_relu.per_layer:.4f@@</td><td class="num fail">@@l14_glorot_relu.attenuation:.1e@@</td><td class="num fail">@@l14_glorot_relu.test_acc:.1%@@</td></tr>
+    <tr><td class="fix">He + ReLU</td><td class="num">@@l14_theory.he_relu:.4f@@</td><td class="num">@@l14_per_layer.he_relu.per_layer:.4f@@</td><td class="num hit">@@l14_per_layer.he_relu.attenuation:.1e@@</td><td class="num hit">@@l14_he_relu_test:.1%@@</td></tr>
+  </table>
+  <p class="big-num bad">@@l14_xavier_cost:.1%@@</p>
+  <p class="small">Accuracy points, for one constant. A factor of $\sqrt{2}$
+  per layer, nineteen times over.</p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="Assistant failure · fix">
+  <h2>The corrected specification</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">The sentence that makes it checkable</span>
+    &ldquo;Switch to ReLU and use the initialisation derived for ReLU &mdash;
+    He normal, $\operatorname{Var}(w) = 2/n_{\text{in}}$. <strong>Then print
+    the per-layer gradient norm ratio and show me it is within 20% of
+    1.0</strong>, so I can see the initialisation did what it claims.&rdquo;
+  </div>
+  <p class="small">&ldquo;Initialise it properly&rdquo; is not a
+  specification. A per-layer ratio near 1 is &mdash; it is a number, it is
+  cheap to compute, and it is wrong in an obvious way when the constant is
+  wrong.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- PART 4 — RE-MEASURE AND RED-TEAM (15 min)                            -->
+<!-- ==================================================================== -->
+
+<!-- 55 -->
+<section class="divider" data-menu-title="◆ Re-measure">
+  <p class="kicker">Part four</p>
+  <h1>The ablation</h1>
+  <p class="clock">15 minutes</p>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="★ THE ABLATION TABLE">
+  <h2>Each row adds one change to the row above</h2>
+  <table class="small">
+    <tr><th>Configuration</th><th class="num">Test accuracy</th><th class="num">Change</th><th class="num">Wall clock</th></tr>
+    <tr><td class="fail">@@l14_ladder.0.label:s@@</td><td class="num fail">@@l14_ladder.0.test_acc:.1%@@</td><td class="num">&mdash;</td><td class="num">@@l14_ladder.0.seconds:.0f@@ s</td></tr>
+    <tr><td>@@l14_ladder.1.label:s@@</td><td class="num">@@l14_ladder.1.test_acc:.1%@@</td><td class="num">@@l14_ladder.1.delta:+.1%@@</td><td class="num">@@l14_ladder.1.seconds:.0f@@ s</td></tr>
+    <tr><td class="fix">@@l14_ladder.2.label:s@@</td><td class="num hit">@@l14_ladder.2.test_acc:.1%@@</td><td class="num hit">@@l14_ladder.2.delta:+.1%@@</td><td class="num">@@l14_ladder.2.seconds:.0f@@ s</td></tr>
+    <tr><td>@@l14_ladder.3.label:s@@</td><td class="num">@@l14_ladder.3.test_acc:.1%@@</td><td class="num">@@l14_ladder.3.delta:+.1%@@</td><td class="num">@@l14_ladder.3.seconds:.0f@@ s</td></tr>
+    <tr><td>@@l14_ladder.4.label:s@@</td><td class="num">@@l14_ladder.4.test_acc:.1%@@</td><td class="num">@@l14_ladder.4.delta:+.1%@@</td><td class="num">@@l14_ladder.4.seconds:.0f@@ s</td></tr>
+    <tr><td>@@l14_ladder.5.label:s@@</td><td class="num">@@l14_ladder.5.test_acc:.1%@@</td><td class="num">@@l14_ladder.5.delta:+.1%@@</td><td class="num">@@l14_ladder.5.seconds:.0f@@ s</td></tr>
+    <tr><td>@@l14_ladder.6.label:s@@</td><td class="num">@@l14_ladder.6.test_acc:.1%@@</td><td class="num">@@l14_ladder.6.delta:+.1%@@</td><td class="num">@@l14_ladder.6.seconds:.0f@@ s</td></tr>
+  </table>
+  <p class="small">This table is the deliverable of the lecture. Photograph it.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The ladder">
+  <h2>The same table, as a picture</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-ladder.svg"
+         alt="Horizontal bar chart of test accuracy for each cumulative configuration, from the unchanged Lecture 13 network at the baseline to the fully repaired network, each bar labelled with its value and the change from the row above.">
+  </figure>
+  <p class="takeaway fix">One row moves the number more than all the others put
+  together, and it is the row the mathematics pointed at.</p>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="Where the gain came from">
+  <h2>Where the gain came from</h2>
+  <table>
+    <tr><th></th><th class="num">Accuracy points</th></tr>
+    <tr><td class="fix">The largest single step</td><td class="num hit">@@l14_biggest_step:.1%@@</td></tr>
+    <tr><td>Everything, start to finish</td><td class="num">@@l14_total_gain:.1%@@</td></tr>
+  </table>
+  <p class="lead">One change accounts for most of it.</p>
+  <p class="small">Which is the answer to &ldquo;should I add batch
+  normalisation, or dropout, or a schedule?&rdquo; &mdash; the question is
+  malformed until you know which failure you have. Ours was
+  $\rho \ne 1$, and the repairs that address $\rho$ are the ones that paid.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ One at a time">
+  <h2>Each repair alone, on the broken network</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-alone.svg"
+         alt="Horizontal bar chart of test accuracy for each repair applied on its own to the Lecture 13 network; some bars rise well above the ten per cent line and others sit on it.">
+  </figure>
+  <p class="takeaway">Three of these do nothing at all on their own. That is
+  not a disappointment &mdash; it is what tells you what each one is for.</p>
+</section>
+
+<!-- 58 -->
+<section data-menu-title="One at a time table">
+  <h2>One at a time, as numbers</h2>
+  <table class="small">
+    <tr><th>Applied alone to the Lecture 13 network</th><th class="num">Test accuracy</th></tr>
+    <tr><td>@@l14_alone.0.label:s@@</td><td class="num">@@l14_alone.0.test_acc:.1%@@</td></tr>
+    <tr><td class="fix">@@l14_alone.1.label:s@@</td><td class="num hit">@@l14_alone.1.test_acc:.1%@@</td></tr>
+    <tr><td class="fix">@@l14_alone.2.label:s@@</td><td class="num hit">@@l14_alone.2.test_acc:.1%@@</td></tr>
+    <tr><td>@@l14_alone.3.label:s@@</td><td class="num">@@l14_alone.3.test_acc:.1%@@</td></tr>
+    <tr><td class="fail">@@l14_alone.4.label:s@@</td><td class="num fail">@@l14_alone.4.test_acc:.1%@@</td></tr>
+    <tr><td class="fail">@@l14_alone.5.label:s@@</td><td class="num fail">@@l14_alone.5.test_acc:.1%@@</td></tr>
+    <tr><td class="fail">@@l14_alone.6.label:s@@</td><td class="num fail">@@l14_alone.6.test_acc:.1%@@</td></tr>
+  </table>
+  <p class="small">Clipping, the schedule and dropout are answers to problems
+  this network does not have. Applied alone they leave it exactly where it
+  was.</p>
+</section>
+
+<!-- 59 -->
+<section data-menu-title="Normalisation alone">
+  <h2>The row worth arguing about</h2>
+  <p>Batch normalisation, applied to the <em>unrepaired</em> network &mdash;
+  logistic activation, default initialisation, nothing else changed &mdash;
+  reaches @@l14_alone.2.test_acc:.1%@@.</p>
+  <p class="lead">So it can rescue a badly scaled network on its own.</p>
+  <div class="panel">
+    <span class="panel-title">And that is why it is not the first repair</span>
+    It works, it costs @@l14_bn_overhead:.2f@@&times; the wall clock, and it
+    conceals the fact that the initialisation was wrong. Fixing the cause is
+    free; compensating for it is not.
+  </div>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Before and after">
+  <h2>The same twenty layers, before and after</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-curves.svg"
+         alt="Training loss against epoch: the Lecture 13 network flat on a dotted line at ln 10, and the repaired network falling steadily below it.">
+  </figure>
+  <p class="takeaway fix">Same architecture, same data, same optimiser, same
+  epochs, same seed. Four lines changed.</p>
+</section>
+
+<!-- 60 -->
+<section data-menu-title="Re-measure">
+  <h2>Re-measure</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Test accuracy</th></tr>
+    <tr><td>Always predict one class</td><td class="num">@@l13_baseline_acc:.1%@@</td></tr>
+    <tr><td class="fail">@@l13_depth:.0f@@ layers, as built</td><td class="num fail">@@l13_deep.test_acc:.1%@@</td></tr>
+    <tr><td>2 layers, as built</td><td class="num">@@l13_shallow.test_acc:.1%@@</td></tr>
+    <tr><td class="fix">@@l13_depth:.0f@@ layers, repaired</td><td class="num hit">@@l14_fixed.test_acc:.1%@@</td></tr>
+  </table>
+  <p class="small">@@l14_fixed.seconds:.0f@@ seconds,
+  @@l13_epochs:.0f@@ epochs, @@l13_n_fit:,@@ images &mdash; identical to the
+  broken run in every one of those respects.</p>
+</section>
+
+<!-- 61 -->
+<section data-menu-title="Is that good">
+  <h2>Is that good?</h2>
+  <p class="lead">It is @@l14_total_gain:.1%@@ better than the network you
+  built, and still not a system anyone would deploy.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">What a defensible report says</span>
+    The architecture is now training correctly &mdash; the gradient reaches
+    every layer and the loss falls. The remaining gap is not an optimisation
+    failure; it is that a fully connected network on flattened pixels has no
+    way to know that adjacent pixels are adjacent.
+  </div>
+  <p class="small">That is the brief for Lecture 15, and this number is the
+  argument for it.</p>
+</section>
+
+<!-- 62 -->
+<section data-menu-title="Red-team">
+  <h2>Red-team exercise</h2>
+  <p>Swap notebooks with the team beside you. Ten minutes.</p>
+  <ol class="tight small">
+    <li>What touched the test set?</li>
+    <li>What was fitted, and on what?</li>
+    <li>What is the shape here?</li>
+    <li>What was dropped &mdash; rows, columns, NaNs? Count them.</li>
+    <li>What is the default I did not ask for?</li>
+    <li class="fail">Which initialisation is on each layer, and which
+        activation was it derived for?</li>
+    <li class="fail">If there is a normalisation layer, is there an
+        <code>eval()</code> before every measurement? Running it twice will not
+        catch a missing one.</li>
+    <li class="fail">Is every row of the ablation table one change away from
+        its neighbour?</li>
+  </ol>
+</section>
+
+<!-- 63 -->
+<section data-menu-title="Red-team the assistant">
+  <h2>Ask the assistant as an adversary</h2>
+  <div class="cols">
+    <div>
+      <div class="panel panel-fail small">
+        &ldquo;Fix my vanishing gradients.&rdquo;
+        <br><span class="small muted">You will get all seven repairs at once,
+        none of them measured, and no way to tell which one worked.</span>
+      </div>
+    </div>
+    <div>
+      <div class="panel panel-fix small">
+        &ldquo;My per-layer gradient ratio is
+        @@l14_per_layer.default_sigmoid.per_layer:.3f@@. Derive what it should
+        be for this architecture, name the single change that gets it closest
+        to 1, and give me the one-line check that would prove it
+        worked.&rdquo;
+      </div>
+    </div>
+  </div>
+  <p class="small">The second prompt is answerable and its answer is
+  falsifiable. That is the whole difference.</p>
+</section>
+
+<!-- 64 -->
+<section data-menu-title="The catalogue">
+  <h2>The silent-failure catalogue so far</h2>
+  <table class="small">
+    <tr><th>Failure</th><th>Diagnosed in</th><th class="num">Measured cost</th></tr>
+    <tr><td>Scaler fitted before the split</td><td>Lecture 2</td><td class="num">about a dollar</td></tr>
+    <tr><td>Accuracy under class imbalance</td><td>Lecture 4</td><td class="num">a useless model above 90%</td></tr>
+    <tr><td>Missing <code>optimizer.zero_grad()</code></td><td>Lecture 12</td><td class="num">76.7 points</td></tr>
+    <tr><td>Metric averaged per batch</td><td>Lecture 12</td><td class="num">0.382 points</td></tr>
+    <tr><td class="fail">A deep stack on default initialisation</td><td class="fail">Lecture 13</td><td class="num fail">@@l14_total_gain:.1%@@ points</td></tr>
+    <tr><td class="fail">Glorot&rsquo;s constant used with ReLU</td><td class="fail">today</td><td class="num fail">@@l14_xavier_cost:.1%@@ points</td></tr>
+  </table>
+  <p class="small muted">Every one of them ran to completion and printed a
+  plausible number. The last two are the first in which no line of code is
+  wrong.</p>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="Checklist">
+  <h2>A checklist for a deep network</h2>
+  <ul class="tight small">
+    <li>Which initialisation, and derived for which activation?</li>
+    <li>Is the per-layer gradient ratio within about 20% of 1?</li>
+    <li>Do the fan-in and fan-out differ on any layer, and by how much?</li>
+    <li>If there is normalisation: <code>train()</code> before training,
+        <code>eval()</code> before every measurement?</li>
+    <li>Was the clipping threshold chosen from the observed norms?</li>
+    <li>Does the schedule know the true number of steps?</li>
+    <li>Is every entry in the results table one change from its neighbour?</li>
+  </ul>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="What carried over">
+  <h2>What carried over unchanged</h2>
+  <table>
+    <tr><th>From</th><th>Still true</th></tr>
+    <tr><td>Lecture 2</td><td>split first; the honest number is the one you report</td></tr>
+    <tr><td>Lecture 6</td><td>a gap between two curves means more than one number</td></tr>
+    <tr><td>Lecture 8</td><td>an effect that compounds is not a small effect</td></tr>
+    <tr><td>Lecture 12</td><td>own the loop, or you cannot make this diagnosis</td></tr>
+    <tr><td>Lecture 13</td><td>measure the baseline before you believe anything</td></tr>
+  </table>
+</section>
+
+<!-- 67 -->
+<section data-menu-title="References">
+  <h2>In the book</h2>
+  <table>
+    <tr><th>Topic</th><th>Chapter</th></tr>
+    <tr><td>Vanishing and exploding gradients</td><td>11</td></tr>
+    <tr><td>Glorot and He initialisation</td><td>11</td></tr>
+    <tr><td>Nonsaturating activation functions</td><td>11</td></tr>
+    <tr><td>Batch normalisation</td><td>11</td></tr>
+    <tr><td>Gradient clipping</td><td>11</td></tr>
+    <tr><td>Faster optimisers and learning-rate scheduling</td><td>11</td></tr>
+    <tr><td>Dropout and regularisation for deep networks</td><td>11</td></tr>
+    <tr><td>Layer normalisation</td><td>13</td></tr>
+  </table>
+</section>
+
+<!-- 68 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 15 &middot; Build</p>
+  <h1>Visual inspection</h1>
+  <p class="small" style="color:#cfe2f0">
+    The network now trains, and it is still looking at
+    @@l13_n_features:,@@ unrelated numbers<br>
+    Next: a layer that knows two pixels are next to each other<br>
+    and what that is worth, measured
+  </p>
+  <p class="clock">Bring a fresh commitment sheet</p>
+</section>
+
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 14
+  <span class="sep">&middot;</span> Making it train
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>
