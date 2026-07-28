@@ -29,6 +29,17 @@ different, and guessing from the value alone gives "0.74 accuracy" where the
 slide wants "74.0%". A token with no spec falls back to `_auto`, which is
 reported so it can be checked by eye.
 
+A second syntax is also supported, because another author drafted in it:
+
+    «int:l11_n_params»          thousands-separated integer
+    «f2:l12_speedup»            fixed decimals, f0-f4
+    «pct1:l11_sk.test_acc»      percentage, pct0-pct2
+    «str:l11_epochs»            as written
+    «upper:l11_device»          upper-cased
+
+Both are drafting scaffolding. Neither survives substitution, and
+tools/check_decks.py refuses to ship a deck that still contains either.
+
 ALIASES exists only for tokens whose name does not match the key the figure
 script exported.
 """
@@ -142,6 +153,37 @@ def resolve(token: str, data: dict) -> tuple[str | None, bool]:
     return _auto(value), False
 
 
+# «fmt:path» — the second drafting syntax
+GUILLEMET_FORMATS = {
+    "int": "{:,.0f}", "str": "{}", "upper": "{}",
+    "f0": "{:.0f}", "f1": "{:.1f}", "f2": "{:.2f}", "f3": "{:.3f}",
+    "f4": "{:.4f}", "f5": "{:.5f}",
+    "g": "{:g}",   # general: drops trailing zeros, e.g. a learning rate
+    "pct0": "{:.0%}", "pct1": "{:.1%}", "pct2": "{:.2%}", "pct3": "{:.3%}",
+}
+
+
+def substitute_guillemets(html: str, data: dict) -> tuple[str, int, list[str]]:
+    missing: list[str] = []
+    n = 0
+
+    def one(m):
+        nonlocal n
+        fmt, _, path = m.group(1).partition(":")
+        if fmt not in GUILLEMET_FORMATS or not path:
+            missing.append(m.group(0))
+            return m.group(0)
+        value = _lookup(data, path)
+        if value is None:
+            missing.append(m.group(0))
+            return m.group(0)
+        n += 1
+        out = GUILLEMET_FORMATS[fmt].format(value)
+        return out.upper() if fmt == "upper" else out
+
+    return re.sub(r"«([^»]*)»", one, html), n, missing
+
+
 def main() -> int:
     dry = "--dry-run" in sys.argv
     data = json.loads(FIGURES.read_text())
@@ -152,7 +194,7 @@ def main() -> int:
         # keys may contain spaces and percent signs ("40 at random",
         # "propagated to closest 75%"), so the path is "anything but @ or :"
         tokens = set(re.findall(r"@@([^@:]+(?::[^@]*)?)@@", html))
-        if not tokens:
+        if not tokens and "«" not in html:
             continue
         out, changed = html, 0
         for tok in sorted(tokens):
@@ -167,6 +209,9 @@ def main() -> int:
                 guessed.append(f"{deck.name}: @@{tok}@@ -> {rendered}")
             if dry:
                 print(f"  {deck.name}: @@{tok}@@ -> {rendered}  ({n}x)")
+        out, g_n, g_missing = substitute_guillemets(out, data)
+        changed += g_n
+        missing.extend(f"{deck.name}: {t}" for t in g_missing)
         total += changed
         if not dry and changed:
             deck.write_text(out)

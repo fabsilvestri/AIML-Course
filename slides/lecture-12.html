@@ -43,8 +43,8 @@
   <h2>Where we left off</h2>
   <table>
     <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
-    <tr><td>Always predict one class</td><td class="num">«pct1:l11_baseline_majority_acc»%</td><td class="num">&mdash;</td></tr>
-    <tr><td>MLP, «int:l11_n_params» parameters, «str:l11_epochs» epochs</td><td class="num hit">«pct2:l11_sk.test_acc»%</td><td class="num fail">«f0:l11_sk.seconds» s</td></tr>
+    <tr><td>Always predict one class</td><td class="num">10.0%%</td><td class="num">&mdash;</td></tr>
+    <tr><td>MLP, 266,610 parameters, 20 epochs</td><td class="num hit">88.02%%</td><td class="num fail">125 s</td></tr>
   </table>
   <p class="lead">The accuracy is fine. Everything else is the problem.</p>
   <p class="small muted">Four walls, and the same wall underneath all four: the
@@ -81,8 +81,8 @@
 <section data-menu-title="The question">
   <h2>The question</h2>
   <p class="lead">You called <code>clf.fit()</code>.</p>
-  <p class="lead">It computed «int:l11_n_params» partial derivatives, on every
-  batch, «str:l11_epochs» times over. <em>How?</em></p>
+  <p class="lead">It computed 266,610 partial derivatives, on every
+  batch, 20 times over. <em>How?</em></p>
   <div class="panel panel-math">
     <span class="panel-title">Why you need the answer</span>
     Because the cost of that computation is what decides whether training a
@@ -203,7 +203,7 @@
   </div>
   <p class="small muted">Everything on the next four slides is this function.
   Small enough to hold in your head; general enough that nothing about the
-  argument changes at «int:l11_n_params» parameters.</p>
+  argument changes at 266,610 parameters.</p>
 </section>
 
 <!-- FIG -->
@@ -222,12 +222,12 @@
   <h2>The forward sweep &middot; values</h2>
   <table>
     <tr><th>Node</th><th>Expression</th><th class="num">Value</th></tr>
-    <tr><td>$x$</td><td>input</td><td class="num">«f1:l12_autodiff.x»</td></tr>
-    <tr><td>$y$</td><td>input</td><td class="num">«f1:l12_autodiff.y»</td></tr>
-    <tr><td>$u$</td><td>$x \cdot y$</td><td class="num">«f4:l12_autodiff.prod»</td></tr>
-    <tr><td>$s$</td><td>$\sin x$</td><td class="num">«f4:l12_autodiff.sin_x»</td></tr>
-    <tr><td>$w$</td><td>$u + s$</td><td class="num">«f4:l12_autodiff.w»</td></tr>
-    <tr><td class="fix">$L$</td><td class="fix">$w^2$</td><td class="num hit">«f4:l12_autodiff.L»</td></tr>
+    <tr><td>$x$</td><td>input</td><td class="num">2.0</td></tr>
+    <tr><td>$y$</td><td>input</td><td class="num">3.0</td></tr>
+    <tr><td>$u$</td><td>$x \cdot y$</td><td class="num">6.0000</td></tr>
+    <tr><td>$s$</td><td>$\sin x$</td><td class="num">0.9093</td></tr>
+    <tr><td>$w$</td><td>$u + s$</td><td class="num">6.9093</td></tr>
+    <tr><td class="fix">$L$</td><td class="fix">$w^2$</td><td class="num hit">47.7384</td></tr>
   </table>
   <p class="small">Six nodes, evaluated once each, in topological order. This is
   exactly what running the model does &mdash; and PyTorch records the graph
@@ -240,11 +240,11 @@
   <table>
     <tr><th>Adjoint</th><th>Computed as</th><th class="num">Value</th></tr>
     <tr><td>$\partial L/\partial L$</td><td>the seed</td><td class="num">1</td></tr>
-    <tr><td>$\partial L/\partial w$</td><td>$2w$</td><td class="num">«f4:l12_autodiff.dL_dw»</td></tr>
-    <tr><td>$\partial L/\partial u$</td><td>$(\partial L/\partial w) \cdot 1$</td><td class="num">«f4:l12_autodiff.dL_dw»</td></tr>
-    <tr><td>$\partial L/\partial s$</td><td>$(\partial L/\partial w) \cdot 1$</td><td class="num">«f4:l12_autodiff.dL_dw»</td></tr>
-    <tr><td class="fix">$\partial L/\partial y$</td><td class="fix">$(\partial L/\partial u)\, x$</td><td class="num hit">«f4:l12_autodiff.dL_dy»</td></tr>
-    <tr><td class="fix">$\partial L/\partial x$</td><td class="fix">$(\partial L/\partial u)\, y + (\partial L/\partial s)\cos x$</td><td class="num hit">«f4:l12_autodiff.dL_dx»</td></tr>
+    <tr><td>$\partial L/\partial w$</td><td>$2w$</td><td class="num">13.8186</td></tr>
+    <tr><td>$\partial L/\partial u$</td><td>$(\partial L/\partial w) \cdot 1$</td><td class="num">13.8186</td></tr>
+    <tr><td>$\partial L/\partial s$</td><td>$(\partial L/\partial w) \cdot 1$</td><td class="num">13.8186</td></tr>
+    <tr><td class="fix">$\partial L/\partial y$</td><td class="fix">$(\partial L/\partial u)\, x$</td><td class="num hit">27.6372</td></tr>
+    <tr><td class="fix">$\partial L/\partial x$</td><td class="fix">$(\partial L/\partial u)\, y + (\partial L/\partial s)\cos x$</td><td class="num hit">35.7052</td></tr>
   </table>
   <p class="small">Six lines, one pass, both derivatives.</p>
 </section>
@@ -258,7 +258,7 @@
     $$\frac{\partial L}{\partial x}
       \;=\; \underbrace{41.4557}_{\text{via } \times}
           \;\underbrace{-\;5.7505}_{\text{via } \sin}
-      \;=\; «f4:l12_autodiff.dL_dx»$$
+      \;=\; 35.7052$$
   </div>
   <p>A node's adjoint is the <strong>sum</strong> of the contributions along its
   outgoing edges.</p>
@@ -278,8 +278,8 @@
 &gt;&gt;&gt; x.grad.item(), y.grad.item()
 (35.705345, 27.637190)
   </code></pre>
-  <p>By hand: $2w(y + \cos x) = $ «f4:l12_autodiff.hand_dL_dx» and $2wx = $
-  «f4:l12_autodiff.hand_dL_dy».</p>
+  <p>By hand: $2w(y + \cos x) = $ 35.7052 and $2wx = $
+  27.6372.</p>
   <p class="small">They agree to machine precision. A cheap, decisive check that
   the library did what the mathematics says &mdash; and the same habit as
   Lecture 2's orthogonality test.</p>
@@ -291,16 +291,16 @@
   <div class="panel panel-math">
     <span class="panel-title">Count the inputs and the outputs</span>
     Training a network differentiates a function from
-    <strong>«int:l11_n_params» parameters</strong> to
+    <strong>266,610 parameters</strong> to
     <strong>one scalar loss</strong>.
   </div>
   <table>
     <tr><th>Mode</th><th class="num">Sweeps</th></tr>
-    <tr><td>Forward &mdash; one per input</td><td class="num fail">«int:l11_n_params»</td></tr>
+    <tr><td>Forward &mdash; one per input</td><td class="num fail">266,610</td></tr>
     <tr><td class="fix">Reverse &mdash; one per output</td><td class="num hit">1</td></tr>
   </table>
   <p class="lead fix">Reverse mode is not a good choice. It is the only viable
-  one, by a factor of «int:l11_n_params».</p>
+  one, by a factor of 266,610.</p>
 </section>
 
 <!-- 18 -->
@@ -327,14 +327,14 @@
   loss, same point, both modes.</p>
   <table>
     <tr><th class="num">Parameters</th><th class="num">Reverse, whole gradient</th><th class="num">Forward, whole gradient</th><th class="num">Ratio</th></tr>
-    <tr><td class="num">«str:l12_modes.small.0.P»</td><td class="num">«f2:l12_modes.small.0.t_reverse_ms» ms</td><td class="num">«f1:l12_modes.small.0.t_forward_ms» ms</td><td class="num">«f0:l12_modes.small.0.ratio»&times;</td></tr>
-    <tr><td class="num">«str:l12_modes.small.1.P»</td><td class="num">«f2:l12_modes.small.1.t_reverse_ms» ms</td><td class="num">«f1:l12_modes.small.1.t_forward_ms» ms</td><td class="num">«f0:l12_modes.small.1.ratio»&times;</td></tr>
-    <tr><td class="num">«str:l12_modes.small.2.P»</td><td class="num">«f2:l12_modes.small.2.t_reverse_ms» ms</td><td class="num">«f1:l12_modes.small.2.t_forward_ms» ms</td><td class="num">«f0:l12_modes.small.2.ratio»&times;</td></tr>
-    <tr><td class="num">«str:l12_modes.small.3.P»</td><td class="num">«f2:l12_modes.small.3.t_reverse_ms» ms</td><td class="num">«f1:l12_modes.small.3.t_forward_ms» ms</td><td class="num">«f0:l12_modes.small.3.ratio»&times;</td></tr>
-    <tr><td class="num">«str:l12_modes.small.4.P»</td><td class="num">«f2:l12_modes.small.4.t_reverse_ms» ms</td><td class="num">«f1:l12_modes.small.4.t_forward_ms» ms</td><td class="num">«f0:l12_modes.small.4.ratio»&times;</td></tr>
+    <tr><td class="num">51</td><td class="num">0.24 ms</td><td class="num">9.3 ms</td><td class="num">39&times;</td></tr>
+    <tr><td class="num">99</td><td class="num">0.22 ms</td><td class="num">16.8 ms</td><td class="num">76&times;</td></tr>
+    <tr><td class="num">195</td><td class="num">0.26 ms</td><td class="num">35.5 ms</td><td class="num">137&times;</td></tr>
+    <tr><td class="num">387</td><td class="num">0.21 ms</td><td class="num">73.1 ms</td><td class="num">341&times;</td></tr>
+    <tr><td class="num">771</td><td class="num">0.27 ms</td><td class="num">151.7 ms</td><td class="num">572&times;</td></tr>
   </table>
   <p class="small">The two columns compute the <em>same numbers</em> &mdash;
-  they agree to «g:l12_modes.small.4.max_abs_diff» &mdash; so this is a
+  they agree to 2.23517e-08 &mdash; so this is a
   measurement of cost, not of quality.</p>
 </section>
 
@@ -345,7 +345,7 @@
     <img src="../assets/figures/l12-fwd-vs-rev.svg"
          alt="Log-scale line chart of the time to compute a full gradient against the number of parameters: forward mode rises steeply, reverse mode is almost flat.">
   </figure>
-  <p class="takeaway fail">Extrapolate the red line to «int:l11_n_params»
+  <p class="takeaway fail">Extrapolate the red line to 266,610
   parameters. That is why nobody trains networks in forward mode.</p>
 </section>
 
@@ -354,10 +354,10 @@
   <h2>At the size we actually train</h2>
   <table>
     <tr><th>Quantity</th><th class="num">Value</th><th>How obtained</th></tr>
-    <tr><td>Parameters</td><td class="num">«int:l12_modes.big.P»</td><td>counted</td></tr>
-    <tr><td>Reverse mode, the whole gradient</td><td class="num hit">«f2:l12_modes.big.t_reverse_ms» ms</td><td>measured</td></tr>
-    <tr><td>Forward mode, one direction</td><td class="num">«f2:l12_modes.big.t_forward_per_pass_ms» ms</td><td>measured</td></tr>
-    <tr><td class="fail">Forward mode, all «int:l12_modes.big.P»</td><td class="num fail">«f1:l12_modes.big.t_forward_projected_min» minutes</td><td class="fail">projected, not run</td></tr>
+    <tr><td>Parameters</td><td class="num">266,610</td><td>counted</td></tr>
+    <tr><td>Reverse mode, the whole gradient</td><td class="num hit">1.33 ms</td><td>measured</td></tr>
+    <tr><td>Forward mode, one direction</td><td class="num">0.78 ms</td><td>measured</td></tr>
+    <tr><td class="fail">Forward mode, all 266,610</td><td class="num fail">3.5 minutes</td><td class="fail">projected, not run</td></tr>
   </table>
   <p class="small">Two measured per-pass costs and one multiplication you can
   check. We did not run the last row, and the slide says so &mdash; that is the
@@ -367,14 +367,14 @@
 <!-- 21 -->
 <section data-menu-title="Per batch">
   <h2>And that is <em>one</em> gradient</h2>
-  <p>The previous lecture's run took «str:l11_epochs» epochs of
-  «str:l11_steps_per_epoch» batches &mdash;
-  «str:l11_total_steps» gradients in total, in
-  «f0:l11_sk.seconds» seconds.</p>
+  <p>The previous lecture's run took 20 epochs of
+  430 batches &mdash;
+  8600 gradients in total, in
+  125 seconds.</p>
   <table>
-    <tr><th>The same «str:l11_total_steps» gradients&hellip;</th><th class="num">Projected wall clock</th></tr>
-    <tr><td>in forward mode, at the measured per-pass cost</td><td class="num fail">«f0:l12_modes.big.full_training_days» days</td></tr>
-    <tr><td class="fix">in reverse mode</td><td class="num hit">«f0:l11_sk.seconds» seconds, measured</td></tr>
+    <tr><th>The same 8600 gradients&hellip;</th><th class="num">Projected wall clock</th></tr>
+    <tr><td>in forward mode, at the measured per-pass cost</td><td class="num fail">21 days</td></tr>
+    <tr><td class="fix">in reverse mode</td><td class="num hit">125 seconds, measured</td></tr>
   </table>
   <p class="small">The associativity of matrix multiplication is the only reason
   this course exists.</p>
@@ -458,8 +458,8 @@
   </div>
   <table>
     <tr><th>Reality</th><th class="num">Test accuracy</th></tr>
-    <tr><td>Always one class</td><td class="num">«pct1:l11_baseline_majority_acc»%</td></tr>
-    <tr><td>Hand-tuned MLP</td><td class="num hit">«pct2:l11_sk.test_acc»%</td></tr>
+    <tr><td>Always one class</td><td class="num">10.0%%</td></tr>
+    <tr><td>Hand-tuned MLP</td><td class="num hit">88.02%%</td></tr>
   </table>
   <p class="small muted">Score them out loud. Most rooms guess too low against
   the baseline and too high against the state of the art &mdash; and being wrong
@@ -469,8 +469,8 @@
 <!-- 27 -->
 <section data-menu-title="The accuracy is fine">
   <h2>The accuracy is not the bug</h2>
-  <p class="lead">«pct2:l11_sk.test_acc»% against a
-  «pct1:l11_baseline_majority_acc»% baseline is a real result.</p>
+  <p class="lead">88.02%% against a
+  10.0%% baseline is a real result.</p>
   <p>Unlike Lecture 2, nothing here was measured dishonestly. The split was
   clean, the validation set was separate, the test set was touched once.</p>
   <p class="fail lead">The bug is that you cannot do anything else.</p>
@@ -480,15 +480,15 @@
 <section data-menu-title="Wall 1 measured">
   <h2>Wall 1 &middot; the clock</h2>
   <table>
-    <tr><th>Same architecture, same optimiser, same «str:l11_epochs» epochs</th><th class="num">Wall clock</th><th class="num">Test accuracy</th></tr>
-    <tr><td>Scikit-Learn, CPU</td><td class="num fail">«f0:l12_sk_seconds» s</td><td class="num">«pct2:l12_sk_test_acc»%</td></tr>
-    <tr><td>PyTorch, CPU</td><td class="num">«f0:l12_pt_cpu_seconds» s</td><td class="num">«pct2:l12_pt_cpu_test_acc»%</td></tr>
-    <tr><td class="fix">PyTorch, «upper:device»</td><td class="num hit">«f0:l12_pt_dev_seconds» s</td><td class="num">«pct2:l12_pt_dev_test_acc»%</td></tr>
+    <tr><th>Same architecture, same optimiser, same 20 epochs</th><th class="num">Wall clock</th><th class="num">Test accuracy</th></tr>
+    <tr><td>Scikit-Learn, CPU</td><td class="num fail">125 s</td><td class="num">88.02%%</td></tr>
+    <tr><td>PyTorch, CPU</td><td class="num">14 s</td><td class="num">88.84%%</td></tr>
+    <tr><td class="fix">PyTorch, MPS</td><td class="num hit">14 s</td><td class="num">89.24%%</td></tr>
   </table>
-  <p class="lead fix">«f1:l12_speedup_vs_sklearn»&times; faster, for the same
+  <p class="lead fix">9.1&times; faster, for the same
   model.</p>
   <p class="fail small">Look at rows two and three. The accelerator bought
-  <strong>«f2:l12_speedup_cpu_vs_mps»&times;</strong> &mdash; that is, nothing.
+  <strong>1.00&times;</strong> &mdash; that is, nothing.
   All of the speed-up is the framework, none of it is the device. Two slides
   from now we find out why, and it is not a disappointment.</p>
   <aside class="notes">Do not skip past the null result. A room that has been
@@ -509,7 +509,7 @@
 
 <!-- 29 -->
 <section data-menu-title="Why the framework helps">
-  <h2>Where the «f1:l12_speedup_vs_sklearn»&times; came from</h2>
+  <h2>Where the 9.1&times; came from</h2>
   <p>Not from the device. From how the arithmetic is dispatched.</p>
   <ul class="tight small">
     <li>Scikit-Learn's MLP is written for clarity and generality, in NumPy, with
@@ -518,8 +518,8 @@
         the tensors in one layout throughout</li>
   </ul>
   <p class="small">Same architecture, same optimiser, same epochs, same
-  arithmetic &mdash; and «f0:l12_sk_seconds» seconds against
-  «f0:l12_pt_cpu_seconds», <strong>both on the CPU</strong>.</p>
+  arithmetic &mdash; and 125 seconds against
+  14, <strong>both on the CPU</strong>.</p>
 </section>
 
 <!-- 29b -->
@@ -528,7 +528,7 @@
   <p>A forward pass is $\phi(\mathbf{X}\mathbf{W} + \mathbf{b})$, repeated, and
   a GPU is a machine for large matrix products and very little else.</p>
   <p class="lead">Ours are not large.</p>
-  <p>«int:l11_n_params» parameters and a batch of «str:l11_batch» is a matrix
+  <p>266,610 parameters and a batch of 128 is a matrix
   product that finishes before the cost of dispatching it has been paid. So we
   measured where the crossover is: same code, same data, widening the layers.</p>
 </section>
@@ -549,14 +549,14 @@
 <section data-menu-title="Crossover measured">
   <h2>The crossover, measured</h2>
   <table>
-    <tr><th>Hidden layers</th><th class="num">Parameters</th><th class="num">CPU</th><th class="num">«upper:device»</th><th class="num">Ratio</th></tr>
-    <tr><td>100</td><td class="num">«int:l12_crossover.rows.0.n_params»</td><td class="num">«f2:l12_crossover.rows.0.cpu_s» s</td><td class="num">«f2:l12_crossover.rows.0.dev_s» s</td><td class="num fail">«f2:l12_crossover.rows.0.ratio»&times;</td></tr>
-    <tr><td>300, 100</td><td class="num">«int:l12_crossover.rows.1.n_params»</td><td class="num">«f2:l12_crossover.rows.1.cpu_s» s</td><td class="num">«f2:l12_crossover.rows.1.dev_s» s</td><td class="num fail">«f2:l12_crossover.rows.1.ratio»&times;</td></tr>
-    <tr><td>1000, 1000</td><td class="num">«int:l12_crossover.rows.2.n_params»</td><td class="num">«f2:l12_crossover.rows.2.cpu_s» s</td><td class="num">«f2:l12_crossover.rows.2.dev_s» s</td><td class="num hit">«f2:l12_crossover.rows.2.ratio»&times;</td></tr>
-    <tr><td>2000, 2000</td><td class="num">«int:l12_crossover.rows.3.n_params»</td><td class="num">«f2:l12_crossover.rows.3.cpu_s» s</td><td class="num">«f2:l12_crossover.rows.3.dev_s» s</td><td class="num hit">«f2:l12_crossover.rows.3.ratio»&times;</td></tr>
+    <tr><th>Hidden layers</th><th class="num">Parameters</th><th class="num">CPU</th><th class="num">MPS</th><th class="num">Ratio</th></tr>
+    <tr><td>100</td><td class="num">79,510</td><td class="num">0.13 s</td><td class="num">0.45 s</td><td class="num fail">0.28&times;</td></tr>
+    <tr><td>300, 100</td><td class="num">266,610</td><td class="num">0.21 s</td><td class="num">0.25 s</td><td class="num fail">0.84&times;</td></tr>
+    <tr><td>1000, 1000</td><td class="num">1,796,010</td><td class="num">0.62 s</td><td class="num">0.28 s</td><td class="num hit">2.22&times;</td></tr>
+    <tr><td>2000, 2000</td><td class="num">5,592,010</td><td class="num">1.03 s</td><td class="num">0.43 s</td><td class="num hit">2.40&times;</td></tr>
   </table>
-  <p class="small">«str:l12_crossover.epochs» epochs on
-  «int:l12_crossover.n_fit» images, batch «str:l12_crossover.batch», identical
+  <p class="small">2 epochs on
+  12,000 images, batch 128, identical
   code on both devices. Measured on an Apple MPS backend; a Colab T4 has a
   different crossover, in the same place in the argument.</p>
   <div class="panel">
@@ -583,7 +583,7 @@ keyword argument 'loss'
 <!-- 31 -->
 <section data-menu-title="Wall 3 measured">
   <h2>Wall 3 &middot; nothing is instrumented</h2>
-  <p>Backpropagation computed «int:l11_n_params» partial derivatives per batch
+  <p>Backpropagation computed 266,610 partial derivatives per batch
   and discarded every one.</p>
   <div class="panel panel-fail">
     <span class="panel-title">The lecture that needs them</span>
@@ -776,8 +776,8 @@ for epoch in range(EPOCHS):
   <h2>Run it</h2>
   <table>
     <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
-    <tr><td>Scikit-Learn, CPU</td><td class="num">«pct2:l12_sk_test_acc»%</td><td class="num">«f0:l12_sk_seconds» s</td></tr>
-    <tr><td class="fix">PyTorch, «upper:device»</td><td class="num hit">«pct2:l12_pt_dev_test_acc»%</td><td class="num hit">«f0:l12_pt_dev_seconds» s</td></tr>
+    <tr><td>Scikit-Learn, CPU</td><td class="num">88.02%%</td><td class="num">125 s</td></tr>
+    <tr><td class="fix">PyTorch, MPS</td><td class="num hit">89.24%%</td><td class="num hit">14 s</td></tr>
   </table>
   <p class="lead">The accuracies agree, as they must.</p>
   <p class="small">Same architecture, same optimiser, same learning rate, same
@@ -856,12 +856,12 @@ after zero_grad():        |grad| = 0.0000
   <h2>The cost of the missing <code>zero_grad()</code></h2>
   <table>
     <tr><th></th><th class="num">Final training loss</th><th class="num">Validation accuracy</th></tr>
-    <tr><td>With <code>opt.zero_grad()</code></td><td class="num">«f4:l12_zero_grad.with_final_loss»</td><td class="num hit">«pct2:l12_zero_grad.with_val_acc»%</td></tr>
-    <tr><td class="fail">Without it</td><td class="num fail">«f4:l12_zero_grad.without_final_loss»</td><td class="num fail">«pct2:l12_zero_grad.without_val_acc»%</td></tr>
+    <tr><td>With <code>opt.zero_grad()</code></td><td class="num">0.2574</td><td class="num hit">87.94%%</td></tr>
+    <tr><td class="fail">Without it</td><td class="num fail">2.2933</td><td class="num fail">11.20%%</td></tr>
   </table>
-  <p class="big-num bad">«f1:l12_zero_grad.acc_cost_pts» points</p>
-  <p class="small">«str:l12_zero_grad.epochs» epochs on
-  «int:l12_zero_grad.n_fit» images, identical seeds, identical everything else.</p>
+  <p class="big-num bad">76.7 points</p>
+  <p class="small">12 epochs on
+  20,000 images, identical seeds, identical everything else.</p>
 </section>
 
 <!-- 47 -->
@@ -922,21 +922,21 @@ print(f"test accuracy {acc:.4f}")
   <h2>The cost of the missing <code>model.eval()</code></h2>
   <table>
     <tr><th>Evaluation mode</th><th class="num">Test accuracy</th></tr>
-    <tr><td class="fix"><code>model.eval()</code></td><td class="num hit">«pct2:l12_eval_mode.eval_acc»%</td></tr>
-    <tr><td class="fail"><code>model.train()</code>, mean of «str:l12_eval_mode.repeats» calls</td><td class="num fail">«pct2:l12_eval_mode.train_mode_acc_mean»%</td></tr>
-    <tr><td>lowest of those «str:l12_eval_mode.repeats»</td><td class="num">«pct2:l12_eval_mode.train_mode_acc_min»%</td></tr>
-    <tr><td>highest of those «str:l12_eval_mode.repeats»</td><td class="num">«pct2:l12_eval_mode.train_mode_acc_max»%</td></tr>
+    <tr><td class="fix"><code>model.eval()</code></td><td class="num hit">86.77%%</td></tr>
+    <tr><td class="fail"><code>model.train()</code>, mean of 10 calls</td><td class="num fail">86.26%%</td></tr>
+    <tr><td>lowest of those 10</td><td class="num">86.06%%</td></tr>
+    <tr><td>highest of those 10</td><td class="num">86.68%%</td></tr>
   </table>
-  <p class="big-num bad">«f2:l12_eval_mode.cost_pts» points</p>
-  <p class="small">Dropout «g:l12_eval_mode.dropout», measured on
-  «int:l11_n_test» test images.</p>
+  <p class="big-num bad">0.51 points</p>
+  <p class="small">Dropout 0.2, measured on
+  10,000 test images.</p>
 </section>
 
 <!-- 51 -->
 <section data-menu-title="The tell">
   <h2>The tell is the spread, not the mean</h2>
-  <p class="lead">«f2:l12_eval_mode.train_mode_spread_pts» accuracy points
-  across «str:l12_eval_mode.repeats» identical calls.</p>
+  <p class="lead">0.62 accuracy points
+  across 10 identical calls.</p>
   <div class="panel panel-fix">
     <span class="panel-title">The reviewer question this generates</span>
     A deterministic function of fixed weights and fixed data returns the same
@@ -955,7 +955,7 @@ print(f"test accuracy {acc:.4f}")
     <tr><td>Raises?</td><td class="num">no</td><td class="num">no</td></tr>
     <tr><td>Warns?</td><td class="num">no</td><td class="num">no</td></tr>
     <tr><td>Produces a plausible number?</td><td class="num fail">yes</td><td class="num fail">yes</td></tr>
-    <tr><td>Cost, measured today</td><td class="num fail">«f1:l12_zero_grad.acc_cost_pts» points</td><td class="num fail">«f2:l12_eval_mode.cost_pts» points</td></tr>
+    <tr><td>Cost, measured today</td><td class="num fail">76.7 points</td><td class="num fail">0.51 points</td></tr>
     <tr><td>Caught by</td><td>reading the loop</td><td>running it twice</td></tr>
   </table>
   <p class="small">Both are one line. Both survive a code review that is looking
@@ -987,9 +987,9 @@ train_dl = DataLoader(TensorDataset(X_fit, y_fit),
 <!-- 54 -->
 <section data-menu-title="The short last batch">
   <h2>The last batch is short</h2>
-  <p>«int:l11_n_test» test images in batches of 384 gives
-  «str:l12_batch_mean.n_batches» batches, the last containing
-  «str:l12_batch_mean.last_batch_size».</p>
+  <p>10,000 test images in batches of 384 gives
+  27 batches, the last containing
+  16.</p>
   <div class="panel panel-fail">
     <span class="panel-title">Which makes this wrong</span>
     <code>np.mean([acc(b) for b in batches])</code> weights the short batch
@@ -1005,15 +1005,15 @@ train_dl = DataLoader(TensorDataset(X_fit, y_fit),
   <h2>Averaging the metric per batch, measured</h2>
   <table>
     <tr><th>How the accuracy was aggregated</th><th class="num">Value</th></tr>
-    <tr><td class="fix">Counted over the whole set</td><td class="num hit">«pct3:l12_batch_mean.over_the_set»%</td></tr>
-    <tr><td class="fail">Mean of the per-batch accuracies</td><td class="num fail">«pct3:l12_batch_mean.mean_of_batches»%</td></tr>
+    <tr><td class="fix">Counted over the whole set</td><td class="num hit">89.240%%</td></tr>
+    <tr><td class="fail">Mean of the per-batch accuracies</td><td class="num fail">89.622%%</td></tr>
   </table>
-  <p class="lead">«f3:l12_batch_mean.bias_pts» accuracy points.</p>
+  <p class="lead">0.382 accuracy points.</p>
   <p class="small">Small &mdash; <em>here</em>. It is small because the last
-  batch is «str:l12_batch_mean.last_batch_size» of
-  «str:l12_batch_mean.batch», and because the model is no better or worse on it.
+  batch is 16 of
+  384, and because the model is no better or worse on it.
   Change either and it grows: with batch size 3,000 on
-  «int:l11_n_test» images the short batch carries a quarter of the weight
+  10,000 images the short batch carries a quarter of the weight
   instead of a twenty-sixth.</p>
 </section>
 
@@ -1103,7 +1103,7 @@ def objective(trial):
     return validation_accuracy(train(lr=lr, dropout=drop, epochs=6))
 
 study = optuna.create_study(direction="maximize")
-study.optimize(objective, n_trials=«str:l12_optuna.n_trials»)
+study.optimize(objective, n_trials=12)
   </code></pre>
   <div class="panel">
     <span class="panel-title">Not examinable</span>
@@ -1114,14 +1114,14 @@ study.optimize(objective, n_trials=«str:l12_optuna.n_trials»)
 
 <!-- FIG -->
 <section class="figslide" data-menu-title="◆ Optuna">
-  <h2>«str:l12_optuna.n_trials» trials</h2>
+  <h2>12 trials</h2>
   <figure class="fig fig-wide">
     <img src="../assets/figures/l12-optuna.svg"
          alt="Scatter of validation accuracy per Optuna trial with a running best-so-far line rising in steps.">
   </figure>
-  <p class="takeaway">Best «pct2:l12_optuna.best_value»% at learning rate
-  «f5:l12_optuna.best_lr» and dropout «g:l12_optuna.best_dropout» &mdash; on
-  «str:l12_optuna.epochs»-epoch trials, so this is a search over
+  <p class="takeaway">Best 86.90%% at learning rate
+  0.00462 and dropout 0.1 &mdash; on
+  6-epoch trials, so this is a search over
   configurations, not a final model.</p>
 </section>
 
@@ -1134,7 +1134,7 @@ torch.save(model.state_dict(), "sorter.pt")          # the tensors
 fresh = build_model().to(device)
 fresh.load_state_dict(torch.load("sorter.pt", weights_only=True))
   </code></pre>
-  <p>«f0:l12_checkpoint_kb» KB &mdash; «int:l11_n_params» float32 numbers and
+  <p>1041 KB &mdash; 266,610 float32 numbers and
   their names.</p>
   <div class="panel panel-fail">
     <span class="panel-title">What not to do</span>
@@ -1175,10 +1175,10 @@ assert accuracy(model, X_test, y_test) == accuracy(fresh, X_test, y_test)
   <h2>Where we ended</h2>
   <table>
     <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
-    <tr><td>Always one class</td><td class="num">«pct1:l11_baseline_majority_acc»%</td><td class="num">&mdash;</td></tr>
-    <tr><td>Scikit-Learn MLP, CPU</td><td class="num">«pct2:l12_sk_test_acc»%</td><td class="num fail">«f0:l12_sk_seconds» s</td></tr>
-    <tr><td class="fix">PyTorch, same model, «upper:device»</td><td class="num hit">«pct2:l12_pt_dev_test_acc»%</td><td class="num hit">«f0:l12_pt_dev_seconds» s</td></tr>
-    <tr><td class="fail">The same code without <code>zero_grad()</code></td><td class="num fail">«pct2:l12_zero_grad.without_val_acc»% (validation)</td><td class="num">unchanged</td></tr>
+    <tr><td>Always one class</td><td class="num">10.0%%</td><td class="num">&mdash;</td></tr>
+    <tr><td>Scikit-Learn MLP, CPU</td><td class="num">88.02%%</td><td class="num fail">125 s</td></tr>
+    <tr><td class="fix">PyTorch, same model, MPS</td><td class="num hit">89.24%%</td><td class="num hit">14 s</td></tr>
+    <tr><td class="fail">The same code without <code>zero_grad()</code></td><td class="num fail">11.20%% (validation)</td><td class="num">unchanged</td></tr>
   </table>
   <p class="small">The last row is the one to remember. It ran, it finished, and
   it reported a number.</p>
@@ -1188,9 +1188,9 @@ assert accuracy(model, X_test, y_test) == accuracy(fresh, X_test, y_test)
 <section data-menu-title="Is that good">
   <h2>Is that good?</h2>
   <p class="small">On the operator's own criterion: right
-  «pct1:l12_pt_dev_test_acc»% of the time overall, but only
-  «pct1:l11_confusion.worst_recall»% on
-  «str:l11_confusion.worst_class», with almost all of those errors going to
+  89.2%% of the time overall, but only
+  74.1%% on
+  Shirt, with almost all of those errors going to
   three visually similar queues.</p>
   <div class="panel panel-fix">
     <span class="panel-title">What a defensible report says</span>
@@ -1236,7 +1236,7 @@ assert accuracy(model, X_test, y_test) == accuracy(fresh, X_test, y_test)
     </div>
     <div>
       <div class="panel panel-fix small">
-        &ldquo;This loop reports «pct1:l12_pt_dev_test_acc»% accuracy. Assume
+        &ldquo;This loop reports 89.2%% accuracy. Assume
         one line is missing. List every line whose deletion would leave the code
         running and the number plausible, and say what each deletion would do to
         the loss curve.&rdquo;
@@ -1256,9 +1256,9 @@ assert accuracy(model, X_test, y_test) == accuracy(fresh, X_test, y_test)
     <tr><td>Evaluating on training data</td><td>Lecture 2</td><td class="num">an RMSE of zero</td></tr>
     <tr><td>Accuracy under class imbalance</td><td>Lecture 4</td><td class="num">a useless model above 90%</td></tr>
     <tr><td>Hyperparameters chosen on the test set</td><td>Lectures 2, 6</td><td class="num">an optimistic report</td></tr>
-    <tr><td class="fail">Missing <code>optimizer.zero_grad()</code></td><td class="fail">today</td><td class="num fail">«f1:l12_zero_grad.acc_cost_pts» points</td></tr>
-    <tr><td class="fail">Missing <code>model.eval()</code></td><td class="fail">today</td><td class="num fail">«f2:l12_eval_mode.cost_pts» points</td></tr>
-    <tr><td class="fail">Metric averaged per batch</td><td class="fail">today</td><td class="num fail">«f3:l12_batch_mean.bias_pts» points</td></tr>
+    <tr><td class="fail">Missing <code>optimizer.zero_grad()</code></td><td class="fail">today</td><td class="num fail">76.7 points</td></tr>
+    <tr><td class="fail">Missing <code>model.eval()</code></td><td class="fail">today</td><td class="num fail">0.51 points</td></tr>
+    <tr><td class="fail">Metric averaged per batch</td><td class="fail">today</td><td class="num fail">0.382 points</td></tr>
   </table>
   <p class="small muted">Every one of them ran to completion and printed a
   plausible number.</p>

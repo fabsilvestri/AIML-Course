@@ -14,6 +14,11 @@ Checks
 3. Third-party notebooks. The course uses no notebook it did not write.
 4. Referenced figures that do not exist.
 5. Decks under the 70-slide minimum.
+6. Leftover drafting placeholders. Three different templating syntaxes have been
+   used by different authors; 432 tokens once reached the repository unreplaced,
+   and would have shown as literal `@@l09_best_k@@` or `«int:l11_n_params»` on a
+   projector. Whatever syntax you draft in, `tools/substitute.py` must resolve it
+   before the deck ships.
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PAGES = sorted(ROOT.glob("slides/*.html")) + [ROOT / "index.html"]
 
+PLACEHOLDERS = re.compile(r"@@[^@\s]{1,80}?@@|«[^»\n]{1,80}?»")
 WEEKDAYS = re.compile(r"\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|"
                       r"Sunday|yesterday|tomorrow)\b", re.I)
 THIRD_PARTY_NB = re.compile(r"homl\.info|github\.com/ageron/handson", re.I)
@@ -63,8 +69,14 @@ def eaten_currency(run: str) -> str | None:
         if "\\" in content:
             continue
         thousands = re.search(r"\d{1,3}(,\d{3})+", content)
-        word = re.search(r"[A-Za-z]{2,}", content)
+        word = re.search(r"[A-Za-z]{3,}", content)
         dangling = content != content.strip()
+        # A relational or superscript operator means maths, whatever else is
+        # there: "$2wx = $" is an expression, not $2 followed by prose. Dashes
+        # and parentheses are excluded — they are common in prose.
+        operator = re.search(r"[=^_<>≤≥≠]", content)
+        if operator:
+            continue
         if thousands or word or dangling:
             return content
     return None
@@ -85,7 +97,12 @@ def check(path: Path) -> list[str]:
             out.append(f"{rel}:{line}: names a weekday ({m.group()}) — "
                        f"use 'in the next lecture' / 'in two lectures'")
 
-    # 3. third-party notebooks
+    # 3. leftover placeholders
+    for m in PLACEHOLDERS.finditer(src):
+        out.append(f"{rel}:{src[:m.start()].count(chr(10)) + 1}: unsubstituted "
+                   f"placeholder {m.group()} — run tools/substitute.py")
+
+    # 3b. third-party notebooks
     for m in THIRD_PARTY_NB.finditer(src):
         out.append(f"{rel}:{src[:m.start()].count(chr(10)) + 1}: "
                    f"third-party notebook reference ({m.group()})")

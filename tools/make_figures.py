@@ -1238,7 +1238,7 @@ def island_check(h, sp):
 
 # Mirrors .fig-wide / .fig-tall in assets/css/custom.css. If those caps change,
 # change these.
-CANVAS_W, CAP_WIDE, CAP_TALL, FLOOR_PX = 1280, 420, 540, 15.0
+CANVAS_W, CAP_WIDE, CAP_TALL, FLOOR_PX = 1280, 420, 528, 15.0
 
 
 def _natural_css_px(path: Path) -> tuple[float, float]:
