@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 12 — Rebuilding it in PyTorch</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- ==================================================================== -->
+<!-- OPENING                                                              -->
+<!-- ==================================================================== -->
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Rebuilding it in PyTorch</h1>
+  <p class="subtitle">Application 6 &middot; Fashion MNIST</p>
+  <p><span class="badge badge-fix">Lecture 12 &middot; Fix</span>
+     <span class="badge badge-math">Thread 6</span>
+     <span class="badge badge-ch">Géron Ch. 9&ndash;10</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Ask for the committed sheets before starting. Nobody
+  proceeds without one on the desk. Also confirm that everyone has a GPU runtime
+  open before the rebuild block, not during it.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we left off">
+  <h2>Where we left off</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
+    <tr><td>Always predict one class</td><td class="num">«pct1:l11_baseline_majority_acc»%</td><td class="num">&mdash;</td></tr>
+    <tr><td>MLP, «int:l11_n_params» parameters, «str:l11_epochs» epochs</td><td class="num hit">«pct2:l11_sk.test_acc»%</td><td class="num fail">«f0:l11_sk.seconds» s</td></tr>
+  </table>
+  <p class="lead">The accuracy is fine. Everything else is the problem.</p>
+  <p class="small muted">Four walls, and the same wall underneath all four: the
+  training loop was written for you.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li><span class="badge badge-math">Thread 6</span> Backpropagation as
+        reverse-mode automatic differentiation
+        <span class="muted small">(20 min)</span></li>
+    <li>Diagnose &mdash; score the commitment, measure the walls
+        <span class="muted small">(20 min)</span></li>
+    <li>Rebuild in PyTorch, and meet two bugs that never raise
+        <span class="muted small">(35 min)</span></li>
+    <li>Re-measure and red-team <span class="muted small">(15 min)</span></li>
+  </ol>
+</section>
+
+<!-- ==================================================================== -->
+<!-- MATHEMATICAL THREAD 6 (20 min)                                       -->
+<!-- ==================================================================== -->
+
+<!-- 4 -->
+<section class="divider" data-menu-title="◆ Thread 6">
+  <p class="kicker">Mathematical thread 6</p>
+  <h1>Backpropagation as<br>reverse-mode autodiff</h1>
+  <p class="clock">20 minutes</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="The question">
+  <h2>The question</h2>
+  <p class="lead">You called <code>clf.fit()</code>.</p>
+  <p class="lead">It computed «int:l11_n_params» partial derivatives, on every
+  batch, «str:l11_epochs» times over. <em>How?</em></p>
+  <div class="panel panel-math">
+    <span class="panel-title">Why you need the answer</span>
+    Because the cost of that computation is what decides whether training a
+    network is possible at all &mdash; and the reason it is possible is a
+    property of the <em>direction</em> in which the chain rule is applied.
+  </div>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="Four ways">
+  <h2>Four ways to get a derivative</h2>
+  <table>
+    <tr><th>Method</th><th>Cost for $P$ parameters</th><th>Exact?</th></tr>
+    <tr><td>By hand</td><td>your afternoon, per architecture</td><td>yes, if you are careful</td></tr>
+    <tr><td>Finite differences</td><td>$P+1$ evaluations</td><td class="fail">no &mdash; truncation and cancellation</td></tr>
+    <tr><td>Symbolic</td><td>expression blow-up</td><td>yes</td></tr>
+    <tr><td class="fix">Automatic differentiation</td><td class="fix">see below</td><td class="fix">to machine precision</td></tr>
+  </table>
+  <p class="small">Automatic differentiation is neither symbolic nor numerical.
+  It differentiates the <em>program</em>, operation by operation, using the
+  chain rule and nothing else.</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="The chain rule">
+  <h2>The chain rule, as a product of Jacobians</h2>
+  <p>A network is a composition. Write the loss as</p>
+  <div class="eqn-box">
+    $$L \;=\; f_3\!\left(f_2\!\left(f_1(\boldsymbol\theta)\right)\right)
+      \qquad\Longrightarrow\qquad
+      \frac{\partial L}{\partial \boldsymbol\theta} \;=\; J_3\,J_2\,J_1$$
+  </div>
+  <p class="small">where $J_i$ is the Jacobian of $f_i$ evaluated at the point
+  the forward pass reached. Every layer contributes one factor.</p>
+  <p class="lead fix">Matrix multiplication is associative.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="Two bracketings">
+  <h2>Two bracketings, two algorithms</h2>
+  <div class="eqn-box">
+    $$\underbrace{\left(J_3 J_2\right) J_1}_{\text{reverse mode}}
+      \;=\;
+      \underbrace{J_3 \left(J_2 J_1\right)}_{\text{forward mode}}$$
+  </div>
+  <ul class="tight small">
+    <li><strong>Reverse</strong> &mdash; start at the output and work back
+        toward the parameters</li>
+    <li><strong>Forward</strong> &mdash; start at the parameters and work
+        forward toward the output</li>
+  </ul>
+  <p class="fail">Same number. Wildly different cost.</p>
+  <aside class="notes">Pause here. The associativity is the entire mathematical
+  content of the thread; everything after it is bookkeeping and measurement.</aside>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="Forward mode">
+  <h2>Forward mode &middot; propagate a tangent</h2>
+  <p>Pick a direction $\mathbf{v}$ in <em>input</em> space. Carry
+  $\dot{u} = \partial u / \partial v$ alongside every intermediate value $u$:</p>
+  <div class="eqn-box">
+    $$\dot{u}_{\text{out}} \;=\; \frac{\partial f}{\partial u_{\text{in}}}\,
+      \dot{u}_{\text{in}}$$
+  </div>
+  <ul class="tight small">
+    <li>One sweep gives the derivative of <strong>every output</strong> with
+        respect to <strong>one input direction</strong></li>
+    <li>Nothing needs to be stored: the tangent travels with the value</li>
+  </ul>
+  <p class="small">To get the full gradient with respect to $n$ inputs you run
+  it $n$ times, once per coordinate direction.</p>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="Reverse mode">
+  <h2>Reverse mode &middot; propagate an adjoint</h2>
+  <p>Pick a direction in <em>output</em> space &mdash; for a scalar loss there
+  is only one, and it is 1. Carry
+  $\bar{u} = \partial L / \partial u$ backwards:</p>
+  <div class="eqn-box">
+    $$\bar{u}_{\text{in}} \;=\; \bar{u}_{\text{out}}\,
+      \frac{\partial f}{\partial u_{\text{in}}}$$
+  </div>
+  <ul class="tight small">
+    <li>One sweep gives the derivative of <strong>one output</strong> with
+        respect to <strong>every input</strong></li>
+    <li>The forward values must be kept, because the Jacobians are evaluated at
+        them &mdash; that is the memory cost</li>
+  </ul>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="The cost table">
+  <h2>The cost, in one table</h2>
+  <table>
+    <tr><th>Mode</th><th class="num">Sweeps needed</th><th>Cheap when</th></tr>
+    <tr><td>Forward</td><td class="num">$n$ &mdash; one per <strong>input</strong></td><td>few inputs, many outputs</td></tr>
+    <tr><td class="fix">Reverse</td><td class="num fix">$m$ &mdash; one per <strong>output</strong></td><td class="fix">many inputs, few outputs</td></tr>
+  </table>
+  <p>Each sweep costs a small constant times one forward evaluation. The
+  constant is around 2 to 4 and does not depend on $n$ or $m$.</p>
+  <p class="small muted">That constant is the reason the backward pass costs
+  about what the forward pass costs, no matter how many parameters there are.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="A worked example">
+  <h2>A worked example, small enough to check</h2>
+  <div class="eqn-box">
+    $$L = w^2, \qquad w = xy + \sin x, \qquad \text{at } x = 2,\ y = 3$$
+  </div>
+  <p>Two inputs, one output. Differentiate it by hand first:</p>
+  <div class="eqn-box">
+    $$\frac{\partial L}{\partial x} = 2w\left(y + \cos x\right),
+      \qquad
+      \frac{\partial L}{\partial y} = 2wx$$
+  </div>
+  <p class="small muted">Everything on the next four slides is this function.
+  Small enough to hold in your head; general enough that nothing about the
+  argument changes at «int:l11_n_params» parameters.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The computational graph">
+  <h2>The whole thread, in one picture</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/d-compgraph.svg"
+         alt="A computational graph for L equals w squared with w equal to x times y plus sine x: forward edges in blue carrying values left to right, dashed purple reverse edges carrying adjoints right to left, and the two contributions to the derivative with respect to x summed in a box.">
+  </figure>
+  <p class="takeaway">One sweep left to right fills in the values. One sweep
+  right to left fills in every derivative.</p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="Forward sweep">
+  <h2>The forward sweep &middot; values</h2>
+  <table>
+    <tr><th>Node</th><th>Expression</th><th class="num">Value</th></tr>
+    <tr><td>$x$</td><td>input</td><td class="num">«f1:l12_autodiff.x»</td></tr>
+    <tr><td>$y$</td><td>input</td><td class="num">«f1:l12_autodiff.y»</td></tr>
+    <tr><td>$u$</td><td>$x \cdot y$</td><td class="num">«f4:l12_autodiff.prod»</td></tr>
+    <tr><td>$s$</td><td>$\sin x$</td><td class="num">«f4:l12_autodiff.sin_x»</td></tr>
+    <tr><td>$w$</td><td>$u + s$</td><td class="num">«f4:l12_autodiff.w»</td></tr>
+    <tr><td class="fix">$L$</td><td class="fix">$w^2$</td><td class="num hit">«f4:l12_autodiff.L»</td></tr>
+  </table>
+  <p class="small">Six nodes, evaluated once each, in topological order. This is
+  exactly what running the model does &mdash; and PyTorch records the graph
+  while it happens.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Reverse sweep">
+  <h2>The reverse sweep &middot; adjoints</h2>
+  <table>
+    <tr><th>Adjoint</th><th>Computed as</th><th class="num">Value</th></tr>
+    <tr><td>$\partial L/\partial L$</td><td>the seed</td><td class="num">1</td></tr>
+    <tr><td>$\partial L/\partial w$</td><td>$2w$</td><td class="num">«f4:l12_autodiff.dL_dw»</td></tr>
+    <tr><td>$\partial L/\partial u$</td><td>$(\partial L/\partial w) \cdot 1$</td><td class="num">«f4:l12_autodiff.dL_dw»</td></tr>
+    <tr><td>$\partial L/\partial s$</td><td>$(\partial L/\partial w) \cdot 1$</td><td class="num">«f4:l12_autodiff.dL_dw»</td></tr>
+    <tr><td class="fix">$\partial L/\partial y$</td><td class="fix">$(\partial L/\partial u)\, x$</td><td class="num hit">«f4:l12_autodiff.dL_dy»</td></tr>
+    <tr><td class="fix">$\partial L/\partial x$</td><td class="fix">$(\partial L/\partial u)\, y + (\partial L/\partial s)\cos x$</td><td class="num hit">«f4:l12_autodiff.dL_dx»</td></tr>
+  </table>
+  <p class="small">Six lines, one pass, both derivatives.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="The fan-in">
+  <h2>The only bookkeeping in the whole method</h2>
+  <p class="lead">$x$ is used <strong>twice</strong> &mdash; once by the product
+  and once by the sine.</p>
+  <div class="eqn-box">
+    $$\frac{\partial L}{\partial x}
+      \;=\; \underbrace{41.4557}_{\text{via } \times}
+          \;\underbrace{-\;5.7505}_{\text{via } \sin}
+      \;=\; «f4:l12_autodiff.dL_dx»$$
+  </div>
+  <p>A node's adjoint is the <strong>sum</strong> of the contributions along its
+  outgoing edges.</p>
+  <p class="small muted">That is it. Reverse-mode autodiff is a topological
+  sort, a table of local derivatives, and this sum. There is no other idea in
+  it.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="Check it">
+  <h2>Check it against the library</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; x = torch.tensor(2.0, requires_grad=True)
+&gt;&gt;&gt; y = torch.tensor(3.0, requires_grad=True)
+&gt;&gt;&gt; L = (x * y + torch.sin(x)) ** 2
+&gt;&gt;&gt; L.backward()
+&gt;&gt;&gt; x.grad.item(), y.grad.item()
+(35.705345, 27.637190)
+  </code></pre>
+  <p>By hand: $2w(y + \cos x) = $ «f4:l12_autodiff.hand_dL_dx» and $2wx = $
+  «f4:l12_autodiff.hand_dL_dy».</p>
+  <p class="small">They agree to machine precision. A cheap, decisive check that
+  the library did what the mathematics says &mdash; and the same habit as
+  Lecture 2's orthogonality test.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="The decisive argument">
+  <h2>The argument that settles it</h2>
+  <div class="panel panel-math">
+    <span class="panel-title">Count the inputs and the outputs</span>
+    Training a network differentiates a function from
+    <strong>«int:l11_n_params» parameters</strong> to
+    <strong>one scalar loss</strong>.
+  </div>
+  <table>
+    <tr><th>Mode</th><th class="num">Sweeps</th></tr>
+    <tr><td>Forward &mdash; one per input</td><td class="num fail">«int:l11_n_params»</td></tr>
+    <tr><td class="fix">Reverse &mdash; one per output</td><td class="num hit">1</td></tr>
+  </table>
+  <p class="lead fix">Reverse mode is not a good choice. It is the only viable
+  one, by a factor of «int:l11_n_params».</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="Why the loss is a scalar">
+  <h2>Why the loss is one number</h2>
+  <p>Not a convention, and not an accident of notation.</p>
+  <ul class="tight small">
+    <li>Gradient descent needs a <strong>direction of steepest descent</strong>,
+        and that is only defined for a scalar-valued function</li>
+    <li>A vector-valued objective has a Jacobian, not a gradient, and no
+        canonical direction to step in</li>
+  </ul>
+  <div class="panel panel-math">
+    So the shape of the training problem &mdash; many parameters, one number
+    &mdash; is fixed by the optimisation, and that shape is precisely the one
+    reverse mode is cheap for. The two facts are not independent.
+  </div>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="Measure it">
+  <h2>Do not take it on trust &mdash; measure it</h2>
+  <p>Small networks, where forward mode can actually be run to completion. Same
+  loss, same point, both modes.</p>
+  <table>
+    <tr><th class="num">Parameters</th><th class="num">Reverse, whole gradient</th><th class="num">Forward, whole gradient</th><th class="num">Ratio</th></tr>
+    <tr><td class="num">«str:l12_modes.small.0.P»</td><td class="num">«f2:l12_modes.small.0.t_reverse_ms» ms</td><td class="num">«f1:l12_modes.small.0.t_forward_ms» ms</td><td class="num">«f0:l12_modes.small.0.ratio»&times;</td></tr>
+    <tr><td class="num">«str:l12_modes.small.1.P»</td><td class="num">«f2:l12_modes.small.1.t_reverse_ms» ms</td><td class="num">«f1:l12_modes.small.1.t_forward_ms» ms</td><td class="num">«f0:l12_modes.small.1.ratio»&times;</td></tr>
+    <tr><td class="num">«str:l12_modes.small.2.P»</td><td class="num">«f2:l12_modes.small.2.t_reverse_ms» ms</td><td class="num">«f1:l12_modes.small.2.t_forward_ms» ms</td><td class="num">«f0:l12_modes.small.2.ratio»&times;</td></tr>
+    <tr><td class="num">«str:l12_modes.small.3.P»</td><td class="num">«f2:l12_modes.small.3.t_reverse_ms» ms</td><td class="num">«f1:l12_modes.small.3.t_forward_ms» ms</td><td class="num">«f0:l12_modes.small.3.ratio»&times;</td></tr>
+    <tr><td class="num">«str:l12_modes.small.4.P»</td><td class="num">«f2:l12_modes.small.4.t_reverse_ms» ms</td><td class="num">«f1:l12_modes.small.4.t_forward_ms» ms</td><td class="num">«f0:l12_modes.small.4.ratio»&times;</td></tr>
+  </table>
+  <p class="small">The two columns compute the <em>same numbers</em> &mdash;
+  they agree to «g:l12_modes.small.4.max_abs_diff» &mdash; so this is a
+  measurement of cost, not of quality.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Forward vs reverse">
+  <h2>Reverse mode is flat in $P$; forward mode is linear</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l12-fwd-vs-rev.svg"
+         alt="Log-scale line chart of the time to compute a full gradient against the number of parameters: forward mode rises steeply, reverse mode is almost flat.">
+  </figure>
+  <p class="takeaway fail">Extrapolate the red line to «int:l11_n_params»
+  parameters. That is why nobody trains networks in forward mode.</p>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="At full size">
+  <h2>At the size we actually train</h2>
+  <table>
+    <tr><th>Quantity</th><th class="num">Value</th><th>How obtained</th></tr>
+    <tr><td>Parameters</td><td class="num">«int:l12_modes.big.P»</td><td>counted</td></tr>
+    <tr><td>Reverse mode, the whole gradient</td><td class="num hit">«f2:l12_modes.big.t_reverse_ms» ms</td><td>measured</td></tr>
+    <tr><td>Forward mode, one direction</td><td class="num">«f2:l12_modes.big.t_forward_per_pass_ms» ms</td><td>measured</td></tr>
+    <tr><td class="fail">Forward mode, all «int:l12_modes.big.P»</td><td class="num fail">«f1:l12_modes.big.t_forward_projected_min» minutes</td><td class="fail">projected, not run</td></tr>
+  </table>
+  <p class="small">Two measured per-pass costs and one multiplication you can
+  check. We did not run the last row, and the slide says so &mdash; that is the
+  honest form of the claim.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Per batch">
+  <h2>And that is <em>one</em> gradient</h2>
+  <p>The previous lecture's run took «str:l11_epochs» epochs of
+  «str:l11_steps_per_epoch» batches &mdash;
+  «str:l11_total_steps» gradients in total, in
+  «f0:l11_sk.seconds» seconds.</p>
+  <table>
+    <tr><th>The same «str:l11_total_steps» gradients&hellip;</th><th class="num">Projected wall clock</th></tr>
+    <tr><td>in forward mode, at the measured per-pass cost</td><td class="num fail">«f0:l12_modes.big.full_training_days» days</td></tr>
+    <tr><td class="fix">in reverse mode</td><td class="num hit">«f0:l11_sk.seconds» seconds, measured</td></tr>
+  </table>
+  <p class="small">The associativity of matrix multiplication is the only reason
+  this course exists.</p>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="What backprop is">
+  <h2>So: what is backpropagation?</h2>
+  <div class="panel panel-math">
+    <span class="panel-title">In one sentence</span>
+    Reverse-mode automatic differentiation, applied to a neural network, with
+    the seed set to 1 at the loss.
+  </div>
+  <ul class="tight small">
+    <li>It is not specific to neural networks</li>
+    <li>It is not an approximation</li>
+    <li>It is not gradient descent &mdash; it <em>supplies</em> the gradient
+        that descent then uses</li>
+  </ul>
+  <p class="small muted">The 1986 paper's contribution was noticing that this
+  was cheap enough to be practical, not inventing the chain rule.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="The price">
+  <h2>What reverse mode costs</h2>
+  <p class="lead">Memory.</p>
+  <p>Every Jacobian in $J_3 J_2 J_1$ is evaluated at the point the forward pass
+  reached, so every intermediate activation has to be <strong>kept</strong>
+  until the backward pass consumes it.</p>
+  <ul class="tight small">
+    <li>Forward mode stores nothing; reverse mode stores the whole forward
+        trace</li>
+    <li>The trace grows with the batch size and with the depth</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">Where you will meet the bill</span>
+    Lecture 16 computes the RAM of a convolutional network and finds that the
+    activations, not the parameters, are what exhausts the GPU. This is why.
+  </div>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Thread summary">
+  <h2>Thread 6, summarised</h2>
+  <ol class="tight small">
+    <li>The chain rule is a product of Jacobians, and the product can be
+        bracketed from either end</li>
+    <li>Forward mode costs one sweep per <strong>input</strong>; reverse mode
+        costs one sweep per <strong>output</strong></li>
+    <li>Training has millions of inputs and <strong>one</strong> output, so
+        reverse mode is the only viable choice &mdash; by a factor equal to the
+        parameter count</li>
+    <li>The price is memory: the forward trace must be kept</li>
+  </ol>
+  <p class="small muted">Point 3 is the one most treatments never state
+  explicitly. It is the whole reason the field works.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- PART 2 — DIAGNOSE (20 min)                                           -->
+<!-- ==================================================================== -->
+
+<!-- 25 -->
+<section class="divider" data-menu-title="◆ Diagnose">
+  <p class="kicker">Part two</p>
+  <h1>Diagnose</h1>
+  <p class="clock">20 minutes &middot; what the number cost you</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="★ Your numbers">
+  <h2>Compare with your sheet</h2>
+  <div class="commit">
+    <span class="commit-label">From the previous lecture</span>
+    <p class="small" style="text-align:left; line-height:1.8">
+      Accuracy a good sorting machine would need: <span class="blank"></span> %<br>
+      Accuracy I expected from that model: <span class="blank"></span> %<br>
+      Best accuracy I obtained: <span class="blank"></span> %
+    </p>
+  </div>
+  <table>
+    <tr><th>Reality</th><th class="num">Test accuracy</th></tr>
+    <tr><td>Always one class</td><td class="num">«pct1:l11_baseline_majority_acc»%</td></tr>
+    <tr><td>Hand-tuned MLP</td><td class="num hit">«pct2:l11_sk.test_acc»%</td></tr>
+  </table>
+  <p class="small muted">Score them out loud. Most rooms guess too low against
+  the baseline and too high against the state of the art &mdash; and being wrong
+  in both directions at once is worth a minute's discussion.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="The accuracy is fine">
+  <h2>The accuracy is not the bug</h2>
+  <p class="lead">«pct2:l11_sk.test_acc»% against a
+  «pct1:l11_baseline_majority_acc»% baseline is a real result.</p>
+  <p>Unlike Lecture 2, nothing here was measured dishonestly. The split was
+  clean, the validation set was separate, the test set was touched once.</p>
+  <p class="fail lead">The bug is that you cannot do anything else.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Wall 1 measured">
+  <h2>Wall 1 &middot; the clock</h2>
+  <table>
+    <tr><th>Same architecture, same optimiser, same «str:l11_epochs» epochs</th><th class="num">Wall clock</th><th class="num">Test accuracy</th></tr>
+    <tr><td>Scikit-Learn, CPU</td><td class="num fail">«f0:l12_sk_seconds» s</td><td class="num">«pct2:l12_sk_test_acc»%</td></tr>
+    <tr><td>PyTorch, CPU</td><td class="num">«f0:l12_pt_cpu_seconds» s</td><td class="num">«pct2:l12_pt_cpu_test_acc»%</td></tr>
+    <tr><td class="fix">PyTorch, «upper:device»</td><td class="num hit">«f0:l12_pt_dev_seconds» s</td><td class="num">«pct2:l12_pt_dev_test_acc»%</td></tr>
+  </table>
+  <p class="lead fix">«f1:l12_speedup_vs_sklearn»&times; faster, for the same
+  model.</p>
+  <p class="fail small">Look at rows two and three. The accelerator bought
+  <strong>«f2:l12_speedup_cpu_vs_mps»&times;</strong> &mdash; that is, nothing.
+  All of the speed-up is the framework, none of it is the device. Two slides
+  from now we find out why, and it is not a disappointment.</p>
+  <aside class="notes">Do not skip past the null result. A room that has been
+  told for two lectures that Part II needs a GPU has just watched the GPU do
+  nothing, and the explanation is the lesson.</aside>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Wall clock">
+  <h2>The same problem, three times</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l12-walltime.svg"
+         alt="Horizontal bar chart of wall-clock seconds for Scikit-Learn on CPU, PyTorch on CPU and PyTorch on the GPU backend, each labelled with its test accuracy.">
+  </figure>
+  <p class="takeaway">The accuracies are within a point of each other. Only the
+  clock moved &mdash; and only between the first bar and the other two.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Why the framework helps">
+  <h2>Where the «f1:l12_speedup_vs_sklearn»&times; came from</h2>
+  <p>Not from the device. From how the arithmetic is dispatched.</p>
+  <ul class="tight small">
+    <li>Scikit-Learn's MLP is written for clarity and generality, in NumPy, with
+        a Python-level loop over batches</li>
+    <li>PyTorch fuses the same operations into fewer, larger kernels and keeps
+        the tensors in one layout throughout</li>
+  </ul>
+  <p class="small">Same architecture, same optimiser, same epochs, same
+  arithmetic &mdash; and «f0:l12_sk_seconds» seconds against
+  «f0:l12_pt_cpu_seconds», <strong>both on the CPU</strong>.</p>
+</section>
+
+<!-- 29b -->
+<section data-menu-title="When the GPU pays">
+  <h2>So when does the accelerator pay?</h2>
+  <p>A forward pass is $\phi(\mathbf{X}\mathbf{W} + \mathbf{b})$, repeated, and
+  a GPU is a machine for large matrix products and very little else.</p>
+  <p class="lead">Ours are not large.</p>
+  <p>«int:l11_n_params» parameters and a batch of «str:l11_batch» is a matrix
+  product that finishes before the cost of dispatching it has been paid. So we
+  measured where the crossover is: same code, same data, widening the layers.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ When the GPU pays">
+  <h2>The accelerator earns its place at about a million parameters</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l12-device-crossover.svg"
+         alt="Line chart of CPU seconds divided by GPU seconds against parameter count on a log axis, crossing the break-even line of one between 266,610 and 1,796,010 parameters.">
+  </figure>
+  <p class="takeaway fail">At our size the ratio is below 1: the accelerator is
+  <em>slower</em>. It only starts winning once each batch carries enough
+  arithmetic to cover the dispatch.</p>
+</section>
+
+<!-- 29c -->
+<section data-menu-title="Crossover measured">
+  <h2>The crossover, measured</h2>
+  <table>
+    <tr><th>Hidden layers</th><th class="num">Parameters</th><th class="num">CPU</th><th class="num">«upper:device»</th><th class="num">Ratio</th></tr>
+    <tr><td>100</td><td class="num">«int:l12_crossover.rows.0.n_params»</td><td class="num">«f2:l12_crossover.rows.0.cpu_s» s</td><td class="num">«f2:l12_crossover.rows.0.dev_s» s</td><td class="num fail">«f2:l12_crossover.rows.0.ratio»&times;</td></tr>
+    <tr><td>300, 100</td><td class="num">«int:l12_crossover.rows.1.n_params»</td><td class="num">«f2:l12_crossover.rows.1.cpu_s» s</td><td class="num">«f2:l12_crossover.rows.1.dev_s» s</td><td class="num fail">«f2:l12_crossover.rows.1.ratio»&times;</td></tr>
+    <tr><td>1000, 1000</td><td class="num">«int:l12_crossover.rows.2.n_params»</td><td class="num">«f2:l12_crossover.rows.2.cpu_s» s</td><td class="num">«f2:l12_crossover.rows.2.dev_s» s</td><td class="num hit">«f2:l12_crossover.rows.2.ratio»&times;</td></tr>
+    <tr><td>2000, 2000</td><td class="num">«int:l12_crossover.rows.3.n_params»</td><td class="num">«f2:l12_crossover.rows.3.cpu_s» s</td><td class="num">«f2:l12_crossover.rows.3.dev_s» s</td><td class="num hit">«f2:l12_crossover.rows.3.ratio»&times;</td></tr>
+  </table>
+  <p class="small">«str:l12_crossover.epochs» epochs on
+  «int:l12_crossover.n_fit» images, batch «str:l12_crossover.batch», identical
+  code on both devices. Measured on an Apple MPS backend; a Colab T4 has a
+  different crossover, in the same place in the argument.</p>
+  <div class="panel">
+    <span class="panel-title">The honest version of &ldquo;Part II needs a GPU&rdquo;</span>
+    It does &mdash; from Lecture 13 onwards, where the networks are large enough
+    for the device to matter. Today's is not, and pretending otherwise would be
+    exactly the sort of unmeasured claim this course exists to stop.
+  </div>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Wall 2 measured">
+  <h2>Wall 2 &middot; the objective is not yours</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; MLPClassifier(hidden_layer_sizes=(300, 100), loss="mae")
+TypeError: MLPClassifier.__init__() got an unexpected
+keyword argument 'loss'
+  </code></pre>
+  <p>The operator's actual requirement &mdash; some confusions cost more than
+  others &mdash; is a class-weighted cross-entropy. One argument in PyTorch. Not
+  reachable at all here.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Wall 3 measured">
+  <h2>Wall 3 &middot; nothing is instrumented</h2>
+  <p>Backpropagation computed «int:l11_n_params» partial derivatives per batch
+  and discarded every one.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">The lecture that needs them</span>
+    Lecture 13 builds a twenty-layer network whose loss barely moves. The
+    diagnosis is a per-layer gradient statistic, logged during training. With
+    <code>MLPClassifier</code> the diagnosis cannot be made at all &mdash; you
+    would be left with &ldquo;it does not train&rdquo; and no next step.
+  </div>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="The diagnosis">
+  <h2>The diagnosis</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">One sentence</span>
+    <code>fit()</code> contains a loop over epochs and batches that you did not
+    write, cannot see, and cannot enter.
+  </div>
+  <p>Every wall is the same wall. The repair is therefore not a better library
+  &mdash; it is <strong>owning the loop</strong>.</p>
+  <p class="small muted">Note what is <em>not</em> wrong: the maths, the metric,
+  the split, the architecture. All of that carries over unchanged.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- PART 3 — THE REBUILD (35 min)                                        -->
+<!-- ==================================================================== -->
+
+<!-- 33 -->
+<section class="divider" data-menu-title="◆ Rebuild">
+  <p class="kicker">Part three</p>
+  <h1>Rebuild</h1>
+  <p class="clock">35 minutes &middot; and own the loop</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="★ Colab notebook">
+  <h2>Today&rsquo;s notebook</h2>
+  <p style="margin:1.2em 0">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-12.ipynb">
+       Open Lecture 12 in Google Colab</a>
+  </p>
+  <div class="panel">
+    <span class="panel-title">Before you run anything</span>
+    Runtime &rarr; Change runtime type &rarr; T4 GPU. The notebook prints which
+    device it found in its first cell; if it says <code>cpu</code>, stop and fix
+    that now rather than in forty minutes.
+  </div>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Tensors">
+  <h2>Tensors</h2>
+  <p>An array that also knows two things a NumPy array does not.</p>
+  <pre><code class="language-python" data-trim data-line-numbers="1-7|4|6">import torch
+
+a = torch.tensor([[1., 2.], [3., 4.]])
+print(a.device)              # cpu
+b = a.to("cuda")             # or "mps"
+print(a.requires_grad)       # False — nothing is recorded yet
+print(a.numpy())             # shares memory with a, on CPU
+  </code></pre>
+  <ul class="tight small">
+    <li><strong>Where it lives</strong> &mdash; an operation between tensors on
+        different devices is an error, and a loud one</li>
+    <li><strong>Whether to record</strong> &mdash; the subject of the next four
+        slides</li>
+  </ul>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Devices">
+  <h2>Finding the device, portably</h2>
+  <pre><code class="language-python" data-trim>
+if torch.cuda.is_available():
+    device = "cuda"                       # NVIDIA, and Colab
+elif torch.backends.mps.is_available():
+    device = "mps"                        # Apple Silicon
+else:
+    device = "cpu"                        # correct, and slow
+  </code></pre>
+  <div class="panel">
+    <span class="panel-title">Not examinable</span>
+    Device selection is engineering, not machine learning. It is on a slide
+    because from here to the end of the course, getting it wrong is the
+    difference between a one-minute cell and a twenty-minute one.
+  </div>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="requires_grad">
+  <h2>Why <code>requires_grad</code> builds a graph</h2>
+  <p class="lead">It does not compute a derivative. It says
+  <em>record what happens to me</em>.</p>
+  <ul class="tight small">
+    <li>Every operation on a recording tensor creates a node holding the
+        operation and its inputs</li>
+    <li>The graph is built <strong>during the forward pass</strong>, by running
+        it &mdash; there is no separate compilation step</li>
+    <li>It is rebuilt from scratch on every batch, which is why a Python
+        <code>if</code> inside <code>forward</code> just works</li>
+  </ul>
+  <p class="small">That is the forward sweep from thread 6, with the graph
+  written down as it goes so the reverse sweep has something to walk.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="grad_fn">
+  <h2>You can look at the graph</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; u = torch.tensor(2.0, requires_grad=True)
+&gt;&gt;&gt; v = torch.tensor(3.0, requires_grad=True)
+&gt;&gt;&gt; q = u * v + torch.sin(u)
+&gt;&gt;&gt; r = q ** 2
+&gt;&gt;&gt; r.grad_fn
+&lt;PowBackward0 object at 0x1291a4b50&gt;
+&gt;&gt;&gt; r.grad_fn.next_functions
+((&lt;AddBackward0 object at 0x1291a4be0&gt;, 0),)
+  </code></pre>
+  <p class="small">Those are the nodes in the diagram, by name. Walking
+  <code>next_functions</code> to the leaves <em>is</em> the reverse sweep.</p>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="no_grad">
+  <h2>And you can turn it off</h2>
+  <pre><code class="language-python" data-trim>
+with torch.no_grad():
+    preds = model(X_val)          # no graph is built
+  </code></pre>
+  <ul class="tight small">
+    <li>Evaluation needs no derivatives, so recording them wastes memory
+        proportional to the size of the batch</li>
+    <li>On a large validation set the difference is the difference between
+        fitting on the GPU and not</li>
+  </ul>
+  <p class="fail small">Forgetting <code>no_grad</code> is slow and
+  memory-hungry, but it is <em>not</em> a correctness bug. The two bugs that
+  follow are.</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="The loop">
+  <h2>The training loop</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-12|5|6-7|8|9">model = build_model().to(device)
+opt   = torch.optim.Adam(model.parameters(), lr=1e-3)
+lossf = nn.CrossEntropyLoss()
+
+for epoch in range(EPOCHS):
+    model.train()
+    for xb, yb in train_loader:
+        opt.zero_grad()                       # 1
+        out  = model(xb)                      # 2
+        loss = lossf(out, yb)                 # 3
+        loss.backward()                       # 4
+        opt.step()                            # 5
+  </code></pre>
+  <p class="small">Five lines. There is no hidden machinery: this is the whole
+  of what <code>fit()</code> was doing.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The loop, drawn">
+  <h2>One turn per mini-batch</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-trainloop.svg"
+         alt="A cycle of five boxes: zero_grad, forward, loss, backward and step, with a central panel noting that every step is ordinary Python.">
+  </figure>
+  <p class="takeaway">Every arrow is a line you wrote, so every arrow is a place
+  you can print, clip, log, branch or stop.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="Line by line">
+  <h2>Line by line</h2>
+  <table>
+    <tr><th>Line</th><th>What it does</th></tr>
+    <tr><td><code>model.train()</code></td><td>puts dropout and batch-norm layers into training behaviour</td></tr>
+    <tr><td class="fail"><code>opt.zero_grad()</code></td><td class="fail">clears <code>p.grad</code>, which <code>backward()</code> <em>adds</em> to</td></tr>
+    <tr><td><code>model(xb)</code></td><td>the forward sweep; the graph is recorded as it runs</td></tr>
+    <tr><td><code>lossf(out, yb)</code></td><td>reduces the batch to one scalar &mdash; thread 6's whole point</td></tr>
+    <tr><td><code>loss.backward()</code></td><td>the reverse sweep; fills <code>p.grad</code> for every parameter</td></tr>
+    <tr><td><code>opt.step()</code></td><td>updates the parameters from <code>p.grad</code></td></tr>
+  </table>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Same model">
+  <h2>Run it</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
+    <tr><td>Scikit-Learn, CPU</td><td class="num">«pct2:l12_sk_test_acc»%</td><td class="num">«f0:l12_sk_seconds» s</td></tr>
+    <tr><td class="fix">PyTorch, «upper:device»</td><td class="num hit">«pct2:l12_pt_dev_test_acc»%</td><td class="num hit">«f0:l12_pt_dev_seconds» s</td></tr>
+  </table>
+  <p class="lead">The accuracies agree, as they must.</p>
+  <p class="small">Same architecture, same optimiser, same learning rate, same
+  epochs, same data. <strong>The rebuild is not an improvement &mdash; it is the
+  same model.</strong> What we bought is the loop.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Learning curves">
+  <h2>Two libraries, one model</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l12-learning-curves.svg"
+         alt="Validation accuracy against epoch for the Scikit-Learn model and the PyTorch model, the two curves nearly overlapping.">
+  </figure>
+  <p class="takeaway muted">If these curves had disagreed, one of the two
+  implementations would be wrong. Overlaying them is the first check after any
+  rewrite.</p>
+</section>
+
+<!-- ============================ SILENT FAILURE 1 ======================= -->
+
+<!-- 43 -->
+<section data-menu-title="Silent failure 1">
+  <h2>The first bug that never raises</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>for xb, yb in train_loader:
+    out  = model(xb)
+    loss = lossf(out, yb)
+    loss.backward()
+    opt.step()
+  </code></pre>
+  <p class="lead">One line has been removed. It runs. The loss goes down.</p>
+  <p class="small muted">Take thirty seconds before the next slide.</p>
+  <aside class="notes">Do not use stepped line highlighting here — pointing at
+  the missing line gives away the whole exercise. The answer slide may step.</aside>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Accumulation">
+  <h2><code>backward()</code> accumulates</h2>
+  <p><code>p.grad</code> is <strong>added to</strong>, not overwritten.</p>
+  <pre><code class="language-text" data-trim>
+after 1 backward call(s): |grad| = 1.6183
+after 2 backward call(s): |grad| = 3.2366
+after 3 backward call(s): |grad| = 4.8549
+after zero_grad():        |grad| = 0.0000
+  </code></pre>
+  <p class="small">That behaviour is deliberate and useful: it is how you
+  accumulate a large effective batch across several small ones, and how you sum
+  gradients from two loss terms. It is only a bug when you did not ask for it.</p>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="What it does">
+  <h2>What that does to training</h2>
+  <p>At step $t$ the optimiser sees the sum of every gradient computed so far,
+  not the current one. The effective step size grows without bound, and Adam's
+  normalisation hides the divergence for a while.</p>
+  <p class="fail lead">No exception. No warning. No <code>NaN</code>.</p>
+  <p class="small">The loss curve does not even look obviously wrong until you
+  put the correct one beside it.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ zero_grad">
+  <h2>One missing line, measured</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l12-zerograd.svg"
+         alt="Two panels: training loss on a log scale with and without zero_grad, and validation accuracy for both, with the gap between them annotated.">
+  </figure>
+  <p class="takeaway fail">Both runs completed without error. One of them is a
+  working classifier and the other is not.</p>
+</section>
+
+<!-- 46 -->
+<section data-menu-title="zero_grad measured">
+  <h2>The cost of the missing <code>zero_grad()</code></h2>
+  <table>
+    <tr><th></th><th class="num">Final training loss</th><th class="num">Validation accuracy</th></tr>
+    <tr><td>With <code>opt.zero_grad()</code></td><td class="num">«f4:l12_zero_grad.with_final_loss»</td><td class="num hit">«pct2:l12_zero_grad.with_val_acc»%</td></tr>
+    <tr><td class="fail">Without it</td><td class="num fail">«f4:l12_zero_grad.without_final_loss»</td><td class="num fail">«pct2:l12_zero_grad.without_val_acc»%</td></tr>
+  </table>
+  <p class="big-num bad">«f1:l12_zero_grad.acc_cost_pts» points</p>
+  <p class="small">«str:l12_zero_grad.epochs» epochs on
+  «int:l12_zero_grad.n_fit» images, identical seeds, identical everything else.</p>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="Catching it">
+  <h2>How to catch it</h2>
+  <ol class="tight small">
+    <li><strong>Read the loop for the five lines</strong> in order. This is a
+        checklist item, not an insight</li>
+    <li><strong>Print the gradient norm</strong> for the first few steps. If it
+        climbs monotonically, it is accumulating</li>
+    <li><strong>Watch where it sits.</strong> <code>zero_grad()</code> inside
+        the <em>epoch</em> loop instead of the <em>batch</em> loop is the same
+        bug, indented two spaces differently, and it survives review</li>
+  </ol>
+  <div class="panel panel-fix">
+    <span class="panel-title">The general habit</span>
+    When a framework's default is &ldquo;accumulate&rdquo;, the code that does
+    not accumulate is the code with an extra line in it. Ask what happens if
+    that line is deleted &mdash; for every line in the loop.
+  </div>
+</section>
+
+<!-- ============================ SILENT FAILURE 2 ======================= -->
+
+<!-- 48 -->
+<section data-menu-title="Silent failure 2">
+  <h2>The second bug that never raises</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>model = build_model(dropout=0.2)
+train(model, ...)
+
+with torch.no_grad():
+    acc = (model(X_test).argmax(1) == y_test).float().mean()
+print(f"test accuracy {acc:.4f}")
+  </code></pre>
+  <p class="lead">Correct output type, plausible value, no error.</p>
+  <p class="small muted">Same question. Thirty seconds.</p>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="train vs eval">
+  <h2><code>train()</code> and <code>eval()</code></h2>
+  <p>Some layers behave differently in the two phases. Two of them matter in
+  this course:</p>
+  <table>
+    <tr><th>Layer</th><th>In <code>train()</code></th><th>In <code>eval()</code></th></tr>
+    <tr><td>Dropout</td><td>zeroes a random fraction of units</td><td>passes everything through</td></tr>
+    <tr><td>Batch normalisation</td><td>uses this batch's statistics</td><td>uses the running averages</td></tr>
+  </table>
+  <p class="fail small">The module defaults to training mode. Build a model,
+  never call <code>eval()</code>, and every evaluation you make is of a randomly
+  crippled network.</p>
+  <p class="small muted">Batch normalisation arrives in Lecture 14; the same
+  failure applies to it and is harder to see, because it does not fluctuate.</p>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="eval measured">
+  <h2>The cost of the missing <code>model.eval()</code></h2>
+  <table>
+    <tr><th>Evaluation mode</th><th class="num">Test accuracy</th></tr>
+    <tr><td class="fix"><code>model.eval()</code></td><td class="num hit">«pct2:l12_eval_mode.eval_acc»%</td></tr>
+    <tr><td class="fail"><code>model.train()</code>, mean of «str:l12_eval_mode.repeats» calls</td><td class="num fail">«pct2:l12_eval_mode.train_mode_acc_mean»%</td></tr>
+    <tr><td>lowest of those «str:l12_eval_mode.repeats»</td><td class="num">«pct2:l12_eval_mode.train_mode_acc_min»%</td></tr>
+    <tr><td>highest of those «str:l12_eval_mode.repeats»</td><td class="num">«pct2:l12_eval_mode.train_mode_acc_max»%</td></tr>
+  </table>
+  <p class="big-num bad">«f2:l12_eval_mode.cost_pts» points</p>
+  <p class="small">Dropout «g:l12_eval_mode.dropout», measured on
+  «int:l11_n_test» test images.</p>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="The tell">
+  <h2>The tell is the spread, not the mean</h2>
+  <p class="lead">«f2:l12_eval_mode.train_mode_spread_pts» accuracy points
+  across «str:l12_eval_mode.repeats» identical calls.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">The reviewer question this generates</span>
+    A deterministic function of fixed weights and fixed data returns the same
+    number every time. <strong>If your metric wobbles between calls, ask which
+    layer is still in training mode.</strong>
+  </div>
+  <p class="small">Run any evaluation twice. It costs one line and it catches
+  this bug, the seeding bugs, and any accidental shuffling of the labels.</p>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="Both bugs together">
+  <h2>What the two bugs have in common</h2>
+  <table>
+    <tr><th></th><th>Missing <code>zero_grad()</code></th><th>Missing <code>eval()</code></th></tr>
+    <tr><td>Raises?</td><td class="num">no</td><td class="num">no</td></tr>
+    <tr><td>Warns?</td><td class="num">no</td><td class="num">no</td></tr>
+    <tr><td>Produces a plausible number?</td><td class="num fail">yes</td><td class="num fail">yes</td></tr>
+    <tr><td>Cost, measured today</td><td class="num fail">«f1:l12_zero_grad.acc_cost_pts» points</td><td class="num fail">«f2:l12_eval_mode.cost_pts» points</td></tr>
+    <tr><td>Caught by</td><td>reading the loop</td><td>running it twice</td></tr>
+  </table>
+  <p class="small">Both are one line. Both survive a code review that is looking
+  for exceptions rather than for behaviour.</p>
+</section>
+
+<!-- ============================ DATALOADER ============================= -->
+
+<!-- 53 -->
+<section data-menu-title="DataLoader">
+  <h2><code>Dataset</code> and <code>DataLoader</code></h2>
+  <pre><code class="language-python" data-trim>
+from torch.utils.data import TensorDataset, DataLoader
+
+train_dl = DataLoader(TensorDataset(X_fit, y_fit),
+                      batch_size=128, shuffle=True,
+                      generator=torch.Generator().manual_seed(42))
+  </code></pre>
+  <ul class="tight small">
+    <li><code>Dataset</code> answers two questions: how many, and give me
+        number $i$</li>
+    <li><code>DataLoader</code> shuffles, batches, and can load in parallel
+        while the GPU is busy</li>
+  </ul>
+  <p class="small muted">Indexing a big tensor by hand works while the data fits
+  in memory. It stops working in Lecture 15, and the interface does not change.</p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="The short last batch">
+  <h2>The last batch is short</h2>
+  <p>«int:l11_n_test» test images in batches of 384 gives
+  «str:l12_batch_mean.n_batches» batches, the last containing
+  «str:l12_batch_mean.last_batch_size».</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Which makes this wrong</span>
+    <code>np.mean([acc(b) for b in batches])</code> weights the short batch
+    exactly as heavily as a full one.
+  </div>
+  <p class="small"><code>drop_last=False</code> is the default, so nothing is
+  discarded &mdash; and that is the right default. The bug is in how the metric
+  is aggregated, not in the loader.</p>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="Batch mean measured">
+  <h2>Averaging the metric per batch, measured</h2>
+  <table>
+    <tr><th>How the accuracy was aggregated</th><th class="num">Value</th></tr>
+    <tr><td class="fix">Counted over the whole set</td><td class="num hit">«pct3:l12_batch_mean.over_the_set»%</td></tr>
+    <tr><td class="fail">Mean of the per-batch accuracies</td><td class="num fail">«pct3:l12_batch_mean.mean_of_batches»%</td></tr>
+  </table>
+  <p class="lead">«f3:l12_batch_mean.bias_pts» accuracy points.</p>
+  <p class="small">Small &mdash; <em>here</em>. It is small because the last
+  batch is «str:l12_batch_mean.last_batch_size» of
+  «str:l12_batch_mean.batch», and because the model is no better or worse on it.
+  Change either and it grows: with batch size 3,000 on
+  «int:l11_n_test» images the short batch carries a quarter of the weight
+  instead of a twenty-sixth.</p>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="Batch mean rule">
+  <h2>The decision rule</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">Weight by the batch size, or count over the set</span>
+    Never take a plain mean of per-batch metrics &mdash; not because the error
+    is always large, but because <strong>you cannot tell from the number whether
+    it was.</strong>
+  </div>
+  <p class="small">The identical argument, in the identical shape, as Lecture
+  1's scale-before-split leak. The damage there was about a dollar. The rule is
+  procedural for the same reason.</p>
+  <p class="small muted">And it is worse for losses than for accuracy: a
+  per-batch mean of a per-batch mean is two averagings deep.</p>
+</section>
+
+<!-- ============================ MODULES ================================ -->
+
+<!-- 57 -->
+<section data-menu-title="Custom module">
+  <h2>A custom module</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-13|2-3|10-13">class Sorter(nn.Module):
+    def __init__(self, widths=(300, 100), n_in=784, n_out=10):
+        super().__init__()
+        sizes = (n_in,) + tuple(widths)
+        self.blocks = nn.ModuleList(
+            nn.Linear(a, b) for a, b in zip(sizes, sizes[1:]))
+        self.head = nn.Linear(sizes[-1], n_out)
+
+    def forward(self, x):
+        for blk in self.blocks:
+            x = torch.relu(blk(x))
+        return self.head(x)
+  </code></pre>
+  <p class="small"><code>super().__init__()</code> before anything else, or
+  parameter registration silently does not happen. Everything after that
+  &mdash; <code>.to(device)</code>, <code>.parameters()</code>,
+  <code>state_dict()</code> &mdash; comes for free.</p>
+</section>
+
+<!-- 58 -->
+<section data-menu-title="Why subclass">
+  <h2>When <code>Sequential</code> runs out</h2>
+  <ul class="tight small">
+    <li>Two inputs, or two outputs</li>
+    <li>A skip connection &mdash; the layer's output added to its input</li>
+    <li>Anything conditional on the data</li>
+  </ul>
+  <p>All three are ordinary Python inside <code>forward</code>, because the
+  graph is rebuilt by <em>running</em> the function on every batch.</p>
+  <p class="small muted">Skip connections are Lecture 14 and Lecture 16. The
+  reason they are easy to write is on this slide.</p>
+</section>
+
+<!-- 59 -->
+<section data-menu-title="Evaluation done right">
+  <h2>Evaluation, done properly</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-9|2|3|7-8">@torch.no_grad()
+def accuracy(model, X, y, batch=1000):
+    model.eval()
+    hits = 0
+    for i in range(0, len(X), batch):
+        out = model(X[i:i + batch])
+        hits += (out.argmax(1) == y[i:i + batch]).sum().item()
+    return hits / len(X)
+  </code></pre>
+  <p class="small">Three defences in eight lines: no graph, evaluation mode, and
+  a count over the set rather than a mean of means. Write it once, use it
+  everywhere, and all three of today's silent failures become unreachable.</p>
+</section>
+
+<!-- ============================ OPTUNA / SAVING ======================== -->
+
+<!-- 60 -->
+<section data-menu-title="Optuna">
+  <h2>Searching the hyperparameters properly</h2>
+  <p>The previous lecture tuned by hand: ten points, one axis at a time.
+  <strong>Optuna</strong> proposes a configuration, trains it briefly, scores
+  it, and lets a sampler choose the next from what it has learned.</p>
+  <pre><code class="language-python" data-trim>
+def objective(trial):
+    lr   = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
+    drop = trial.suggest_float("dropout", 0.0, 0.5, step=0.1)
+    return validation_accuracy(train(lr=lr, dropout=drop, epochs=6))
+
+study = optuna.create_study(direction="maximize")
+study.optimize(objective, n_trials=«str:l12_optuna.n_trials»)
+  </code></pre>
+  <div class="panel">
+    <span class="panel-title">Not examinable</span>
+    Optuna is not in the book. It is here because it is what you will actually
+    use, and because it makes the point that hand tuning was never a search.
+  </div>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Optuna">
+  <h2>«str:l12_optuna.n_trials» trials</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l12-optuna.svg"
+         alt="Scatter of validation accuracy per Optuna trial with a running best-so-far line rising in steps.">
+  </figure>
+  <p class="takeaway">Best «pct2:l12_optuna.best_value»% at learning rate
+  «f5:l12_optuna.best_lr» and dropout «g:l12_optuna.best_dropout» &mdash; on
+  «str:l12_optuna.epochs»-epoch trials, so this is a search over
+  configurations, not a final model.</p>
+</section>
+
+<!-- 61 -->
+<section data-menu-title="Saving">
+  <h2>Saving the model</h2>
+  <pre><code class="language-python" data-trim>
+torch.save(model.state_dict(), "sorter.pt")          # the tensors
+
+fresh = build_model().to(device)
+fresh.load_state_dict(torch.load("sorter.pt", weights_only=True))
+  </code></pre>
+  <p>«f0:l12_checkpoint_kb» KB &mdash; «int:l11_n_params» float32 numbers and
+  their names.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">What not to do</span>
+    <code>torch.save(model, ...)</code> pickles the object, and unpickling it
+    needs your class definition at the same import path. Next term, when the
+    file has moved, the checkpoint will not load.
+  </div>
+</section>
+
+<!-- 62 -->
+<section data-menu-title="Check the reload">
+  <h2>And check the reload</h2>
+  <pre><code class="language-python" data-trim>
+assert accuracy(model, X_test, y_test) == accuracy(fresh, X_test, y_test)
+  </code></pre>
+  <p class="small">Not &ldquo;it looks about the same&rdquo;. A reloaded network
+  is either the same function or it is not, and the difference is one
+  assertion.</p>
+  <p class="small muted">The usual cause of failure is loading a
+  <code>state_dict</code> into a model built with different widths. PyTorch
+  raises for that &mdash; but only if you did not pass
+  <code>strict=False</code> to silence it.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- PART 4 — RE-MEASURE AND RED-TEAM (15 min)                            -->
+<!-- ==================================================================== -->
+
+<!-- 63 -->
+<section class="divider" data-menu-title="◆ Re-measure">
+  <p class="kicker">Part four</p>
+  <h1>Re-measure</h1>
+  <p class="clock">15 minutes</p>
+</section>
+
+<!-- 64 -->
+<section data-menu-title="The final table">
+  <h2>Where we ended</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
+    <tr><td>Always one class</td><td class="num">«pct1:l11_baseline_majority_acc»%</td><td class="num">&mdash;</td></tr>
+    <tr><td>Scikit-Learn MLP, CPU</td><td class="num">«pct2:l12_sk_test_acc»%</td><td class="num fail">«f0:l12_sk_seconds» s</td></tr>
+    <tr><td class="fix">PyTorch, same model, «upper:device»</td><td class="num hit">«pct2:l12_pt_dev_test_acc»%</td><td class="num hit">«f0:l12_pt_dev_seconds» s</td></tr>
+    <tr><td class="fail">The same code without <code>zero_grad()</code></td><td class="num fail">«pct2:l12_zero_grad.without_val_acc»% (validation)</td><td class="num">unchanged</td></tr>
+  </table>
+  <p class="small">The last row is the one to remember. It ran, it finished, and
+  it reported a number.</p>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="Is that good">
+  <h2>Is that good?</h2>
+  <p class="small">On the operator's own criterion: right
+  «pct1:l12_pt_dev_test_acc»% of the time overall, but only
+  «pct1:l11_confusion.worst_recall»% on
+  «str:l11_confusion.worst_class», with almost all of those errors going to
+  three visually similar queues.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">What a defensible report says</span>
+    Quote the per-class recall, not the headline. Ask whether the three
+    confusable queues are physically adjacent. Offer the operator a choice: an
+    abstain option on the low-confidence cases, or a re-check desk for the three
+    classes that collide.
+  </div>
+  <p class="small muted">The model is not the deliverable. The decision the
+  bureau makes with it is.</p>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="Red-team">
+  <h2>Red-team exercise</h2>
+  <p>Swap notebooks with the team beside you. You have ten minutes.</p>
+  <ol class="tight small">
+    <li>What touched the test set?</li>
+    <li>What was fitted, and on what?</li>
+    <li>What is the shape here?</li>
+    <li>What was dropped &mdash; rows, columns, NaNs? Count them.</li>
+    <li>What is the default I did not ask for?</li>
+    <li class="fail">Is <code>opt.zero_grad()</code> inside the <em>batch</em>
+        loop?</li>
+    <li class="fail">Is there a <code>model.eval()</code> before every
+        evaluation, and a <code>model.train()</code> before training resumes?</li>
+    <li class="fail">Is any metric a plain mean of per-batch values?</li>
+  </ol>
+  <p class="fail small">Report what you found, not what you would have done
+  differently.</p>
+</section>
+
+<!-- 67 -->
+<section data-menu-title="Red-team with the assistant">
+  <h2>Ask the assistant as an adversary</h2>
+  <div class="cols">
+    <div>
+      <div class="panel panel-fail small">
+        &ldquo;Is this training loop correct?&rdquo;
+        <br><span class="small muted">Invites agreement. You will usually get
+        it.</span>
+      </div>
+    </div>
+    <div>
+      <div class="panel panel-fix small">
+        &ldquo;This loop reports «pct1:l12_pt_dev_test_acc»% accuracy. Assume
+        one line is missing. List every line whose deletion would leave the code
+        running and the number plausible, and say what each deletion would do to
+        the loss curve.&rdquo;
+      </div>
+    </div>
+  </div>
+  <p class="small">Give it the failure mode to look for and a number to
+  disbelieve. Generic review requests return generic praise.</p>
+</section>
+
+<!-- 68 -->
+<section data-menu-title="The catalogue">
+  <h2>The silent-failure catalogue so far</h2>
+  <table>
+    <tr><th>Failure</th><th>Diagnosed in</th><th class="num">Measured cost</th></tr>
+    <tr><td>Scaler fitted before the split</td><td>Lecture 2</td><td class="num">about a dollar</td></tr>
+    <tr><td>Evaluating on training data</td><td>Lecture 2</td><td class="num">an RMSE of zero</td></tr>
+    <tr><td>Accuracy under class imbalance</td><td>Lecture 4</td><td class="num">a useless model above 90%</td></tr>
+    <tr><td>Hyperparameters chosen on the test set</td><td>Lectures 2, 6</td><td class="num">an optimistic report</td></tr>
+    <tr><td class="fail">Missing <code>optimizer.zero_grad()</code></td><td class="fail">today</td><td class="num fail">«f1:l12_zero_grad.acc_cost_pts» points</td></tr>
+    <tr><td class="fail">Missing <code>model.eval()</code></td><td class="fail">today</td><td class="num fail">«f2:l12_eval_mode.cost_pts» points</td></tr>
+    <tr><td class="fail">Metric averaged per batch</td><td class="fail">today</td><td class="num fail">«f3:l12_batch_mean.bias_pts» points</td></tr>
+  </table>
+  <p class="small muted">Every one of them ran to completion and printed a
+  plausible number.</p>
+</section>
+
+<!-- 69 -->
+<section data-menu-title="Checklist">
+  <h2>PyTorch checklist &mdash; keep this</h2>
+  <ul class="tight small">
+    <li>Is <code>zero_grad()</code> inside the batch loop?</li>
+    <li>Is <code>model.train()</code> set before training, and
+        <code>model.eval()</code> before every evaluation?</li>
+    <li>Is evaluation wrapped in <code>torch.no_grad()</code>?</li>
+    <li>Are metrics counted over the set, not averaged over batches?</li>
+    <li>Are all tensors on the same device?</li>
+    <li>Is the seed fixed &mdash; for the model, the loader and the shuffle?</li>
+    <li>Does the reloaded checkpoint give exactly the same number?</li>
+  </ul>
+  <p class="small muted">Seven questions. They will catch most of what goes
+  wrong from here to the end of the course.</p>
+</section>
+
+<!-- 70 -->
+<section data-menu-title="What we kept">
+  <h2>What carried over unchanged</h2>
+  <table>
+    <tr><th>From</th><th>Still true</th></tr>
+    <tr><td>Lecture 1</td><td>compute the trivial baseline before you commit</td></tr>
+    <tr><td>Lecture 2</td><td>split first; never tune on the test set</td></tr>
+    <tr><td>Lecture 4</td><td>count the classes before choosing a metric</td></tr>
+    <tr><td>Lecture 6</td><td>two curves, and the gap between them, beat one number</td></tr>
+  </table>
+  <p class="small">Nothing about a neural network repeals anything from Part I.
+  The framework changed; the discipline did not.</p>
+</section>
+
+<!-- 71 -->
+<section data-menu-title="References">
+  <h2>In the book</h2>
+  <table>
+    <tr><th>Topic</th><th>Chapter</th></tr>
+    <tr><td>Backpropagation, forward and reverse passes</td><td>9</td></tr>
+    <tr><td>Tensors, devices, autograd</td><td>10</td></tr>
+    <tr><td>The training loop, <code>Dataset</code> and <code>DataLoader</code></td><td>10</td></tr>
+    <tr><td>Custom modules and the functional API</td><td>10</td></tr>
+    <tr><td>Saving and loading models</td><td>10</td></tr>
+    <tr><td>Dropout</td><td>11</td></tr>
+    <tr><td>Automatic differentiation, in detail</td><td>appendix</td></tr>
+  </table>
+</section>
+
+<!-- 72 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 13 &middot; Build</p>
+  <h1>Twenty layers, no learning</h1>
+  <p class="small" style="color:#cfe2f0">
+    Colour images, more classes, a much deeper stack<br>
+    You will instrument the network you now know how to instrument<br>
+    and watch the signal disappear on its way down
+  </p>
+  <p class="clock">Bring a fresh commitment sheet</p>
+</section>
+
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 12
+  <span class="sep">&middot;</span> Rebuilding it in PyTorch
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

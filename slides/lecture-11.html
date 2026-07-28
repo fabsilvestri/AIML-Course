@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 11 — The first neural network</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- ==================================================================== -->
+<!-- OPENING                                                              -->
+<!-- ==================================================================== -->
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>The first neural network</h1>
+  <p class="subtitle">Application 6 &middot; Fashion MNIST</p>
+  <p><span class="badge badge-build">Lecture 11 &middot; Build</span>
+     <span class="badge badge-ch">Géron Ch. 9</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Fresh commitment sheets on every desk before you start.
+  This is the first lecture of Part II and the first that needs a GPU runtime;
+  make sure everyone has one before the build block.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Part II begins">
+  <h2>Part II begins</h2>
+  <table>
+    <tr><th>Part</th><th>Lectures</th><th>Chapters</th><th>Hardware</th></tr>
+    <tr><td>I &middot; Tabular data and classical models</td><td>1&ndash;10</td><td>1&ndash;8</td><td>CPU</td></tr>
+    <tr><td class="fix">II &middot; Neural networks</td><td class="fix">11&ndash;14</td><td class="fix">9&ndash;11</td><td class="fix">GPU</td></tr>
+    <tr><td>III &middot; Computer vision</td><td>15&ndash;18</td><td>12</td><td>GPU</td></tr>
+    <tr><td>IV &middot; Sequences, language, multimodality</td><td>19&ndash;24</td><td>13&ndash;16</td><td>GPU</td></tr>
+  </table>
+  <p class="small">Everything from Part I still applies. Split before you fit,
+  never tune on the test set, report a spread. Nothing about a neural network
+  repeals any of it.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>The brief, the data, the stakeholder
+        <span class="muted small">(15 min)</span></li>
+    <li>Choose a metric, compute the baseline, <strong>commit a number in
+        writing</strong> <span class="muted small">(15 min)</span></li>
+    <li>Build the simplest network that runs, and tune it by hand
+        <span class="muted small">(60 min)</span></li>
+  </ol>
+  <p class="small muted">No mathematical thread today. Build lectures have none;
+  the thread arrives in the next lecture, and it will be about the thing you are
+  about to call without looking at it.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- PART 1 — THE BRIEF (15 min)                                          -->
+<!-- ==================================================================== -->
+
+<!-- 4 -->
+<section class="divider" data-menu-title="◆ The brief">
+  <p class="kicker">Part one</p>
+  <h1>The brief</h1>
+  <p class="clock">15 minutes &middot; the problem, the data, the stakeholder</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="The stakeholder">
+  <h2>The stakeholder</h2>
+  <p class="lead">A document-processing bureau scans incoming items and routes
+  each one to one of <strong>ten</strong> queues.</p>
+  <ul class="tight small">
+    <li>Items arrive as small greyscale scans, already cropped and centred</li>
+    <li>A human currently sorts them; the operator wants to know how often a
+        machine would be right</li>
+    <li>Misrouting is recoverable but expensive: the item goes to the wrong desk
+        and comes back a day later</li>
+  </ul>
+  <p class="small">Ten classes, one label each, no ranking, no probability
+  requirement stated. Write that down: it decides the output layer.</p>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="Not the last classifier">
+  <h2>This is not the classifier you built in Lecture 3</h2>
+  <div class="cols">
+    <div>
+      <h4>Lecture 3&ndash;4</h4>
+      <ul class="tight small">
+        <li>Two classes</li>
+        <li>Wildly imbalanced</li>
+        <li>Accuracy was a trap</li>
+        <li>The interesting question was <em>where to put the threshold</em></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Today</h4>
+      <ul class="tight small">
+        <li>Ten classes</li>
+        <li>Exactly balanced</li>
+        <li>Accuracy is defensible &mdash; we will check, not assume</li>
+        <li>The interesting question is <em>what function to fit</em></li>
+      </ul>
+    </div>
+  </div>
+  <p class="small muted">A different problem needs a different metric. The habit
+  worth keeping from Lecture 4 is not &ldquo;accuracy is bad&rdquo;; it is
+  &ldquo;look at the class counts before you choose&rdquo;.</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="The corpus">
+  <h2>The corpus we stand in with</h2>
+  <p>The bureau's archive is confidential. <strong>Fashion MNIST</strong> is the
+  dataset Chapter 9 uses, and it has the same shape of problem: small greyscale
+  images, ten classes, one label each.</p>
+  <table>
+    <tr><th>Property</th><th class="num">Value</th></tr>
+    <tr><td>Training images</td><td class="num">«int:l11_n_train_total»</td></tr>
+    <tr><td>Test images (shipped as a test set)</td><td class="num">«int:l11_n_test»</td></tr>
+    <tr><td>Image size</td><td class="num">28 &times; 28</td></tr>
+    <tr><td>Features per image, flattened</td><td class="num">«int:l11_n_pixels»</td></tr>
+    <tr><td>Pixel values</td><td class="num">«str:l11_pixel_min»&ndash;«str:l11_pixel_max», integer</td></tr>
+    <tr><td>Classes</td><td class="num">«str:l11_n_classes»</td></tr>
+  </table>
+  <p class="small muted">The test split is the one the dataset ships with, so
+  your number is comparable with every published result on it.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ What it looks like">
+  <h2>Ten classes, four examples each</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l11-grid.png"
+         alt="A four-by-ten grid of 28 by 28 greyscale garment images, one column per class, with the class name above each column.">
+  </figure>
+  <p class="takeaway muted">Look at the last four columns. Pullover, coat and
+  shirt are the same silhouette at this resolution &mdash; and that is where the
+  errors will be.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="The ten classes">
+  <h2>The ten classes</h2>
+  <div class="cols">
+    <div>
+      <ol class="tight small">
+        <li>T-shirt/top</li>
+        <li>Trouser</li>
+        <li>Pullover</li>
+        <li>Dress</li>
+        <li>Coat</li>
+      </ol>
+    </div>
+    <div>
+      <ol class="tight small" start="6">
+        <li>Sandal</li>
+        <li>Shirt</li>
+        <li>Sneaker</li>
+        <li>Bag</li>
+        <li>Ankle boot</li>
+      </ol>
+    </div>
+  </div>
+  <p class="small">Three of these are upper-body garments seen from the front.
+  Ask the room which three, before the model tells you.</p>
+  <aside class="notes">They will say pullover, coat, shirt. T-shirt/top belongs
+  in the set too. Keep the answer on the board — the confusion matrix at the end
+  of the build block is the payoff.</aside>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Class balance">
+  <h2>Check the balance before choosing the metric</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l11-class-balance.svg"
+         alt="Bar chart of training image counts for the ten Fashion MNIST classes; all ten bars are identical at 6,000, with a dashed line at the mean.">
+  </figure>
+  <p class="takeaway">Ten bars, all exactly «int:l11_per_class_train». Balanced
+  by construction &mdash; which is a property of this dataset, not of image
+  classification.</p>
+</section>
+
+<!-- 8b -->
+<section data-menu-title="What is not in the data">
+  <h2>What the data does not contain</h2>
+  <ul class="tight small">
+    <li><strong>No colour.</strong> A single greyscale channel, so a red shirt
+        and a blue shirt are the same image</li>
+    <li><strong>No scale.</strong> Every garment fills the frame, so the model
+        cannot use size to tell a sandal from a boot</li>
+    <li><strong>No context.</strong> One item per image, centred, on a black
+        background</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">Why that is worth saying out loud</span>
+    Every one of those is a simplification the bureau's real scans will not
+    honour. A number measured here is an upper bound on what the same method
+    gives on the archive, and the report should say so.
+  </div>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="A pixel is a feature">
+  <h2>A pixel is a feature</h2>
+  <p>We flatten each 28 &times; 28 image into a vector of «int:l11_n_pixels»
+  numbers and hand it to the model as an ordinary table of features.</p>
+  <div class="panel">
+    <span class="panel-title">What that throws away</span>
+    The model is told nothing about which pixels are neighbours. Shuffle all
+    «int:l11_n_pixels» columns with one fixed permutation and it learns exactly
+    as well. A human could not read a single shuffled image.
+  </div>
+  <p class="small">That is a real loss, and repairing it is Chapter 12 &mdash;
+  four lectures away. Today we pay it, and it is the honest starting point.</p>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="Scaling">
+  <h2>Scale the pixels</h2>
+  <p>Divide by 255, so every feature lies in $[0, 1]$.</p>
+  <ul class="tight small">
+    <li>Networks are trained by gradient descent, and the step size is one
+        number shared by every weight</li>
+    <li>Inputs two orders of magnitude apart make one step too large for some
+        weights and too small for others</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">And no, this is not Lecture 2's leak</span>
+    Dividing by a constant that is a property of the file format fits nothing.
+    <code>StandardScaler</code> estimates a mean and a variance <em>from data</em>
+    and must therefore be fitted after the split. <code>x / 255</code> estimates
+    nothing.
+  </div>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="The split">
+  <h2>The split</h2>
+  <table>
+    <tr><th>Set</th><th class="num">Images</th><th>Used for</th></tr>
+    <tr><td>Training</td><td class="num">«int:l11_n_fit»</td><td>fitting the weights</td></tr>
+    <tr><td>Validation</td><td class="num">«int:l11_n_val»</td><td>choosing hyperparameters, by hand, today</td></tr>
+    <tr><td>Test</td><td class="num">«int:l11_n_test»</td><td>once, at the very end</td></tr>
+  </table>
+  <p class="small">The validation set is carved out of the training half with a
+  fixed seed. It exists because we are about to try ten configurations, and
+  Lecture 2 established what happens to a number chosen on the set it is
+  reported on.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="GPU from here">
+  <h2>From here on, the course needs a GPU</h2>
+  <p>Part II onwards, every lecture assumes an accelerator. Today is the last
+  one that does not.</p>
+  <ul class="tight small">
+    <li><strong>Colab</strong> &mdash; Runtime &rarr; Change runtime type &rarr;
+        T4 GPU. Free, and enough for everything in this course.</li>
+    <li><strong>Your own machine</strong> &mdash; NVIDIA gives you CUDA; Apple
+        Silicon gives you MPS; anything else is CPU and will be slow but
+        correct.</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">Not examinable</span>
+    Runtime mechanics are engineering, not machine learning. They are here
+    because a cell that takes twenty minutes instead of one is the difference
+    between finishing the lecture and not.
+  </div>
+</section>
+
+<!-- ==================================================================== -->
+<!-- PART 2 — METRIC AND COMMITMENT (15 min)                              -->
+<!-- ==================================================================== -->
+
+<!-- 13 -->
+<section class="divider" data-menu-title="◆ Choose a metric">
+  <p class="kicker">Part two</p>
+  <h1>Choose a metric,<br>then commit</h1>
+  <p class="clock">15 minutes</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Which metric">
+  <h2>Which metric?</h2>
+  <p class="lead">The operator asked: <em>how often is it right?</em></p>
+  <p>That is accuracy. Lecture 4 spent ninety minutes on why accuracy is a trap
+  &mdash; so before using it, check the condition under which it failed.</p>
+  <table>
+    <tr><th>Lecture 4</th><th>Today</th></tr>
+    <tr><td>One class held «pct0:l11_baseline_majority_acc»% of the data or worse</td><td>Every class holds exactly «pct0:l11_baseline_majority_acc»%</td></tr>
+    <tr><td>&ldquo;Always negative&rdquo; scored above 90%</td><td>&ldquo;Always <em>k</em>&rdquo; scores «pct1:l11_baseline_majority_acc»%</td></tr>
+    <tr><td>Accuracy hid a useless model</td><td>Accuracy cannot hide one</td></tr>
+  </table>
+  <p class="small">The rule you keep is not &ldquo;never use accuracy&rdquo;. It
+  is <strong>count the classes first</strong>.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="The trivial baseline">
+  <h2>The trivial baseline, computed</h2>
+  <pre><code class="language-python" data-trim>
+majority = np.bincount(y_fit).argmax()
+baseline = np.full(len(y_test), majority)
+print(accuracy_score(y_test, baseline))       # 0.1
+  </code></pre>
+  <p>Ten classes, «int:l11_per_class_test» test images each, one guess for every
+  image.</p>
+  <p class="small muted">Not an estimate and not a convention &mdash; a
+  measurement, and it happens to be exact.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="Ten per cent">
+  <h2>Everything today has to beat this</h2>
+  <p class="big-num bad">«pct1:l11_baseline_majority_acc»%</p>
+  <p class="lead">Predict the same class every time.</p>
+  <p class="small muted">The gap you are about to estimate is ninety points
+  wide. That is a lot of room to be wrong in, which is exactly why the
+  commitment is worth making.</p>
+</section>
+
+<!-- 17 -->
+<section class="commit-slide" data-menu-title="★ COMMIT">
+  <h2>Commit</h2>
+  <div class="commit">
+    <span class="commit-label">Write this down. On paper. Now.</span>
+    <p class="small" style="text-align:left; line-height:1.9">
+      Metric: <span class="blank"></span><br>
+      Accuracy a good sorting machine would need: <span class="blank"></span> %<br>
+      Accuracy I expect from the model we build today: <span class="blank"></span> %
+    </p>
+  </div>
+  <p class="small">You are not guessing in the dark: always-one-class scores
+  «pct1:l11_baseline_majority_acc»%, and a perfect machine scores 100. Saying
+  <em>where between them</em> is the whole exercise.</p>
+  <aside class="notes">Do not move on until pens have actually moved. Walk the
+  room. Do not hint at whether the number will be too high or too low.</aside>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="How it is scored">
+  <h2>How the commitment is scored</h2>
+  <ul class="tight small">
+    <li>Out loud, at the start of the next lecture, against the measured
+        result</li>
+    <li>The question is not whether you were close. It is whether you
+        <strong>knew you were guessing</strong> &mdash; and whether your number
+        was anchored to something you had computed</li>
+  </ul>
+  <p class="small muted">A committed number you can revise afterwards is not a
+  prediction; it is a memory of having had an opinion.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- PART 3 — THE BUILD (60 min)                                          -->
+<!-- ==================================================================== -->
+
+<!-- 19 -->
+<section class="divider" data-menu-title="◆ Build">
+  <p class="kicker">Part three</p>
+  <h1>Build</h1>
+  <p class="clock">60 minutes &middot; the simplest network that runs</p>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="★ Colab notebook">
+  <h2>Today&rsquo;s notebook</h2>
+  <p style="margin:1.2em 0">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-11.ipynb">
+       Open Lecture 11 in Google Colab</a>
+  </p>
+  <div class="panel">
+    <span class="panel-title">How to work</span>
+    Run the setup cell first. The notebook trains on a 12,000-image subset so
+    that a free CPU runtime finishes inside the hour; the slides quote the full
+    «int:l11_n_fit». Where the two differ, the notebook says so.
+  </div>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="The neuron">
+  <h2>Where the idea came from</h2>
+  <p>McCulloch and Pitts, 1943: a very simplified model of a biological neuron,
+  which fires when enough of its inputs fire.</p>
+  <div class="panel panel-book">
+    The analogy is historical and it is where the vocabulary comes from &mdash;
+    <em>neuron</em>, <em>activation</em>, <em>firing</em>. It is not an argument
+    for anything. Modern networks resemble brains about as closely as aeroplanes
+    resemble birds.
+  </div>
+  <p class="small muted">Chapter 9 opens with this and then drops it. So do we.</p>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="The TLU">
+  <h2>The threshold logic unit</h2>
+  <div class="eqn-box">
+    $$z \;=\; \mathbf{w}^{\mathsf T}\mathbf{x} + b, \qquad
+      \hat{y} \;=\; \operatorname{step}(z)$$
+  </div>
+  <ul class="tight small">
+    <li>$\mathbf{x}$ &mdash; the input features, one number each</li>
+    <li>$\mathbf{w}$ &mdash; one weight per input, learned</li>
+    <li>$b$ &mdash; the bias, learned; equivalently a weight on a constant
+        input of 1</li>
+    <li>$\operatorname{step}$ &mdash; 1 if $z \ge 0$, else 0</li>
+  </ul>
+  <p class="small">A weighted sum and a threshold. That is the entire unit, and
+  the weighted sum is Lecture 2's linear model wearing a different name.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The perceptron">
+  <h2>One unit, drawn</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-perceptron.svg"
+         alt="Three input circles and a bias input feeding weighted edges into a weighted-sum box, then a step-function box, then a single binary output.">
+  </figure>
+  <p class="takeaway fail">The step function is the problem. Its derivative is
+  zero everywhere it exists, so there is no gradient to descend.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="Perceptron rule">
+  <h2>How a perceptron was trained</h2>
+  <div class="eqn-box">
+    <span class="eqn-label">Perceptron learning rule</span>
+    $$w_{i,j}^{\,\text{next}} \;=\; w_{i,j} \;+\; \eta\,(y_j - \hat{y}_j)\,x_i$$
+  </div>
+  <p class="small">If the unit was right, nothing changes. If it fired when it
+  should not have, the weights on the active inputs go down. Rosenblatt, 1957 —
+  and it converges only if the classes are linearly separable.</p>
+  <p class="small muted">No loss function appears anywhere in that rule. That is
+  the tell: this is not gradient descent, and it does not generalise.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="XOR">
+  <h2>What a single unit cannot do</h2>
+  <p class="lead">A TLU draws <strong>one straight line</strong>. Some problems
+  need two.</p>
+  <table>
+    <tr><th>$x_1$</th><th>$x_2$</th><th>XOR</th></tr>
+    <tr><td>0</td><td>0</td><td>0</td></tr>
+    <tr><td>0</td><td>1</td><td>1</td></tr>
+    <tr><td>1</td><td>0</td><td>1</td></tr>
+    <tr><td>1</td><td>1</td><td>0</td></tr>
+  </table>
+  <p class="small">No line separates the two 1s from the two 0s. Minsky and
+  Papert said so in 1969 and the field stopped for fifteen years.</p>
+  <p class="fix small">The repair is embarrassingly simple: <strong>stack
+  them</strong>. Two layers of TLUs solve XOR exactly.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="The MLP">
+  <h2>The multilayer perceptron</h2>
+  <ul class="tight small">
+    <li>An <strong>input layer</strong>, which holds the features and has no
+        weights</li>
+    <li>One or more <strong>hidden layers</strong>, each fully connected to the
+        previous one</li>
+    <li>An <strong>output layer</strong>, one unit per class</li>
+  </ul>
+  <p><em>Fully connected</em>, or <em>dense</em>: every unit of one layer
+  receives every unit of the previous one. That is where the parameters are.</p>
+  <p class="small muted">Two or more hidden layers and the book calls it a
+  <strong>deep</strong> neural network. The word means nothing more than that.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The MLP">
+  <h2>The network this application builds</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-mlp.svg"
+         alt="Four layers of circles connected by dense bundles of edges: an input layer of 784, two hidden layers of 300 and 100, and an output layer of 10, with parameter counts under each.">
+  </figure>
+  <p class="takeaway">Almost all the parameters are in the first layer, because
+  it is the one attached to «int:l11_n_pixels» inputs.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Why nonlinear">
+  <h2>Why there must be a nonlinearity</h2>
+  <p>Suppose the activation were the identity. Then</p>
+  <div class="eqn-box">
+    $$\mathbf{W}_2\left(\mathbf{W}_1\mathbf{x} + \mathbf{b}_1\right) + \mathbf{b}_2
+      \;=\; \left(\mathbf{W}_2\mathbf{W}_1\right)\mathbf{x}
+          + \left(\mathbf{W}_2\mathbf{b}_1 + \mathbf{b}_2\right)$$
+  </div>
+  <p class="fail">A single affine map. Two hundred stacked layers would still be
+  a single affine map.</p>
+  <p class="small">Depth buys you nothing without a nonlinearity between the
+  layers. This is one line of algebra and it is the reason activation functions
+  exist at all.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Activations">
+  <h2>The step had to go</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l11-activations.svg"
+         alt="Two panels: the Heaviside step function with a flat zero derivative, and sigmoid, tanh and ReLU plotted together over the same range.">
+  </figure>
+  <p class="takeaway">Gradient descent needs a slope to descend. The step has
+  none; the other three do.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="ReLU">
+  <h2>Why ReLU won</h2>
+  <table>
+    <tr><th>Activation</th><th>Range</th><th>Cost</th><th>Problem</th></tr>
+    <tr><td>Sigmoid</td><td>$(0, 1)$</td><td>an exponential</td><td>saturates at both ends</td></tr>
+    <tr><td>tanh</td><td>$(-1, 1)$</td><td>an exponential</td><td>saturates at both ends</td></tr>
+    <tr><td class="fix">ReLU</td><td class="fix">$[0, \infty)$</td><td class="fix">a comparison</td><td class="fix">flat below zero</td></tr>
+  </table>
+  <p class="small"><code>max(0, z)</code> is fast, does not saturate above, and
+  in practice trains better. It is the default in Chapter 10 and it is our
+  default today.</p>
+  <p class="small muted">&ldquo;Flat below zero&rdquo; is a real defect and it
+  has a name &mdash; dying ReLUs. It is diagnosed in Lecture 14, not here.</p>
+</section>
+
+<!-- 27b -->
+<section data-menu-title="A layer, in matrices">
+  <h2>One layer, in matrices</h2>
+  <div class="eqn-box">
+    <span class="eqn-label">A whole mini-batch at once</span>
+    $$\mathbf{H} \;=\; \phi\!\left(\mathbf{X}\mathbf{W} + \mathbf{b}\right)$$
+  </div>
+  <ul class="tight small">
+    <li>$\mathbf{X}$ &mdash; one row per instance in the batch, one column per
+        input</li>
+    <li>$\mathbf{W}$ &mdash; one row per input, one column per unit</li>
+    <li>$\mathbf{b}$ &mdash; one entry per unit, broadcast down the rows</li>
+    <li>$\phi$ &mdash; the activation, applied element by element</li>
+  </ul>
+  <p class="small">The whole forward pass is a handful of matrix products. That
+  is why a GPU helps at all: a GPU is a machine for doing exactly this.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Parameter count">
+  <h2>Count the parameters before you fit</h2>
+  <pre><code class="language-text" data-trim>
+784 x 300 + 300  =  235,500      layer 1
+300 x 100 + 100  =   30,100      layer 2
+100 x  10 +  10  =    1,010      output
+                    --------
+                     266,610     total
+  </code></pre>
+  <p>«int:l11_n_params» parameters, fitted from «int:l11_n_fit» images.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Four and a half parameters per training image</span>
+    Lecture 2's failure condition for least squares was $m &lt; n$ &mdash; more
+    parameters than instances. We are past it, comfortably, and the model will
+    still work. Understanding why is Lectures 13 and 14.
+  </div>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Output layer">
+  <h2>The output layer</h2>
+  <p>Ten classes, mutually exclusive. Ten output units, and a
+  <strong>softmax</strong> across them:</p>
+  <div class="eqn-box">
+    $$\hat{p}_k \;=\; \frac{\exp(z_k)}{\sum_{j=1}^{10}\exp(z_j)}$$
+  </div>
+  <ul class="tight small">
+    <li>Every output is positive and they sum to 1</li>
+    <li>The largest logit $z_k$ gives the largest probability, so
+        <code>argmax</code> is unchanged by the softmax</li>
+  </ul>
+  <p class="small muted">The full properties of softmax &mdash; shift
+  invariance, the gradient, why the loss consumes logits rather than
+  probabilities &mdash; are thread 11, in Lecture 22.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="The loss">
+  <h2>The loss</h2>
+  <div class="eqn-box">
+    <span class="eqn-label">Cross-entropy, one instance</span>
+    $$L \;=\; -\sum_{k=1}^{10} y_k \log \hat{p}_k \;=\; -\log \hat{p}_{\text{true}}$$
+  </div>
+  <p class="small">The target is one-hot, so nine of the ten terms are zero. The
+  loss is minus the log probability the model assigned to the right answer, and
+  it goes to infinity as that probability goes to zero.</p>
+  <p class="small muted">Chapter 4 called this log loss when there were two
+  classes. Same object.</p>
+</section>
+
+<!-- 30b -->
+<section data-menu-title="Backpropagation, named">
+  <h2>How the weights get updated</h2>
+  <p class="lead">Backpropagation: one forward pass to compute the loss, one
+  backward pass to compute every partial derivative, one gradient-descent
+  step.</p>
+  <ul class="tight small">
+    <li>Rumelhart, Hinton and Williams, 1986 &mdash; and the reason the field
+        restarted</li>
+    <li>The backward pass costs about as much as the forward one, no matter how
+        many parameters there are</li>
+  </ul>
+  <div class="panel panel-math">
+    <span class="panel-title">Why &ldquo;no matter how many&rdquo; is remarkable</span>
+    «int:l11_n_params» parameters, one number of interest, and a single sweep
+    gets all of the derivatives. That claim is thread 6, at the top of the next
+    lecture, and it is the whole reason any of this is feasible.
+  </div>
+</section>
+
+<!-- 30c -->
+<section data-menu-title="Adam, named">
+  <h2>The optimiser</h2>
+  <p><code>solver="adam"</code>. Plain gradient descent takes a step
+  proportional to the gradient; Adam keeps a running average of the gradient
+  and of its square, and scales each parameter's step by the second.</p>
+  <ul class="tight small">
+    <li>Far less sensitive to the initial learning rate than plain SGD</li>
+    <li>Which is why <code>learning_rate_init</code> still cost us points on the
+        previous sweep &mdash; less sensitive is not insensitive</li>
+  </ul>
+  <p class="small muted">Momentum, RMSProp, Adam and the rest are Chapter 11 and
+  Lecture 14. Today it is a default we accepted knowingly, which is the only
+  acceptable way to accept a default.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Regression table">
+  <h2>Architecture &mdash; regression networks</h2>
+  <table>
+    <tr><th>Hyperparameter</th><th>Typical value</th></tr>
+    <tr><td>Input units</td><td>one per input feature</td></tr>
+    <tr><td>Hidden layers</td><td>1 to 5, problem dependent</td></tr>
+    <tr><td>Units per hidden layer</td><td>10 to 100, problem dependent</td></tr>
+    <tr><td>Output units</td><td>one per prediction dimension</td></tr>
+    <tr><td>Hidden activation</td><td>ReLU</td></tr>
+    <tr><td class="fix">Output activation</td><td class="fix">none; ReLU if the output must be positive; sigmoid or tanh for a bounded range</td></tr>
+    <tr><td class="fix">Loss</td><td class="fix">MSE, or Huber if there are outliers</td></tr>
+  </table>
+  <p class="small muted">Chapter 10. The two rows that matter are the last two,
+  and they are the two people get wrong.</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Classification table">
+  <h2>Architecture &mdash; classification networks</h2>
+  <table>
+    <tr><th>Task</th><th class="num">Output units</th><th>Output activation</th><th>Loss</th></tr>
+    <tr><td>Binary</td><td class="num">1</td><td>sigmoid</td><td>binary cross-entropy</td></tr>
+    <tr><td>Multilabel binary</td><td class="num">one per label</td><td>sigmoid</td><td>binary cross-entropy</td></tr>
+    <tr><td class="fix">Multiclass</td><td class="num fix">one per class</td><td class="fix">softmax</td><td class="fix">cross-entropy</td></tr>
+  </table>
+  <p>Our task is the third row: ten mutually exclusive classes, so ten units,
+  softmax, cross-entropy.</p>
+  <p class="small">The distinction between rows two and three is not cosmetic.
+  Multilabel asks ten independent yes/no questions; multiclass asks one
+  ten-way question. Softmax couples the outputs; ten sigmoids do not.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="The code">
+  <h2>The whole model, in Scikit-Learn</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-9|3-4|5-6">from sklearn.neural_network import MLPClassifier
+
+clf = MLPClassifier(hidden_layer_sizes=(300, 100),
+                    activation="relu",
+                    solver="adam",
+                    learning_rate_init=1e-3,
+                    batch_size=128,
+                    max_iter=20,
+                    random_state=42)
+clf.fit(X_fit, y_fit)
+  </code></pre>
+  <p class="small">Nine lines, and every architectural decision from the last
+  ten slides is one of the arguments. The softmax and the cross-entropy are not
+  arguments &mdash; <code>MLPClassifier</code> chooses them for you, from the
+  number of classes it sees in <code>y_fit</code>.</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="The defaults">
+  <h2>The defaults you did not ask for</h2>
+  <table>
+    <tr><th>Argument</th><th>Default</th><th>Consequence</th></tr>
+    <tr><td><code>learning_rate_init</code></td><td class="num">0.001</td><td>tuned for inputs of order one</td></tr>
+    <tr><td><code>max_iter</code></td><td class="num">200</td><td>epochs, not iterations; the name is wrong</td></tr>
+    <tr><td><code>batch_size</code></td><td class="num">min(200, n)</td><td>silently different on a small set</td></tr>
+    <tr><td><code>early_stopping</code></td><td class="num">False</td><td>runs the full budget regardless</td></tr>
+    <tr><td><code>n_iter_no_change</code></td><td class="num">10</td><td>stops early anyway, via <code>tol</code></td></tr>
+  </table>
+  <p class="fail small">Reviewer question 5, every time: <em>what is the default
+  I did not ask for?</em> Two of these five will bite us within the hour.</p>
+</section>
+
+<!-- 34b -->
+<section data-menu-title="Vocabulary">
+  <h2>Three words that get confused</h2>
+  <table>
+    <tr><th>Word</th><th>Means</th><th class="num">Here</th></tr>
+    <tr><td>Batch</td><td>the instances used for one weight update</td><td class="num">«str:l11_batch»</td></tr>
+    <tr><td>Step, or iteration</td><td>one weight update</td><td class="num">430 per epoch</td></tr>
+    <tr><td>Epoch</td><td>one complete pass over the training set</td><td class="num">«str:l11_epochs» of them</td></tr>
+  </table>
+  <p class="fail small">Scikit-Learn calls the number of epochs
+  <code>max_iter</code>. It is not iterations. Read the docstring, not the
+  parameter name &mdash; and this is not the only library that does it.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="First run">
+  <h2>Run it</h2>
+  <table>
+    <tr><th>Quantity</th><th class="num">Measured</th></tr>
+    <tr><td>Training images</td><td class="num">«int:l11_n_fit»</td></tr>
+    <tr><td>Epochs</td><td class="num">«str:l11_epochs»</td></tr>
+    <tr><td>Wall clock, CPU</td><td class="num">«f0:l11_sk.seconds» s</td></tr>
+    <tr><td>Validation accuracy</td><td class="num">«pct2:l11_sk.val_acc.19»%</td></tr>
+    <tr><td class="fix">Test accuracy</td><td class="num hit">«pct2:l11_sk.test_acc»%</td></tr>
+    <tr><td>Baseline</td><td class="num">«pct1:l11_baseline_majority_acc»%</td></tr>
+  </table>
+  <p class="small">It works. Hold on to the wall clock &mdash; it is the number
+  the next lecture repairs.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Learning curves">
+  <h2>What twenty epochs look like</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l11-loss-curve.svg"
+         alt="Two panels: training cross-entropy falling over twenty epochs, and training against validation accuracy with the gap between them annotated.">
+  </figure>
+  <p class="takeaway fail">The two accuracy curves separate and stay separated.
+  That gap is overfitting, and it is Lecture 2's table drawn as lines.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Reading the curve">
+  <h2>Reading the curve</h2>
+  <ul class="tight small">
+    <li>The loss falls smoothly &mdash; the optimiser is working</li>
+    <li>Training accuracy keeps climbing &mdash; the model has capacity to
+        spare</li>
+    <li>Validation accuracy flattens &mdash; the extra capacity is being spent
+        on memorising</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The question a curve answers that a number cannot</span>
+    <em>Would more epochs help?</em> Here, no: the validation curve stopped
+    moving before the budget ran out. Without the curve you would have guessed.
+  </div>
+</section>
+
+<!-- 36b -->
+<section data-menu-title="What we are not doing yet">
+  <h2>What we are <em>not</em> doing about that gap</h2>
+  <table>
+    <tr><th>Repair</th><th>Available today</th><th>Taught in</th></tr>
+    <tr><td>Stop when validation stops improving</td><td><code>early_stopping=True</code></td><td>Lecture 6, applied here</td></tr>
+    <tr><td>Penalise large weights</td><td><code>alpha</code></td><td>Lecture 6</td></tr>
+    <tr><td>Dropout</td><td class="fail">not available</td><td>Lecture 12, then 14</td></tr>
+    <tr><td>Batch normalisation</td><td class="fail">not available</td><td>Lecture 14</td></tr>
+    <tr><td>More data, or augmented data</td><td class="fail">not available</td><td>Lecture 16</td></tr>
+  </table>
+  <p class="small">Three of the five repairs are not reachable from this
+  library at all. Note which ones, and why: they all need a hook inside the
+  training loop.</p>
+</section>
+
+<!-- ============================ ASSISTANT FAILURE ====================== -->
+
+<!-- 37 -->
+<section data-menu-title="Assistant · the prompt">
+  <h2>An assistant writes the training code</h2>
+  <div class="panel">
+    <span class="panel-title">The prompt</span>
+    &ldquo;Train a neural network to classify Fashion MNIST images and print the
+    accuracy.&rdquo;
+  </div>
+  <p class="small">Under-specified in exactly one place. Find it before the next
+  slide &mdash; you have thirty seconds.</p>
+  <aside class="notes">Do not accept "it doesn't say which model". That is not
+  the defect; any MLP would do. The defect is about the data, not the model.</aside>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="Assistant · the code">
+  <h2>The code it returns</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>from sklearn.neural_network import MLPClassifier
+
+X = train_ds.data.numpy().reshape(60000, -1).astype("float32")
+y = train_ds.targets.numpy()
+
+clf = MLPClassifier(hidden_layer_sizes=(300, 100), max_iter=12,
+                    random_state=42).fit(X[:12000], y[:12000])
+print(clf.score(X_val, y_val))
+  </code></pre>
+  <p class="small">It runs. It imports nothing exotic. It prints a number in the
+  eighties, which is a great deal better than «pct1:l11_baseline_majority_acc»%
+  and therefore looks like a result.</p>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Assistant · the question">
+  <h2>Reviewer question 5</h2>
+  <p class="lead">What is the default I did not ask for?</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Line 3</span>
+    <code>.astype("float32")</code> changes the type. It does not change the
+    range. The pixels are still 0 to 255, and
+    <code>learning_rate_init=0.001</code> is Scikit-Learn's default
+    <em>for inputs of order one</em>.
+  </div>
+  <p class="small">Nothing in the prompt said &ldquo;scale the pixels&rdquo;.
+  Nothing in the output said it had not happened.</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="Assistant · the damage">
+  <h2>Measure the damage</h2>
+  <table>
+    <tr><th>Inputs</th><th class="num">Validation accuracy</th><th class="num">Final training loss</th></tr>
+    <tr><td>0 to 255, as the assistant wrote it</td><td class="num fail">«pct2:l11_unscaled.raw_val_acc»%</td><td class="num">«f3:l11_unscaled.raw_final_loss»</td></tr>
+    <tr><td>0 to 1</td><td class="num hit">«pct2:l11_unscaled.scaled_val_acc»%</td><td class="num">«f3:l11_unscaled.scaled_final_loss»</td></tr>
+  </table>
+  <p class="fail lead">«f2:l11_unscaled.cost_pts» accuracy points, on
+  «int:l11_unscaled.n_fit» images over «str:l11_unscaled.epochs» epochs.</p>
+  <p class="small">Report it honestly, including its size. This is not a
+  catastrophe; it is a silent, free loss that nothing in the run announces. The
+  reason it is not worse is that ReLU does not saturate above &mdash; with
+  sigmoid units the same code would have gone nowhere at all.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="Assistant · the fix">
+  <h2>The corrected specification</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">Input, output, constraint, check</span>
+    &ldquo;Load Fashion MNIST. <strong>Scale the pixels to [0, 1] as
+    float32.</strong> Split off 5,000 validation images with a fixed seed. Train
+    an MLP with hidden layers (300, 100) for 12 epochs, seed 42, and report
+    accuracy <strong>on the validation set</strong>. State the wall-clock
+    time.&rdquo;
+  </div>
+  <p class="small">The vague prompt was not wrong about what to build. It was
+  silent about the conditions under which the thing works &mdash; and an
+  assistant fills silence with defaults.</p>
+</section>
+
+<!-- ============================ TUNING ================================= -->
+
+<!-- 42 -->
+<section data-menu-title="What we can turn">
+  <h2>What there is to turn</h2>
+  <table>
+    <tr><th>Knob</th><th>What it changes</th></tr>
+    <tr><td>Number of hidden layers</td><td>how many compositions the function can have</td></tr>
+    <tr><td>Units per layer</td><td>how much can be represented at each stage</td></tr>
+    <tr><td class="fix">Learning rate</td><td class="fix">the size of every gradient step</td></tr>
+    <tr><td>Batch size</td><td>how noisy each step is, and how fast an epoch runs</td></tr>
+    <tr><td>Epochs</td><td>how long before you stop</td></tr>
+  </table>
+  <p class="small">Ten fits, by hand, on a «int:l11_sweep.subset»-image subset so
+  they fit in the lecture. Five architectures, then five learning rates.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Hand tuning">
+  <h2>Ten fits, by hand</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l11-sweeps.svg"
+         alt="Left: horizontal bars of validation accuracy for five hidden-layer configurations. Right: validation accuracy against epoch for five learning rates, with the best highlighted.">
+  </figure>
+  <p class="takeaway fail">Both panels span about two accuracy points. Neither
+  knob dominates &mdash; and the widest architecture is not the winner.</p>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="Architecture sweep">
+  <h2>Architecture</h2>
+  <table>
+    <tr><th>Hidden layers</th><th class="num">Parameters</th><th class="num">Validation accuracy</th><th class="num">Seconds</th></tr>
+    <tr><td>30</td><td class="num">«int:l11_sweep.arch.0.n_params»</td><td class="num">«pct2:l11_sweep.arch.0.val_acc»%</td><td class="num">«f0:l11_sweep.arch.0.seconds»</td></tr>
+    <tr><td>100</td><td class="num">«int:l11_sweep.arch.1.n_params»</td><td class="num">«pct2:l11_sweep.arch.1.val_acc»%</td><td class="num">«f0:l11_sweep.arch.1.seconds»</td></tr>
+    <tr><td class="fix">300</td><td class="num">«int:l11_sweep.arch.2.n_params»</td><td class="num hit">«pct2:l11_sweep.arch.2.val_acc»%</td><td class="num">«f0:l11_sweep.arch.2.seconds»</td></tr>
+    <tr><td>300, 100</td><td class="num">«int:l11_sweep.arch.3.n_params»</td><td class="num">«pct2:l11_sweep.arch.3.val_acc»%</td><td class="num">«f0:l11_sweep.arch.3.seconds»</td></tr>
+    <tr><td>300, 200, 100</td><td class="num">«int:l11_sweep.arch.4.n_params»</td><td class="num fail">«pct2:l11_sweep.arch.4.val_acc»%</td><td class="num">«f0:l11_sweep.arch.4.seconds»</td></tr>
+  </table>
+  <p class="fail small">On this subset, <strong>depth loses</strong>. One hidden
+  layer of 300 beats both deeper networks, and the deepest is the worst and the
+  slowest.</p>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Learning rate sweep">
+  <h2>Learning rate</h2>
+  <table>
+    <tr><th class="num">Learning rate</th><th class="num">Validation accuracy</th></tr>
+    <tr><td class="num">0.0001</td><td class="num">«pct2:l11_sweep.lr.0.val_acc»%</td></tr>
+    <tr><td class="num fix">0.0003</td><td class="num hit">«pct2:l11_sweep.lr.1.val_acc»%</td></tr>
+    <tr><td class="num">0.001 <span class="muted">&mdash; the default</span></td><td class="num">«pct2:l11_sweep.lr.2.val_acc»%</td></tr>
+    <tr><td class="num">0.003</td><td class="num">«pct2:l11_sweep.lr.3.val_acc»%</td></tr>
+    <tr><td class="num">0.01</td><td class="num fail">«pct2:l11_sweep.lr.4.val_acc»%</td></tr>
+  </table>
+  <p class="small">Same architecture, same data, same seed. The only thing that
+  changed is the size of the step &mdash; and <strong>the library's default is
+  not the best value on this grid.</strong></p>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="The lesson">
+  <h2>The lesson from ten fits</h2>
+  <ol class="tight small">
+    <li><strong>Depth did not pay.</strong> On «int:l11_sweep.subset» images a
+        single hidden layer of 300 beat both deeper networks &mdash; and took
+        less than half the time of the deepest.</li>
+    <li><strong>Neither knob dominates.</strong> The five architectures span
+        about two accuracy points; so do the five learning rates. Anyone who
+        tells you one of them &ldquo;matters more&rdquo; has not measured it on
+        your problem.</li>
+    <li><strong>Ten fits is not a search.</strong> Ten points from a space with
+        five axes, varied one axis at a time with everything else held fixed.</li>
+  </ol>
+  <p class="small muted">Point 3 is the one to remember. You have not optimised
+  anything; you have looked at ten places.</p>
+</section>
+
+<!-- 45b -->
+<section data-menu-title="It does not transfer">
+  <h2>And the sweep does not transfer</h2>
+  <table>
+    <tr><th>Run</th><th class="num">Images</th><th class="num">Epochs</th><th class="num">Accuracy</th></tr>
+    <tr><td>Best in the sweep &mdash; 300, at lr 0.0003</td><td class="num">«int:l11_sweep.subset»</td><td class="num">12</td><td class="num">«pct2:l11_sweep.arch.2.val_acc»% validation</td></tr>
+    <tr><td class="fix">The headline model &mdash; 300, 100, at lr 0.001</td><td class="num">«int:l11_n_fit»</td><td class="num">«str:l11_epochs»</td><td class="num hit">«pct2:l11_sk.test_acc»% test</td></tr>
+  </table>
+  <p class="fail">The architecture the sweep ranked <em>fourth of five</em> is
+  the one that wins with all the data.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">The rule</span>
+    A deeper network needs more data to pay for its extra parameters. Rank
+    architectures on a fifth of your data and you will systematically prefer the
+    small ones &mdash; and never find out.
+  </div>
+</section>
+
+<!-- 46 -->
+<section data-menu-title="Where it goes wrong">
+  <h2>An accuracy is one number over ten classes</h2>
+  <p class="lead">Split it. Lecture 4 built the confusion matrix for two
+  classes; the object generalises without change.</p>
+  <pre><code class="language-python" data-trim>
+from sklearn.metrics import confusion_matrix
+
+cm = confusion_matrix(y_test, clf.predict(X_test))
+recall = cm.diagonal() / cm.sum(axis=1)      # one per class
+  </code></pre>
+  <p class="small">Ten rows, ten columns. Row $i$, column $j$ counts the images
+  of class $i$ the model called class $j$.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Confusion matrix">
+  <h2>Where the errors are</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l11-confusion.svg"
+         alt="Ten by ten row-normalised confusion matrix as a blue heatmap, with the Shirt diagonal cell outlined in red.">
+  </figure>
+  <p class="takeaway fail">Two classes are far worse than the other eight, and
+  their errors are not spread evenly &mdash; they go to a handful of specific
+  neighbours.</p>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="The hard class">
+  <h2>The hard class</h2>
+  <p class="lead">Recall on <strong>«str:l11_confusion.worst_class»</strong>:
+  <span class="fail">«pct1:l11_confusion.worst_recall»%</span>, against
+  «pct1:l11_confusion.per_class_recall.Sneaker»% on Sneaker.</p>
+  <table>
+    <tr><th>Shirts are called&hellip;</th><th class="num">Share of all shirts</th></tr>
+    <tr><td>Pullover</td><td class="num">«pct1:l11_confusion.shirt_as_pullover»%</td></tr>
+    <tr><td>T-shirt/top</td><td class="num">«pct1:l11_confusion.shirt_as_tshirt»%</td></tr>
+    <tr><td>Coat</td><td class="num">«pct1:l11_confusion.shirt_as_coat»%</td></tr>
+  </table>
+  <p class="small">Exactly the three classes the room named twenty minutes ago
+  from the image grid &mdash; and Coat is nearly as bad, at
+  «pct1:l11_confusion.per_class_recall.Coat»%. The model is not confused about
+  anything a person would find easy.</p>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="Telling the operator">
+  <h2>What to tell the operator</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">A defensible report</span>
+    &ldquo;Overall it is right «pct1:l11_sk.test_acc»% of the time. But it is
+    right «pct1:l11_confusion.worst_recall»% of the time on
+    «str:l11_confusion.worst_class», and almost all of those errors go to three
+    visually similar queues. If those three desks are adjacent, the practical
+    error rate is much lower than the headline. If they are in different
+    buildings, it is much worse.&rdquo;
+  </div>
+  <p class="small">The headline accuracy does not answer the operator's
+  question. The per-class breakdown does, and it took one extra function call.</p>
+</section>
+
+<!-- ============================ THE WALL =============================== -->
+
+<!-- 49 -->
+<section data-menu-title="It works">
+  <h2>It works</h2>
+  <p class="big-num good">«pct1:l11_sk.test_acc»%</p>
+  <p class="lead">Against a «pct1:l11_baseline_majority_acc»% baseline, on
+  «int:l11_n_test» test images the model has never seen.</p>
+  <p class="small muted">Test set touched once. Do not tune against it now.</p>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Now change it">
+  <h2>Now try to change it</h2>
+  <p class="lead">Four things you will want, in the order you will want them.</p>
+  <ol class="tight">
+    <li>Make it faster</li>
+    <li>Change what it optimises</li>
+    <li>See what the gradients are doing</li>
+    <li>Stop part-way through and look</li>
+  </ol>
+  <p class="small muted">Try each one now, in the notebook, before the next
+  slide.</p>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="Wall 1 · slow">
+  <h2>Wall 1 &middot; it is slow, and there is nowhere to move it</h2>
+  <p><span class="big-num bad">«f0:l11_sk.seconds» s</span></p>
+  <p class="lead">«str:l11_epochs» epochs, «int:l11_n_fit» images,
+  «int:l11_n_params» parameters, one CPU.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">There is no <code>device=</code></span>
+    Scikit-Learn does not support GPUs, and says so in its own FAQ: it is a
+    deliberate scope decision, not an oversight. The whole of Part II is going
+    to need one.
+  </div>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="Wall 2 · the loss">
+  <h2>Wall 2 &middot; you cannot change the loss</h2>
+  <pre><code class="language-python" data-trim>
+&gt;&gt;&gt; MLPClassifier(hidden_layer_sizes=(300, 100), loss="mae")
+TypeError: MLPClassifier.__init__() got an unexpected
+keyword argument 'loss'
+  </code></pre>
+  <p class="small">Cross-entropy is hard-coded. That is fine until the operator
+  says &ldquo;calling a coat a shirt is cheap, calling a bag a sandal is
+  expensive&rdquo; &mdash; a weighted loss, which is one line in a framework
+  that lets you write one.</p>
+  <p class="fail small">And that is the ordinary case, not an exotic one.</p>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="Wall 3 · gradients">
+  <h2>Wall 3 &middot; you cannot see a gradient</h2>
+  <pre><code class="language-python" data-trim>
+&gt;&gt;&gt; [a for a in dir(clf) if "grad" in a.lower()]
+[]
+  </code></pre>
+  <p>Backpropagation ran «str:l11_epochs» times per image and computed
+  «int:l11_n_params» partial derivatives on every batch. None of them was kept.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Why that matters in three lectures</span>
+    Lecture 13 builds a twenty-layer network whose loss barely moves. The
+    diagnosis is a per-layer gradient statistic. You cannot compute it here.
+  </div>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="Wall 4 · mid-epoch">
+  <h2>Wall 4 &middot; the smallest unit of control is one epoch</h2>
+  <pre><code class="language-python" data-trim>
+&gt;&gt;&gt; inspect.signature(MLPClassifier.partial_fit)
+(self, X, y, classes=None)
+  </code></pre>
+  <p><code>partial_fit</code> is the finest handle there is, and one call is one
+  complete pass over everything you hand it.</p>
+  <ul class="tight small">
+    <li>No per-batch loss</li>
+    <li>No hook between the forward pass and the backward pass</li>
+    <li>No way to clip a gradient, or to skip a bad batch, or to log anything</li>
+  </ul>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="The real problem">
+  <h2>The problem underneath all four</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">The loop was written for you</span>
+    <code>fit()</code> contains a <code>for</code> loop over epochs and batches
+    that you did not write, cannot see, and cannot enter. Every one of the four
+    walls is the same wall.
+  </div>
+  <p class="small">This is not a criticism of Scikit-Learn.
+  <code>MLPClassifier</code> is documented as a convenience, and for a tabular
+  problem with a standard loss it is the right tool. It is the wrong tool from
+  here on, and now you know precisely why.</p>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="Before you leave">
+  <h2>Before you leave</h2>
+  <ol class="tight">
+    <li>Write your <strong>best validation accuracy</strong> on the same sheet,
+        next to what you predicted</li>
+    <li>Bring the sheet to the next lecture &mdash; we open by scoring it out
+        loud</li>
+    <li>Make sure you can open a GPU runtime. The next lecture assumes it</li>
+  </ol>
+  <p class="fail small">Do not fix anything yet.</p>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="References">
+  <h2>In the book</h2>
+  <table>
+    <tr><th>Topic</th><th>Chapter</th></tr>
+    <tr><td>Biological neurons, the TLU, the perceptron</td><td>9</td></tr>
+    <tr><td>The perceptron learning rule, XOR, the MLP</td><td>9</td></tr>
+    <tr><td>Activation functions and why the step had to go</td><td>9</td></tr>
+    <tr><td>Regression and classification MLPs, the architecture tables</td><td>10</td></tr>
+    <tr><td>Softmax and cross-entropy</td><td>4, 10</td></tr>
+    <tr><td>Fashion MNIST</td><td>9</td></tr>
+    <tr><td>Confusion matrix, per-class recall</td><td>3</td></tr>
+  </table>
+</section>
+
+<!-- 58 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 12 &middot; Fix</p>
+  <h1>Rebuilding it in PyTorch</h1>
+  <p class="small" style="color:#cfe2f0">
+    What <code>fit()</code> was actually doing<br>
+    Why the chain rule is run backwards<br>
+    And two bugs that never raise an exception
+  </p>
+  <p class="clock">Bring the sheet. Bring a GPU runtime.</p>
+</section>
+
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 11
+  <span class="sep">&middot;</span> The first neural network
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

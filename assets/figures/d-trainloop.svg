@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 480" width="1080" height="480" font-family="'Source Sans 3','Source Sans Pro',-apple-system,BlinkMacSystemFont,Helvetica,sans-serif">
+  <defs>
+    <marker id="tl-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0b3d62"/>
+    </marker>
+    <marker id="tl-ar-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#14663a"/>
+    </marker>
+  </defs>
+  <style>
+    .box   { fill:#fff; stroke:#0b3d62; stroke-width:2; }
+    .box-r { fill:#fff; stroke:#c0392b; stroke-width:2; }
+    .box-g { fill:#fff; stroke:#14663a; stroke-width:2; }
+    .box-m { fill:#fff; stroke:#6c3483; stroke-width:2; }
+    .t     { font-size:19px; fill:#16212b; }
+    .t-sub { font-size:16px; fill:#4b5563; }
+    .t-hd  { font-size:23px; font-weight:700; }
+    .flow  { stroke-width:2.5; fill:none; }
+  </style>
+
+  <text class="t-hd" x="20" y="32" fill="#0b3d62">The five lines, as a cycle &#8212; one turn per mini-batch</text>
+
+  <!-- 1 · zero_grad -->
+  <rect x="404" y="62" width="272" height="76" rx="7" class="box-r"/>
+  <text class="t" x="540" y="92" text-anchor="middle">1 &#183; opt.zero_grad()</text>
+  <text class="t-sub" x="540" y="116" text-anchor="middle" fill="#c0392b">clear last step&#8217;s gradients</text>
+  <text class="t-sub" x="540" y="134" text-anchor="middle" fill="#c0392b">omit it and nothing complains</text>
+
+  <!-- 2 · forward -->
+  <rect x="768" y="180" width="272" height="76" rx="7" class="box"/>
+  <text class="t" x="904" y="210" text-anchor="middle">2 &#183; out = model(xb)</text>
+  <text class="t-sub" x="904" y="234" text-anchor="middle">forward pass; the graph is</text>
+  <text class="t-sub" x="904" y="252" text-anchor="middle">recorded while it runs</text>
+
+  <!-- 3 · loss -->
+  <rect x="768" y="330" width="272" height="76" rx="7" class="box-m"/>
+  <text class="t" x="904" y="360" text-anchor="middle">3 &#183; loss = lossf(out, yb)</text>
+  <text class="t-sub" x="904" y="384" text-anchor="middle" fill="#6c3483">one scalar &#8212; and the whole of</text>
+  <text class="t-sub" x="904" y="402" text-anchor="middle" fill="#6c3483">thread 6 turns on that word</text>
+
+  <!-- 4 · backward -->
+  <rect x="404" y="392" width="272" height="76" rx="7" class="box-m"/>
+  <text class="t" x="540" y="422" text-anchor="middle">4 &#183; loss.backward()</text>
+  <text class="t-sub" x="540" y="446" text-anchor="middle" fill="#6c3483">one reverse sweep fills</text>
+  <text class="t-sub" x="540" y="464" text-anchor="middle" fill="#6c3483">p.grad for every parameter</text>
+
+  <!-- 5 · step -->
+  <rect x="40" y="330" width="272" height="76" rx="7" class="box-g"/>
+  <text class="t" x="176" y="360" text-anchor="middle">5 &#183; opt.step()</text>
+  <text class="t-sub" x="176" y="384" text-anchor="middle" fill="#14663a">p &#8592; p &#8722; &#951; &#183; p.grad,</text>
+  <text class="t-sub" x="176" y="402" text-anchor="middle" fill="#14663a">for Adam with momentum</text>
+
+  <!-- batch source -->
+  <rect x="40" y="180" width="272" height="76" rx="7" class="box"/>
+  <text class="t" x="176" y="210" text-anchor="middle">0 &#183; for xb, yb in loader</text>
+  <text class="t-sub" x="176" y="234" text-anchor="middle">DataLoader shuffles, batches</text>
+  <text class="t-sub" x="176" y="252" text-anchor="middle">and hands over tensors</text>
+
+  <!-- the cycle -->
+  <g class="flow" stroke="#0b3d62" marker-end="url(#tl-ar)">
+    <path d="M 176 180 C 176 120, 250 100, 398 100"/>
+    <path d="M 676 100 C 824 100, 904 120, 904 174"/>
+    <path d="M 904 256 L 904 324"/>
+  </g>
+  <g class="flow" stroke="#14663a" marker-end="url(#tl-ar-g)">
+    <path d="M 904 406 C 904 452, 830 468, 682 468"/>
+    <path d="M 398 468 C 250 468, 176 452, 176 412"/>
+    <path d="M 176 330 L 176 262"/>
+  </g>
+
+  <rect x="356" y="196" width="368" height="112" rx="7" class="box"  fill="#eef4f8"/>
+  <text class="t" x="540" y="228" text-anchor="middle" fill="#0b3d62">Every one of these is yours</text>
+  <text class="t-sub" x="540" y="256" text-anchor="middle">Print the loss, clip the gradient, change the</text>
+  <text class="t-sub" x="540" y="276" text-anchor="middle">objective, stop after nine batches &#8212; all of it is</text>
+  <text class="t-sub" x="540" y="296" text-anchor="middle">an ordinary Python <tspan font-style="italic">for</tspan> loop you wrote.</text>
+</svg>
