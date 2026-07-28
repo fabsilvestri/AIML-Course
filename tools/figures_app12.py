@@ -60,6 +60,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.ticker import FixedLocator, FuncFormatter, NullLocator
 
 from figkit import (ACCENT, AXIS, MATH, MUTED, PRIMARY, RULE, SMALL, SUCCESS,
                     check_text_floor, export, save, setup)
@@ -560,16 +561,23 @@ def normalisation_failure(F) -> dict:
     p = _softmax(logits, axis=1)
     d = np.arange(n)
     bad = {"loss": float(-np.log(p[d, d] + 1e-300).mean()),
-           "accuracy": float(logits.argmax(1) == d).__float__(),
+           "accuracy": float((logits.argmax(1) == d).mean()),
            "p_positive": float(p[d, d].mean())}
-    bad["accuracy"] = float((logits.argmax(1) == d).mean())
 
+    # Who wins a text query when the vectors are not normalised? For a fixed
+    # query the text norm is a constant across candidates, so the ranking within
+    # a row is by ||image|| * cos — length competes with direction. Count, per
+    # image, how many of the n queries put it first.
     norms = np.linalg.norm(I_raw, axis=1)
-    top1 = np.bincount(raw_sim.argmax(1), minlength=n)
+    top1 = np.bincount((T_raw @ I_raw.T).argmax(1), minlength=n)
     order = np.argsort(np.argsort(norms))
     rank_top1 = np.argsort(np.argsort(top1))
     corr = float(np.corrcoef(order, rank_top1)[0, 1])
+    # and the same count with the sphere restored, as the control
+    top1_norm = np.bincount((T @ I.T).argmax(1), minlength=n)
     return {"normalised": good, "unnormalised": bad,
+            "max_wins_normalised": int(top1_norm.max()),
+            "n_never_first_normalised": int((top1_norm == 0).sum()),
             "loss_ratio": float(bad["loss"] / good["loss"]),
             "acc_drop_pts": float(100 * (good["accuracy"] - bad["accuracy"])),
             "norm_min": float(norms.min()), "norm_max": float(norms.max()),
@@ -758,61 +766,99 @@ def rag(entries, F) -> dict:
 # --------------------------------------------------------------------- figures
 
 def fig_catalogue(entries):
+    """Sixteen thumbnails, no per-image labels.
+
+    Two rows rather than three, and no captions under the images: at three rows
+    the figure is clamped by .fig-wide's 420px cap to 0.42, which takes a 15pt
+    label to 14.1px on the slide — under the floor. See TRICKS §11.6.
+    """
     from PIL import Image
-    fig, axes = plt.subplots(3, 6, figsize=(11.0, 6.2))
-    for ax, e in zip(axes.ravel(), entries[:18]):
-        ax.imshow(Image.open(e["file"]).convert("RGB").resize((224, 224)))
+
+    def square(path):
+        im = Image.open(path).convert("RGB")
+        s = min(im.size)
+        left, top = (im.width - s) // 2, (im.height - s) // 2
+        return im.crop((left, top, left + s, top + s)).resize((224, 224))
+
+    fig, axes = plt.subplots(2, 8, figsize=(11.5, 3.3))
+    for ax, e in zip(axes.ravel(), entries[:16]):
+        ax.imshow(square(e["file"]))
         ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
         for s in ax.spines.values():
             s.set_edgecolor(RULE)
-        cap = e["captions"][0]
-        ax.set_title(cap[:34] + ("…" if len(cap) > 34 else ""),
-                     fontsize=11, loc="left", pad=3, color=MUTED)
-    fig.suptitle(f"18 of the {N_CATALOGUE} catalogue entries — COCO validation "
-                 f"images with their first human caption",
-                 fontsize=13, color=MUTED, x=0.02, ha="left")
-    fig.tight_layout(rect=(0, 0, 1, 0.955))
+    fig.suptitle(f"16 of the {N_CATALOGUE} catalogue entries — COCO validation "
+                 f"images, each with five human captions we hold back",
+                 fontsize=SMALL, color=MUTED, x=0.004, y=0.975, ha="left")
+    # subplots_adjust rather than tight_layout: tight_layout reserves gutters for
+    # tick labels these axes do not have, and left the grid floating in white
+    fig.subplots_adjust(left=0.004, right=0.996, top=0.90, bottom=0.008,
+                        wspace=0.045, hspace=0.055)
     return save(fig, "l23-catalogue", raster=True)
 
 
-def _pair_hist(ax, matched, random_, *, title, xlabel):
+def plain_log(ax, axis, ticks, fmt=lambda v: f"{v:g}"):
+    """Plain-text log tick labels.
+
+    matplotlib's log formatter writes mathtext, and `text.parse_math` is off
+    project-wide (TRICKS §9.1), so the default labels ship as the literal string
+    `$\\mathdefault{10^{-1}}$`. Set the ticks by hand instead.
+    """
+    a = ax.xaxis if axis == "x" else ax.yaxis
+    a.set_major_locator(FixedLocator(ticks))
+    a.set_minor_locator(NullLocator())
+    a.set_major_formatter(FuncFormatter(lambda v, _: fmt(v)))
+
+
+def _pair_hist(ax, matched, random_, *, title, xlabel, headroom=1.42,
+               labels=("unrelated pairs", "the caption of that image")):
     lo = min(min(matched), min(random_))
     hi = max(max(matched), max(random_))
     bins = np.linspace(lo, hi, 42)
     ax.hist(random_, bins=bins, density=True, color=RULE, edgecolor=AXIS,
-            linewidth=0.6, label="unrelated pairs")
+            linewidth=0.6, label=labels[0])
     ax.hist(matched, bins=bins, density=True, color=PRIMARY, alpha=0.72,
-            label="the caption of that image")
+            label=labels[1])
     ax.axvline(np.mean(random_), color=AXIS, ls=":", lw=2)
     ax.axvline(np.mean(matched), color=PRIMARY, ls="--", lw=2)
     ax.set_xlabel(xlabel)
     ax.set_ylabel("density")
     ax.set_title(title)
+    # headroom, so the legend and the callout have somewhere to sit that is not
+    # on top of the data. TRICKS §6.1.
+    ax.set_ylim(0, ax.get_ylim()[1] * headroom)
 
 
 def fig_mismatch(sm):
     fig, axes = plt.subplots(1, 2, figsize=(11.4, 4.0))
     jl = sm["jl"]
     _pair_hist(axes[0], jl["matched"], jl["random_sample"],
-               title="ViT-B/16 images vs MiniLM captions",
-               xlabel="cosine similarity")
-    axes[0].legend(loc="upper left")
+               title="ViT-B/16 images against MiniLM captions",
+               xlabel="cosine similarity", headroom=1.75,
+               labels=("unrelated", "matched"))
+    # both corners of this panel are empty; the middle is all data. The labels
+    # are short here because the callout needs the other corner.
+    axes[0].legend(loc="upper right", framealpha=1.0, frameon=True,
+                   facecolor="white", edgecolor="none")
     axes[0].annotate(f"means differ by {jl['gap']:+.3f}\n"
-                     f"(sd of unrelated: {jl['random_sd']:.3f})",
-                     xy=(0.03, 0.55), xycoords="axes fraction", fontsize=SMALL,
-                     color=ACCENT,
+                     f"sd of unrelated: {jl['random_sd']:.3f}",
+                     xy=(0.02, 0.985), xycoords="axes fraction", fontsize=SMALL,
+                     color=ACCENT, va="top",
                      bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.35"))
-    names = ["JL projection\n768 → 384", "truncate\nimage to 384",
+    names = ["JL projection\n768 to 384", "truncate\nimage to 384",
              "zero-pad\ntext to 768"]
     keys = ["jl", "truncate", "pad"]
     r1 = [100 * sm[k]["r1"] for k in keys]
     axes[1].bar(names, r1, color=ACCENT, width=0.55)
+    for i, v in enumerate(r1):
+        axes[1].text(i, v + 0.05, f"{v:.1f}%", ha="center", fontsize=SMALL,
+                     color=ACCENT)
     axes[1].axhline(100 / sm["n"], color=PRIMARY, ls="--", lw=2)
-    axes[1].text(2.45, 100 / sm["n"] + 0.09, f"random ranking = {100 / sm['n']:.1f}%",
+    axes[1].text(2.45, 100 / sm["n"] + 0.55,
+                 f"random ranking = {100 / sm['n']:.1f}%",
                  ha="right", fontsize=SMALL, color=PRIMARY)
     axes[1].set_ylabel("Recall@1, %")
-    axes[1].set_ylim(0, max(2.0, max(r1) * 1.6))
-    axes[1].set_title(f"three ways to force the dimensions to agree "
+    axes[1].set_ylim(0, max(2.0, max(r1) * 1.9))
+    axes[1].set_title(f"three ways to make the dimensions agree "
                       f"(n = {sm['n']})")
     fig.tight_layout()
     return save(fig, "l23-space-mismatch")
@@ -822,12 +868,13 @@ def fig_clip_sim(cl):
     t2i = cl["t2i"]
     fig, ax = plt.subplots(figsize=(9.6, 4.0))
     _pair_hist(ax, t2i["matched"], t2i["random_sample"],
-               title=f"CLIP ViT-B/32, same {cl['n']} images and captions",
+               title=f"CLIP ViT-B/32, the same {cl['n']} images and captions",
                xlabel="cosine similarity")
-    ax.legend(loc="upper left")
+    ax.legend(loc="upper left", framealpha=1.0, frameon=True,
+              facecolor="white", edgecolor="none")
     ax.annotate(f"means differ by {t2i['gap']:+.3f}\n"
                 f"Cohen's d = {t2i['cohens_d']:.2f}",
-                xy=(0.62, 0.55), xycoords="axes fraction", fontsize=SMALL,
+                xy=(0.66, 0.72), xycoords="axes fraction", fontsize=SMALL,
                 color=SUCCESS,
                 bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.35"))
     fig.tight_layout()
@@ -845,14 +892,16 @@ def fig_recall(sm, cl, base):
            label="ViT + MiniLM, two separate spaces")
     ax.bar(x + w, [100 * cl["t2i"][f"r{k}"] for k in ks], w, color=SUCCESS,
            label="CLIP, one joint space")
+    # inside the bar, not above it: above it collides with the legend
     for i, k in enumerate(ks):
-        ax.text(i + w, 100 * cl["t2i"][f"r{k}"] + 1.5,
-                f"{100 * cl['t2i'][f'r{k}']:.1f}", ha="center",
-                fontsize=SMALL, color=SUCCESS)
+        ax.text(i + w, 100 * cl["t2i"][f"r{k}"] - 3.5,
+                f"{100 * cl['t2i'][f'r{k}']:.1f}", ha="center", va="top",
+                fontsize=SMALL, color="white")
     ax.set_xticks(x, [f"Recall@{k}" for k in ks])
     ax.set_ylabel("%")
-    ax.set_ylim(0, 105)
-    ax.legend(loc="upper left")
+    ax.set_ylim(0, 122)
+    ax.legend(loc="upper left", framealpha=1.0, frameon=True,
+              facecolor="white", edgecolor="none")
     ax.set_title(f"text-to-image retrieval over {cl['n']} candidates")
     fig.tight_layout()
     return save(fig, "l23-recall")
@@ -866,14 +915,16 @@ def fig_ranks(cl, sm):
             label="ViT + MiniLM")
     ax.hist(cl["t2i"]["ranks"], bins=bins, color=SUCCESS, alpha=0.8,
             label="CLIP")
+    ax.set_ylim(0, ax.get_ylim()[1] * 1.15)
     ax.axvline((n + 1) / 2, color=PRIMARY, ls="--", lw=2)
-    ax.text((n + 1) / 2 + 4, ax.get_ylim()[1] * 0.75,
+    ax.text((n + 1) / 2 + 5, ax.get_ylim()[1] * 0.34,
             f"random ranking\nputs it at {(n + 1) / 2:.0f} on average",
             fontsize=SMALL, color=PRIMARY,
             bbox=dict(fc="white", ec="none", pad=2))
     ax.set_xlabel(f"rank of the correct image, out of {n}")
     ax.set_ylabel("queries")
-    ax.legend(loc="upper center")
+    ax.legend(loc="upper right", framealpha=1.0, frameon=True,
+              facecolor="white", edgecolor="none")
     ax.set_title("where the right answer actually landed")
     fig.tight_layout()
     return save(fig, "l23-ranks")
@@ -882,12 +933,14 @@ def fig_ranks(cl, sm):
 def fig_zeroshot(zs):
     classes = zs["classes"]
     fig, axes = plt.subplots(1, 2, figsize=(11.4, 4.0),
-                             gridspec_kw={"width_ratios": [1.55, 1]})
+                             gridspec_kw={"width_ratios": [1.25, 1]})
     v = [100 * zs["photo"]["per_class"][c] for c in classes]
     axes[0].bar(classes, v, color=PRIMARY)
     axes[0].axhline(100 * zs["chance"], color=ACCENT, ls="--", lw=2)
-    axes[0].text(9.4, 100 * zs["chance"] + 2.5, "chance = 10%", ha="right",
-                 fontsize=SMALL, color=ACCENT)
+    # every bar is tall, so there is no empty region: a white bbox it is
+    axes[0].text(9.4, 100 * zs["chance"] + 3.0, "chance = 10%", ha="right",
+                 fontsize=SMALL, color=ACCENT,
+                 bbox=dict(fc="white", ec="none", pad=1.6))
     axes[0].set_ylabel("accuracy, %")
     axes[0].set_ylim(0, 105)
     axes[0].tick_params(axis="x", rotation=45)
@@ -895,7 +948,7 @@ def fig_zeroshot(zs):
         lbl.set_ha("right")
     axes[0].set_title(f"per class, \"a photo of a …\", {zs['n']:,} CIFAR-10 images")
 
-    names = ["\"dog\"", "\"a photo of\na dog\"", "\"a low-resolution\nphoto of a dog\""]
+    names = ["\"dog\"", "\"a photo\nof a dog\"", "\"a low-resolution\nphoto of a dog\""]
     accs = [100 * zs[k]["accuracy"] for k in ("bare", "photo", "lowres")]
     axes[1].bar(names, accs, color=MATH, width=0.55)
     for i, a in enumerate(accs):
@@ -910,34 +963,38 @@ def fig_zeroshot(zs):
 def fig_concentration(co):
     fig, axes = plt.subplots(1, 2, figsize=(11.4, 4.0))
     axes[0].loglog(co["dims"], co["sd"], "o-", color=MATH, lw=2,
-                   label="measured sd of $\\cos$")
+                   label="measured sd of the cosine")
     axes[0].loglog(co["dims"], co["theory_sd"], "--", color=AXIS, lw=2,
-                   label=r"$1/\sqrt{d}$")
-    axes[0].set_xlabel("dimension $d$")
+                   label="1 / sqrt(d)")
+    plain_log(axes[0], "x", [2, 8, 32, 128, 512, 2048], lambda v: f"{v:.0f}")
+    plain_log(axes[0], "y", [0.01, 0.03, 0.1, 0.3, 0.7])
+    axes[0].set_xlabel("dimension d")
     axes[0].set_ylabel("sd of the cosine")
-    axes[0].legend()
-    axes[0].set_title("two random unit vectors, 4,000 pairs per dimension")
+    axes[0].legend(loc="upper right")
+    axes[0].set_title("4,000 random pairs per dimension")
     axes[0].annotate(f"at d = {co['d']}: sd = {co['gauss_sd']:.4f}",
-                     xy=(co["d"], co["gauss_sd"]), xytext=(0.08, 0.16),
+                     xy=(co["d"], co["gauss_sd"]), xytext=(0.04, 0.10),
                      textcoords="axes fraction", fontsize=SMALL, color=MATH,
                      arrowprops=dict(arrowstyle="->", color=MATH),
                      bbox=dict(fc="white", ec=MATH, boxstyle="round,pad=0.3"))
 
     axes[1].hist(co["gauss_sample"], bins=60, density=True, color=MATH, alpha=0.8)
+    top = axes[1].get_ylim()[1] * 1.25
     axes[1].axvline(0, color=SUCCESS, lw=2.5)
     axes[1].axvline(-1, color=ACCENT, lw=2.5)
     axes[1].set_xlim(-1.05, 1.05)
-    axes[1].set_xlabel(f"cosine between random unit vectors in $R^{{{co['d']}}}$")
+    axes[1].set_ylim(0, top)
+    axes[1].set_xlabel(f"cosine between random unit vectors, d = {co['d']}")
     axes[1].set_ylabel("density")
-    axes[1].set_title("nothing is near $-1$")
-    axes[1].annotate("what an untrained pair\nactually looks like: 0",
-                     xy=(0.0, axes[1].get_ylim()[1] * 0.55),
-                     xytext=(0.18, 0.62), textcoords="axes fraction",
+    axes[1].set_title("nothing is anywhere near minus one")
+    axes[1].annotate("an unrelated pair\nlands here: 0",
+                     xy=(0.02, top * 0.60), xytext=(0.58, 0.66),
+                     textcoords="axes fraction",
                      fontsize=SMALL, color=SUCCESS,
                      arrowprops=dict(arrowstyle="->", color=SUCCESS),
                      bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.3"))
-    axes[1].annotate("where \"opposite\"\nwould be", xy=(-1, 0.15),
-                     xytext=(0.03, 0.30), textcoords="axes fraction",
+    axes[1].annotate("where \"opposite\"\nwould be", xy=(-1, top * 0.30),
+                     xytext=(0.04, 0.52), textcoords="axes fraction",
                      fontsize=SMALL, color=ACCENT,
                      arrowprops=dict(arrowstyle="->", color=ACCENT),
                      bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.3"))
@@ -957,53 +1014,63 @@ def fig_geometry(g, co):
     axes[0].axvline(0, color=SUCCESS, lw=2)
     axes[0].set_xlabel("cosine similarity")
     axes[0].set_ylabel("density")
-    axes[0].legend(loc="upper right", fontsize=13)
-    axes[0].set_title("unrelated pairs sit near zero — but not exactly")
+    axes[0].set_ylim(0, axes[0].get_ylim()[1] * 1.45)
+    axes[0].legend(loc="upper right", fontsize=SMALL, framealpha=1.0,
+                   frameon=True, facecolor="white", edgecolor="none")
+    axes[0].set_title("unrelated pairs sit near zero — but not at zero")
 
     pi = np.array(g["pca_img"]); pt = np.array(g["pca_txt"])
-    axes[1].scatter(pi[:, 0], pi[:, 1], s=14, color=PRIMARY, label="images")
-    axes[1].scatter(pt[:, 0], pt[:, 1], s=14, color=ACCENT, label="captions")
-    axes[1].legend(loc="upper right")
+    axes[1].scatter(pi[:, 0], pi[:, 1], s=14, color=PRIMARY)
+    axes[1].scatter(pt[:, 0], pt[:, 1], s=14, color=ACCENT)
+    axes[1].annotate("captions", xy=(pt[:, 0].mean(), pt[:, 1].max() * 1.7),
+                     ha="center", fontsize=SMALL, color=ACCENT)
+    axes[1].annotate("images", xy=(pi[:, 0].mean(), pi[:, 1].max() * 1.7),
+                     ha="center", fontsize=SMALL, color=PRIMARY)
+    axes[1].set_ylim(pt[:, 1].min() * 1.25, pt[:, 1].max() * 2.1)
     axes[1].set_xlabel("first principal direction")
     axes[1].set_ylabel("second")
-    axes[1].set_title(f"one space, two cones: the gap is "
-                      f"{g['modality_gap']:.2f} apart")
+    axes[1].set_title(f"one space, two cones, {g['modality_gap']:.2f} apart")
     fig.tight_layout()
     return save(fig, "l24-geometry")
 
 
 def fig_temperature(ts):
     fig, axes = plt.subplots(1, 2, figsize=(11.4, 4.0))
+    ticks = [1.0, 0.1, 0.01, 0.002]
     axes[0].semilogx(ts["taus"], ts["loss"], "o-", color=MATH, lw=2)
     axes[0].axhline(ts["chance_loss"], color=AXIS, ls=":", lw=2)
-    axes[0].text(0.0021, ts["chance_loss"] + 0.12,
-                 f"a random scorer: $\\log$ {ts['n']} = {ts['chance_loss']:.2f}",
-                 fontsize=SMALL, color=AXIS)
+    axes[0].set_ylim(0, ts["chance_loss"] * 1.30)
+    axes[0].text(0.0022, ts["chance_loss"] + 0.14,
+                 f"a scorer that knows nothing: log {ts['n']} = "
+                 f"{ts['chance_loss']:.2f}",
+                 ha="left", fontsize=SMALL, color=AXIS)
     axes[0].axvline(ts["learned_tau"], color=SUCCESS, ls="--", lw=2)
-    axes[0].annotate(f"what CLIP learned:\n"
-                     f"$\\tau$ = {ts['learned_tau']:.4f}",
+    axes[0].annotate(f"what CLIP learned:\ntau = {ts['learned_tau']:.4f}",
                      xy=(ts["learned_tau"], ts["at_learned"]["loss"]),
-                     xytext=(0.30, 0.62), textcoords="axes fraction",
+                     xytext=(0.34, 0.46), textcoords="axes fraction",
                      fontsize=SMALL, color=SUCCESS,
                      arrowprops=dict(arrowstyle="->", color=SUCCESS),
                      bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.3"))
     axes[0].invert_xaxis()
-    axes[0].set_xlabel(r"temperature $\tau$  (colder to the right)")
+    plain_log(axes[0], "x", ticks)
+    axes[0].set_xlabel("temperature tau  (colder to the right)")
     axes[0].set_ylabel("contrastive loss")
-    axes[0].set_title(f"the same {ts['n']} cosines, twelve temperatures")
+    axes[0].set_title(f"one set of {ts['n']} cosines, twelve temperatures")
 
     axes[1].semilogx(ts["taus"], ts["p_positive"], "o-", color=SUCCESS, lw=2,
                      label="probability on the right answer")
     axes[1].semilogx(ts["taus"], ts["p_hardest"], "s-", color=ACCENT, lw=2,
                      label="probability on the hardest wrong one")
     axes[1].semilogx(ts["taus"], ts["accuracy"], "--", color=PRIMARY, lw=2,
-                     label="top-1 accuracy (flat)")
+                     label="top-1 accuracy — flat")
     axes[1].axvline(ts["learned_tau"], color=SUCCESS, ls="--", lw=1.5)
     axes[1].invert_xaxis()
-    axes[1].set_xlabel(r"temperature $\tau$")
+    plain_log(axes[1], "x", ticks)
+    axes[1].set_xlabel("temperature tau")
     axes[1].set_ylabel("mean probability")
-    axes[1].set_ylim(-0.03, 1.03)
-    axes[1].legend(loc="center left", fontsize=13)
+    axes[1].set_ylim(-0.03, 1.28)
+    axes[1].legend(loc="upper left", fontsize=SMALL, framealpha=1.0,
+                   frameon=True, facecolor="white", edgecolor="none")
     axes[1].set_title("what the loss is paying attention to")
     fig.tight_layout()
     return save(fig, "l24-temperature")
@@ -1011,28 +1078,36 @@ def fig_temperature(ts):
 
 def fig_batch(bs):
     fig, axes = plt.subplots(1, 2, figsize=(11.4, 4.0))
-    axes[0].semilogx(bs["batch"], [100 * a for a in bs["accuracy"]], "o-",
-                     color=PRIMARY, lw=2, base=2, label="CLIP, measured")
-    axes[0].semilogx(bs["batch"], [100 * c for c in bs["chance"]], "--",
-                     color=AXIS, lw=2, base=2, label="chance = $1/B$")
-    axes[0].fill_between(bs["batch"],
+    B = bs["batch"]
+    acc = [100 * a for a in bs["accuracy"]]
+    chance = [100 * c for c in bs["chance"]]
+    axes[0].semilogx(B, acc, "o-", color=PRIMARY, lw=2, base=2)
+    axes[0].semilogx(B, chance, "--", color=AXIS, lw=2, base=2)
+    axes[0].fill_between(B,
                          [100 * (a - s) for a, s in zip(bs["accuracy"], bs["accuracy_sd"])],
                          [100 * (a + s) for a, s in zip(bs["accuracy"], bs["accuracy_sd"])],
                          color=PRIMARY, alpha=0.18)
-    axes[0].set_xlabel("batch size $B$ = 1 positive + $B-1$ negatives")
+    axes[0].annotate("CLIP, measured", xy=(B[2], acc[2] + 7), fontsize=SMALL,
+                     color=PRIMARY)
+    axes[0].annotate("chance = 1/B", xy=(B[2], chance[2] + 7), fontsize=SMALL,
+                     color=AXIS)
+    plain_log(axes[0], "x", B, lambda v: f"{v:.0f}")
+    axes[0].set_xlabel("batch size B = 1 positive and B-1 negatives")
     axes[0].set_ylabel("in-batch top-1, %")
-    axes[0].set_ylim(0, 105)
-    axes[0].legend(loc="lower left")
+    axes[0].set_ylim(0, 112)
     axes[0].set_title("200 random batches at each size")
 
-    axes[1].semilogx(bs["batch"], bs["loss"], "o-", color=MATH, lw=2, base=2,
+    axes[1].semilogx(B, bs["loss"], "o-", color=MATH, lw=2, base=2,
                      label="measured loss")
-    axes[1].semilogx(bs["batch"], bs["log_chance"], "--", color=AXIS, lw=2,
-                     base=2, label=r"$\log B$ — a scorer that knows nothing")
-    axes[1].set_xlabel("batch size $B$")
+    axes[1].semilogx(B, bs["log_chance"], "--", color=AXIS, lw=2,
+                     base=2, label="log B — a scorer that knows nothing")
+    plain_log(axes[1], "x", B, lambda v: f"{v:.0f}")
+    axes[1].set_xlabel("batch size B")
     axes[1].set_ylabel("contrastive loss")
-    axes[1].legend(loc="upper left")
-    axes[1].set_title(f"the ceiling moves with the batch ($\\tau$ = {bs['tau']:.4f})")
+    axes[1].set_ylim(0, max(bs["log_chance"]) * 1.32)
+    axes[1].legend(loc="upper left", fontsize=SMALL, framealpha=1.0,
+                   frameon=True, facecolor="white", edgecolor="none")
+    axes[1].set_title(f"the ceiling moves with the batch, tau = {bs['tau']:.4f}")
     fig.tight_layout()
     return save(fig, "l24-batch")
 
@@ -1047,16 +1122,17 @@ def fig_normalisation(nf):
                      color=[SUCCESS, ACCENT][i])
     axes[0].set_ylim(0, 105)
     axes[0].set_ylabel("in-batch top-1, %")
-    axes[0].set_title(f"the same loss, the same $\\tau$, {nf['n']} pairs")
+    axes[0].set_title(f"the same loss, the same tau, {nf['n']} pairs")
 
     axes[1].scatter(nf["norms"], nf["wins"], s=18, color=ACCENT)
     axes[1].set_xlabel("length of the image embedding")
     axes[1].set_ylabel("queries that ranked it first")
-    axes[1].set_title("without normalising, length wins")
+    axes[1].set_title("without normalising, length competes with direction")
     axes[1].annotate(f"rank correlation {nf['spearman_norm_vs_wins']:+.2f}\n"
-                     f"one image took {nf['max_wins_one_image']} of "
-                     f"{nf['n']} queries",
-                     xy=(0.04, 0.72), xycoords="axes fraction", fontsize=SMALL,
+                     f"{nf['n_images_never_first']} of {nf['n']} images are "
+                     f"never first\n(against "
+                     f"{nf['n_never_first_normalised']} on the sphere)",
+                     xy=(0.03, 0.70), xycoords="axes fraction", fontsize=SMALL,
                      color=ACCENT,
                      bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.35"))
     fig.tight_layout()
@@ -1074,7 +1150,7 @@ def fig_captions(cr, cm):
         ax.text(i, v + 1.5, f"{v:.1f}%", ha="center", fontsize=SMALL,
                 color=[PRIMARY, ACCENT, SUCCESS][i])
     ax.axhline(100 * cm["clip_on_blanked"], color=MATH, ls="--", lw=2)
-    ax.text(2.45, 100 * cm["clip_on_blanked"] + 1.6,
+    ax.text(2.45, 100 * cm["clip_on_blanked"] + 3.4,
             f"CLIP's image route, unaffected: {100 * cm['clip_on_blanked']:.1f}%",
             ha="right", fontsize=SMALL, color=MATH)
     ax.set_ylabel("Recall@1, %")
@@ -1095,7 +1171,7 @@ def fig_rag(rg):
         n_ok = [rg["closed"], rg["grounded"]][i]["valid"]
         ax.text(i, v + 2.5, f"{v:.0f}%\n({n_ok} of {n_cit} citations)",
                 ha="center", fontsize=SMALL, color=[ACCENT, SUCCESS][i])
-    ax.set_ylim(0, 118)
+    ax.set_ylim(0, 132)
     ax.set_ylabel("cited SKUs that exist, %")
     ax.set_title(f"{rg['n_queries']} ambiguous queries, "
                  f"{rg['catalogue_size']}-entry catalogue")

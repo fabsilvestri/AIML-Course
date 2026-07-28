@@ -153,7 +153,7 @@
   the detection application, and one the book names.</p>
   <div class="panel panel-fail">
     <span class="panel-title">We are not downloading COCO</span>
-    The full release is about @@l23_corpus.coco_full_gb@@ GB. Nothing in this
+    The full release is about 20 GB. Nothing in this
     lecture needs it, and a lecture that cannot be re-run on a laptop is a
     lecture nobody re-runs.
   </div>
@@ -167,18 +167,18 @@
   <h2>The corpus, and its size</h2>
   <div class="cols cols-40-60">
     <div>
-      <p class="big-num">@@l23_corpus.n_catalogue@@</p>
+      <p class="big-num">200</p>
       <p class="small">catalogue entries<br>
-      <span class="muted">@@l23_corpus.megabytes:.1f@@ MB on disk</span></p>
+      <span class="muted">32.6 MB on disk</span></p>
     </div>
     <div>
       <ul class="tight small">
         <li>COCO 2014 validation images, taken in order of image id, so
             everyone&rsquo;s catalogue is the same catalogue</li>
-        <li>@@l23_corpus.n_captions_each@@ independent human captions per image
+        <li>5 independent human captions per image
             &mdash; written by people who were not shown each other&rsquo;s</li>
         <li>Every retrieval number today is measured against
-            <strong>@@l23_corpus.n_catalogue@@ candidates</strong></li>
+            <strong>200 candidates</strong></li>
       </ul>
     </div>
   </div>
@@ -191,13 +191,14 @@
 
 <!-- 11 -->
 <section class="figslide" data-menu-title="◆ The catalogue">
-  <h2>Eighteen of the two hundred entries</h2>
+  <h2>Sixteen of the two hundred entries</h2>
   <figure class="fig fig-wide">
     <img src="../assets/figures/l23-catalogue.png"
-         alt="A grid of eighteen photographs of everyday scenes, each captioned with the first sentence a human wrote about it.">
+         alt="Two rows of eight photographs of everyday scenes: people, food, vehicles, animals, rooms.">
   </figure>
-  <p class="takeaway muted">Ordinary photographs of ordinary things, and one
-  sentence each written by someone looking at the picture.</p>
+  <p class="takeaway muted">Ordinary photographs of ordinary things &mdash; and
+  five sentences each, written by five different people, which the search system
+  never sees.</p>
 </section>
 
 <!-- 12 -->
@@ -242,8 +243,8 @@
   know</strong>. The catalogue has no labels, so it cannot play that role.</p>
   <table>
     <tr><th>Corpus</th><th class="num">Size</th><th>Job</th></tr>
-    <tr><td>COCO catalogue</td><td class="num">@@l23_corpus.n_catalogue@@ images</td><td>the real task: rank entries for a query</td></tr>
-    <tr><td>CIFAR-10 test</td><td class="num">@@l23_corpus.n_cifar:,@@ images</td><td>the known-answer check: ten labels we have</td></tr>
+    <tr><td>COCO catalogue</td><td class="num">200 images</td><td>the real task: rank entries for a query</td></tr>
+    <tr><td>CIFAR-10 test</td><td class="num">2,000 images</td><td>the known-answer check: ten labels we have</td></tr>
   </table>
   <p class="small muted">CIFAR-10 is 32&times;32. That is a hard setting for any
   model trained on web photographs, and we will see the cost.</p>
@@ -365,12 +366,12 @@
 <section data-menu-title="The baseline, numerically">
   <h2>What random ranking scores on our catalogue</h2>
   <table>
-    <tr><th>Quantity</th><th class="num">Value at n = @@l23_corpus.n_catalogue@@</th></tr>
-    <tr><td>Recall@1</td><td class="num">@@l23_random.r1:.1%@@</td></tr>
-    <tr><td>Recall@5</td><td class="num">@@l23_random.r5:.1%@@</td></tr>
-    <tr><td>Recall@10</td><td class="num">@@l23_random.r10:.1%@@</td></tr>
-    <tr><td>Expected rank</td><td class="num">@@l23_random.expected_rank:.1f@@</td></tr>
-    <tr><td>MRR</td><td class="num">@@l23_random.mrr:.3f@@</td></tr>
+    <tr><th>Quantity</th><th class="num">Value at n = 200</th></tr>
+    <tr><td>Recall@1</td><td class="num">0.5%</td></tr>
+    <tr><td>Recall@5</td><td class="num">2.5%</td></tr>
+    <tr><td>Recall@10</td><td class="num">5.0%</td></tr>
+    <tr><td>Expected rank</td><td class="num">100.5</td></tr>
+    <tr><td>MRR</td><td class="num">0.029</td></tr>
   </table>
   <p class="small fail">These scale with the catalogue. On 5,000 candidates
   R@1 would be 0.02%. Quote the size or quote nothing.</p>
@@ -390,7 +391,7 @@
   </ul>
   <div class="panel">
     <span class="panel-title">Estimate, do not wish</span>
-    Your number sits somewhere between @@l23_random.r1:.1%@@ (shuffling) and
+    Your number sits somewhere between 0.5% (shuffling) and
     100% (a system that reads minds). Saying <em>where</em>, and why, is the
     exercise.
   </div>
@@ -409,7 +410,7 @@
     </p>
   </div>
   <p class="small">Anchored, not guessed: shuffling scores
-  @@l23_random.r1:.1%@@ at rank 1 and @@l23_random.r10:.1%@@ in the top ten.</p>
+  0.5% at rank 1 and 5.0% in the top ten.</p>
   <aside class="notes">Do not hint that anything is about to go wrong. Walk the
   room; pens must move. The punchline of the ritual is given away if you preface
   it.</aside>
@@ -435,7 +436,7 @@
        Open Lecture 23 in Google Colab</a>
   </p>
   <p class="small muted">It downloads the split index and
-  @@l23_corpus.n_catalogue@@ images &mdash; @@l23_corpus.megabytes:.0f@@ MB,
+  200 images &mdash; 33 MB,
   about a minute on a Colab connection. The model weights are the slow part.</p>
 </section>
 
@@ -443,10 +444,10 @@
 <section data-menu-title="The plan">
   <h2>The plan</h2>
   <ol class="tight">
-    <li>Encode the @@l23_corpus.n_catalogue@@ images with a vision transformer</li>
-    <li>Encode the @@l23_corpus.n_catalogue@@ queries with a sentence encoder</li>
+    <li>Encode the 200 images with a vision transformer</li>
+    <li>Encode the 200 queries with a sentence encoder</li>
     <li>Cosine similarity, rank, measure Recall@k</li>
-    <li>Compare against @@l23_random.r1:.1%@@</li>
+    <li>Compare against 0.5%</li>
   </ol>
   <p class="small muted">Four steps, each of which you have written before. The
   interesting part is step 3, and it is interesting for a reason none of us has
@@ -511,8 +512,8 @@ V @ T.T        # ValueError: matmul: dimensions 768 and 384 do not match
   <div class="panel panel-fail">
     <span class="panel-title">It does not even typecheck</span>
     Reviewer question 3: <em>what is the shape here?</em> The image vectors live
-    in @@l23_mismatch.vit_dim@@ dimensions and the sentence vectors in
-    @@l23_mismatch.text_dim@@. There is no cosine between them, because there is
+    in 768 dimensions and the sentence vectors in
+    384. There is no cosine between them, because there is
     no inner product between them.
   </div>
   <aside class="notes">This lands better as a crash than as a sentence. Let
@@ -525,13 +526,15 @@ V @ T.T        # ValueError: matmul: dimensions 768 and 384 do not match
   <p class="small">Three ways, so that nobody can blame the fix:</p>
   <table>
     <tr><th>#</th><th>Method</th><th>Justification</th></tr>
-    <tr><td>1</td><td>Random Gaussian projection, @@l23_mismatch.vit_dim@@ &rarr; @@l23_mismatch.text_dim@@</td><td>Thread 5: Johnson&ndash;Lindenstrauss</td></tr>
-    <tr><td>2</td><td>Keep the first @@l23_mismatch.text_dim@@ coordinates</td><td>crude, but it changes nothing that matters</td></tr>
-    <tr><td>3</td><td>Zero-pad the text vectors to @@l23_mismatch.vit_dim@@</td><td>the other direction, for symmetry</td></tr>
+    <tr><td>1</td><td>Random Gaussian projection, 768 &rarr; 384</td><td>Thread 5: Johnson&ndash;Lindenstrauss</td></tr>
+    <tr><td>2</td><td>Keep the first 384 coordinates</td><td>crude, but it changes nothing that matters</td></tr>
+    <tr><td>3</td><td>Zero-pad the text vectors to 768</td><td>the other direction, for symmetry</td></tr>
   </table>
   <p class="small muted">Thread 5 told us a random projection preserves the
-  <em>image</em> geometry to within a stated tolerance. It said nothing at all
-  about aligning that geometry with anything else.</p>
+  <em>image</em> geometry to within a stated tolerance &mdash; and it did: the
+  pairwise cosines before and after the projection correlate at
+  0.86. It said nothing at all about aligning
+  that geometry with anything else.</p>
 </section>
 
 <!-- 32 -->
@@ -542,7 +545,7 @@ V @ T.T        # ValueError: matmul: dimensions 768 and 384 do not match
   <ul class="tight small">
     <li>the cosine between an image and <strong>its own caption</strong></li>
     <li>the cosine between an image and <strong>somebody else&rsquo;s caption</strong>
-        &mdash; @@l23_mismatch.n@@ &times; @@l23_mismatch.n@@ minus the diagonal,
+        &mdash; 200 &times; 200 minus the diagonal,
         so nearly forty thousand of them</li>
   </ul>
   <div class="panel">
@@ -568,9 +571,9 @@ V @ T.T        # ValueError: matmul: dimensions 768 and 384 do not match
   <h2>The numbers behind that picture</h2>
   <table>
     <tr><th>Pairs</th><th class="num">Mean cosine</th><th class="num">sd</th></tr>
-    <tr><td>Image and its own caption</td><td class="num">@@l23_mismatch.jl.matched_mean:+.4f@@</td><td class="num">@@l23_mismatch.jl.matched_sd:.4f@@</td></tr>
-    <tr><td>Image and an unrelated caption</td><td class="num">@@l23_mismatch.jl.random_mean:+.4f@@</td><td class="num">@@l23_mismatch.jl.random_sd:.4f@@</td></tr>
-    <tr><td class="fail">Difference</td><td class="num fail">@@l23_mismatch.jl.gap:+.4f@@</td><td class="num">Cohen&rsquo;s <em>d</em> = @@l23_mismatch.jl.cohens_d:+.3f@@</td></tr>
+    <tr><td>Image and its own caption</td><td class="num">+0.0060</td><td class="num">0.0499</td></tr>
+    <tr><td>Image and an unrelated caption</td><td class="num">+0.0034</td><td class="num">0.0514</td></tr>
+    <tr><td class="fail">Difference</td><td class="num fail">+0.0026</td><td class="num">Cohen&rsquo;s <em>d</em> = +0.052</td></tr>
   </table>
   <p class="small">The gap between the two means is a small fraction of the
   spread of either. On the strength of the similarity alone, you cannot tell a
@@ -582,13 +585,14 @@ V @ T.T        # ValueError: matmul: dimensions 768 and 384 do not match
   <h2>And as a retrieval system</h2>
   <table>
     <tr><th>System</th><th class="num">R@1</th><th class="num">R@5</th><th class="num">R@10</th><th class="num">Median rank</th></tr>
-    <tr><td>Random ranking (exact)</td><td class="num">@@l23_random.r1:.1%@@</td><td class="num">@@l23_random.r5:.1%@@</td><td class="num">@@l23_random.r10:.1%@@</td><td class="num">@@l23_random.expected_rank:.0f@@</td></tr>
-    <tr><td>ViT + MiniLM, JL projection</td><td class="num">@@l23_mismatch.jl.r1:.1%@@</td><td class="num">@@l23_mismatch.jl.r5:.1%@@</td><td class="num">@@l23_mismatch.jl.r10:.1%@@</td><td class="num">@@l23_mismatch.jl.median_rank:.0f@@</td></tr>
-    <tr><td>ViT + MiniLM, truncated</td><td class="num">@@l23_mismatch.truncate.r1:.1%@@</td><td class="num">@@l23_mismatch.truncate.r5:.1%@@</td><td class="num">@@l23_mismatch.truncate.r10:.1%@@</td><td class="num">@@l23_mismatch.truncate.median_rank:.0f@@</td></tr>
-    <tr><td>ViT + MiniLM, zero-padded</td><td class="num">@@l23_mismatch.pad.r1:.1%@@</td><td class="num">@@l23_mismatch.pad.r5:.1%@@</td><td class="num">@@l23_mismatch.pad.r10:.1%@@</td><td class="num">@@l23_mismatch.pad.median_rank:.0f@@</td></tr>
+    <tr><td>Random ranking (exact)</td><td class="num">0.5%</td><td class="num">2.5%</td><td class="num">5.0%</td><td class="num">100</td></tr>
+    <tr><td>ViT + MiniLM, JL projection</td><td class="num">1.0%</td><td class="num">4.0%</td><td class="num">6.0%</td><td class="num">104</td></tr>
+    <tr><td>ViT + MiniLM, truncated</td><td class="num">0.5%</td><td class="num">2.0%</td><td class="num">5.5%</td><td class="num">80</td></tr>
+    <tr><td>ViT + MiniLM, zero-padded</td><td class="num">0.0%</td><td class="num">2.5%</td><td class="num">5.5%</td><td class="num">80</td></tr>
   </table>
-  <p class="small fail">Two strong encoders, over a hundred million parameters
-  between them, and the ranking is the shuffle.</p>
+  <p class="small fail">Two of the 200 queries put the right
+  image first. Shuffling is expected to get one. Two strong encoders, over a
+  hundred million parameters between them, and that is the whole difference.</p>
 </section>
 
 <!-- 36 -->
@@ -702,8 +706,8 @@ print(f"{(sim > 0.05).mean():.0%} of pairs score above 0.05")
   <h2>Beat 3 &mdash; the review question</h2>
   <p class="lead">&ldquo;What does an <em>unrelated</em> pair score?&rdquo;</p>
   <p class="small">The script computes the diagonal of the similarity matrix and
-  never touches the other @@l23_mismatch.n@@ &times; @@l23_mismatch.n@@ minus
-  @@l23_mismatch.n@@ entries. It reports a level where only a
+  never touches the other 200 &times; 200 minus
+  200 entries. It reports a level where only a
   <em>difference</em> means anything.</p>
   <div class="panel panel-fail">
     <span class="panel-title">Which of the five questions is this?</span>
@@ -718,10 +722,10 @@ print(f"{(sim > 0.05).mean():.0%} of pairs score above 0.05")
   <h2>Beat 3b &mdash; measure the damage</h2>
   <table>
     <tr><th>What the script reports</th><th class="num">Value</th></tr>
-    <tr><td>Mean similarity, matched pairs</td><td class="num">@@l23_mismatch.jl.matched_mean:+.4f@@</td></tr>
-    <tr><td class="fix">What it did not report: unrelated pairs</td><td class="num fix">@@l23_mismatch.jl.random_mean:+.4f@@</td></tr>
-    <tr><td class="fail">Retrieval R@1 of the system it describes</td><td class="num fail">@@l23_mismatch.jl.r1:.1%@@</td></tr>
-    <tr><td>Random ranking</td><td class="num">@@l23_random.r1:.1%@@</td></tr>
+    <tr><td>Mean similarity, matched pairs</td><td class="num">+0.0060</td></tr>
+    <tr><td class="fix">What it did not report: unrelated pairs</td><td class="num fix">+0.0034</td></tr>
+    <tr><td class="fail">Retrieval R@1 of the system it describes</td><td class="num fail">1.0%</td></tr>
+    <tr><td>Random ranking</td><td class="num">0.5%</td></tr>
   </table>
   <p class="small fail">The cost is not a rounding error. The reported number
   supports a system that is indistinguishable from shuffling the catalogue.</p>
@@ -732,7 +736,7 @@ print(f"{(sim > 0.05).mean():.0%} of pairs score above 0.05")
   <h2>Beat 4 &mdash; the corrected specification</h2>
   <div class="panel panel-fix">
     <span class="panel-title">What to type instead</span>
-    &ldquo;Build the full @@l23_mismatch.n@@ &times; @@l23_mismatch.n@@ cosine
+    &ldquo;Build the full 200 &times; 200 cosine
     matrix. Report the mean and sd of the diagonal <strong>and</strong> of the
     off-diagonal, their standardised difference, and Recall@1, 5 and 10 for
     text-to-image ranking. Print the exact random-ranking values k/n beside
@@ -776,7 +780,7 @@ print(f"{(sim > 0.05).mean():.0%} of pairs score above 0.05")
     <tr><th>Component</th><th>What it is</th></tr>
     <tr><td>Image tower</td><td>ViT-B/32 &mdash; the same architecture as before</td></tr>
     <tr><td>Text tower</td><td>a 12-layer transformer encoder</td></tr>
-    <tr><td>Shared space</td><td>@@l23_clip.dim@@ dimensions, on the unit sphere</td></tr>
+    <tr><td>Shared space</td><td>512 dimensions, on the unit sphere</td></tr>
     <tr><td>Training data</td><td>image&ndash;text pairs collected from the web</td></tr>
   </table>
   <p class="small muted">Non-examinable engineering detail: the checkpoint is
@@ -831,7 +835,7 @@ assert sim.shape == (200, 200)
   model is loaded correctly, pointed at the right tensors, and preprocessing the
   images the way it was trained to.</p>
   <ul class="tight small">
-    <li>Take @@l23_corpus.n_cifar:,@@ CIFAR-10 test images and the ten class
+    <li>Take 2,000 CIFAR-10 test images and the ten class
         names</li>
     <li>Embed the sentence <em>&ldquo;a photo of a {class}&rdquo;</em> for each
         class</li>
@@ -868,8 +872,8 @@ print(f"zero-shot accuracy over {len(y)} images: {acc:.1%}   chance: 10.0%")
     <img src="../assets/figures/l23-zeroshot.svg"
          alt="Left: per-class zero-shot accuracy bars for ten CIFAR-10 classes, all far above a dashed 10% chance line. Right: three bars comparing accuracy for three different prompt sentences.">
   </figure>
-  <p class="takeaway muted">@@l23_zeroshot.photo.accuracy:.1%@@ over
-  @@l23_zeroshot.n:,@@ images against a @@l23_zeroshot.chance:.0%@@ chance
+  <p class="takeaway muted">90.5% over
+  2,000 images against a 10% chance
   level &mdash; from a model that has never seen CIFAR-10.</p>
 </section>
 
@@ -877,13 +881,13 @@ print(f"zero-shot accuracy over {len(y)} images: {acc:.1%}   chance: 10.0%")
 <section data-menu-title="The prompt is a hyperparameter">
   <h2>The sentence is a hyperparameter</h2>
   <table>
-    <tr><th>Prompt</th><th class="num">Accuracy over @@l23_zeroshot.n:,@@ images</th></tr>
-    <tr><td>&ldquo;dog&rdquo;</td><td class="num">@@l23_zeroshot.bare.accuracy:.1%@@</td></tr>
-    <tr><td>&ldquo;a photo of a dog&rdquo;</td><td class="num">@@l23_zeroshot.photo.accuracy:.1%@@</td></tr>
-    <tr><td>&ldquo;a low-resolution photo of a dog&rdquo;</td><td class="num">@@l23_zeroshot.lowres.accuracy:.1%@@</td></tr>
-    <tr><td>Chance</td><td class="num">@@l23_zeroshot.chance:.1%@@</td></tr>
+    <tr><th>Prompt</th><th class="num">Accuracy over 2,000 images</th></tr>
+    <tr><td>&ldquo;dog&rdquo;</td><td class="num">88.2%</td></tr>
+    <tr><td>&ldquo;a photo of a dog&rdquo;</td><td class="num">90.5%</td></tr>
+    <tr><td>&ldquo;a low-resolution photo of a dog&rdquo;</td><td class="num">91.1%</td></tr>
+    <tr><td>Chance</td><td class="num">10.0%</td></tr>
   </table>
-  <p class="small fail">A spread of @@l23_zeroshot.template_spread:.1%@@ from
+  <p class="small fail">A spread of 2.9% from
   changing the wording alone. A &ldquo;zero-shot&rdquo; number is a number for
   one particular sentence, and the sentence is a choice you made.</p>
   <aside class="notes">Connect this to hyperparameters chosen on the test set,
@@ -894,8 +898,8 @@ print(f"zero-shot accuracy over {len(y)} images: {acc:.1%}   chance: 10.0%")
 <!-- 55 -->
 <section data-menu-title="Back to the catalogue">
   <h2>The check passed. Back to the catalogue</h2>
-  <p class="small">Same @@l23_corpus.n_catalogue@@ images. Same
-  @@l23_corpus.n_catalogue@@ queries. Same metric, same ties rule, same
+  <p class="small">Same 200 images. Same
+  200 queries. Same metric, same ties rule, same
   baseline. Only the encoders changed.</p>
   <pre><code class="language-python" data-trim>rank = (sim &gt;= sim.diagonal()[:, None]).sum(axis=1)   # ties count against us
 for k in (1, 5, 10):
@@ -912,8 +916,8 @@ print(f"median rank {np.median(rank):.0f} of {len(rank)}")
          alt="Two histograms of cosine similarity: unrelated pairs bunched at a low value, matched pairs clearly separated to the right.">
   </figure>
   <p class="takeaway muted">Now the two distributions come apart &mdash; the
-  means differ by @@l23_clip.t2i.gap:+.3f@@, which is
-  @@l23_clip.t2i.cohens_d:.1f@@ pooled standard deviations.</p>
+  means differ by +0.149, which is
+  4.1 pooled standard deviations.</p>
 </section>
 
 <!-- 57 -->
@@ -932,11 +936,11 @@ print(f"median rank {np.median(rank):.0f} of {len(rank)}")
   <h2>The results</h2>
   <table>
     <tr><th>System</th><th class="num">R@1</th><th class="num">R@5</th><th class="num">R@10</th><th class="num">Median rank</th><th class="num">MRR</th></tr>
-    <tr><td>Random ranking</td><td class="num">@@l23_random.r1:.1%@@</td><td class="num">@@l23_random.r5:.1%@@</td><td class="num">@@l23_random.r10:.1%@@</td><td class="num">@@l23_random.expected_rank:.0f@@</td><td class="num">@@l23_random.mrr:.3f@@</td></tr>
-    <tr><td>ViT + MiniLM</td><td class="num miss">@@l23_mismatch.jl.r1:.1%@@</td><td class="num">@@l23_mismatch.jl.r5:.1%@@</td><td class="num">@@l23_mismatch.jl.r10:.1%@@</td><td class="num">@@l23_mismatch.jl.median_rank:.0f@@</td><td class="num">@@l23_mismatch.jl.mrr:.3f@@</td></tr>
-    <tr><td>Joint dual encoder</td><td class="num hit">@@l23_clip.t2i.r1:.1%@@</td><td class="num hit">@@l23_clip.t2i.r5:.1%@@</td><td class="num hit">@@l23_clip.t2i.r10:.1%@@</td><td class="num">@@l23_clip.t2i.median_rank:.0f@@</td><td class="num">@@l23_clip.t2i.mrr:.3f@@</td></tr>
+    <tr><td>Random ranking</td><td class="num">0.5%</td><td class="num">2.5%</td><td class="num">5.0%</td><td class="num">100</td><td class="num">0.029</td></tr>
+    <tr><td>ViT + MiniLM</td><td class="num miss">1.0%</td><td class="num">4.0%</td><td class="num">6.0%</td><td class="num">104</td><td class="num">0.038</td></tr>
+    <tr><td>Joint dual encoder</td><td class="num hit">72.5%</td><td class="num hit">96.0%</td><td class="num hit">99.5%</td><td class="num">1</td><td class="num">0.825</td></tr>
   </table>
-  <p class="small">Text to image, @@l23_clip.n@@ candidates, ties against the
+  <p class="small">Text to image, 200 candidates, ties against the
   model, one caption per entry as the query.</p>
 </section>
 
@@ -945,8 +949,8 @@ print(f"median rank {np.median(rank):.0f} of {len(rank)}")
   <h2>It runs in the other direction too</h2>
   <table>
     <tr><th>Direction</th><th class="num">R@1</th><th class="num">R@5</th><th class="num">R@10</th></tr>
-    <tr><td>Text &rarr; image (search the catalogue)</td><td class="num">@@l23_clip.t2i.r1:.1%@@</td><td class="num">@@l23_clip.t2i.r5:.1%@@</td><td class="num">@@l23_clip.t2i.r10:.1%@@</td></tr>
-    <tr><td>Image &rarr; text (caption an entry)</td><td class="num">@@l23_clip.i2t.r1:.1%@@</td><td class="num">@@l23_clip.i2t.r5:.1%@@</td><td class="num">@@l23_clip.i2t.r10:.1%@@</td></tr>
+    <tr><td>Text &rarr; image (search the catalogue)</td><td class="num">72.5%</td><td class="num">96.0%</td><td class="num">99.5%</td></tr>
+    <tr><td>Image &rarr; text (caption an entry)</td><td class="num">72.5%</td><td class="num">98.5%</td><td class="num">99.0%</td></tr>
   </table>
   <p class="small">One symmetric space, two products: a search box and a
   &ldquo;find the description that fits this photo&rdquo; tool. The second one
@@ -997,13 +1001,13 @@ rank = (Q @ D.T &gt;= (Q @ D.T).diagonal()[:, None]).sum(axis=1)
   <h2>The text route, measured</h2>
   <table>
     <tr><th>Route</th><th class="num">R@1</th><th class="num">R@5</th><th class="num">R@10</th></tr>
-    <tr><td>Text query &rarr; text description</td><td class="num">@@l23_textroute.full.r1:.1%@@</td><td class="num">@@l23_textroute.full.r5:.1%@@</td><td class="num">@@l23_textroute.full.r10:.1%@@</td></tr>
-    <tr><td>Text query &rarr; image (joint space)</td><td class="num">@@l23_clip.t2i.r1:.1%@@</td><td class="num">@@l23_clip.t2i.r5:.1%@@</td><td class="num">@@l23_clip.t2i.r10:.1%@@</td></tr>
+    <tr><td>Text query &rarr; text description</td><td class="num">61.5%</td><td class="num">89.0%</td><td class="num">96.0%</td></tr>
+    <tr><td>Text query &rarr; image (joint space)</td><td class="num">72.5%</td><td class="num">96.0%</td><td class="num">99.5%</td></tr>
   </table>
   <p class="small">Two independent routes to the same entry. A production system
   would use both.</p>
   <p class="small muted">Both are measured over the same
-  @@l23_corpus.n_catalogue@@ candidates with the same queries, so the two
+  200 candidates with the same queries, so the two
   numbers are comparable &mdash; which is not automatic and is worth checking
   every time.</p>
 </section>
@@ -1013,12 +1017,12 @@ rank = (Q @ D.T &gt;= (Q @ D.T).diagonal()[:, None]).sum(axis=1)
   <h2>Now the catalogue as it really arrives</h2>
   <p class="small">The team told us descriptions are &ldquo;inconsistent, often
   absent&rdquo;. Model that: delete the description of
-  @@l23_textroute.n_blanked@@ of the @@l23_textroute.n@@ entries, chosen by a
+  60 of the 200 entries, chosen by a
   fixed rule so the experiment repeats.</p>
   <table>
-    <tr><th>Measured on those @@l23_textroute.n_blanked@@ entries</th><th class="num">R@1</th></tr>
-    <tr><td>With their description present</td><td class="num">@@l23_textroute.full_on_blanked:.1%@@</td></tr>
-    <tr><td class="fail">With their description deleted</td><td class="num fail">@@l23_textroute.missing_on_blanked:.1%@@</td></tr>
+    <tr><th>Measured on those 60 entries</th><th class="num">R@1</th></tr>
+    <tr><td>With their description present</td><td class="num">66.7%</td></tr>
+    <tr><td class="fail">With their description deleted</td><td class="num fail">0.0%</td></tr>
   </table>
   <p class="small fail">Not &ldquo;worse&rdquo;. Zero, structurally: an entry
   with no text is not in a text index at all.</p>
@@ -1031,9 +1035,9 @@ rank = (Q @ D.T &gt;= (Q @ D.T).diagonal()[:, None]).sum(axis=1)
 <section data-menu-title="Overall damage">
   <h2>What that does to the whole catalogue</h2>
   <table>
-    <tr><th>Text-only route, all @@l23_textroute.n@@ queries</th><th class="num">R@1</th><th class="num">R@10</th></tr>
-    <tr><td>Every entry described</td><td class="num">@@l23_textroute.full.r1:.1%@@</td><td class="num">@@l23_textroute.full.r10:.1%@@</td></tr>
-    <tr><td class="fail">@@l23_textroute.n_blanked@@ entries with no description</td><td class="num fail">@@l23_textroute.missing.r1:.1%@@</td><td class="num fail">@@l23_textroute.missing.r10:.1%@@</td></tr>
+    <tr><th>Text-only route, all 200 queries</th><th class="num">R@1</th><th class="num">R@10</th></tr>
+    <tr><td>Every entry described</td><td class="num">61.5%</td><td class="num">96.0%</td></tr>
+    <tr><td class="fail">60 entries with no description</td><td class="num fail">46.0%</td><td class="num fail">68.5%</td></tr>
   </table>
   <div class="panel panel-fail">
     <span class="panel-title">Write this number on the board</span>
@@ -1061,8 +1065,8 @@ rank = (Q @ D.T &gt;= (Q @ D.T).diagonal()[:, None]).sum(axis=1)
 <!-- 66 -->
 <section data-menu-title="Where it still fails">
   <h2>Rule 4 &mdash; report the failure cases</h2>
-  <p class="small">@@l23_clip.t2i.r1:.1%@@ at rank 1 means
-  <strong>@@l23_clip.t2i.miss1_pct:.1f@@%</strong> of queries did not get the
+  <p class="small">72.5% at rank 1 means
+  <strong>27.5%</strong> of queries did not get the
   right entry first. Look at them.</p>
   <ul class="tight small">
     <li>Queries that describe a scene rather than an object &mdash; several
@@ -1103,11 +1107,11 @@ rank = (Q @ D.T &gt;= (Q @ D.T).diagonal()[:, None]).sum(axis=1)
     <tr><td>Encode the catalogue</td><td class="num">once, offline</td></tr>
     <tr><td>Encode a query</td><td class="num">one forward pass</td></tr>
     <tr><td>Rank</td><td class="num">one matrix&ndash;vector product</td></tr>
-    <tr><td>Model parameters</td><td class="num">@@l23_clip.n_params_m@@ million</td></tr>
+    <tr><td>Model parameters</td><td class="num">151 million</td></tr>
   </table>
   <p class="small">A dual encoder is cheap at query time precisely because the
   two towers never talk to each other. A model that scored (image, text) jointly
-  would be more accurate and would have to run @@l23_corpus.n_catalogue@@ times
+  would be more accurate and would have to run 200 times
   per query.</p>
   <p class="small muted">Non-examinable: that trade-off is why production search
   retrieves with a dual encoder and then re-ranks a shortlist with something
@@ -1212,7 +1216,7 @@ print(f"best template {best[0]!r}: {best[1]:.1%} on the test set")
     error, with a sentence in place of a regularisation strength.
   </div>
   <p class="small">The spread across the three was
-  @@l23_zeroshot.template_spread:.1%@@, so the optimism is of that order. The
+  2.9%, so the optimism is of that order. The
   repair is the one you already know: choose the template on a validation split,
   report the chosen one on the test set, once.</p>
 </section>
@@ -1251,21 +1255,21 @@ print(f"best template {best[0]!r}: {best[1]:.1%} on the test set")
   <h2>What we did</h2>
   <ol class="tight small">
     <li>Took a catalogue whose entries are pictures and whose queries are
-        sentences, and stated its size: @@l23_corpus.n_catalogue@@ entries,
-        @@l23_corpus.megabytes:.0f@@ MB, not @@l23_corpus.coco_full_gb@@ GB</li>
+        sentences, and stated its size: 200 entries,
+        33 MB, not 20 GB</li>
     <li>Chose Recall@k, and computed the random-ranking baseline exactly rather
         than simulating it</li>
     <li>Encoded images and text with two excellent, separately trained encoders
         &mdash; and could not multiply the matrices</li>
     <li>Forced the dimensions to agree three ways, and measured retrieval at
-        @@l23_mismatch.jl.r1:.1%@@ against a shuffle at
-        @@l23_random.r1:.1%@@</li>
+        1.0% against a shuffle at
+        0.5%</li>
     <li>Established why: nothing in either loss ever compared the two spaces</li>
     <li>Swapped in a jointly trained dual encoder and measured
-        @@l23_clip.t2i.r1:.1%@@ at rank 1, after checking it against labels we
+        72.5% at rank 1, after checking it against labels we
         had</li>
     <li>Measured the text-only route, and watched it go to
-        @@l23_textroute.missing_on_blanked:.0%@@ on the entries with no
+        0% on the entries with no
         description</li>
   </ol>
 </section>

@@ -42,11 +42,11 @@
   <h2>Where we left off</h2>
   <table>
     <tr><th>System, text to image</th><th class="num">R@1</th><th class="num">R@10</th></tr>
-    <tr><td>Random ranking (exact)</td><td class="num">@@l23_random.r1:.1%@@</td><td class="num">@@l23_random.r10:.1%@@</td></tr>
-    <tr><td>Two separately trained encoders</td><td class="num miss">@@l23_mismatch.jl.r1:.1%@@</td><td class="num miss">@@l23_mismatch.jl.r10:.1%@@</td></tr>
-    <tr><td>One jointly trained pair</td><td class="num hit">@@l23_clip.t2i.r1:.1%@@</td><td class="num hit">@@l23_clip.t2i.r10:.1%@@</td></tr>
+    <tr><td>Random ranking (exact)</td><td class="num">0.5%</td><td class="num">5.0%</td></tr>
+    <tr><td>Two separately trained encoders</td><td class="num miss">1.0%</td><td class="num miss">6.0%</td></tr>
+    <tr><td>One jointly trained pair</td><td class="num hit">72.5%</td><td class="num hit">99.5%</td></tr>
   </table>
-  <p class="small">Over @@l23_corpus.n_catalogue@@ candidates &mdash; always say
+  <p class="small">Over 200 candidates &mdash; always say
   the number.</p>
   <p class="lead">One objective turned the middle row into the bottom row. Today
   we take that objective apart.</p>
@@ -85,8 +85,8 @@
 <section data-menu-title="The question">
   <h2>The question</h2>
   <p class="lead">Two encoders trained apart gave us
-  @@l23_mismatch.jl.r1:.1%@@. Two encoders trained together gave us
-  @@l23_clip.t2i.r1:.1%@@.</p>
+  1.0%. Two encoders trained together gave us
+  72.5%.</p>
   <p class="lead"><em>What is the loss that did that?</em></p>
   <div class="panel panel-math">
     <span class="panel-title">Four decisions, none of them obvious</span>
@@ -124,7 +124,7 @@
     <li>Only the direction carries the semantics. The length is whatever the
         last linear layer happened to scale to</li>
     <li>Measured on our catalogue: the longest image embedding is
-        @@l24_normalisation.norm_ratio:.2f@@&times; the shortest</li>
+        1.32&times; the shortest</li>
   </ul>
   <p class="small">Divide both by their norms and $S_{ij}$ is a pure cosine, in
   $[-1, 1]$, comparable across pairs, models and runs.</p>
@@ -176,8 +176,8 @@
   <ul class="tight small">
     <li>For a given $\mathbf{u}$, there is <strong>exactly one</strong> unit
         vector at cosine &minus;1: the point $-\mathbf{u}$</li>
-    <li>A catalogue of @@l23_corpus.n_catalogue@@ entries would need all
-        @@l23_corpus.n_catalogue@@ of its non-matching captions to sit on that
+    <li>A catalogue of 200 entries would need all
+        200 of its non-matching captions to sit on that
         one point &mdash; and then they would all be identical to each other</li>
     <li>Wanting every unrelated pair at &minus;1 is asking for a configuration
         that does not exist for more than two items</li>
@@ -232,26 +232,26 @@
     <img src="../assets/figures/l24-concentration.svg"
          alt="Left: log-log plot of the measured standard deviation of the cosine between random unit vectors against dimension, lying on the one-over-root-d line. Right: a histogram of those cosines at d = 512, a narrow spike at zero, with the point minus one marked far away and empty.">
   </figure>
-  <p class="takeaway muted">At $d$ = @@l24_concentration.d@@ the measured
-  spread is @@l24_concentration.gauss_sd:.4f@@ against a predicted
-  @@l24_concentration.gauss_theory_sd:.4f@@ &mdash; and over
-  @@l24_concentration.n_pairs:,@@ pairs the most negative cosine seen was
-  @@l24_concentration.gauss_min:+.3f@@.</p>
+  <p class="takeaway muted">At $d$ = 512 the measured
+  spread is 0.0439 against a predicted
+  0.0442 &mdash; and over
+  20,000 pairs the most negative cosine seen was
+  -0.177.</p>
 </section>
 
 <!-- 14 -->
 <section data-menu-title="§2 The number that settles it">
   <h2>The number that settles the vote</h2>
   <table>
-    <tr><th>Random unit vectors in $\mathbb{R}^{512}$, @@l24_concentration.n_pairs:,@@ pairs</th><th class="num">Value</th></tr>
-    <tr><td>Mean cosine</td><td class="num">@@l24_concentration.gauss_mean:+.5f@@</td></tr>
-    <tr><td>Standard deviation, measured</td><td class="num">@@l24_concentration.gauss_sd:.4f@@</td></tr>
-    <tr><td>Standard deviation, $1/\sqrt{d}$</td><td class="num">@@l24_concentration.gauss_theory_sd:.4f@@</td></tr>
-    <tr><td>Most negative cosine observed</td><td class="num">@@l24_concentration.gauss_min:+.3f@@</td></tr>
-    <tr><td>Fraction with $|\cos| > 0.5$</td><td class="num">@@l24_concentration.frac_beyond_half.8:.1%@@</td></tr>
+    <tr><th>Random unit vectors in $\mathbb{R}^{512}$, 20,000 pairs</th><th class="num">Value</th></tr>
+    <tr><td>Mean cosine</td><td class="num">-0.00072</td></tr>
+    <tr><td>Standard deviation, measured</td><td class="num">0.0439</td></tr>
+    <tr><td>Standard deviation, $1/\sqrt{d}$</td><td class="num">0.0442</td></tr>
+    <tr><td>Most negative cosine observed</td><td class="num">-0.177</td></tr>
+    <tr><td>Fraction with $|\cos| > 0.5$</td><td class="num">0.0%</td></tr>
   </table>
   <p class="small fail">Nothing came within
-  @@l24_concentration.gauss_min:.2f@@ of &minus;1, and nothing ever will. That
+  -0.18 of &minus;1, and nothing ever will. That
   is why the loss targets zero.</p>
 </section>
 
@@ -260,10 +260,10 @@
   <h2>And on the embeddings we actually used</h2>
   <table>
     <tr><th>Cosine, in the trained joint space</th><th class="num">Mean</th><th class="num">sd</th></tr>
-    <tr><td>Two unrelated images</td><td class="num">@@l24_geometry.img_img.mean:+.3f@@</td><td class="num">@@l24_geometry.img_img.sd:.3f@@</td></tr>
-    <tr><td>An image and an unrelated caption</td><td class="num">@@l24_geometry.img_txt_unrelated.mean:+.3f@@</td><td class="num">@@l24_geometry.img_txt_unrelated.sd:.3f@@</td></tr>
-    <tr><td class="fix">An image and its own caption</td><td class="num fix">@@l24_geometry.img_txt_matched.mean:+.3f@@</td><td class="num">@@l24_geometry.img_txt_matched.sd:.3f@@</td></tr>
-    <tr><td>Most negative unrelated pair seen</td><td class="num">@@l24_geometry.img_txt_unrelated.min:+.3f@@</td><td class="num">&mdash;</td></tr>
+    <tr><td>Two unrelated images</td><td class="num">+0.471</td><td class="num">0.086</td></tr>
+    <tr><td>An image and an unrelated caption</td><td class="num">+0.154</td><td class="num">0.040</td></tr>
+    <tr><td class="fix">An image and its own caption</td><td class="num fix">+0.303</td><td class="num">0.033</td></tr>
+    <tr><td>Most negative unrelated pair seen</td><td class="num">-0.007</td><td class="num">&mdash;</td></tr>
   </table>
   <p class="small">Unrelated pairs are near zero and nowhere near &minus;1 &mdash;
   exactly as the geometry says. But they are not <em>at</em> zero either, and
@@ -278,7 +278,7 @@
          alt="Left: three overlaid histograms of cosine similarity — random unit vectors centred on zero, unrelated CLIP image-caption pairs shifted right, and unrelated CLIP image-image pairs shifted further right. Right: a two-dimensional projection showing image embeddings and caption embeddings in two separated clouds.">
   </figure>
   <p class="takeaway muted">Images occupy one region of the sphere and captions
-  another: the two centroids are @@l24_geometry.modality_gap:.2f@@ apart. The
+  another: the two centroids are 0.83 apart. The
   objective aligns pairs <em>relatively</em>, and never asks the two clouds to
   coincide.</p>
 </section>
@@ -291,10 +291,11 @@
         constant offset to every image embedding changes no ranking and no loss</li>
     <li>So the loss has no reason to remove the gap, and it does not</li>
     <li>Consequence you can be caught by: an absolute cosine threshold tuned on
-        image&ndash;image pairs is meaningless for image&ndash;text pairs. The
-        two distributions are @@l24_geometry.img_img.mean:.2f@@ and
-        @@l24_geometry.img_txt_unrelated.mean:.2f@@ apart <em>before</em> any
-        semantics</li>
+        image&ndash;image pairs is meaningless for image&ndash;text pairs.
+        Unrelated image pairs average 0.47;
+        unrelated image&ndash;caption pairs average
+        0.15 &mdash; and that difference
+        is there <em>before</em> any semantics</li>
   </ul>
   <div class="panel">
     <span class="panel-title">Where this sits</span>
@@ -326,16 +327,16 @@
     <li>The logits are cosines, so they live in $[-1, 1]$. The whole spread of
         the row is at most 2</li>
     <li>$\exp$ of a range of 2 is a ratio of at most $e^{2} \approx 7.4$,
-        across @@l24_temperature.n@@ competitors</li>
+        across 200 competitors</li>
     <li>So the softmax is nearly uniform whatever the model says, the correct
         answer gets probability near $1/B$, and the loss sits near
         $\log B$ &mdash; the value for a model that has learned nothing</li>
   </ul>
   <table>
-    <tr><th>At $\tau = 1$, on our @@l24_temperature.n@@ pairs</th><th class="num">Value</th></tr>
-    <tr><td>Loss</td><td class="num">@@l24_temperature.at_one.loss:.3f@@</td></tr>
-    <tr><td>A scorer that knows nothing: $\log$ @@l24_temperature.n@@</td><td class="num">@@l24_temperature.chance_loss:.3f@@</td></tr>
-    <tr><td>Mean probability on the correct entry</td><td class="num">@@l24_temperature.at_one.p_positive:.4f@@</td></tr>
+    <tr><th>At $\tau = 1$, on our 200 pairs</th><th class="num">Value</th></tr>
+    <tr><td>Loss</td><td class="num">5.151</td></tr>
+    <tr><td>A scorer that knows nothing: $\log$ 200</td><td class="num">5.298</td></tr>
+    <tr><td>Mean probability on the correct entry</td><td class="num">0.0058</td></tr>
   </table>
 </section>
 
@@ -381,11 +382,15 @@ print(f"logit scale {scale:.2f}   tau = {1 / scale:.5f}")
 </code></pre>
   <table>
     <tr><th>Read off the checkpoint</th><th class="num">Value</th></tr>
-    <tr><td>Learned logit scale $1/\tau$</td><td class="num">@@l24_temperature.learned_logit_scale:.2f@@</td></tr>
-    <tr><td>Learned temperature $\tau$</td><td class="num">@@l24_temperature.learned_tau:.5f@@</td></tr>
-    <tr><td>Loss on our batch at that $\tau$</td><td class="num">@@l24_temperature.at_learned.loss:.3f@@</td></tr>
-    <tr><td>Mean probability on the correct entry</td><td class="num">@@l24_temperature.at_learned.p_positive:.3f@@</td></tr>
+    <tr><td>Learned logit scale $1/\tau$</td><td class="num">100.00</td></tr>
+    <tr><td>Learned temperature $\tau$</td><td class="num">0.01000</td></tr>
+    <tr><td>Loss on our batch at that $\tau$</td><td class="num">0.835</td></tr>
+    <tr><td>Mean probability on the correct entry</td><td class="num">0.667</td></tr>
   </table>
+  <p class="small muted">Read the scale again:
+  100.00, to five significant figures. It
+  is not near its clamp; it is <em>on</em> it. The implementation caps
+  $\log(1/\tau)$ at $\log 100$, and training pushed it there and held it.</p>
 </section>
 
 <!-- 23 -->
@@ -393,9 +398,9 @@ print(f"logit scale {scale:.2f}   tau = {1 / scale:.5f}")
   <h2>And if you make it colder still</h2>
   <table>
     <tr><th>$\tau$</th><th class="num">Loss</th><th class="num">p(correct)</th><th class="num">p(hardest wrong)</th></tr>
-    <tr><td>1</td><td class="num">@@l24_temperature.at_one.loss:.3f@@</td><td class="num">@@l24_temperature.at_one.p_positive:.4f@@</td><td class="num">@@l24_temperature.at_one.p_hardest_negative:.4f@@</td></tr>
-    <tr><td class="fix">@@l24_temperature.learned_tau:.4f@@ (learned)</td><td class="num fix">@@l24_temperature.at_learned.loss:.3f@@</td><td class="num fix">@@l24_temperature.at_learned.p_positive:.3f@@</td><td class="num">@@l24_temperature.at_learned.p_hardest_negative:.3f@@</td></tr>
-    <tr><td>0.002</td><td class="num">@@l24_temperature.at_tiny.loss:.3f@@</td><td class="num">@@l24_temperature.at_tiny.p_positive:.3f@@</td><td class="num">@@l24_temperature.at_tiny.p_hardest_negative:.3f@@</td></tr>
+    <tr><td>1</td><td class="num">5.151</td><td class="num">0.0058</td><td class="num">0.0056</td></tr>
+    <tr><td class="fix">0.0100 (learned)</td><td class="num fix">0.835</td><td class="num fix">0.667</td><td class="num">0.208</td></tr>
+    <tr><td>0.002</td><td class="num">2.647</td><td class="num">0.724</td><td class="num">0.252</td></tr>
   </table>
   <p class="small">Colder is not simply better. As $\tau \to 0$ the softmax
   becomes a hard maximum: the gradient sees one negative per row, and any label
@@ -432,10 +437,10 @@ print(f"logit scale {scale:.2f}   tau = {1 / scale:.5f}")
   <h2>Bigger batch, harder task</h2>
   <table>
     <tr><th>Batch size $B$</th><th class="num">In-batch top-1</th><th class="num">Chance, $1/B$</th><th class="num">Loss</th></tr>
-    <tr><td>@@l24_batch.batch.0@@</td><td class="num">@@l24_batch.accuracy.0:.1%@@</td><td class="num">@@l24_batch.chance.0:.1%@@</td><td class="num">@@l24_batch.loss.0:.3f@@</td></tr>
-    <tr><td>@@l24_batch.batch.3@@</td><td class="num">@@l24_batch.accuracy.3:.1%@@</td><td class="num">@@l24_batch.chance.3:.1%@@</td><td class="num">@@l24_batch.loss.3:.3f@@</td></tr>
-    <tr><td>@@l24_batch.batch.5@@</td><td class="num">@@l24_batch.accuracy.5:.1%@@</td><td class="num">@@l24_batch.chance.5:.1%@@</td><td class="num">@@l24_batch.loss.5:.3f@@</td></tr>
-    <tr><td>@@l24_batch.batch.7@@</td><td class="num">@@l24_batch.accuracy.7:.1%@@</td><td class="num">@@l24_batch.chance.7:.1%@@</td><td class="num">@@l24_batch.loss.7:.3f@@</td></tr>
+    <tr><td>2</td><td class="num">99.2%</td><td class="num">50.0%</td><td class="num">0.016</td></tr>
+    <tr><td>16</td><td class="num">95.8%</td><td class="num">6.2%</td><td class="num">0.116</td></tr>
+    <tr><td>64</td><td class="num">87.4%</td><td class="num">1.6%</td><td class="num">0.389</td></tr>
+    <tr><td>200</td><td class="num">72.5%</td><td class="num">0.5%</td><td class="num">0.835</td></tr>
   </table>
   <p class="small">Same model, same embeddings, same temperature. Only the
   number of distractors changed.</p>
@@ -482,7 +487,7 @@ print(f"logit scale {scale:.2f}   tau = {1 / scale:.5f}")
     <li>Unrelated pairs target <strong>zero</strong>, because in $d$ dimensions
         random directions are orthogonal with spread
         $1/\sqrt{d}$ &mdash; measured at
-        @@l24_concentration.gauss_sd:.4f@@ for $d$ = @@l24_concentration.d@@</li>
+        0.0439 for $d$ = 512</li>
     <li>$\tau$ rescales cosines into usable logits. It cannot change a fixed
         model's ranking; it decides which negatives the gradient listens to</li>
     <li>The batch <em>is</em> the label set, so $B$ sets both the difficulty and
@@ -515,10 +520,10 @@ print(f"logit scale {scale:.2f}   tau = {1 / scale:.5f}")
     </p>
   </div>
   <table>
-    <tr><th>Reality, over @@l23_corpus.n_catalogue@@ candidates</th><th class="num">R@1</th></tr>
-    <tr><td>Shuffle the catalogue</td><td class="num">@@l23_random.r1:.1%@@</td></tr>
-    <tr><td>Two separately trained encoders</td><td class="num">@@l23_mismatch.jl.r1:.1%@@</td></tr>
-    <tr><td>One jointly trained pair</td><td class="num hit">@@l23_clip.t2i.r1:.1%@@</td></tr>
+    <tr><th>Reality, over 200 candidates</th><th class="num">R@1</th></tr>
+    <tr><td>Shuffle the catalogue</td><td class="num">0.5%</td></tr>
+    <tr><td>Two separately trained encoders</td><td class="num">1.0%</td></tr>
+    <tr><td>One jointly trained pair</td><td class="num hit">72.5%</td></tr>
   </table>
 </section>
 
@@ -531,8 +536,8 @@ print(f"logit scale {scale:.2f}   tau = {1 / scale:.5f}")
   geometry, and the repair was somebody else&rsquo;s pretraining run.</p>
   <div class="panel">
     <span class="panel-title">Still worth checking</span>
-    @@l23_clip.t2i.r1:.1%@@ over @@l23_corpus.n_catalogue@@ candidates is not
-    @@l23_clip.t2i.r1:.1%@@ over fifty thousand. Recall rises as the haystack
+    72.5% over 200 candidates is not
+    72.5% over fifty thousand. Recall rises as the haystack
     shrinks, and a catalogue is a haystack that grows.
   </div>
   <aside class="notes">Do not let the room leave believing this number
@@ -544,7 +549,7 @@ print(f"logit scale {scale:.2f}   tau = {1 / scale:.5f}")
   <h2>Two things we measured and did not fix</h2>
   <table>
     <tr><th>#</th><th>Measured last lecture</th><th class="num">Number</th></tr>
-    <tr><td>1</td><td>Text search R@1 on entries with no description</td><td class="num fail">@@l23_textroute.missing_on_blanked:.0%@@</td></tr>
+    <tr><td>1</td><td>Text search R@1 on entries with no description</td><td class="num fail">0%</td></tr>
     <tr><td>2</td><td>Ambiguous queries with a single right answer</td><td class="num fail">none exist</td></tr>
   </table>
   <p class="small">The first is a hole in the index. The second is a mismatch
@@ -570,7 +575,7 @@ print(f"logit scale {scale:.2f}   tau = {1 / scale:.5f}")
   <div class="panel panel-fail">
     <span class="panel-title">What was typed</span>
     &ldquo;Write the symmetric contrastive loss for a batch of image and text
-    embeddings, with a temperature of @@l24_temperature.learned_tau:.2f@@.&rdquo;
+    embeddings, with a temperature of 0.01.&rdquo;
   </div>
   <p class="small">One clause missing. It is the clause section 1 of the thread
   spent five minutes on, which is exactly why this is the failure for this
@@ -619,28 +624,32 @@ print(f"loss {contrastive_loss(I, T).item():.3f}")
   <h2>Beat 3b &mdash; measure the damage</h2>
   <figure class="fig fig-wide">
     <img src="../assets/figures/l24-normalisation.svg"
-         alt="Left: two bars comparing in-batch top-1 accuracy with normalised and with raw embeddings. Right: a scatter of embedding length against how many queries ranked that image first, rising steeply.">
+         alt="Left: two bars comparing in-batch top-1 accuracy with normalised and with raw embeddings. Right: a scatter of embedding length against how many queries ranked that image first, drifting upwards.">
   </figure>
-  <p class="takeaway muted">Top-1 falls from
-  @@l24_normalisation.normalised.accuracy:.1%@@ to
-  @@l24_normalisation.unnormalised.accuracy:.1%@@, and one image alone captures
-  @@l24_normalisation.max_wins_one_image@@ of the
-  @@l24_normalisation.n@@ queries.</p>
+  <p class="takeaway muted">Top-1 falls
+  21.5 points, from
+  72.5% to
+  51.0% &mdash; and the right panel
+  says why: with the sphere gone, an image&rsquo;s <em>length</em> starts to
+  compete with its direction.</p>
 </section>
 
 <!-- 39 -->
 <section data-menu-title="◇ The damage, tabulated">
   <h2>Beat 3c &mdash; the numbers</h2>
   <table>
-    <tr><th>At the same $\tau$ = @@l24_temperature.learned_tau:.4f@@</th><th class="num">On the sphere</th><th class="num">Raw</th></tr>
-    <tr><td>Contrastive loss</td><td class="num">@@l24_normalisation.normalised.loss:.3f@@</td><td class="num fail">@@l24_normalisation.unnormalised.loss:.3f@@</td></tr>
-    <tr><td>In-batch top-1</td><td class="num">@@l24_normalisation.normalised.accuracy:.1%@@</td><td class="num fail">@@l24_normalisation.unnormalised.accuracy:.1%@@</td></tr>
-    <tr><td>Images never ranked first by any query</td><td class="num">&mdash;</td><td class="num fail">@@l24_normalisation.n_images_never_first@@ of @@l24_normalisation.n@@</td></tr>
+    <tr><th>At the same $\tau$ = 0.0100</th><th class="num">On the sphere</th><th class="num">Raw</th></tr>
+    <tr><td>Contrastive loss</td><td class="num">0.84</td><td class="num fail">146.00</td></tr>
+    <tr><td>In-batch top-1</td><td class="num">72.5%</td><td class="num fail">51.0%</td></tr>
+    <tr><td>Images no query ranks first</td><td class="num">48 of 200</td><td class="num fail">61 of 200</td></tr>
   </table>
-  <p class="small fail">Rank correlation between an image&rsquo;s embedding
-  length and how often it wins:
-  @@l24_normalisation.spearman_norm_vs_wins:+.2f@@. The system is ranking by
-  loudness.</p>
+  <p class="small">The loss is
+  175&times; larger, because $\tau$ is now
+  dividing a quantity with no fixed scale rather than a cosine. And the rank
+  correlation between an image&rsquo;s length and how often it wins is
+  <span class="fail">+0.27</span> —
+  not overwhelming, and enough to cost
+  21.5 points.</p>
 </section>
 
 <!-- 40 -->
@@ -672,10 +681,10 @@ print(f"loss {contrastive_loss(I, T).item():.3f}")
 <!-- 42 -->
 <section data-menu-title="The hole">
   <h2>The hole in the index</h2>
-  <p class="small">@@l23_textroute.n_blanked@@ of @@l23_textroute.n@@ catalogue
+  <p class="small">60 of 200 catalogue
   entries have no description. A text index cannot rank a document that does not
   exist, so those entries score exactly
-  @@l23_textroute.missing_on_blanked:.0%@@ &mdash; structurally, not
+  0% &mdash; structurally, not
   statistically.</p>
   <div class="panel">
     <span class="panel-title">The idea</span>
@@ -693,7 +702,7 @@ print(f"loss {contrastive_loss(I, T).item():.3f}")
     <tr><td>Image encoder</td><td>a vision transformer &mdash; Chapter 16</td></tr>
     <tr><td>Text decoder</td><td>a transformer decoder with cross-attention to the image &mdash; Chapter 15</td></tr>
     <tr><td>Training</td><td>image&ndash;caption pairs, next-token prediction</td></tr>
-    <tr><td>Size</td><td>@@l24_captions.blip_params_m@@ million parameters</td></tr>
+    <tr><td>Size</td><td>224 million parameters</td></tr>
   </table>
   <p class="small muted">Architecturally this is the encoder&ndash;decoder of
   Chapter 15 with an image encoder in place of the text one. Nothing new; a
@@ -717,7 +726,7 @@ generated = proc.batch_decode(ids, skip_special_tokens=True)
 assert len(generated) == len(missing_images)
 </code></pre>
   <p class="small muted">Expected wall clock:
-  @@l24_captions.blip_seconds:.0f@@ s for @@l24_captions.n_blanked@@ images with
+  21 s for 60 images with
   beam search. Not instant; run it offline, once, per new entry.</p>
 </section>
 
@@ -726,13 +735,16 @@ assert len(generated) == len(missing_images)
   <h2>What it writes</h2>
   <table class="smaller">
     <tr><th>Human description (deleted)</th><th>Generated description</th></tr>
-    <tr><td>@@l24_captions.examples.0.human@@</td><td>@@l24_captions.examples.0.generated@@</td></tr>
-    <tr><td>@@l24_captions.examples.1.human@@</td><td>@@l24_captions.examples.1.generated@@</td></tr>
-    <tr><td>@@l24_captions.examples.2.human@@</td><td>@@l24_captions.examples.2.generated@@</td></tr>
+    <tr><td>This wire metal rack holds several pairs of shoes and sandals</td><td>a dog laying on top of a pair of shoes</td></tr>
+    <tr><td>A green vase filed with red roses sitting on top of table.</td><td>a vase of flowers sitting on a window sie</td></tr>
+    <tr><td>A giraffe bending over while standing on green grass.</td><td>the gi is brown and white</td></tr>
   </table>
-  <p class="small">Blunter, more generic, and less specific than a person's
-  sentence. The question is not whether they are as good. It is whether they are
-  better than nothing &mdash; and that is a measurement.</p>
+  <p class="small">The first row is the interesting one: <strong>both sentences
+  are true</strong>. There is a dog asleep on the shoe rack, and the two writers
+  chose different subjects. The third row is not a sentence at all.</p>
+  <aside class="notes">Put the shoe-rack image on screen. The room will argue
+  about which caption is better, which is the point: "better" is not defined
+  until you say what the query will be.</aside>
 </section>
 
 <!-- 46 -->
@@ -743,33 +755,34 @@ assert len(generated) == len(missing_images)
          alt="Three bars of Recall@1 on the sixty entries whose description was deleted: high with the human description, zero with none, and part-way back with an automatic caption. A dashed line marks CLIP's image route, which is unaffected.">
   </figure>
   <p class="takeaway muted">From
-  @@l23_textroute.missing_on_blanked:.0%@@ to
-  @@l24_captions.filled_on_blanked:.1%@@ on the
-  @@l24_captions.n_blanked@@ affected entries &mdash; against
-  @@l23_textroute.full_on_blanked:.1%@@ if a person had written them.</p>
+  0% to
+  61.7% on the
+  60 affected entries &mdash; against
+  66.7% if a person had written them.</p>
 </section>
 
 <!-- 47 -->
 <section data-menu-title="Captions, tabulated">
   <h2>The whole catalogue, three ways</h2>
   <table>
-    <tr><th>Text-only route, all @@l23_textroute.n@@ queries</th><th class="num">R@1</th><th class="num">R@10</th></tr>
-    <tr><td>Every entry described by a person</td><td class="num">@@l23_textroute.full.r1:.1%@@</td><td class="num">@@l23_textroute.full.r10:.1%@@</td></tr>
-    <tr><td class="fail">@@l23_textroute.n_blanked@@ entries with nothing</td><td class="num fail">@@l23_textroute.missing.r1:.1%@@</td><td class="num fail">@@l23_textroute.missing.r10:.1%@@</td></tr>
-    <tr><td class="fix">Those @@l23_textroute.n_blanked@@ auto-captioned</td><td class="num fix">@@l24_captions.filled.r1:.1%@@</td><td class="num fix">@@l24_captions.filled.r10:.1%@@</td></tr>
+    <tr><th>Text-only route, all 200 queries</th><th class="num">R@1</th><th class="num">R@10</th></tr>
+    <tr><td>Every entry described by a person</td><td class="num">61.5%</td><td class="num">96.0%</td></tr>
+    <tr><td class="fail">60 entries with nothing</td><td class="num fail">46.0%</td><td class="num fail">68.5%</td></tr>
+    <tr><td class="fix">Those 60 auto-captioned</td><td class="num fix">62.0%</td><td class="num fix">94.0%</td></tr>
   </table>
-  <p class="small">A generated caption recovers part of the loss and not all of
-  it. Report the part, not the direction.</p>
+  <p class="small">At rank 1 the recovery is complete to within one query out of
+  200 &mdash; which is noise, not a win over the human writers.
+  At rank 10 it is not complete, and that gap is the real finding.</p>
 </section>
 
 <!-- 48 -->
 <section data-menu-title="The other route was fine">
   <h2>Meanwhile, the route that never read a description</h2>
   <table>
-    <tr><th>On the same @@l24_captions.n_blanked@@ entries</th><th class="num">R@1</th></tr>
-    <tr><td>Text index, description deleted</td><td class="num fail">@@l23_textroute.missing_on_blanked:.0%@@</td></tr>
-    <tr><td>Text index, auto-captioned</td><td class="num">@@l24_captions.filled_on_blanked:.1%@@</td></tr>
-    <tr><td class="fix">Joint-space image route</td><td class="num fix">@@l24_captions.clip_on_blanked:.1%@@</td></tr>
+    <tr><th>On the same 60 entries</th><th class="num">R@1</th></tr>
+    <tr><td>Text index, description deleted</td><td class="num fail">0%</td></tr>
+    <tr><td>Text index, auto-captioned</td><td class="num">61.7%</td></tr>
+    <tr><td class="fix">Joint-space image route</td><td class="num fix">80.0%</td></tr>
   </table>
   <div class="panel">
     <span class="panel-title">The design lesson</span>
@@ -787,7 +800,7 @@ assert len(generated) == len(missing_images)
         It is a restatement of the photograph, and it will confidently name
         things that are not there</li>
     <li>The recovery is measured on
-        @@l24_captions.n_blanked@@ entries of @@l23_textroute.n@@. That is a
+        60 entries of 200. That is a
         small sample and the interval around it is wide</li>
     <li>We are scoring generated captions against human captions of the same
         image &mdash; a friendly test. A customer&rsquo;s wording is not a COCO
@@ -892,9 +905,9 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   <div class="panel panel-fail">
     <span class="panel-title">Asked the same question with no catalogue</span>
     The model produces a fluent recommendation and cites stock numbers in
-    exactly the right format. Across @@l24_rag.n_queries@@ queries it emitted
-    @@l24_rag.closed.citations@@ citations, of which
-    <strong>@@l24_rag.closed.valid@@</strong> correspond to an entry that exists.
+    exactly the right format. Across 12 queries it emitted
+    32 citations, of which
+    <strong>0</strong> correspond to an entry that exists.
   </div>
   <p class="small">The failure is not that it refuses. It is that it does not
   refuse, and nothing in the output distinguishes an invented SKU from a real
@@ -908,23 +921,23 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
     <img src="../assets/figures/l24-rag.svg"
          alt="Two bars showing the percentage of cited stock numbers that exist in the catalogue: low for the closed-book model, high for the retrieval-augmented one, with the raw counts printed above each.">
   </figure>
-  <p class="takeaway muted">@@l24_rag.closed.valid_pct:.0f@@% of closed-book
-  citations exist against @@l24_rag.grounded.valid_pct:.0f@@% when the
-  shortlist is in the prompt &mdash; over @@l24_rag.n_queries@@ queries and a
-  @@l24_rag.catalogue_size@@-entry catalogue.</p>
+  <p class="takeaway muted">0% of closed-book
+  citations exist against 100% when the
+  shortlist is in the prompt &mdash; over 12 queries and a
+  200-entry catalogue.</p>
 </section>
 
 <!-- 57 -->
 <section data-menu-title="RAG tabulated">
   <h2>The numbers</h2>
   <table>
-    <tr><th>Over @@l24_rag.n_queries@@ ambiguous queries</th><th class="num">Closed book</th><th class="num">Retrieval-augmented</th></tr>
-    <tr><td>Queries that cited at least one SKU</td><td class="num">@@l24_rag.closed.queries_with_a_citation@@</td><td class="num">@@l24_rag.grounded.queries_with_a_citation@@</td></tr>
-    <tr><td>Citations emitted</td><td class="num">@@l24_rag.closed.citations@@</td><td class="num">@@l24_rag.grounded.citations@@</td></tr>
-    <tr><td>Citations that exist</td><td class="num fail">@@l24_rag.closed.valid@@</td><td class="num fix">@@l24_rag.grounded.valid@@</td></tr>
-    <tr><td>Grounding rate</td><td class="num fail">@@l24_rag.closed.valid_pct:.0f@@%</td><td class="num fix">@@l24_rag.grounded.valid_pct:.0f@@%</td></tr>
+    <tr><th>Over 12 ambiguous queries</th><th class="num">Closed book</th><th class="num">Retrieval-augmented</th></tr>
+    <tr><td>Queries that cited at least one SKU</td><td class="num">10</td><td class="num">12</td></tr>
+    <tr><td>Citations emitted</td><td class="num">32</td><td class="num">24</td></tr>
+    <tr><td>Citations that exist</td><td class="num fail">0</td><td class="num fix">24</td></tr>
+    <tr><td>Grounding rate</td><td class="num fail">0%</td><td class="num fix">100%</td></tr>
   </table>
-  <p class="small muted">The generator is a @@l24_rag.n_params_m@@-million
+  <p class="small muted">The generator is a 494-million
   parameter instruction model, chosen so the whole thing runs on a laptop. A
   larger one would follow the citation instruction more reliably; it would not
   change the shape of the result.</p>
@@ -960,9 +973,9 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   <h2>Everything, re-measured</h2>
   <table>
     <tr><th>Route</th><th class="num">Before</th><th class="num">After</th></tr>
-    <tr><td>Text query &rarr; image, joint space</td><td class="num">@@l23_clip.t2i.r1:.1%@@</td><td class="num">@@l23_clip.t2i.r1:.1%@@ <span class="muted small">(untouched)</span></td></tr>
-    <tr><td>Text index, on the entries with no description</td><td class="num fail">@@l23_textroute.missing_on_blanked:.0%@@</td><td class="num fix">@@l24_captions.filled_on_blanked:.1%@@</td></tr>
-    <tr><td>Ambiguous queries, grounding rate</td><td class="num fail">@@l24_rag.closed.valid_pct:.0f@@%</td><td class="num fix">@@l24_rag.grounded.valid_pct:.0f@@%</td></tr>
+    <tr><td>Text query &rarr; image, joint space</td><td class="num">72.5%</td><td class="num">72.5% <span class="muted small">(untouched)</span></td></tr>
+    <tr><td>Text index, on the entries with no description</td><td class="num fail">0%</td><td class="num fix">61.7%</td></tr>
+    <tr><td>Ambiguous queries, grounding rate</td><td class="num fail">0%</td><td class="num fix">100%</td></tr>
   </table>
   <p class="small">Two repairs, two measured deltas, one number deliberately
   unchanged as a control. That last row is what makes the other two
@@ -1036,10 +1049,10 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   <h2>Applications 1 and 2 &mdash; the two that set the rules</h2>
   <table>
     <tr><th>What broke</th><th class="num">Measured</th><th>Method it forced</th></tr>
-    <tr><td>Predict the mean price</td><td class="num"><span class="usd">$@@baseline.mean_train_rmse:,.0f@@</span> RMSE</td><td>a baseline before a model</td></tr>
+    <tr><td>Predict the mean price</td><td class="num"><span class="usd">$115,311</span> RMSE</td><td>a baseline before a model</td></tr>
     <tr><td>A tree scored zero error</td><td class="num">0</td><td>train error is not generalisation error</td></tr>
-    <tr><td>Honest cross-validated best</td><td class="num"><span class="usd">$@@best_cv_rmse:,.0f@@</span></td><td>k-fold, pipelines, grid search</td></tr>
-    <tr><td>Never fires, on the rare class</td><td class="num">@@never_fires_accuracy_train:.1%@@ accurate</td><td>precision, recall, the threshold</td></tr>
+    <tr><td>Honest cross-validated best</td><td class="num"><span class="usd">$48,180</span></td><td>k-fold, pipelines, grid search</td></tr>
+    <tr><td>Never fires, on the rare class</td><td class="num">91.0% accurate</td><td>precision, recall, the threshold</td></tr>
   </table>
   <p class="small">Lecture 2 also gave us the one rule everything else rests on:
   <strong>split before anything is fitted</strong>.</p>
@@ -1050,10 +1063,10 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   <h2>Applications 3, 4 and 5</h2>
   <table>
     <tr><th>What broke</th><th class="num">Measured</th><th>Method it forced</th></tr>
-    <tr><td>@@headline.accuracy:.1%@@ accurate, and it missed</td><td class="num">@@headline.missed_fives_pct:.1f@@% of the fives</td><td>the confusion matrix, PR and ROC</td></tr>
-    <tr><td>Degree 5, log loss on held-out data</td><td class="num">@@l06_final.committed_degree5_unregularised.log_loss:.2f@@</td><td>bias&ndash;variance, learning curves</td></tr>
-    <tr><td>Degree 2, the same measurement</td><td class="num">@@l06_final.best_unregularised_degree2.log_loss:.2f@@</td><td>ridge, lasso, early stopping</td></tr>
-    <tr><td>One tree, refit twenty times</td><td class="num">@@instability_disagree_mean:.1%@@ of predictions changed</td><td>bagging, forests, extra-trees</td></tr>
+    <tr><td>96.9% accurate, and it missed</td><td class="num">22.8% of the fives</td><td>the confusion matrix, PR and ROC</td></tr>
+    <tr><td>Degree 5, log loss on held-out data</td><td class="num">1.71</td><td>bias&ndash;variance, learning curves</td></tr>
+    <tr><td>Degree 2, the same measurement</td><td class="num">0.43</td><td>ridge, lasso, early stopping</td></tr>
+    <tr><td>One tree, refit twenty times</td><td class="num">9.0% of predictions changed</td><td>bagging, forests, extra-trees</td></tr>
   </table>
   <p class="small muted">Application 4&rsquo;s thread &mdash; variance falls when
   you average uncorrelated predictors &mdash; is the reason all three ensemble
@@ -1065,10 +1078,10 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   <h2>Applications 5 and 6</h2>
   <table>
     <tr><th>What broke</th><th class="num">Measured</th><th>Method it forced</th></tr>
-    <tr><td>Clustering 400 faces in 4,096 dimensions</td><td class="num">@@l09_sweep_seconds:.0f@@ s per sweep</td><td>SVD, PCA, random projection</td></tr>
-    <tr><td>The same sweep after compressing</td><td class="num">@@l10_speedup:.0f@@&times; faster</td><td>Johnson&ndash;Lindenstrauss</td></tr>
-    <tr><td>A network fitted by Scikit-Learn</td><td class="num">@@l12_sk_seconds:.0f@@ s, and unmodifiable</td><td>PyTorch, autograd, the explicit loop</td></tr>
-    <tr><td>Forgetting <code>zero_grad()</code></td><td class="num">@@l12_zero_grad.acc_cost_pts:.0f@@ points of accuracy</td><td>reading a loop you wrote</td></tr>
+    <tr><td>Clustering 400 faces in 4,096 dimensions</td><td class="num">65 s per sweep</td><td>SVD, PCA, random projection</td></tr>
+    <tr><td>The same sweep after compressing</td><td class="num">21&times; faster</td><td>Johnson&ndash;Lindenstrauss</td></tr>
+    <tr><td>A network fitted by Scikit-Learn</td><td class="num">125 s, and unmodifiable</td><td>PyTorch, autograd, the explicit loop</td></tr>
+    <tr><td>Forgetting <code>zero_grad()</code></td><td class="num">77 points of accuracy</td><td>reading a loop you wrote</td></tr>
   </table>
   <p class="small fail">That last one raised no exception, printed a loss every
   epoch, and finished successfully.</p>
@@ -1084,8 +1097,25 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
     <tr><td>Boxes that were visibly wrong, with no number for <em>how</em> wrong</td><td>IoU, GIoU, average precision, mAP</td></tr>
     <tr><td>A random split across an autocorrelated series</td><td>stationarity, differencing, backtesting</td></tr>
   </table>
-  <p class="small">The forecasting one is worth one more slide, because it is
-  the failure that most looks like success.</p>
+  <p class="small">Two of those are worth one more slide each &mdash; the
+  detection metric, and the forecasting split, which is the failure that most
+  looks like success.</p>
+</section>
+
+<!-- 68b -->
+<section data-menu-title="The wrong metric, in numbers">
+  <h2>Application 9, in numbers</h2>
+  <table>
+    <tr><th>Detection on 128 COCO images</th><th class="num">Value</th></tr>
+    <tr><td>Objects miscounted per image, at the default cut-off</td><td class="num fail">3.0</td></tr>
+    <tr><td>...at the cut-off chosen for the task</td><td class="num">1.92</td></tr>
+    <tr><td>mAP at IoU 0.5</td><td class="num">0.659</td></tr>
+    <tr><td>mAP averaged over IoU 0.5 to 0.95</td><td class="num">0.439</td></tr>
+    <tr><td class="fail">The same detections, averaged per image</td><td class="num fail">0.817</td></tr>
+  </table>
+  <p class="small">The last two rows are the same predictions. Averaging over
+  images instead of over classes moves the headline by
+  0.157 &mdash; a mean of a mean is not a mean.</p>
 </section>
 
 <!-- 69 -->
@@ -1093,9 +1123,9 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   <h2>Application 10, in numbers</h2>
   <table>
     <tr><th>Same model, same rows, different protocol</th><th class="num">MAE</th></tr>
-    <tr><td>Random cross-validation split</td><td class="num miss">@@app10.margins.linear.random_mae:,.0f@@</td></tr>
-    <tr><td>Honest, time-ordered split</td><td class="num hit">@@app10.margins.linear.honest_mae:,.0f@@</td></tr>
-    <tr><td class="fail">Optimism from shuffling time</td><td class="num fail">@@app10.margins.linear.gap_pct:.1f@@%</td></tr>
+    <tr><td>Random cross-validation split</td><td class="num miss">44,925</td></tr>
+    <tr><td>Honest, time-ordered split</td><td class="num hit">56,446</td></tr>
+    <tr><td class="fail">Optimism from shuffling time</td><td class="num fail">25.6%</td></tr>
   </table>
   <p class="small">Nothing was fitted on the test set. No preprocessing crossed
   the split. The leak was the <em>ordering</em>, and with positive
@@ -1108,8 +1138,8 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   <table>
     <tr><th>What broke</th><th class="num">Measured</th><th>Method it forced</th></tr>
     <tr><td>Embeddings learned from one small labelled corpus</td><td class="num">&mdash;</td><td>pretraining, fine-tuning, subword tokens</td></tr>
-    <tr><td>Two encoders, two spaces</td><td class="num">@@l23_mismatch.jl.r1:.1%@@ R@1</td><td>the contrastive objective</td></tr>
-    <tr><td>The same task, one joint space</td><td class="num hit">@@l23_clip.t2i.r1:.1%@@ R@1</td><td>temperature, negatives, the sphere</td></tr>
+    <tr><td>Two encoders, two spaces</td><td class="num">1.0% R@1</td><td>the contrastive objective</td></tr>
+    <tr><td>The same task, one joint space</td><td class="num hit">72.5% R@1</td><td>temperature, negatives, the sphere</td></tr>
   </table>
   <p class="small muted">And the last one closed a loop: the concentration
   result from Application 5&rsquo;s thread came back seven applications later as
@@ -1295,9 +1325,9 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
     <li><strong>Report the failure cases</strong></li>
   </ol>
   <p class="small">Rule 2 did the most work this application: the difference
-  between &ldquo;cosine @@l23_mismatch.jl.matched_mean:.3f@@&rdquo; and
-  &ldquo;cosine @@l23_mismatch.jl.matched_mean:.3f@@, against
-  @@l23_mismatch.jl.random_mean:.3f@@ for unrelated pairs&rdquo; is the whole of
+  between &ldquo;cosine 0.006&rdquo; and
+  &ldquo;cosine 0.006, against
+  0.003 for unrelated pairs&rdquo; is the whole of
   Lecture 23.</p>
 </section>
 
@@ -1355,19 +1385,19 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
     <li>Took the contrastive objective apart: the sphere, the target of zero,
         the temperature, the negatives</li>
     <li>Measured the concentration result on
-        @@l24_concentration.n_pairs:,@@ random pairs and on our own embeddings,
+        20,000 random pairs and on our own embeddings,
         and found the modality gap</li>
     <li>Read the learned temperature off the checkpoint:
-        @@l24_temperature.learned_tau:.5f@@</li>
+        0.01000</li>
     <li>Watched the same loss lose
-        @@l24_normalisation.acc_drop_pts:.0f@@ points of top-1 accuracy from one
+        21 points of top-1 accuracy from one
         missing normalisation</li>
-    <li>Filled @@l24_captions.n_blanked@@ missing descriptions automatically and
-        recovered R@1 from @@l23_textroute.missing_on_blanked:.0%@@ to
-        @@l24_captions.filled_on_blanked:.1%@@ on those entries</li>
+    <li>Filled 60 missing descriptions automatically and
+        recovered R@1 from 0% to
+        61.7% on those entries</li>
     <li>Grounded an assistant in the catalogue and moved its citation validity
-        from @@l24_rag.closed.valid_pct:.0f@@% to
-        @@l24_rag.grounded.valid_pct:.0f@@%</li>
+        from 0% to
+        100%</li>
   </ol>
 </section>
 
