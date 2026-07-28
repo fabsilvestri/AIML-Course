@@ -642,6 +642,23 @@ def build(cells: list) -> nbf.NotebookNode:
 
 LECTURES = {1: lecture_01, 2: lecture_02}
 
+# Lectures 3+ live in tools/notebooks/lecture_NN.py, each exporting build() ->
+# list[cell]. One file per lecture so that authors working on different
+# applications never touch the same file.
+def _discover() -> None:
+    import importlib.util
+    for path in sorted((Path(__file__).parent / "notebooks").glob("lecture_*.py")):
+        n = int(path.stem.split("_")[1])
+        if n in LECTURES:
+            continue
+        spec = importlib.util.spec_from_file_location(path.stem, path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        LECTURES[n] = (lambda m: lambda: build(m.build()))(mod)
+
+
+_discover()
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
