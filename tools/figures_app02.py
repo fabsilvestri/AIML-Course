@@ -707,6 +707,16 @@ def main():
         "sum": float((1 - p) * facts["headline"]["specificity"]
                      + p * facts["headline"]["recall"]),
         "accuracy_per_10pp_recall": float(10 * p),
+        # the same identity read as a decomposition of the gap over the
+        # never-fires baseline: recall earns points, lost specificity spends them
+        "recall_term_pp": float(100 * p * facts["headline"]["recall"]),
+        "specificity_drop_pp": float(
+            100 * (1 - facts["headline"]["specificity"])),
+        "specificity_loss_pp": float(
+            100 * (1 - p) * (1 - facts["headline"]["specificity"])),
+        "specificity_share_of_accuracy_pct": float(
+            100 * (1 - p) * facts["headline"]["specificity"]
+            / facts["headline"]["accuracy"]),
     }
 
     print("Thread 2 — walking the threshold down the ranking:")
@@ -842,6 +852,15 @@ def main():
                    - test["assistant_max_recall"]["accuracy"])),
         "assistant_extra_false_alarms": int(
             test["assistant_max_recall"]["fp"] - test["default_threshold"]["fp"]),
+        "below_perfect_pp": float(100 * (1 - h["accuracy"])),
+        "anchor_errors_removed_pct": float(
+            100 * (h["accuracy"] - facts["never_fires_accuracy_train"])
+            / facts["base_rate_train"]),
+        "forest_minus_sgd_accuracy_pp": float(
+            100 * (facts["forest"]["accuracy"] - h["accuracy"])),
+        "forest_minus_sgd_recall_pp": float(
+            100 * (facts["forest"]["recall"] - h["recall"])),
+        "recall_cost_of_90_precision_pp": float(100 * (h["recall"] - op["recall"])),
     }
 
     if (problems := check_text_floor()):
@@ -850,7 +869,12 @@ def main():
             print("  " + p_)
         raise SystemExit(1)
 
-    export(**facts)
+    # Everything under one key. figures.json is shared and figkit.export()
+    # merges at the top level only, so a bare "n_train" here silently replaces
+    # Application 1's — which is exactly what happened, and check_provenance.py
+    # is what caught it. check_provenance flattens to any depth, so nesting
+    # costs nothing.
+    export(app02=facts)
     print("\nApplication 2 done.")
 
 

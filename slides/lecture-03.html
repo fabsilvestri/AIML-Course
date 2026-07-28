@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 3 — Finding the rare event</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- ==================================================================== -->
+<!-- OPENING                                                              -->
+<!-- ==================================================================== -->
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Finding the rare event</h1>
+  <p class="subtitle">Application 2 &middot; MNIST &middot; a detector for one digit</p>
+  <p><span class="badge badge-build">Lecture 3 &middot; Build</span>
+     <span class="badge badge-ch">Géron Ch. 3</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">New application, new commitment sheet. Say so before the
+  first slide of content: they will need paper again today.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Application 1, closed">
+  <h2>Application 1 is closed</h2>
+  <table>
+    <tr><th>California housing</th><th class="num">RMSE</th></tr>
+    <tr><td>Predict a constant &mdash; the anchor</td><td class="num"><span class="usd">$115,300</span></td></tr>
+    <tr><td>Best honest cross-validated estimate</td><td class="num"><span class="usd">$48,180</span></td></tr>
+    <tr><td>Final, on the test set, once</td><td class="num hit"><span class="usd">$49,037</span></td></tr>
+  </table>
+  <p class="small">Two lectures, one number, and an interval around it. The thing
+  that made the second lecture work was that you had written a prediction down
+  before you knew.</p>
+  <p class="small muted">Today we do it again, on a problem that looks nothing
+  like the last one.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="What carries over">
+  <h2>What carries over, unchanged</h2>
+  <div class="panel">
+    <span class="panel-title">The standing constraint</span>
+    Split before anything is fitted. All preprocessing inside a
+    <code>Pipeline</code> passed to cross-validation. Nothing derived from the
+    test set in the training path. Fixed seeds. Report the fold scores, not only
+    the mean.
+  </div>
+  <p class="small">You wrote that down in the previous lecture. It is not a
+  housing rule; it is the rule. Everything today obeys it, and one slide near the
+  end shows what it costs when it is dropped.</p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>The brief, the data, the stakeholder
+        <span class="muted small">(15 min)</span></li>
+    <li>Choose a metric, measure the anchor, and
+        <strong>commit a number in writing</strong>
+        <span class="muted small">(15 min)</span></li>
+    <li>Build the simplest thing that runs, and measure it honestly
+        <span class="muted small">(60 min)</span></li>
+  </ol>
+  <p class="small muted">No mathematical thread today &mdash; this is a Build
+  lecture. Thread 2 opens the next one.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- PART 1 — THE BRIEF (15 min)                                          -->
+<!-- ==================================================================== -->
+
+<!-- 5 -->
+<section class="divider" data-menu-title="◆ The brief">
+  <p class="kicker">Part one</p>
+  <h1>The brief</h1>
+  <p class="clock">15 minutes &middot; the problem, the data, the stakeholder</p>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="The scenario">
+  <h2>You have been hired again</h2>
+  <p>A national postal operator sorts handwritten postcodes automatically. A
+  camera photographs each digit; a classifier reads it; the envelope goes down a
+  chute.</p>
+  <div class="panel">
+    <span class="panel-title">The task</span>
+    Their audit team has found that one glyph is misread far more often than the
+    others. They want every scanned digit that <em>is</em> a
+    <strong>5</strong> pulled off the line and sent to a human verification desk.
+  </div>
+  <p class="small">Not &ldquo;read the digit&rdquo;. <strong>Detect one
+  digit.</strong> Yes or no, one class against the other nine.</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="First question">
+  <h2>The first question is never technical</h2>
+  <p class="lead"><em>What does the organisation do with the output?</em></p>
+  <ul class="tight">
+    <li>A flagged digit costs a person thirty seconds at a desk</li>
+    <li>A missed 5 costs a misdirected envelope, found weeks later, if at all</li>
+    <li>The two costs are not equal, and they are not paid by the same
+        department</li>
+  </ul>
+  <p class="small fail">Hold on to that asymmetry. It is the whole of the next
+  lecture, and we are about to choose a metric that cannot see it.</p>
+  <aside class="notes">Say this line and move on quickly. It is a flag planted
+  for the next lecture, not a hint — nobody can act on it yet.</aside>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="The desk">
+  <h2>The constraint the desk imposes</h2>
+  <p>The verification desk is staffed for one shift at a time and can re-check
+  about <strong>1,000</strong> items per shift.</p>
+  <div class="panel panel-book">
+    <span class="panel-title">A stakeholder figure, not a measurement</span>
+    We were told this. We did not measure it. Every number we derive from it
+    inherits that status, and it goes on the slide labelled as an assumption
+    &mdash; exactly as the experts&rsquo; 30% did in Application 1.
+  </div>
+  <p class="small muted">One shift is 10,000 scanned digits. Keep both numbers;
+  they come back at the end of the next lecture as literal counts.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="Frame the problem">
+  <h2>Frame the problem</h2>
+  <p>Four questions, before any code:</p>
+  <ol class="tight">
+    <li>What <strong>training supervision</strong> is available?</li>
+    <li>Is it classification, regression, or something else?</li>
+    <li><strong>Batch or online</strong> learning?</li>
+    <li>What are we <strong>assuming</strong>?</li>
+  </ol>
+  <p class="small muted">Answer them yourself before the next slide. You have
+  done this once already.</p>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="Framing, answered">
+  <h2>Framing, answered</h2>
+  <table class="smaller">
+    <tr><th>Question</th><th>Answer</th></tr>
+    <tr><td>Supervision</td><td>Supervised &mdash; every image carries a label</td></tr>
+    <tr><td>Task</td><td><strong>Binary classification</strong>: 5 or not-5</td></tr>
+    <tr><td>Learning</td><td>Batch. The corpus is fixed and fits in memory</td></tr>
+    <tr><td>Assumption</td><td>Next year&rsquo;s handwriting looks like this corpus</td></tr>
+  </table>
+  <p class="small">The fourth is the one that will age. Handwriting drifts,
+  cameras are replaced, and a model trained on one decade&rsquo;s post is not
+  automatically valid on the next.</p>
+  <p class="small fail">Classification, not regression. So RMSE is gone, and we
+  need a new metric. That is the whole reason this application exists.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="What makes it rare">
+  <h2>What makes this a <em>rare-event</em> problem</h2>
+  <p>The ten digits appear in roughly equal numbers. The task does not.</p>
+  <div class="eqn-box">
+    $$\text{one class against nine} \;\Longrightarrow\; \text{about one positive in ten}$$
+  </div>
+  <p class="small">Every binary detector carved out of a multiclass problem
+  inherits this. Detect one product fault out of forty; one disease out of a
+  hundred; one fraudulent transaction in ten thousand. The arithmetic is the
+  same and only the ratio changes.</p>
+  <aside class="notes">Ask for other examples from the room. You want them to
+  own the shape of the problem, not the digits.</aside>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="The dataset">
+  <h2>The data: MNIST</h2>
+  <ul class="tight small">
+    <li>70,000 small images of handwritten digits, written by US high-school
+        students and Census Bureau employees</li>
+    <li>Each image is 28 &times; 28 pixels, flattened to <strong>784</strong>
+        features</li>
+    <li>Each feature is one pixel&rsquo;s intensity, an integer from 0 (white)
+        to 255 (black)</li>
+    <li>Every image is labelled with the digit it shows</li>
+  </ul>
+  <div class="panel panel-book">
+    The textbook calls MNIST &ldquo;the hello world of machine learning&rdquo;.
+    It is studied so often that it is effectively the field&rsquo;s control
+    experiment: if a method cannot do something here, the something is probably
+    not the method&rsquo;s fault.
+  </div>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="Fetching it">
+  <h2>Fetching it</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.datasets import fetch_openml
+
+mnist = fetch_openml("mnist_784", as_frame=False)
+X, y = mnist.data, mnist.target
+
+print(X.shape, X.dtype)      # (70000, 784) float64
+print(y.shape, y.dtype)      # (70000,)     &lt;U1  — strings!
+  </code></pre>
+  <p class="small"><code>as_frame=False</code> asks for NumPy arrays rather than
+  a DataFrame. For 784 homogeneous numeric columns a DataFrame buys nothing and
+  costs memory.</p>
+  <p class="smaller muted">About 30 seconds the first time; scikit-learn caches
+  the download afterwards. <em>(Timing not examinable.)</em></p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="The labels are strings">
+  <h2>The first default nobody asked for</h2>
+  <p><code>y</code> arrives as an array of <strong>one-character strings</strong>:
+  <code>'5'</code>, not <code>5</code>.</p>
+  <pre><code class="language-python" data-trim>
+y = y.astype(np.uint8)              # do this before anything else
+
+assert y.dtype == np.uint8
+assert set(np.unique(y)) == set(range(10))
+  </code></pre>
+  <div class="panel panel-fail">
+    <span class="panel-title">What it costs if you forget</span>
+    <code>y == 5</code> is then <code>False</code> for every single image, with
+    no error and no warning &mdash; a string is never equal to an integer. You
+    would build a detector for a class that has no members and score
+    <strong>100%</strong> accuracy on it.
+  </div>
+  <aside class="notes">This is reviewer question 5 — the default I did not ask
+  for — arriving in the first three minutes of code. Name it as such.</aside>
+</section>
+
+<!-- 15 -->
+<section class="figslide" data-menu-title="◆ What the data looks like">
+  <h2>Forty-eight of the seventy thousand</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l03-digits.png"
+         alt="Three rows of sixteen handwritten digits in grey on white; two of them, both 5s, are ringed in red.">
+  </figure>
+  <p class="takeaway">Drawn at random, and exactly <strong>2</strong> of the
+  forty-eight are 5s. That ratio is the whole problem.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="One image">
+  <h2>What one instance actually is</h2>
+  <pre><code class="language-python" data-trim>
+some_digit = X[0]
+some_digit_image = some_digit.reshape(28, 28)
+
+plt.imshow(some_digit_image, cmap="binary")
+plt.axis("off"); plt.show()
+
+print(y[0])                 # 5
+  </code></pre>
+  <p class="small">A 784-vector and a 28 &times; 28 image are the same object in
+  two shapes. The model never sees the square; it sees 784 numbers in a fixed
+  order, and it has no idea that pixel 0 and pixel 28 are vertical neighbours.</p>
+  <p class="small muted">That last sentence is why convolutional networks exist.
+  Chapter 12, and a long way off.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="The split is given">
+  <h2>The split has already been made for us</h2>
+  <pre><code class="language-python" data-trim>
+X_train, X_test = X[:60000], X[60000:]
+y_train, y_test = y[:60000], y[60000:]
+
+assert len(X_train) == 60000 and len(X_test) == 10000
+assert X_train.shape[1] == X_test.shape[1] == 784
+  </code></pre>
+  <ul class="tight small">
+    <li>The first 60,000 rows are the standard training set; the last 10,000 are
+        the standard test set</li>
+    <li>The corpus is <strong>already shuffled</strong>, so the first 60,000 are
+        not sorted by digit or by writer</li>
+    <li>Using the standard split is what makes any published number on MNIST
+        comparable to ours</li>
+  </ul>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="Why not train_test_split">
+  <h2>&ldquo;Why not <code>train_test_split</code>?&rdquo;</h2>
+  <p class="small">You could. You would then be reporting a number that nobody
+  else has measured, on a benchmark whose entire value is that everybody
+  measures the same thing.</p>
+  <div class="panel">
+    <span class="panel-title">But the shuffle still matters, one level down</span>
+    Some algorithms are sensitive to the <em>order</em> of the training
+    instances, and cross-validation folds cut the training set into contiguous
+    blocks unless you say otherwise. That is why every splitter in this course
+    carries <code>shuffle=True, random_state=42</code> &mdash; the same rule as
+    in the previous lecture, for the same reason.
+  </div>
+  <p class="small muted">Shuffling is not always right. It is wrong for time
+  series, where a random split puts a point&rsquo;s own future in the training
+  set. Lecture 20.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="Relabel">
+  <h2>From ten classes to two</h2>
+  <pre><code class="language-python" data-trim>
+y_train_5 = (y_train == 5)          # True for every 5, False otherwise
+y_test_5  = (y_test  == 5)
+
+assert y_train_5.dtype == bool
+assert y_train_5.sum() == 5421
+print(f"{y_train_5.sum():,} positives out of {len(y_train_5):,}")
+  </code></pre>
+  <p class="small">Two lines, and the imbalance is created. Nothing about MNIST
+  is imbalanced; <strong>our question is</strong>.</p>
+  <p class="small fail">Assert the count. If the cast to <code>uint8</code> was
+  skipped, this assertion is what tells you &mdash; it fails at
+  <code>0 == 5421</code> instead of silently training on nothing.</p>
+</section>
+
+<!-- 20 -->
+<section class="figslide" data-menu-title="◆ The class counts">
+  <h2>Balanced data, imbalanced question</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l03-class-counts.svg"
+         alt="Bar chart of the ten digit counts in the 60,000-image training set, all between 5,421 and 6,742, with the bar for digit 5 drawn in red and annotated as 9.0% of the data.">
+  </figure>
+  <p class="takeaway">Every bar is roughly the same height. The moment we ask
+  &ldquo;is it a 5?&rdquo;, one bar becomes the positive class and the other nine
+  become the negative class.</p>
+</section>
+
+<!-- 21 -->
+<section class="figslide" data-menu-title="◆ The pipeline, drawn">
+  <h2>The whole build, before we write it</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-binary-task.svg"
+         alt="A flow from MNIST's 70,000 images through the fixed 60,000/10,000 split, a relabelling step producing 5,421 positives and 54,579 negatives, a Pipeline of StandardScaler and SGDClassifier, three-fold cross-validation, three held-out accuracies, and a comparison against 90.96%.">
+  </figure>
+  <p class="takeaway muted">Six boxes. The red one is where the imbalance is
+  manufactured, and the red one on the left is what every result has to be
+  compared against.</p>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Shapes">
+  <h2>Reviewer question 3, on image data</h2>
+  <p class="small">&ldquo;What is the shape here?&rdquo; bites harder on images
+  than on tables, because a wrong shape still runs.</p>
+  <pre><code class="language-python" data-trim>
+assert X_train.shape == (60000, 784)
+assert y_train_5.shape == (60000,)
+assert X_train.min() == 0 and X_train.max() == 255
+  </code></pre>
+  <div class="panel panel-fail">
+    <span class="panel-title">The one that does not raise</span>
+    <code>X.reshape(70000, 28, 28)</code> and then a flatten in the wrong axis
+    order gives you 784 columns again &mdash; with the pixels transposed. Every
+    model still fits, every score still prints, and accuracy drops by a few
+    points for a reason you will never find by reading the metric.
+  </div>
+</section>
+
+<!-- ==================================================================== -->
+<!-- PART 2 — THE METRIC AND THE COMMITMENT (15 min)                      -->
+<!-- ==================================================================== -->
+
+<!-- 23 -->
+<section class="divider" data-menu-title="◆ The metric">
+  <p class="kicker">Part two</p>
+  <h1>The metric</h1>
+  <p class="clock">15 minutes &middot; and a number in writing</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Metric before model">
+  <h2>Metric before model</h2>
+  <p class="lead">Rule 1 of this course, and we are about to apply it for the
+  second time.</p>
+  <ul class="tight">
+    <li>Choose what you are optimising <strong>before</strong> you have anything
+        to optimise</li>
+    <li>Otherwise the metric gets chosen after the result, which is how you end
+        up reporting whichever number happens to look best</li>
+  </ul>
+  <p class="small fail">And name who chose it. If the metric arrived by default
+  &mdash; from a library, from a habit, from an assistant &mdash; then nobody
+  chose it.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Accuracy">
+  <h2>The obvious metric for a classifier</h2>
+  <p><strong>Accuracy</strong>: the fraction of instances the classifier gets
+  right.</p>
+  <div class="eqn-box">
+    $$\text{accuracy} \;=\; \frac{\#\{\,i \,:\, \hat y^{(i)} = y^{(i)}\,\}}{m}$$
+  </div>
+  <p class="eqn-label">The proportion of correct predictions</p>
+  <ul class="tight small">
+    <li>It is between 0 and 1, and bigger is better</li>
+    <li>It needs no threshold, no scaling and no interpretation</li>
+    <li>Every stakeholder in the world understands it without being taught</li>
+  </ul>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Accuracy in code">
+  <h2>What it looks like in code</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+
+cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+
+scores = cross_val_score(clf, X_train, y_train_5,
+                         cv=cv, scoring="accuracy")
+print(scores)                    # one number per fold
+  </code></pre>
+  <p class="small"><code>"accuracy"</code> is also what
+  <code>cross_val_score</code> uses if you say nothing at all for a classifier.
+  We are naming it anyway, because a metric you did not name is a metric you did
+  not choose.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Stratified folds">
+  <h2>Why <code>StratifiedKFold</code> and not <code>KFold</code></h2>
+  <p class="small">With 9% positives and three folds, a plain shuffle can hand
+  one fold noticeably fewer 5s than another, and the fold scores then differ for
+  a reason that has nothing to do with the model.</p>
+  <div class="panel">
+    Stratified folds preserve the class proportion in every fold. This is the
+    same idea as stratifying the split on income in Application 1 &mdash; and
+    here it is not optional judgement, it is the class we are trying to detect.
+  </div>
+  <p class="small muted">For a classifier, <code>cross_val_score(cv=3)</code>
+  already stratifies. We write it out because the default is invisible, and an
+  invisible default is one you cannot check.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="What counts as good">
+  <h2>What number counts as success?</h2>
+  <ul class="tight small">
+    <li>The line reads 10,000 digits per shift</li>
+    <li>The desk can re-check about 1,000 of them</li>
+    <li>The audit wants the 5s found</li>
+  </ul>
+  <div class="panel">
+    None of those three is an accuracy. Converting them into one requires an
+    assumption we have not stated &mdash; so any target we set today is an
+    order of magnitude, not a specification.
+  </div>
+  <p class="small fail">It is also not a baseline. A baseline is something you
+  can run. Next slide.</p>
+  <aside class="notes">Do not resolve the tension. They should feel that the
+  translation is awkward without being told why yet.</aside>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="The trivial baseline">
+  <h2>Before you commit: what does <em>nothing</em> score?</h2>
+  <p class="small">The cheapest possible detector. It looks at nothing and
+  answers &ldquo;not a 5&rdquo; every time.</p>
+  <pre><code class="language-python" data-trim>
+from sklearn.base import BaseEstimator
+
+class NeverFires(BaseEstimator):
+    def fit(self, X, y=None):
+        return self
+    def predict(self, X):
+        return np.zeros(len(X), dtype=bool)
+
+cross_val_score(NeverFires(), X_train, y_train_5, cv=cv,
+                scoring="accuracy")     # array([0.90965, 0.90965, 0.90965])
+  </code></pre>
+  <p class="fix">It is right 54,579 times out of 60,000 &mdash;
+  <strong>90.96%</strong> accuracy, with no model, no fit and no features.</p>
+</section>
+
+<!-- 30 -->
+<section class="figslide" data-menu-title="◆ The anchor">
+  <h2>The same anchor exists for all ten digits</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l03-baseline.svg"
+         alt="Horizontal bars showing the accuracy of a never-fires detector for each of the ten digits, from 88.76% for digit 1 to 90.96% for digit 5, which is drawn in red and labelled ours.">
+  </figure>
+  <p class="takeaway">Whichever digit the audit had picked, doing nothing scores
+  between <strong>88.76%</strong> and <strong>90.96%</strong>. That is the number
+  every result today has to be measured against.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Reading the anchor">
+  <h2>How to read that</h2>
+  <ul class="tight small">
+    <li>An accuracy of 90.96% is available for free, so 90.96% is
+        <strong>zero</strong> in the units that matter</li>
+    <li>The interesting quantity is the distance above it, not the number
+        itself</li>
+    <li>The anchor is different for every task &mdash; 88.76% for digit 1,
+        because there are more 1s in the corpus than any other digit</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">Rule 2, applied to ourselves</span>
+    A metric with nothing to compare it to is decoration. You measured a
+    constant predictor before committing an RMSE; measure a constant classifier
+    before committing an accuracy.
+  </div>
+</section>
+
+<!-- 32 -->
+<section class="commit-slide" data-menu-title="★ COMMIT">
+  <h2>Commit</h2>
+  <div class="commit">
+    <span class="commit-label">Write this down. On paper. Now.</span>
+    <p class="small" style="text-align:left; line-height:1.9">
+      Metric: <span class="blank"></span><br>
+      Accuracy a <em>good</em> detector would need: <span class="blank"></span><br>
+      Accuracy I expect from the model we build today: <span class="blank"></span>
+    </p>
+  </div>
+  <p class="small">You are estimating, not guessing: doing nothing scores
+  <strong>90.96%</strong>, and a perfect detector scores 100%. Your number lives
+  somewhere in that band, and saying <em>where</em> is the exercise.</p>
+  <p class="small muted">We score all three out loud at the start of the next
+  lecture.</p>
+  <aside class="notes">Walk the room. Nobody proceeds without three numbers on
+  paper. Ask two people to read theirs out — it makes the scoring in the next
+  lecture personal rather than abstract.</aside>
+</section>
+
+<!-- ==================================================================== -->
+<!-- PART 3 — BUILD (60 min)                                              -->
+<!-- ==================================================================== -->
+
+<!-- 33 -->
+<section class="divider" data-menu-title="◆ Build">
+  <p class="kicker">Part three</p>
+  <h1>Build</h1>
+  <p class="clock">60 minutes &middot; the simplest thing that runs</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="★ Colab notebook">
+  <h2>Today&rsquo;s notebook</h2>
+  <p style="margin:1.2em 0">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-03.ipynb">
+       Open Lecture 3 in Google Colab</a>
+  </p>
+  <div class="panel">
+    <span class="panel-title">How to work</span>
+    Run the setup cell first, then work section by section. Where the notebook
+    says <code># YOUR SPECIFICATION HERE</code>, write what you want in plain
+    English, generate the code, <strong>then read it before running it</strong>.
+  </div>
+  <p class="small muted">Every notebook in the course is listed near the end of
+  this deck.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="The plan">
+  <h2>The plan</h2>
+  <ol class="tight">
+    <li>Pick an estimator that can handle 60,000 &times; 784</li>
+    <li>Put it in a pipeline with the preprocessing</li>
+    <li>Fit it, and predict one instance to see that it works</li>
+    <li>Measure it with three-fold cross-validation</li>
+    <li>Compare against the anchor, and record the result</li>
+  </ol>
+  <p class="small muted">Five steps and about forty minutes. The other twenty
+  are spent on one prompt that goes wrong.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="The estimator">
+  <h2>Stochastic gradient descent</h2>
+  <p><code>SGDClassifier</code> fits a linear model by taking one training
+  instance at a time and nudging the parameters against the gradient of the loss
+  for that instance.</p>
+  <ul class="tight small">
+    <li>It never needs the whole training set in memory at once &mdash; it is
+        capable of <strong>online</strong> learning</li>
+    <li>It handles very large training sets efficiently, which is exactly our
+        situation</li>
+    <li>It is a linear model, so it is fast, and it will not be the best thing
+        available</li>
+  </ul>
+  <div class="panel panel-book">
+    The name describes the training procedure, not the model. The same class
+    fits several different linear models depending on its <code>loss</code>
+    argument; the default is a linear support vector machine.
+  </div>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Why start here">
+  <h2>Why start with the worst reasonable model</h2>
+  <ul class="tight small">
+    <li>It runs in seconds, so the loop &mdash; specify, read, test, verify
+        &mdash; can go round several times in one lecture</li>
+    <li>Every later model is measured against it, so it is the second anchor</li>
+    <li>If a linear model on raw pixels already answers the brief, the project
+        is finished and nobody had to buy a GPU</li>
+  </ul>
+  <p class="small fail">Starting with the most powerful model available is how
+  you end up unable to say which part of your system is doing the work.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="Build it">
+  <h2>Build it</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.linear_model import SGDClassifier
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+clf = make_pipeline(StandardScaler(),
+                    SGDClassifier(random_state=42))
+
+clf.fit(X_train, y_train_5)
+  </code></pre>
+  <p class="small">Two components, one object. The standing constraint is
+  satisfied by construction: when cross-validation holds out a fold, the scaler
+  is refitted on the other folds only.</p>
+  <p class="small muted"><code>random_state=42</code> because SGD shuffles the
+  training instances. Without it, two runs of the same code give different
+  models &mdash; and you will spend an afternoon on the difference.</p>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Scaling pixels">
+  <h2>Scaling pixels &mdash; is it even necessary?</h2>
+  <p class="small">Every feature is already on the same scale, 0 to 255. So the
+  usual argument for standardising does not obviously apply. We measure instead
+  of arguing:</p>
+  <table class="smaller">
+    <tr><th>Estimator</th><th class="num">Fold 1</th><th class="num">Fold 2</th><th class="num">Fold 3</th><th class="num">Mean</th></tr>
+    <tr><td>Pipeline with <code>StandardScaler</code></td><td class="num">96.83%</td><td class="num">96.84%</td><td class="num">97.04%</td><td class="num hit">96.90%</td></tr>
+    <tr><td>The same classifier, raw pixels</td><td class="num">96.69%</td><td class="num fail">91.63%</td><td class="num">96.79%</td><td class="num">95.03%</td></tr>
+  </table>
+  <p class="small">The means differ by less than two points. <strong>The spreads
+  do not compare at all</strong> &mdash; one fold of the unscaled version lands
+  five points below its own siblings.</p>
+</section>
+
+<!-- 40 -->
+<section class="figslide" data-menu-title="◆ Three folds, twice">
+  <h2>This is why you report every fold</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l03-folds.svg"
+         alt="Two rows of three points each: the scaled pipeline's folds cluster between 96.83% and 97.04%, the unscaled classifier's spread from 91.63% to 96.79%, against a dashed line marking the never-fires baseline at 90.96%.">
+  </figure>
+  <p class="takeaway fail">Report only the mean, and the unscaled row looks like
+  a 95% classifier. Its worst fold is <strong>91.63%</strong> &mdash; barely
+  above doing nothing.</p>
+  <aside class="notes">Ask what the second row's bad fold means. Gradient descent
+  on unstandardised features takes a badly conditioned path; the answer depends
+  on where it happened to start.</aside>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="Predict one">
+  <h2>Predict one instance, before measuring anything</h2>
+  <pre><code class="language-python" data-trim>
+some_digit = X_train[0]              # the image we plotted earlier
+print(y_train[0])                    # 5
+
+clf.predict([some_digit])            # array([ True])
+  </code></pre>
+  <p class="small">A test with a known answer, run before any metric exists.
+  Step 4 of the working method, and the cheapest twenty seconds in the
+  lecture.</p>
+  <div class="panel">
+    <span class="panel-title">Note the brackets</span>
+    <code>predict</code> expects a <em>collection</em> of instances, so a single
+    784-vector has to be wrapped. Passing <code>some_digit</code> bare raises,
+    which is the good case &mdash; scikit-learn checks this one for you.
+  </div>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Measure it">
+  <h2>Now measure it, honestly</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+
+cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+
+scores = cross_val_score(clf, X_train, y_train_5,
+                         cv=cv, scoring="accuracy")
+print(scores)          # [0.9683  0.9684  0.97035]
+print(scores.mean())   # 0.96902
+  </code></pre>
+  <p class="smaller muted">About 30 seconds: three complete refits of scaler and
+  classifier on 40,000 rows each. <em>(Timing not examinable.)</em></p>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="The number">
+  <h2>The headline number</h2>
+  <p class="big-num good">96.90%</p>
+  <p class="lead">Three-fold cross-validated accuracy, on data the model never
+  saw during its own fitting.</p>
+  <p class="small">Folds: 96.83%, 96.84%, 97.04%. A spread of about two tenths
+  of a point &mdash; the three folds agree, which is more than could be said for
+  anything in the previous application.</p>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Against the anchor">
+  <h2>Against the anchor</h2>
+  <table>
+    <tr><th>Detector</th><th class="num">Cross-validated accuracy</th></tr>
+    <tr><td>Never fires &mdash; the anchor</td><td class="num">90.96%</td></tr>
+    <tr><td>SGD on raw pixels</td><td class="num">95.03%</td></tr>
+    <tr><td>SGD in a pipeline with scaling</td><td class="num hit">96.90%</td></tr>
+    <tr><td>Perfect</td><td class="num">100%</td></tr>
+  </table>
+  <p class="small">Our detector is <strong>5.94 percentage points</strong> above
+  doing nothing, and 3.10 points below perfect. Of the mistakes the anchor makes,
+  we have removed <strong>65.7%</strong>.</p>
+  <p class="small muted">Both of those are the same measurement stated two ways.
+  Say which one you mean when you report it.</p>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="Write your own CV">
+  <h2>What <code>cross_val_score</code> is doing</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.base import clone
+
+for train_idx, test_idx in cv.split(X_train, y_train_5):
+    fold_clf = clone(clf)                          # an unfitted copy
+    fold_clf.fit(X_train[train_idx], y_train_5[train_idx])
+
+    pred = fold_clf.predict(X_train[test_idx])
+    n_correct = (pred == y_train_5[test_idx]).sum()
+    print(n_correct / len(test_idx))
+  </code></pre>
+  <p class="small"><code>clone</code> copies the hyperparameters and discards
+  anything learned. Reusing <code>clf</code> here would train the same object
+  three times in succession, and each fold would start from the previous
+  fold&rsquo;s parameters.</p>
+  <p class="small fix">Write this loop once in your life. After that, use the
+  library &mdash; but you will know what it did.</p>
+</section>
+
+<!-- 45b -->
+<section data-menu-title="The loop, today">
+  <h2>The working loop, on this notebook</h2>
+  <table class="smaller">
+    <tr><th>Step</th><th>What it was today</th></tr>
+    <tr><td>1 · Specify</td><td>&ldquo;binary detector for one digit, accuracy per fold, seed 42&rdquo;</td></tr>
+    <tr><td>2 · Generate, then stop</td><td>the pipeline, before running it</td></tr>
+    <tr><td>3 · Read</td><td>the five reviewer questions</td></tr>
+    <tr><td>4 · Test</td><td><code>clf.predict([some_digit])</code> on an image whose label we know</td></tr>
+    <tr><td>5 · Verify</td><td>compare 96.90% against the 90.96% anchor</td></tr>
+  </table>
+  <p class="small fail">Step 5 is the one that gets skipped, because step 4
+  already felt like checking. It is not: step 4 asks whether the code runs, step
+  5 asks whether the number means anything.</p>
+</section>
+
+<!-- 45c -->
+<section data-menu-title="Inside SGDClassifier">
+  <h2>The defaults inside the estimator</h2>
+  <table class="smaller">
+    <tr><th>Argument</th><th>Default</th><th>What it decides</th></tr>
+    <tr><td><code>loss</code></td><td><code>"hinge"</code></td><td>a linear support vector machine, not logistic regression</td></tr>
+    <tr><td><code>penalty</code></td><td><code>"l2"</code></td><td>ridge-style regularisation is on, always</td></tr>
+    <tr><td><code>alpha</code></td><td>0.0001</td><td>how much of it</td></tr>
+    <tr><td><code>max_iter</code></td><td>1000</td><td>passes over the training set</td></tr>
+    <tr><td><code>random_state</code></td><td><code>None</code></td><td>a different model on every run</td></tr>
+  </table>
+  <p class="small">Five decisions, none of which we made. Four are defensible
+  here; the last one is not, which is why it is the only one we overrode.</p>
+  <p class="small muted">The loss and the penalty are Chapter 4, and Lecture 6
+  will make the penalty do visible work. Today they are simply named.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- THE WORKED ASSISTANT FAILURE                                         -->
+<!-- ==================================================================== -->
+
+<!-- 46 -->
+<section class="divider" data-menu-title="◆ The assistant">
+  <p class="kicker">Part three, continued</p>
+  <h1>One prompt,<br>one wrong number</h1>
+  <p class="clock">20 minutes</p>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="The weak prompt">
+  <h2>Beat 1 &middot; the prompt</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">What was asked</span>
+    &ldquo;Evaluate my classifier on the MNIST 5-detector and print the
+    score.&rdquo;
+  </div>
+  <p>Read it as a specification. What is missing?</p>
+  <ul class="tight small">
+    <li>Which score?</li>
+    <li>Evaluated on <em>which rows</em>?</li>
+    <li>Compared against what?</li>
+  </ul>
+  <p class="small muted">Thirty seconds. Then the next slide.</p>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="The code it returns">
+  <h2>Beat 2 &middot; the code that comes back</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>from sklearn.metrics import accuracy_score
+
+clf = make_pipeline(StandardScaler(), SGDClassifier(random_state=42))
+clf.fit(X_train, y_train_5)
+
+y_pred = clf.predict(X_train)
+print(f"Accuracy: {accuracy_score(y_train_5, y_pred):.4f}")
+# Accuracy: 0.9738
+</code></pre>
+  <p class="small">It runs. It imports nothing exotic. It prints a number that
+  is <em>better</em> than the one we measured, and it took one line instead of
+  five.</p>
+  <p class="small fail">Everything about it is plausible. That is the
+  problem.</p>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="Reviewer question 1">
+  <h2>Beat 3 &middot; reviewer question 1: what touched what?</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-4|2|4">clf.fit(X_train, y_train_5)          # fitted on X_train
+
+y_pred = clf.predict(X_train)        # predicted on X_train
+
+accuracy_score(y_train_5, y_pred)    # scored on X_train
+</code></pre>
+  <p class="lead fail">The same 60,000 rows, three times.</p>
+  <p class="small">This is the cardinal error from the previous lecture, in a new
+  costume. A decision tree scoring exactly zero made it obvious; a linear model
+  scoring 97.38% does not, because 97.38% is a completely believable number.</p>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Reviewer question 5">
+  <h2>Beat 3, continued &middot; reviewer question 5</h2>
+  <p class="lead"><em>What is the default I did not ask for?</em></p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Two of them, in six lines</span>
+    The assistant chose <strong>accuracy</strong>, because the prompt said
+    &ldquo;the score&rdquo; and accuracy is what a classifier reports when
+    nobody says otherwise. And it chose to evaluate on the training set, because
+    the prompt did not name an evaluation set.
+  </div>
+  <p class="small">Neither choice was flagged, argued or mentioned in the reply.
+  You asked for a number and you got one.</p>
+  <p class="small fix">A metric nobody chose is a metric nobody can defend. Write
+  down who chose yours.</p>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="Measure the damage">
+  <h2>Beat 3, continued &middot; measure the damage</h2>
+  <p class="small">Do not assert that it is wrong. Measure how wrong, and pair
+  the measurements &mdash; the same fitted model scored twice, so the
+  fold-to-fold variation cancels.</p>
+  <pre><code class="language-python" data-trim>
+from sklearn.model_selection import cross_validate
+
+r = cross_validate(clf, X_train, y_train_5, cv=cv,
+                   scoring="accuracy", return_train_score=True)
+
+print(r["train_score"] - r["test_score"])
+  </code></pre>
+  <p class="smaller muted">Repeated over five seeds, so that fifteen paired
+  measurements stand behind the number rather than one. About four minutes.
+  <em>(Timing not examinable.)</em></p>
+</section>
+
+<!-- 52 -->
+<section class="figslide" data-menu-title="◆ The damage">
+  <h2>The same fitted model, scored twice</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l03-train-vs-cv.svg"
+         alt="Fifteen vertical pairs of points; in every pair the training-set score sits above the held-out score, by an average of 0.52 percentage points.">
+  </figure>
+  <p class="takeaway fail">Fifteen out of fifteen pairs point the same way. The
+  gap is <strong>0.52 percentage points</strong>, with a standard deviation of
+  0.14.</p>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="Half a point">
+  <h2>Half a point. So why is it a bug?</h2>
+  <ol class="tight small">
+    <li><strong>You did not know it was half a point until you measured.</strong>
+        A tree in the previous lecture had a gap of 68,574 &mdash; and nothing
+        in either piece of code said which case you were in</li>
+    <li><strong>It is this small for a specific reason</strong>: a linear model
+        on 60,000 instances and 784 features has far too few parameters to
+        memorise the training set. Give the same code an unconstrained tree and
+        the gap is the whole number</li>
+    <li><strong>The sign is guaranteed and the size is not.</strong> Fifteen out
+        of fifteen, because a model always fits the data it was fitted to at
+        least as well as data it has not seen</li>
+  </ol>
+  <p class="small fail">The rule is procedural, not empirical: never score on
+  the rows you fitted &mdash; not because the damage is always large, but
+  because you cannot tell whether it is.</p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="The corrected prompt">
+  <h2>Beat 4 &middot; the corrected specification</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">What to ask instead</span>
+    &ldquo;Evaluate this classifier with <strong>stratified 3-fold
+    cross-validation</strong> on the training set, seed 42. Report
+    <strong>accuracy per fold</strong> and the mean. In the same table, report
+    the same metric for a baseline that always predicts the negative class.
+    Do not touch <code>X_test</code>.&rdquo;
+  </div>
+  <p class="small">Four sentences. They name the estimator of generalisation
+  error, the folds, the seed, the granularity of the report, the comparison, and
+  the thing that must not be touched.</p>
+  <p class="small muted">Notice what is <em>not</em> in it: the metric is still
+  accuracy. We named it, so it is now ours &mdash; and being ours is what makes
+  it something we can be held to.</p>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="The specification, generalised">
+  <h2>The shape of every evaluation request</h2>
+  <table class="smaller">
+    <tr><th>Say</th><th>Or you get</th></tr>
+    <tr><td>which metric</td><td>whatever the library defaults to</td></tr>
+    <tr><td>on which rows</td><td>the rows that are in scope &mdash; usually the training set</td></tr>
+    <tr><td>how the rows were held out</td><td>a single split, or none</td></tr>
+    <tr><td>the seed</td><td>a number nobody can reproduce</td></tr>
+    <tr><td>per-fold or aggregated</td><td>a mean, with the spread discarded</td></tr>
+    <tr><td>what to compare against</td><td>nothing, and therefore no meaning</td></tr>
+  </table>
+  <p class="small fix">Paste this into your notes. It is six lines and it
+  prevents most of what goes wrong in this course.</p>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="Red-team, briefly">
+  <h2>The five reviewer questions, on today&rsquo;s notebook</h2>
+  <ol class="tight small">
+    <li><strong>What touched the test set?</strong> Nothing. <code>X_test</code>
+        appears once, in the split, and not again</li>
+    <li><strong>What was fitted, and on what?</strong> The scaler and the
+        classifier, together, on each fold&rsquo;s training part only</li>
+    <li><strong>What is the shape here?</strong> 60,000 &times; 784, asserted</li>
+    <li><strong>What was dropped?</strong> Nothing. No missing values in MNIST,
+        no rows removed, no columns removed</li>
+    <li><strong>What is the default I did not ask for?</strong> The label dtype,
+        the fold count, the loss inside <code>SGDClassifier</code>, and the
+        metric</li>
+  </ol>
+  <p class="small muted">Four of the five come out clean today. Keep the answer
+  to the fifth.</p>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="Runtime honesty">
+  <h2>What each cell costs, so silence is not alarming</h2>
+  <table class="smaller">
+    <tr><th>Cell</th><th class="num">Wall clock</th></tr>
+    <tr><td><code>fetch_openml</code>, first time</td><td class="num">~30 s</td></tr>
+    <tr><td>One <code>fit</code> on 60,000 &times; 784</td><td class="num">~30 s</td></tr>
+    <tr><td>Three-fold <code>cross_val_score</code></td><td class="num">~70 s</td></tr>
+    <tr><td>The five-seed damage measurement</td><td class="num">~4 min</td></tr>
+  </table>
+  <p class="small">A cell with no output for four minutes is a cell working, not
+  a cell hung. Interrupting it loses the fit and you start again.</p>
+  <p class="smaller muted">Free Colab CPU runtime. <strong>Not
+  examinable</strong> &mdash; this is engineering practice, and the numbers
+  depend on hardware we do not control.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- CLOSING                                                              -->
+<!-- ==================================================================== -->
+
+<!-- 58 -->
+<section class="divider" data-menu-title="◆ Record it">
+  <p class="kicker">Part four</p>
+  <h1>Record it</h1>
+  <p class="clock">5 minutes</p>
+</section>
+
+<!-- 59 -->
+<section data-menu-title="★ Record your number">
+  <h2>On the same sheet of paper</h2>
+  <div class="commit">
+    <span class="commit-label">Add one line, underneath the three you wrote</span>
+    <p class="small" style="text-align:left; line-height:1.8">
+      Best accuracy I actually obtained: <span class="blank"></span>
+    </p>
+  </div>
+  <p class="small">Bring the sheet to the next lecture. We open by comparing all
+  four numbers out loud, and the comparison is the lecture.</p>
+  <p class="small muted">Do not tidy the notebook, do not tune anything, and do
+  not delete the version with the bug in it. You will need it.</p>
+</section>
+
+<!-- 59b -->
+<section data-menu-title="What we did not do">
+  <h2>What we deliberately did not do</h2>
+  <ul class="tight small">
+    <li><strong>No hyperparameter tuning.</strong> Not one grid search. A tuned
+        number would be harder to interpret and we have nothing yet that says
+        which direction to tune in</li>
+    <li><strong>No test set.</strong> <code>X_test</code> has been read once, in
+        the split, and never since</li>
+    <li><strong>No second model.</strong> One estimator, so that any change in
+        the number has exactly one possible cause</li>
+    <li><strong>No error analysis.</strong> We have a score and we have not
+        looked at a single mistake the model makes</li>
+  </ul>
+  <p class="small muted">Three of those four are correct discipline. One of them
+  is the reason the next lecture exists.</p>
+  <aside class="notes">Do not say which. Someone will ask; tell them to write
+  their guess on the sheet as well.</aside>
+</section>
+
+<!-- 59c -->
+<section data-menu-title="Exercise">
+  <h2>Before the next lecture</h2>
+  <ol class="tight small">
+    <li>Re-run the whole notebook for a <strong>different digit</strong>. Pick
+        one and record its anchor and its cross-validated accuracy</li>
+    <li>Digit 1 has the lowest anchor of the ten, at 88.76%. Does your detector
+        for it beat 96.90%, and what would that comparison even mean?</li>
+    <li>Bring both numbers, on the same sheet as your commitment</li>
+  </ol>
+  <div class="panel">
+    <span class="panel-title">The question that makes it worth doing</span>
+    Two detectors, two accuracies, two different anchors. Write down how you
+    would decide which detector is <em>better</em> &mdash; in one sentence,
+    before you have the numbers.
+  </div>
+</section>
+
+<!-- 60 -->
+<section data-menu-title="What we have">
+  <h2>What we are taking away</h2>
+  <table class="smaller">
+    <tr><th>Quantity</th><th class="num">Value</th><th>Status</th></tr>
+    <tr><td>Positives in the training set</td><td class="num">5,421</td><td>measured</td></tr>
+    <tr><td>Base rate</td><td class="num">9.04%</td><td>measured</td></tr>
+    <tr><td>Never-fires accuracy</td><td class="num">90.96%</td><td>measured</td></tr>
+    <tr><td>Our detector, cross-validated</td><td class="num hit">96.90%</td><td>measured</td></tr>
+    <tr><td>Our detector, scored on its own training rows</td><td class="num fail">97.38%</td><td>discarded</td></tr>
+    <tr><td>Desk capacity per shift</td><td class="num">1,000</td><td>stated by the client</td></tr>
+  </table>
+  <p class="small">Six rows, and the status column matters as much as the value
+  column. Two of these we measured, one we were told, and one we threw away.</p>
+</section>
+
+<!-- 61 -->
+<section data-menu-title="Specimen exam question">
+  <h2>Specimen exam question &mdash; Part A</h2>
+  <div class="panel">
+    A colleague reports that their detector for a rare defect achieves
+    <strong>99.2% accuracy</strong> on a held-out set, using correct
+    cross-validation with no leakage.<br><br>
+    <strong>1.</strong> State one further quantity you would need before you
+    could say whether that is a good result, and why.<br>
+    <strong>2.</strong> Their defect occurs in 0.9% of items. What accuracy does
+    a detector that never fires achieve? Show the arithmetic.
+  </div>
+  <p class="small muted">Two marks each. Answer them before the next slide; the
+  worked answers are at the end of the next lecture.</p>
+</section>
+
+<!-- 62 -->
+<section data-menu-title="◇ Answer — 2">
+  <h2>Specimen answer &mdash; 2</h2>
+  <p>If 0.9% of items carry the defect, then 99.1% do not, and a detector that
+  answers &ldquo;no defect&rdquo; to everything is right on all of them.</p>
+  <div class="eqn-box">
+    $$\text{accuracy}_{\text{never fires}} \;=\; 1 - 0.009 \;=\; 0.991$$
+  </div>
+  <p class="fail">99.1% for a model that does not exist. The colleague&rsquo;s
+  99.2% is one tenth of a point above it.</p>
+  <p class="small muted">Part 1 is the harder half and we return to it. Any
+  quantity that lets you locate 99.2% relative to <em>something</em> earns the
+  marks; naming the base rate is the cleanest answer.</p>
+  <aside class="notes">Do not develop this further today. It is deliberately
+  sitting there, unanswered, for the next ninety minutes to pick up.</aside>
+</section>
+
+<!-- 63 -->
+<section data-menu-title="Scope">
+  <h2>What is examinable from today</h2>
+  <ul class="tight small">
+    <li>Framing a detection task as binary classification, and what that does to
+        the class balance</li>
+    <li>Accuracy: the definition, and computing it for a stated confusion of
+        counts</li>
+    <li>Why a trivial baseline must be measured before a result is interpreted,
+        and computing it from a base rate</li>
+    <li>Cross-validation for classifiers, and why the folds are stratified</li>
+    <li>Why a score computed on the training set is not a generalisation
+        estimate</li>
+  </ul>
+  <p class="small muted">Not examinable: Colab mechanics, wall-clock timings,
+  the internals of <code>fetch_openml</code>.</p>
+</section>
+
+<!-- 63b -->
+<section data-menu-title="Reproducibility">
+  <h2>Making today reproducible</h2>
+  <ul class="tight small">
+    <li>One seed, written down: <code>random_state=42</code> on the estimator
+        and on the splitter</li>
+    <li><code>shuffle=True</code> stated explicitly, because the default is
+        <code>False</code> and two students with differently ordered frames
+        would otherwise get different folds</li>
+    <li>The fold scores saved, not just the mean &mdash; you cannot recover a
+        spread from an average</li>
+    <li>Library versions printed in the first cell, so a number that moves next
+        year has somewhere to start</li>
+  </ul>
+  <p class="small fail">This is graded. A result nobody else can reproduce is
+  not a result.</p>
+  <p class="smaller muted">Version pinning and Colab mechanics are engineering
+  practice, outside the book and <strong>not examinable</strong>.</p>
+</section>
+
+<!-- 64 -->
+<section data-menu-title="★ All notebooks">
+  <h2>Every notebook in the course</h2>
+  <div class="nb-index">
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-01.ipynb">01 · Prices — build</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-02.ipynb">02 · Prices — fix</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-03.ipynb">03 · Rare events — build</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-04.ipynb">04 · Rare events — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-05.ipynb">05 · Survival — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-06.ipynb">06 · Survival — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-07.ipynb">07 · Land cover — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-08.ipynb">08 · Land cover — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-09.ipynb">09 · Faces — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">10 · Faces — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-11.ipynb">11 · First network — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-12.ipynb">12 · First network — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-13.ipynb">13 · Deep recognition — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-14.ipynb">14 · Deep recognition — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-15.ipynb">15 · Visual inspection — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-16.ipynb">16 · Visual inspection — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-17.ipynb">17 · Detection — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-18.ipynb">18 · Detection — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-19.ipynb">19 · Forecasting — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-20.ipynb">20 · Forecasting — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-21.ipynb">21 · Feedback — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-22.ipynb">22 · Feedback — fix</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-23.ipynb">23 · Catalogue — build</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-24.ipynb">24 · Catalogue — fix</a></p>
+  </div>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="Summary">
+  <h2>What we learned</h2>
+  <ol class="tight smaller">
+    <li>A detection brief is a binary classification problem carved out of a
+        multiclass one, and the carving is what creates the imbalance</li>
+    <li>MNIST arrives with its split already made; the labels arrive as strings,
+        and <code>y == 5</code> is silently <code>False</code> until you fix
+        that</li>
+    <li>Accuracy is the obvious metric, and it is the one you get by default if
+        you name nothing</li>
+    <li>The trivial baseline &mdash; never fire &mdash; scores 90.96%, so the
+        only meaningful part of any result is the distance above it</li>
+    <li>An SGD classifier in a pipeline reaches 96.90%, cross-validated, with
+        folds that agree to two tenths of a point</li>
+    <li>Report every fold: the same classifier without scaling has a mean of
+        95.03% and a worst fold of 91.63%</li>
+    <li>Scoring on the rows you fitted flatters the number by 0.52 points here,
+        and by everything on a model that can memorise</li>
+  </ol>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="References">
+  <h2>In the book</h2>
+  <table>
+    <tr><th>Topic</th><th>Chapter</th></tr>
+    <tr><td>MNIST, fetching it, and looking at a digit</td><td>3</td></tr>
+    <tr><td>Training a binary classifier; <code>SGDClassifier</code></td><td>3</td></tr>
+    <tr><td>Measuring accuracy with cross-validation</td><td>3</td></tr>
+    <tr><td>Implementing cross-validation by hand</td><td>3</td></tr>
+    <tr><td>Feature scaling and pipelines</td><td>2</td></tr>
+    <tr><td>Stochastic gradient descent as a training procedure</td><td>4</td></tr>
+  </table>
+  <p class="small muted">Chapter 3 continues past where we stopped. The rest of
+  it is the next lecture, and it exists because of what is on your sheet of
+  paper.</p>
+</section>
+
+<!-- 67 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 4 &middot; Fix</p>
+  <h1>It never fires</h1>
+  <p class="small" style="color:#cfe2f0">
+    Thread 2: why accuracy behaves the way it does under imbalance,<br>
+    and why precision is not monotone in the threshold
+  </p>
+  <p class="clock">Bring the sheet. We open by scoring it.</p>
+</section>
+
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 3
+  <span class="sep">&middot;</span> Finding the rare event
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>
