@@ -165,8 +165,11 @@ return self.head(torch.cat([h[0], h[1]], dim=1))     # (B, 2)
   <h2>Why a mathematician's triviality is an engineer's disaster</h2>
   <p>The <em>function</em> ignores the shift. <code>float32</code> does not.</p>
   <div class="eqn-box">
-    $$e^{x} \text{ overflows float32 when } x \;&gt;\; \log(3.4 \times 10^{38})
-      \;\approx\; «f1:l22_softmax.overflow_at»$$
+    $$\begin{aligned}
+      e^{x} \text{ overflows float32 when }
+        x \;&amp;&gt;\; \log(3.4 \times 10^{38}) \\[4pt]
+        &amp;\approx\; «f1:l22_softmax.overflow_at»
+      \end{aligned}$$
   </div>
   <ul class="tight small">
     <li>A confident network reaching logits of 100 is completely ordinary</li>
@@ -313,7 +316,7 @@ array([0.09003057, 0.24472848, 0.66524094], dtype=float32)
 <!-- 17 -->
 <section data-menu-title="Check it">
   <h2>Check it yourself, in six lines</h2>
-  <pre><code class="language-python" data-trim data-line-numbers="1-8|5|7-8">z = torch.randn(7, 5, dtype=torch.float64, requires_grad=True)
+  <pre><code class="language-python" data-trim data-line-numbers="1-8|4|7-8">z = torch.randn(7, 5, dtype=torch.float64, requires_grad=True)
 y = torch.randint(0, 5, (7,))
 
 loss = nn.CrossEntropyLoss(reduction="sum")(z, y)
@@ -330,7 +333,7 @@ assert (z.grad - analytic).abs().max() &lt; 1e-10
 <!-- 18 -->
 <section data-menu-title="Why logits">
   <h2>So why does the loss want logits?</h2>
-  <p class="lead">Because of the cancellation on slide 14.</p>
+  <p class="lead">Because of that cancellation.</p>
   <div class="cols">
     <div>
       <p class="small"><strong>If it took probabilities</strong></p>
@@ -394,11 +397,12 @@ z = [100., 0., -100.]   float32,   true class = 2
     <tr><td class="fail">naive, probabilities first</td><td class="num fail">«str:l22_stability.example_naive»</td></tr>
     <tr><td class="fix">combined, from logits</td><td class="num hit">«f4:l22_stability.example_stable»</td></tr>
   </table>
-  <p class="small">The numerator $e^{-100}$ underflows to
-  «str:l22_stability.example_naive_numerator» and the denominator $e^{100}$
-  overflows to «str:l22_stability.example_naive_denominator». Their ratio is
-  not a number, and neither is its logarithm. The combined form never forms
-  either.</p>
+  <p class="small">In <code>float32</code> the denominator $e^{100}$ overflows
+  to «str:l22_stability.example_naive_denominator», so the ratio collapses to
+  zero whatever the numerator is, and the logarithm of zero is
+  «str:l22_stability.example_naive». The combined form never builds either
+  quantity: it subtracts the maximum first, so the largest exponential it ever
+  evaluates is $e^{0}$.</p>
 </section>
 
 <!-- 21 -->
@@ -661,8 +665,8 @@ loss = nn.CrossEntropyLoss()(model(xb, lb), yb)
 <!-- 36 -->
 <section data-menu-title="The real limitation">
   <h2>Now the real limitation</h2>
-  <p>With that bug fixed we are back to
-  «pct1:l21_scratch_acc», and the diagnosis from slide 28 stands.</p>
+  <p>With that bug fixed we are back to «pct1:l21_scratch_acc», and the
+  diagnosis at the top of this block stands.</p>
   <ul class="tight small">
     <li>An embedding table gives each token <strong>one</strong> vector.
         <em>Bank</em> has one vector in every sentence it appears in</li>
@@ -752,7 +756,7 @@ loss = nn.CrossEntropyLoss()(model(xb, lb), yb)
 <!-- 42 -->
 <section data-menu-title="Fine-tuning">
   <h2>Fine-tuning, precisely</h2>
-  <pre><code class="language-python" data-trim data-line-numbers="1-9|4-5|8-9">from transformers import AutoModelForSequenceClassification
+  <pre><code class="language-python" data-trim data-line-numbers="1-8|3-5|7-8">from transformers import AutoModelForSequenceClassification
 
 model = AutoModelForSequenceClassification.from_pretrained(
     "distilbert-base-uncased", num_labels=2)
@@ -871,7 +875,7 @@ lossf = nn.CrossEntropyLoss()          # logits in, as always
 <!-- 49 -->
 <section data-menu-title="Sentence embeddings">
   <h2>One vector for a whole review</h2>
-  <pre><code class="language-python" data-trim data-line-numbers="1-10|6-8|9">m  = AutoModel.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+  <pre><code class="language-python" data-trim data-line-numbers="1-9|6-8|9">m  = AutoModel.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
 tk = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
 
 enc  = tk(texts, truncation=True, max_length=256, padding=True,
@@ -1155,21 +1159,75 @@ print(f"accuracy {(clf.predict(X_te) == y_te).mean():.3f}")
 <!-- 65 -->
 <section data-menu-title="Duplicates">
   <h2>The text leak that really is expensive</h2>
-  <p>One that no pipeline can protect you from: the same document in both
-  halves of the split. On a scraped corpus this is the normal case, not the
-  pathological one.</p>
+  <p class="lead">The same document on both sides of the split.</p>
+  <p>No pipeline protects you from this: every object is fitted correctly, on
+  training rows only, and the test row is still one the model has memorised. On
+  scraped or user-submitted text it is the normal case, not the pathological
+  one &mdash; a resubmit button is enough.</p>
   <pre><code class="language-python" data-trim>
 norm = lambda s: " ".join(s.lower().split())
 train_norm = set(norm(s) for s in train_x)
 dupes = sum(1 for s in test_x if norm(s) in train_norm)
   </code></pre>
+</section>
+
+<!-- 65b -->
+<section data-menu-title="Duplicates on IMDb">
+  <h2>First, check the corpus you have</h2>
   <table>
     <tr><th>On the official IMDb split</th><th class="num">Count</th></tr>
-    <tr><td>Test reviews also present in training</td><td class="num hit">«int:l22_dupes.train_test_dupes»</td></tr>
+    <tr><td class="fix">Test reviews also present in training</td><td class="num hit">«int:l22_dupes.train_test_dupes»</td></tr>
     <tr><td>Duplicate reviews within training</td><td class="num">«int:l22_dupes.within_train_dupes»</td></tr>
   </table>
-  <p class="small">Clean, on this corpus, because its authors deduplicated it.
-  Three lines to check, and you now know rather than assume.</p>
+  <p>Clean, because the corpus authors deduplicated it. Three lines to run, and
+  you now <em>know</em> rather than assume.</p>
+  <p class="small muted">Which also means the cost cannot be measured on this
+  corpus. So we build one that is not clean, and say so on the slide.</p>
+</section>
+
+<!-- 65c -->
+<section data-menu-title="A corpus with duplicates">
+  <h2>A feedback corpus that was never deduplicated</h2>
+  <p class="small">Take «int:l22_duplicate_leak.n_unique» reviews and let a third
+  of them be submitted twice &mdash; «int:l22_duplicate_leak.n_rows» rows, of
+  which some are copies. Then split two ways and fit the same honest pipeline
+  inside each.</p>
+  <pre><code class="language-python" data-trim data-line-numbers="1-8|2-3|5-7">groups = np.concatenate([np.arange(n_unique), duplicated_ids])
+tr, te = train_test_split(np.arange(len(X)), test_size=0.25,
+                          random_state=seed, stratify=y)
+
+gss = GroupShuffleSplit(n_splits=1, test_size=0.25, random_state=seed)
+tr2, te2 = next(gss.split(np.arange(len(X)), y, groups=groups))
+  </code></pre>
+  <p class="fail small">Under the random split,
+  «pct0:l22_duplicate_leak.twin_share» of the test rows have a copy of
+  themselves in the training set.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The duplicate leak">
+  <h2>The same pipeline, two splits</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-duplicates.svg"
+         alt="Two bars of reported accuracy with one-standard-deviation whiskers: a random split over rows, and a grouped split that keeps every copy of an entry on one side, the first visibly higher.">
+  </figure>
+  <p class="takeaway fail">Nothing was fitted on the test set in either bar. The
+  difference is entirely which rows the split happened to separate.</p>
+</section>
+
+<!-- 65d -->
+<section data-menu-title="Duplicate leak measured">
+  <h2>The duplicate leak, measured</h2>
+  <table>
+    <tr><th>Split</th><th class="num">Reported accuracy</th><th class="num">Spread over «int:l22_duplicate_leak.seeds» seeds</th></tr>
+    <tr><td class="fail">random over rows</td><td class="num fail">«pct2:l22_duplicate_leak.naive_mean»</td><td class="num">«pct2:l22_duplicate_leak.naive_sd»</td></tr>
+    <tr><td class="fix">grouped by entry</td><td class="num hit">«pct2:l22_duplicate_leak.grouped_mean»</td><td class="num">«pct2:l22_duplicate_leak.grouped_sd»</td></tr>
+  </table>
+  <p class="big-num bad">«f2:l22_duplicate_leak.gap_points» points</p>
+  <p class="small">The leak wins on «int:l22_duplicate_leak.seeds_leak_wins» of
+  «int:l22_duplicate_leak.seeds» seeds. Compare with the vectoriser leak two
+  slides ago: <strong>the object that was fitted wrongly cost far less than the
+  rows that were split wrongly.</strong></p>
 </section>
 
 <!-- 66 -->
@@ -1225,6 +1283,7 @@ dupes = sum(1 for s in test_x if norm(s) in train_norm)
     <tr><td class="fail">Summarising at the padded last position</td><td class="fail">Lecture 21</td><td class="num fail">«f2:l21_padding_cost_points» points</td></tr>
     <tr><td class="fail">Softmax before the loss</td><td class="fail">today</td><td class="num fail">«f2:l22_double_softmax_cost» points</td></tr>
     <tr><td class="fail">Vectoriser fitted before the split</td><td class="fail">today</td><td class="num fail">«f2:l22_leak.small.gap_points» points at «int:l22_leak.small.n_docs» docs</td></tr>
+    <tr><td class="fail">Duplicate documents across the split</td><td class="fail">today</td><td class="num fail">«f2:l22_duplicate_leak.gap_points» points</td></tr>
   </table>
 </section>
 

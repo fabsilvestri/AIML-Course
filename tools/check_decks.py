@@ -16,7 +16,11 @@ Checks
    size — a <svg> carrying only a viewBox renders at 0x0 through an <img>, so
    the slide shows nothing and every other check still passes.
 5. Decks under the 70-slide minimum.
-6. Leftover drafting placeholders. Three different templating syntaxes have been
+6. Raw mathtext drawn on a figure. matplotlib's log formatter emits
+   `$\mathdefault{10^{3}}$`, and with `text.parse_math: False` that is drawn
+   literally as an axis label. Thirteen figures shipped this way, unnoticed by
+   every other check. Use `figkit.plain_log()`.
+7. Leftover drafting placeholders. Three different templating syntaxes have been
    used by different authors; 432 tokens once reached the repository unreplaced,
    and would have shown as literal `@@l09_best_k@@` or `«int:l11_n_params»` on a
    projector. Whatever syntax you draft in, `tools/substitute.py` must resolve it
@@ -108,6 +112,13 @@ def check(path: Path) -> list[str]:
     for m in THIRD_PARTY_NB.finditer(src):
         out.append(f"{rel}:{src[:m.start()].count(chr(10)) + 1}: "
                    f"third-party notebook reference ({m.group()})")
+
+    # 4b. raw mathtext baked into a figure
+    for m in re.finditer(r'src="([^"]*assets/figures/[^"]+\.svg)"', src):
+        target = (path.parent / m.group(1)).resolve()
+        if target.exists() and "mathdefault" in target.read_text():
+            out.append(f"{rel}: {target.name} draws raw LaTeX as an axis label "
+                       f"($\\mathdefault{{...}}$) — use figkit.plain_log()")
 
     # 4. missing figures, and figures the browser cannot size
     for m in re.finditer(r'src="([^"]*assets/figures/[^"]+)"', src):

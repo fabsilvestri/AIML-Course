@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from figkit import (setup, save, cached, load_cache, export, OUT, SEED,   # noqa: E402
+from figkit import (setup, save, cached, load_cache, plain_log, export, OUT, SEED,   # noqa: E402
                     PRIMARY, ACCENT, SUCCESS, MATH, MUTED, RULE, AXIS,
                     BODY, SMALL, TICK, check_text_floor)
 
@@ -473,7 +473,7 @@ def fig_crossover(cx):
     fig, ax = plt.subplots(figsize=(11.0, 3.3))
     ax.plot(P, ratio, color=PRIMARY, lw=2.5, marker="o", ms=7)
     ax.axhline(1.0, color=ACCENT, lw=2, ls="--")
-    ax.set_xscale("log")
+    ax.set_xscale("log"); plain_log(ax, "x", fmt="{:,.0f}")
     ax.set_xlabel("parameters in the network")
     ax.set_ylabel(f"CPU seconds / {DEVICE.upper()} seconds")
     ax.set_ylim(0, max(ratio.max() * 1.25, 1.6))
@@ -503,7 +503,7 @@ def fig_fwd_vs_rev(fr):
             label="forward mode — one pass per parameter")
     ax.plot(P, rev, color=SUCCESS, lw=2.5, marker="s", ms=6,
             label="reverse mode — one pass, total")
-    ax.set_yscale("log")
+    ax.set_yscale("log"); plain_log(ax, "y", fmt="{:g}")
     ax.set_xlabel("number of parameters  P")
     ax.set_ylabel("time for the full gradient, ms")
     ax.legend(loc="center right")
@@ -623,7 +623,7 @@ def fig_zero_grad(with_zg, without_zg):
     axes[0].plot(ep, without_zg["hist"]["loss"], color=ACCENT, lw=2.5,
                  ls="--", label="without it")
     axes[0].set_xlabel("epoch"); axes[0].set_ylabel("training loss")
-    axes[0].set_yscale("log")
+    axes[0].set_yscale("log"); plain_log(axes[0], "y", fmt="{:g}")
     axes[0].legend(loc="upper right")
     axes[0].set_title("No exception, no warning, no NaN")
 

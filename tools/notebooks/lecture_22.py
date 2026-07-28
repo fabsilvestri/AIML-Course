@@ -480,7 +480,11 @@ errs_scratch = int(round((1 - scratch_acc) * N_SCORE))
 errs_ft      = int(round((1 - ft_acc) * N_SCORE))
 print(f"errors out of {N_SCORE:,}: {errs_scratch} -> {errs_ft}  "
       f"({(errs_scratch - errs_ft) / max(errs_scratch, 1):.0%} of them removed)")
-assert ft_acc > scratch_acc, "fine-tuning did not help — check the learning rate"
+
+# A floor, not the headline: at this scale one epoch on 2,000 reviews should
+# still be far above the majority class. If it is not, the learning rate is
+# wrong — 1e-3 destroys a pretrained body in a few dozen steps.
+assert ft_acc > 0.75, f"fine-tuning failed ({ft_acc:.3f}) — check the learning rate"
 '''),
 
         md("""
@@ -611,6 +615,7 @@ Measure the damage at two corpus sizes, because the answer depends on the size
 and that is the lesson.
 """),
         code('''
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
 all_x = list(train_x) + list(test_x)
@@ -681,6 +686,59 @@ dupes = sum(1 for s in test_x if norm(s) in train_norm)
 print(f"test reviews also present in training: {dupes}")
 print(f"duplicate reviews within training:     {len(train_x) - len(train_norm)}")
 '''),
+        md("""
+IMDb is clean, because its authors deduplicated it — which also means its cost
+cannot be measured here. So build a corpus that is **not** clean, and say so:
+1,500 reviews of which a third were submitted twice. Everything else stays
+correct; the vectoriser is fitted inside each split. The only difference is
+whether the split keeps both copies of an entry on the same side.
+
+⏱ **about a minute.**
+"""),
+        code('''
+from sklearn.model_selection import GroupShuffleSplit
+
+def honest_score(X, y, tr, te):
+    vec = TfidfVectorizer(min_df=1, ngram_range=(1, 2), max_features=60_000)
+    Ztr = vec.fit_transform([X[i] for i in tr])           # training rows only
+    clf = LogisticRegression(max_iter=2000, C=4.0).fit(Ztr, y[tr])
+    return (clf.predict(vec.transform([X[i] for i in te])) == y[te]).mean()
+
+N_UNIQUE, DUP_FRAC, SEEDS = 1_500, 0.3, 6
+naive, grouped, twins = [], [], []
+for s in range(SEEDS):
+    r   = np.random.default_rng(RANDOM_STATE + 100 + s)
+    idx = r.choice(len(all_x), size=N_UNIQUE, replace=False)
+    X, y, g = [all_x[i] for i in idx], all_y[idx], np.arange(N_UNIQUE)
+
+    dup = r.choice(N_UNIQUE, size=int(DUP_FRAC * N_UNIQUE), replace=False)
+    X = X + [X[i] for i in dup]
+    y = np.concatenate([y, y[dup]])
+    g = np.concatenate([g, g[dup]])
+    assert len(X) == len(y) == len(g)
+
+    tr, te = train_test_split(np.arange(len(X)), test_size=0.25,
+                              random_state=RANDOM_STATE + s, stratify=y)
+    naive.append(honest_score(X, y, tr, te))
+    twins.append(np.isin(g[te], g[tr]).mean())
+
+    gss = GroupShuffleSplit(n_splits=1, test_size=0.25,
+                            random_state=RANDOM_STATE + s)
+    tr2, te2 = next(gss.split(np.arange(len(X)), y, groups=g))
+    assert set(g[tr2]).isdisjoint(g[te2]), "a group straddles the grouped split"
+    grouped.append(honest_score(X, y, tr2, te2))
+
+naive, grouped = np.array(naive), np.array(grouped)
+print(f"random split  {naive.mean():.4f} (sd {naive.std():.4f})")
+print(f"grouped split {grouped.mean():.4f} (sd {grouped.std():.4f})")
+print(f"the duplicate leak is worth {100 * (naive - grouped).mean():+.2f} points")
+print(f"{np.mean(twins):.0%} of test rows had a copy of themselves in training")
+'''),
+        md("""
+Nothing was fitted on the test set in either row. The whole difference is which
+rows the split happened to separate — and it is larger than the vectoriser leak
+above. **The object fitted wrongly cost less than the rows split wrongly.**
+"""),
 
         md("""
 ## 11 · Red-team a peer's notebook

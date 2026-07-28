@@ -343,6 +343,28 @@ toggled from JS on `slidechanged` via `.is-hidden` for `.divider` and
 
 ---
 
+### 9.4 Mathtext on a log axis
+
+`setup()` sets `text.parse_math: False` course-wide (§9.1). matplotlib's own log
+formatter then loses: it emits `$\mathdefault{10^{3}}$` and, with parsing off,
+draws that string **literally** on the axis. Thirteen figures across Lectures 6,
+12 and 16 shipped this way.
+
+It survived every check we had, because the string is legal text, the figure is
+a legal SVG, and it clears the 15px floor comfortably — it is just wrong. Use
+`figkit.plain_log()`, and note the two things that make a wrong fix look right:
+
+* **Order matters.** `semilogx` re-applies the log scale, and applying a scale
+  installs that scale's default formatter. `plain_log` above the plotting line
+  is undone by it. Call it *after*.
+* **Comments are not renders.** matplotlib's SVG backend writes each label's
+  source string as an XML comment above its glyphs, so `grep mathdefault` finds
+  both the broken figures and, in principle, harmless ones. Confirm by looking
+  for the `$` glyph (`SourceSans3-Regular-24`) in the drawn output before you
+  believe either a defect report or a fix.
+
+`tools/check_decks.py` now fails the build on any of it.
+
 ## 10. Notebooks
 
 One per lecture, `notebooks/lecture-NN.ipynb`, opened from the slides via

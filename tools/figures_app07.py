@@ -955,7 +955,13 @@ def fig_ladder(l14):
     acc = [100 * r["test_acc"] for r in rows]
     fig, ax = plt.subplots(figsize=(11.0, 4.3))
     y = np.arange(len(rows))[::-1]
-    colours = [ACCENT] + [PRIMARY] * (len(rows) - 2) + [SUCCESS]
+    # Green is the BEST row, not the last one. On this ladder they are not the
+    # same row, and colouring the bottom bar green would assert the thing the
+    # table exists to disprove.
+    best = int(np.argmax(acc))
+    colours = [SUCCESS if i == best else
+               ACCENT if r["delta"] < 0 or i == 0 else PRIMARY
+               for i, r in enumerate(rows)]
     ax.barh(y, acc, color=colours, height=0.62)
     ax.axvline(10, color=MUTED, ls="--", lw=1.8)
     for yy, v, r in zip(y, acc, rows):

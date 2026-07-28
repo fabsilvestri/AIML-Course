@@ -467,6 +467,7 @@ catches and a test on output shape does not: pad the same review two different
 ways and the logits must not move.
 """),
         code('''
+scratch.eval(); padbug.eval()
 n = int(Lf_w[0])
 one = scratch(Xf_w[:1, :n].to(device), torch.tensor([n]))
 two = scratch(Xf_w[:1, :].to(device),  torch.tensor([n]))
@@ -507,14 +508,17 @@ _, curve_wp_random, _ = train(
     tag="subword / random")
 '''),
         md("""
-Usually **worse**. Solving the out-of-vocabulary problem on its own made the
-model worse, and that is a measurement worth keeping:
+At the deck's scale these two land within a few hundredths of a point of each
+other — a **null result, not a ranking**, since two single-seed numbers that
+close say only that the effect is smaller than the seed-to-seed spread. At this
+notebook's smaller scale it is usually worse. Either way the reading is the
+same:
 
+* there was little to win — the token-level OOV rate was already a few per cent;
 * sequences are longer in pieces, so the same budget of positions holds fewer
   words;
 * `un`, `##watch`, `##able` are three random vectors, and the model has to learn
-  that their *composition* is negative;
-* half again as many rows to train, from the same labels.
+  that their *composition* is negative.
 
 A subword tokenizer is not a better tokenizer by itself. It is a vocabulary that
 someone else's pretraining can be poured into.

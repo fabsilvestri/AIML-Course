@@ -448,7 +448,10 @@ def fig_timing_l09(sweep, k_max=K_MAX):
     ax.set_title(f"One sweep over k = 2 to {k_max}, n_init = {N_INIT}, "
                  f"on 400 faces")
     ax.legend(loc="lower right", ncol=2)
-    ax.text(left * 0.5, 0.42, f"{left / 60:.0f} minutes — and the answer it "
+    # Below two minutes, say seconds: rounding to whole minutes printed
+    # "1 minutes" on the slide, and "2" would round an 89-second sweep up.
+    spent = (f"{left:.0f} seconds" if left < 120 else f"{left / 60:.0f} minutes")
+    ax.text(left * 0.5, 0.42, f"{spent} — and the answer it "
                               f"gives is still ambiguous",
             ha="center", fontsize=SMALL, color=ACCENT,
             bbox=dict(boxstyle="round,pad=0.4", fc="white", ec=RULE))

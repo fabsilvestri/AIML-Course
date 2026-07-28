@@ -337,14 +337,15 @@ print(f"always predict one class: {majority:.1%}")
   </div>
   <p class="small">$N$ is the number of documents and $n_t$ the number
   containing $t$. The second factor is what stops <em>the</em> and
-  <em>movie</em> dominating the first.</p>
+  <em>movie</em> dominating the first. Scikit-Learn uses a smoothed variant,
+  $\log\frac{1+N}{1+n_t} + 1$, and normalises each row to unit length.</p>
   <p class="fail small">Note what is not in that formula: position. The bag has
-  no order, so it cannot see the negation on the previous slide.</p>
+  no order, so it cannot see the negation two slides ago.</p>
 </section>
 
 <!-- 21 -->
 <section data-menu-title="Bag of words code">
-  <h2>Ten lines</h2>
+  <h2>The whole anchor, in eleven lines</h2>
   <pre><code class="language-python" data-trim data-line-numbers="1-11|5-7|9-11">from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 
@@ -598,7 +599,7 @@ w2i = {w: i + 2 for i, (w, _) in enumerate(counts.most_common(V - 2))}
 <!-- 35 -->
 <section data-menu-title="Embeddings">
   <h2>Step 2 &middot; from integers to vectors</h2>
-  <p>Token 4,271 is not four thousand of anything. The integer is a name, and
+  <p>Token 4271 is not four thousand of anything. The integer is a name, and
   arithmetic on names is meaningless.</p>
   <p>The obvious fix is one-hot: «int:l21_word_vocab» columns, one of them 1.
   That is a «int:l21_word_vocab»-dimensional vector per <em>token</em>, and 256
@@ -614,7 +615,7 @@ w2i = {w: i + 2 for i, (w, _) in enumerate(counts.most_common(V - 2))}
 <!-- 36 -->
 <section data-menu-title="Embedding is a parameter">
   <h2>An embedding is a parameter, not a preprocessing step</h2>
-  <pre><code class="language-python" data-trim data-line-numbers="1-6|3|5-6">import torch.nn as nn
+  <pre><code class="language-python" data-trim data-line-numbers="1-7|3-4|6-7">import torch.nn as nn
 
 emb = nn.Embedding(num_embeddings=20_000, embedding_dim=128,
                    padding_idx=0)
@@ -653,7 +654,7 @@ for i, s in enumerate(seqs):
 <!-- 38 -->
 <section data-menu-title="The model">
   <h2>Step 3 &middot; the classifier</h2>
-  <pre><code class="language-python" data-trim data-line-numbers="1-16|3-5|8-14">class GRUClassifier(nn.Module):
+  <pre><code class="language-python" data-trim data-line-numbers="1-13|4-6|8-13">class GRUClassifier(nn.Module):
     def __init__(self, vocab):
         super().__init__()
         self.emb  = nn.Embedding(vocab, 128, padding_idx=0)
@@ -705,7 +706,7 @@ for i, s in enumerate(seqs):
 <!-- 41 -->
 <section data-menu-title="The loop">
   <h2>The training loop is unchanged</h2>
-  <pre><code class="language-python" data-trim data-line-numbers="1-11|6-10">opt   = torch.optim.Adam(model.parameters(), lr=1e-3)
+  <pre><code class="language-python" data-trim data-line-numbers="1-11|7-11">opt   = torch.optim.Adam(model.parameters(), lr=1e-3)
 lossf = nn.CrossEntropyLoss()
 
 for epoch in range(4):
@@ -836,15 +837,15 @@ for epoch in range(4):
     def __init__(self, vocab):
         super().__init__()
         self.emb  = nn.Embedding(vocab, 128, padding_idx=0)
-        self.rnn  = nn.GRU(128, 128, batch_first=True)
-        self.head = nn.Linear(128, 2)
+        self.rnn  = nn.GRU(128, 64, batch_first=True, bidirectional=True)
+        self.head = nn.Linear(2 * 64, 2)
 
     def forward(self, x):
         out, _ = self.rnn(self.emb(x))
-        return self.head(out[:, -1, :])      # last timestep
+        return self.head(out[:, -1, :])      # the last timestep
   </code></pre>
-  <p>It runs. The shapes are right. The loss goes down. It reports an accuracy
-  well above the majority class.</p>
+  <p>Same embedding, same GRU, same head as ours. It runs, the shapes are right,
+  the loss goes down, and it reports an accuracy well above the majority class.</p>
 </section>
 
 <!-- 48 -->
@@ -944,8 +945,8 @@ model = GRUClassifier(vocab=tk.vocab_size)      # 30,522 rows, random
   <p>Subword pieces instead of words. «int:l21_oov.subword_vocab» rows instead
   of «int:l21_word_vocab». <strong>Random initial values, exactly as
   before.</strong></p>
-  <p class="small muted">Predict the direction before you turn the page. Most
-  people predict it wrong.</p>
+  <p class="small muted">Predict what this does before you turn the page. Most
+  rooms predict it wrong.</p>
 </section>
 
 <!-- 55 -->
@@ -954,31 +955,37 @@ model = GRUClassifier(vocab=tk.vocab_size)      # 30,522 rows, random
   <table>
     <tr><th>Tokenizer</th><th class="num">Vocabulary</th><th class="num">Test accuracy</th></tr>
     <tr><td>our words</td><td class="num">«int:l21_word_vocab»</td><td class="num">«pct1:l21_scratch_acc»</td></tr>
-    <tr><td class="fail">subword pieces, random vectors</td><td class="num">«int:l21_oov.subword_vocab»</td><td class="num fail">«pct1:l21_runs.wp_random.test_acc»</td></tr>
+    <tr><td>subword pieces, random vectors</td><td class="num">«int:l21_oov.subword_vocab»</td><td class="num">«pct1:l21_runs.wp_random.test_acc»</td></tr>
   </table>
-  <p class="fail lead">Worse.</p>
-  <p class="small">Solving the out-of-vocabulary problem, on its own, made the
-  model worse. That is a measurement, and it is the most useful thing on this
-  slide.</p>
+  <p class="lead">Indistinguishable.</p>
+  <p class="small">The difference is «f2:l21_wp_random_delta» accuracy points,
+  from one seed each &mdash; a <strong>null result, not a ranking</strong>.
+  Solving the out-of-vocabulary problem, on its own, bought nothing
+  measurable.</p>
+  <aside class="notes">Insist on the distinction. Two numbers this close from one
+  seed each say only that the effect is smaller than the seed-to-seed spread. A
+  ranking would need the twenty runs we cannot afford in a lecture, and saying so
+  is the point.</aside>
 </section>
 
 <!-- 56 -->
-<section data-menu-title="Why swap 1 hurt">
-  <h2>Why a better tokenizer made it worse</h2>
+<section data-menu-title="Why swap 1 was flat">
+  <h2>Why a better tokenizer bought nothing</h2>
   <ul class="tight small">
-    <li>Sequences are «f2:l21_tok_example.expansion» times longer in pieces, so
-        the «int:l21_maxlen»-token budget holds fewer words &mdash; and the
-        recurrence has further to carry the signal</li>
+    <li>There was little to win: at «int:l21_word_vocab» words only
+        «pct1:l21_oov.token_oov.3» of test <em>tokens</em> were unknown already</li>
+    <li>And something to lose: sequences are «f2:l21_tok_example.expansion»
+        times longer in pieces, so the «int:l21_maxlen»-token budget holds fewer
+        words and the recurrence carries the signal further</li>
     <li><em>un</em>, <em>##watch</em> and <em>##able</em> are three random
         vectors. The model must learn that their <em>composition</em> is
         negative, which is harder than learning one vector for one word</li>
-    <li>Half again as many rows to train, from the same «int:l21_n_fit» labels</li>
   </ul>
   <div class="panel panel-fail">
     <span class="panel-title">The reading</span>
     A subword tokenizer is not a better tokenizer by itself. It is a vocabulary
-    that <strong>someone else's pretraining can be poured into</strong>, and
-    without that it is a longer sequence for no gain.
+    that <strong>someone else's pretraining can be poured into</strong> &mdash;
+    and until you pour, it is a longer sequence for nothing.
   </div>
 </section>
 
@@ -1039,8 +1046,8 @@ model.emb.weight.requires_grad = False       # frozen  — or True, tuned
     <img src="../assets/figures/l21-swap.svg"
          alt="Bar chart of test accuracy for four configurations of the same GRU: our words with random embeddings, subword with random embeddings, subword with frozen pretrained embeddings, and subword with tuned pretrained embeddings, with a dotted line marking the bag-of-words baseline.">
   </figure>
-  <p class="takeaway">The bars differ only in what was in the embedding table
-  when training started.</p>
+  <p class="takeaway">Two things differ across these four bars: which tokenizer
+  produced the ids, and what was in the embedding table at step zero.</p>
 </section>
 
 <!-- 60 -->
@@ -1181,6 +1188,28 @@ model.emb.weight.requires_grad = False       # frozen  — or True, tuned
   </ol>
   <p class="small muted">All four are the next lecture. Write down your answer
   to the first one now, before you are told it.</p>
+</section>
+
+<!-- 68b -->
+<section data-menu-title="Red-team">
+  <h2>Red-team, before you go</h2>
+  <p>Swap notebooks with the team beside you. Ten minutes, the five standing
+  questions plus three that only exist because today was text:</p>
+  <ol class="tight small">
+    <li>What touched the test set?</li>
+    <li>What was fitted, and on what? (<code>fit</code> and <code>transform</code>
+        are different verbs)</li>
+    <li>What is the shape here?</li>
+    <li>What was dropped &mdash; rows, columns, tokens? Count them.</li>
+    <li>What is the default I did not ask for?</li>
+    <li class="fail">Which documents did the vocabulary come from?</li>
+    <li class="fail">Is the summary taken at the true last token, or at the last
+        position of the batch?</li>
+    <li class="fail">What fraction of the test tokens became
+        <code>[UNK]</code>?</li>
+  </ol>
+  <p class="fail small">Report what you found, not what you would have done
+  differently.</p>
 </section>
 
 <!-- 69 -->

@@ -112,19 +112,20 @@
   <table>
     <tr><th></th><th class="num">Fashion MNIST</th><th class="num">Flowers102</th></tr>
     <tr><td>Image</td><td class="num">28 &times; 28, grey</td><td class="num">variable, colour</td></tr>
-    <tr><td>Classes</td><td class="num">10</td><td class="num">«int:l15_n_classes»</td></tr>
-    <tr><td>Training images</td><td class="num">55,000</td><td class="num fail">«int:l15_n_train»</td></tr>
-    <tr><td>Images per class</td><td class="num">5,500</td><td class="num fail">«int:l15_per_class_train»</td></tr>
+    <tr><td>Classes</td><td class="num">10</td><td class="num">102</td></tr>
+    <tr><td>Training images</td><td class="num">60,000</td><td class="num fail">1,020</td></tr>
+    <tr><td>Images per class</td><td class="num">6,000</td><td class="num fail">10</td></tr>
     <tr><td>Subject fills the frame</td><td class="num">always</td><td class="num">sometimes</td></tr>
   </table>
-  <p class="lead">Ten times the classes, one fifty-fourth of the data.</p>
+  <p class="lead">Ten times the classes, 59 times fewer
+  labelled images.</p>
 </section>
 
 <!-- 8 -->
 <section data-menu-title="The dataset">
   <h2>The dataset</h2>
-  <p><code>torchvision.datasets.Flowers102</code> &mdash; «int:l15_n_total»
-  photographs of «int:l15_n_classes» flowering species common in the United
+  <p><code>torchvision.datasets.Flowers102</code> &mdash; 8,189
+  photographs of 102 flowering species common in the United
   Kingdom.</p>
   <pre><code class="language-python" data-trim>
 from torchvision.datasets import Flowers102
@@ -135,19 +136,19 @@ test  = Flowers102("data", split="test",  download=True)
   </code></pre>
   <p class="small muted">About 345 MB. It is one of the datasets the textbook
   names for this chapter, and the split below is the one shipped with it &mdash;
-  so every result in the literature is on the same «int:l15_n_test» test
+  so every result in the literature is on the same 6,149 test
   images.</p>
 </section>
 
 <!-- FIG -->
-<section class="figslide" data-menu-title="◆ Sixteen species">
+<section class="figslide" data-menu-title="◆ Twelve species">
   <h2>What the camera sees</h2>
   <figure class="fig fig-wide">
     <img src="../assets/figures/l15-grid.png"
-         alt="Sixteen colour photographs of flowers, two rows of eight, each captioned with its species name; the flowers vary in scale, orientation and background clutter.">
+         alt="Twelve colour photographs of flowers, two rows of six, each captioned with its species name; the flowers vary in scale, orientation and background clutter.">
   </figure>
   <p class="takeaway">Different scales, different backgrounds, different
-  lighting &mdash; and two of these species are hard to tell apart by eye.</p>
+  lighting &mdash; and several of these species are hard to tell apart by eye.</p>
 </section>
 
 <!-- 9 -->
@@ -159,7 +160,7 @@ test  = Flowers102("data", split="test",  download=True)
     <li><strong>Background</strong> &mdash; leaves, soil, other flowers, a
         gardener's hand</li>
     <li><strong>Between-class similarity</strong> &mdash; several of the
-        «int:l15_n_classes» species are separated by petal count and little
+        102 species are separated by petal count and little
         else</li>
     <li><strong>Within-class variation</strong> &mdash; the same species at two
         stages of opening</li>
@@ -173,9 +174,9 @@ test  = Flowers102("data", split="test",  download=True)
   <h2>The split we are given</h2>
   <table>
     <tr><th>Split</th><th class="num">Images</th><th class="num">Per class</th><th>Used for</th></tr>
-    <tr><td>train</td><td class="num">«int:l15_n_train»</td><td class="num">«int:l15_per_class_train», exactly</td><td>fitting</td></tr>
-    <tr><td>val</td><td class="num">«int:l15_n_val»</td><td class="num">«int:l15_per_class_train», exactly</td><td>choosing</td></tr>
-    <tr><td class="fail">test</td><td class="num fail">«int:l15_n_test»</td><td class="num">«int:l15_test_min»&ndash;«int:l15_test_max»</td><td>reporting, once</td></tr>
+    <tr><td>train</td><td class="num">1,020</td><td class="num">10, exactly</td><td>fitting</td></tr>
+    <tr><td>val</td><td class="num">1,020</td><td class="num">10, exactly</td><td>choosing</td></tr>
+    <tr><td class="fail">test</td><td class="num fail">6,149</td><td class="num">20&ndash;238</td><td>reporting, once</td></tr>
   </table>
   <p class="lead fail">There are six times as many test images as training
   images.</p>
@@ -201,7 +202,7 @@ test  = Flowers102("data", split="test",  download=True)
     Images are cheap and labels are not. Every application in this part of the
     course has more pixels than it can use and fewer labels than it wants.
   </div>
-  <p class="small">Design for that. A method that needs 55,000 labelled
+  <p class="small">Design for that. A method that needs thousands of labelled
   examples per class is not a method you can deploy here.</p>
 </section>
 
@@ -210,8 +211,8 @@ test  = Flowers102("data", split="test",  download=True)
   <h2>Two decisions before any model</h2>
   <ol class="tight small">
     <li><strong>A fixed size.</strong> Every image is resized to
-        «int:l15_img» &times; «int:l15_img». A network with a dense layer
-        needs a fixed input length, and «int:l15_img» is the largest square
+        128 &times; 128. A network with a dense layer
+        needs a fixed input length, and 128 is the largest square
         this build fits into a free Colab session</li>
     <li><strong>A fixed scale.</strong> Pixels are divided by 255 and then
         standardised per colour channel</li>
@@ -236,9 +237,9 @@ def normalise(x_u8):
   </code></pre>
   <table>
     <tr><th>Channel</th><th class="num">mean</th><th class="num">std</th></tr>
-    <tr><td>red</td><td class="num">«f4:l15_train_mean.0»</td><td class="num">«f4:l15_train_std.0»</td></tr>
-    <tr><td>green</td><td class="num">«f4:l15_train_mean.1»</td><td class="num">«f4:l15_train_std.1»</td></tr>
-    <tr><td>blue</td><td class="num">«f4:l15_train_mean.2»</td><td class="num">«f4:l15_train_std.2»</td></tr>
+    <tr><td>red</td><td class="num">0.4330</td><td class="num">0.2896</td></tr>
+    <tr><td>green</td><td class="num">0.3819</td><td class="num">0.2408</td></tr>
+    <tr><td>blue</td><td class="num">0.2964</td><td class="num">0.2684</td></tr>
   </table>
   <aside class="notes">Line 2 is the whole of today's assistant failure. Do not
   flag it now — they meet it as a prompt in about an hour and it lands much
@@ -250,17 +251,13 @@ def normalise(x_u8):
   <h2>The obvious thing to try first</h2>
   <p>You have a multilayer perceptron that works. Flatten the image and feed
   it in.</p>
-  <div class="eqn-box">
-    $$«int:l15_img» \times «int:l15_img» \times 3 \;=\;
-      «int:l15_n_pixels| \text{ inputs}»$$
-  </div>
-  <p>A first hidden layer of 32 units per pixel position &mdash; the same
-  output shape a convolutional layer will produce &mdash; needs</p>
-  <div class="eqn-box">
-    $$«int:l15_n_pixels» \times «int:l16_dense_vs_conv.n_out»
-      \;=\; «int:l16_dense_vs_conv.dense_weights| \text{ weights}»$$
-  </div>
-  <p class="fail small">That is «f0:l16_dense_vs_conv.dense_gb» GB of float32
+  <table>
+    <tr><th></th><th class="num">Count</th></tr>
+    <tr><td>Inputs, 128 &times; 128 &times; 3</td><td class="num">49,152</td></tr>
+    <tr><td>Outputs, 32 values at every pixel position</td><td class="num">524,288</td></tr>
+    <tr><td class="fail">Weights in one fully connected layer between them</td><td class="num fail">25,769,803,776</td></tr>
+  </table>
+  <p class="fail small">That is 96 GB of float32
   for one layer. The full argument is next lecture's thread; today it is just a
   reason to do something else.</p>
 </section>
@@ -294,15 +291,15 @@ def normalise(x_u8):
 <!-- 17 -->
 <section data-menu-title="Accuracy under imbalance">
   <h2>Accuracy, and the warning from Lecture 4</h2>
-  <p>The test split runs from «int:l15_test_min» images for the rarest species
-  to «int:l15_test_max» for the commonest.</p>
+  <p>The test split runs from 20 images for the rarest species
+  to 238 for the commonest.</p>
   <div class="panel panel-fail">
     <span class="panel-title">So report two things</span>
     Overall accuracy, <em>and</em> the accuracy of the worst species. A model
-    that is excellent on the «int:l15_test_max»-image class and useless on the
-    «int:l15_test_min»-image one is not a sorting machine.
+    that is excellent on the 238-image class and useless on the
+    20-image one is not a sorting machine.
   </div>
-  <p class="small muted">With «int:l15_n_classes» classes and no single
+  <p class="small muted">With 102 classes and no single
   dominant one, the imbalance is real but mild. It is worth naming, not worth
   redesigning around.</p>
 </section>
@@ -312,8 +309,8 @@ def normalise(x_u8):
   <h2>Anchor it: two models that do no work at all</h2>
   <table>
     <tr><th>Model</th><th class="num">Test accuracy</th></tr>
-    <tr><td>Uniform random guess over «int:l15_n_classes» classes</td><td class="num">«pct2:l15_baseline_uniform»</td></tr>
-    <tr><td>Always predict the commonest test species</td><td class="num">«pct2:l15_baseline_majority»</td></tr>
+    <tr><td>Uniform random guess over 102 classes</td><td class="num">0.98%</td></tr>
+    <tr><td>Always predict the commonest test species</td><td class="num">3.87%</td></tr>
   </table>
   <pre><code class="language-python" data-trim>
 counts = torch.bincount(y_test, minlength=102)
@@ -332,7 +329,7 @@ print(f"uniform baseline  {1 / 102:.4f}")
          alt="Horizontal bars on a 0 to 100 per cent axis: always the commonest class at 3.87 per cent, uniform random guess at 0.98 per cent, and the operator's acceptance level at 90 per cent.">
   </figure>
   <p class="takeaway">Anything you build has to live between
-  «pct2:l15_baseline_majority» and 90%. Where in that gap is the question.</p>
+  3.87% and 90%. Where in that gap is the question.</p>
 </section>
 
 <!-- 19 -->
@@ -362,7 +359,7 @@ print(f"uniform baseline  {1 / 102:.4f}")
     </p>
   </div>
   <p class="small">You are not guessing in the dark. Doing nothing scores
-  «pct2:l15_baseline_majority»; a perfect machine scores 100. Saying
+  3.87%; a perfect machine scores 100. Saying
   <em>where between them</em> is the exercise.</p>
   <aside class="notes">Walk the room until pens have moved. Do not hint at
   whether the number will be too high or too low, and do not mention transfer
@@ -512,10 +509,10 @@ print(f"uniform baseline  {1 / 102:.4f}")
       C_{\text{out}} \times C_{\text{in}} \times k \times k$$
   </div>
   <p>Our first layer: $32 \times 3 \times 7 \times 7 =
-  «int:l16_dense_vs_conv.conv_weights»$ weights.</p>
+  4,704$ weights.</p>
   <p class="lead">Notice what is <em>not</em> in that formula.</p>
   <p class="fix small">The image size. A convolutional layer has the same
-  number of parameters on a «int:l15_img»-pixel image as on a 4,000-pixel
+  number of parameters on a 128-pixel image as on a four-megapixel
   one.</p>
 </section>
 
@@ -567,8 +564,8 @@ tensor([[[[9., 8.],
   <h2>Why every convolution is followed by a batch norm</h2>
   <p>Because you proved in the previous lecture that it has to be.</p>
   <ul class="tight small">
-    <li>Ten layers of untreated convolutions on «int:l15_n_train» images do not
-        train: the loss sits at $\log «int:l15_n_classes|»$ and the network
+    <li>Ten layers of untreated convolutions on 1,020 images do not
+        train: the loss sits at $\log 102 \approx 4.62$ and the network
         predicts one class</li>
     <li><code>BatchNorm2d</code> normalises across the batch <em>and</em> both
         spatial axes, so it holds one mean and one variance per channel</li>
@@ -589,7 +586,7 @@ nn.ReLU()
     <tr><td>2</td><td>conv &times;64, conv &times;64, pool</td><td class="num">64 &times; 32 &times; 32</td></tr>
     <tr><td>3</td><td>conv &times;128, conv &times;128, pool</td><td class="num">128 &times; 16 &times; 16</td></tr>
     <tr><td>4</td><td>conv &times;256, pool</td><td class="num">256 &times; 8 &times; 8</td></tr>
-    <tr><td class="fix">head</td><td class="fix">flatten, dense 256, dropout, dense «int:l15_n_classes»</td><td class="num fix">«int:l15_n_classes»</td></tr>
+    <tr><td class="fix">head</td><td class="fix">flatten, dense 256, dropout, dense 102</td><td class="num fix">102</td></tr>
   </table>
   <p class="small">Channels double as the map halves &mdash; the textbook's own
   rule of thumb, and the reason the memory does not collapse to nothing.</p>
@@ -598,7 +595,7 @@ nn.ReLU()
 <!-- 34 -->
 <section data-menu-title="The architecture in code">
   <h2>The architecture, in code</h2>
-  <pre><code class="language-python" data-trim data-line-numbers="1-16|1-3|13-16">def conv_block(c_in, c_out, k=3):
+  <pre><code class="language-python" data-trim data-line-numbers="1-14|1-3|10-13">def conv_block(c_in, c_out, k=3):
     return [nn.Conv2d(c_in, c_out, k, padding=k // 2, bias=False),
             nn.BatchNorm2d(c_out), nn.ReLU()]
 
@@ -638,10 +635,10 @@ assert x.shape == (2, 102), f"the head is wrong: {x.shape}"
   <h2>Count the parameters, and look at where they are</h2>
   <table>
     <tr><th>Part</th><th class="num">Parameters</th><th class="num">Share</th></tr>
-    <tr><td>All «int:l15_n_classes»-way convolution and batch-norm layers</td><td class="num">«int:l15_conv_params»</td><td class="num">12.2%</td></tr>
-    <tr><td class="fail">One dense layer, «int:l15_flatten_dim» &rarr; 256</td><td class="num fail">«int:l15_dense_head_params»</td><td class="num fail">87.2%</td></tr>
-    <tr><td>Output layer, 256 &rarr; «int:l15_n_classes»</td><td class="num">«int:l15_layers.29.params»</td><td class="num">0.5%</td></tr>
-    <tr><td class="fix">Total</td><td class="num fix">«int:l15_n_params»</td><td class="num">100%</td></tr>
+    <tr><td>Every convolution and batch-norm layer together</td><td class="num">586,720</td><td class="num">12.2%</td></tr>
+    <tr><td class="fail">One dense layer, 16,384 &rarr; 256</td><td class="num fail">4,194,560</td><td class="num fail">87.3%</td></tr>
+    <tr><td>Output layer, 256 &rarr; 102</td><td class="num">26,214</td><td class="num">0.5%</td></tr>
+    <tr><td class="fix">Total</td><td class="num fix">4,807,494</td><td class="num">100%</td></tr>
   </table>
   <p class="lead fail">Nine parameters in ten are in the layer that is not
   convolutional.</p>
@@ -650,13 +647,11 @@ assert x.shape == (2, 102), f"the head is wrong: {x.shape}"
 <!-- 37 -->
 <section data-menu-title="Why that matters">
   <h2>Why that number should bother you</h2>
-  <p>«int:l15_n_params» parameters. «int:l15_n_train» training images.</p>
-  <div class="eqn-box">
-    $$\frac{«int:l15_n_params|»}{«int:l15_n_train|»}
-      \;\approx\; 4{,}713 \ \text{parameters per training image}$$
-  </div>
+  <p>4,807,494 parameters. 1,020 training images.</p>
+  <p class="big-num bad">4713</p>
+  <p class="lead">parameters per training image.</p>
   <p class="small">There is nothing in the architecture stopping this network
-  from storing the training set. Dropout at «f1:l15_dropout» is the only thing
+  from storing the training set. Dropout at 0.5 is the only thing
   we have asked to prevent it, and it will not be enough.</p>
   <aside class="notes">Ask the room what they expect the training accuracy to
   be at the end. Most will say &ldquo;high&rdquo;; press for a number and write
@@ -687,14 +682,15 @@ for epoch in range(80):
 <section data-menu-title="Learning rate">
   <h2>One hyperparameter that is not a free choice</h2>
   <table>
-    <tr><th>Learning rate</th><th class="num">Validation accuracy, 80 epochs</th></tr>
-    <tr><td class="fail">$10^{-3}$</td><td class="num fail">7.8%</td></tr>
-    <tr><td class="fix">$3 \times 10^{-4}$</td><td class="num hit">«pct1:l15_scratch.val_acc»</td></tr>
+    <tr><th>Learning rate</th><th class="num">Mean test accuracy</th><th class="num">sd over seeds</th></tr>
+    <tr><td class="fail">$10^{-3}$, Adam's default</td><td class="num fail">2.7%</td><td class="num">1.31 pts</td></tr>
+    <tr><td class="fix">$3 \times 10^{-4}$</td><td class="num hit">14.7%</td><td class="num">2.59 pts</td></tr>
   </table>
-  <p class="small">Measured, on this architecture and this data. Adam's default
-  is $10^{-3}$, and on «int:l15_n_train» images it is too large &mdash; the run
-  does not diverge, it simply plateaus low, which is the failure mode that does
-  not announce itself.</p>
+  <p class="small">Measured on this architecture and this data, at
+  40 epochs. The default does not diverge &mdash; it
+  plateaus low, which is the failure mode that does not announce itself.</p>
+  <p class="small muted">12.1 points, from one keyword
+  argument nobody wrote down.</p>
 </section>
 
 <!-- 40 -->
@@ -702,15 +698,16 @@ for epoch in range(80):
   <h2>Run it</h2>
   <table>
     <tr><th>Setting</th><th class="num">Value</th></tr>
-    <tr><td>Epochs</td><td class="num">«int:l15_epochs»</td></tr>
-    <tr><td>Batch size</td><td class="num">«int:l15_batch»</td></tr>
-    <tr><td>Steps per epoch</td><td class="num">«int:l15_steps_per_epoch»</td></tr>
-    <tr><td>Total optimiser steps</td><td class="num">«int:l15_total_steps»</td></tr>
-    <tr><td class="fail">Wall clock</td><td class="num fail">«f0:l15_seconds» s</td></tr>
+    <tr><td>Epochs</td><td class="num">80</td></tr>
+    <tr><td>Batch size</td><td class="num">32</td></tr>
+    <tr><td>Steps per epoch</td><td class="num">32</td></tr>
+    <tr><td>Total optimiser steps</td><td class="num">2,560</td></tr>
+    <tr><td class="fail">Wall clock</td><td class="num fail">253 s</td></tr>
   </table>
-  <p class="small muted">Measured on an Apple MPS backend, no CUDA. A free
-  Colab T4 is in the same range for a model this size; the point of the number
-  is the comparison we make next lecture, not the hardware.</p>
+  <p class="small muted">Measured on an Apple MPS backend, no CUDA, and
+  including a validation pass after every epoch. A free Colab T4 is in the same
+  range for a model this size; the point of the number is the comparison we
+  make next lecture, not the hardware.</p>
 </section>
 
 <!-- FIG -->
@@ -718,7 +715,7 @@ for epoch in range(80):
   <h2>The cost, on the x-axis</h2>
   <figure class="fig fig-wide">
     <img src="../assets/figures/l15-curve.svg"
-         alt="Training and validation accuracy plotted against wall-clock seconds; the training curve climbs to near one hundred per cent while the validation curve flattens near twenty per cent, with a dotted line at the 3.87 per cent majority baseline.">
+         alt="Training and validation accuracy plotted against wall-clock seconds; the training curve climbs steadily while the validation curve flattens early and low, with a dotted line at the 3.87 per cent majority baseline.">
   </figure>
   <p class="takeaway">The x-axis is seconds, not epochs. That is deliberate:
   from the next lecture on, time is one of the things being compared.</p>
@@ -728,11 +725,11 @@ for epoch in range(80):
 <section data-menu-title="Reading the curve">
   <h2>Reading it</h2>
   <ul class="tight small">
-    <li>The training curve reaches «pct1:l15_scratch.train_acc» &mdash; the
-        network can memorise «int:l15_n_train» images without difficulty</li>
-    <li>The validation curve stops climbing early and then does nothing for
-        most of the run</li>
-    <li>The last two thirds of the wall clock bought approximately nothing</li>
+    <li>The training curve reaches 71.8% &mdash; the
+        network is well on its way to memorising 1,020 images</li>
+    <li>The validation curve stops climbing early and then does very little
+        for the rest of the run</li>
+    <li>The last two thirds of the wall clock bought almost nothing</li>
   </ul>
   <p class="lead">Both curves are correct. They are describing two different
   things.</p>
@@ -743,9 +740,9 @@ for epoch in range(80):
   <h2>The gap, on its own axis</h2>
   <figure class="fig fig-wide">
     <img src="../assets/figures/l15-gap.svg"
-         alt="Training accuracy minus validation accuracy in points, plotted against epoch, rising steeply and then flattening near eighty points.">
+         alt="Training accuracy minus validation accuracy in points, plotted against epoch, rising steeply and then flattening near sixty points.">
   </figure>
-  <p class="takeaway">«f0:l15_gap.final_gap_pts» points of the training
+  <p class="takeaway">58 points of the training
   accuracy is memorisation. Lecture 6 named this shape: a persistent gap is
   variance.</p>
 </section>
@@ -760,40 +757,59 @@ with torch.no_grad():
                   for xb, yb in test_loader)
 print(f"test accuracy {correct / len(test_ds):.4f}")
   </code></pre>
-  <p class="big-num">«pct1:l15_test_acc»</p>
-  <p class="small"><code>net.eval()</code> is not optional here: this network
-  has dropout <em>and</em> batch normalisation, and both behave differently in
-  the two modes.</p>
+  <p class="big-num">15.3%</p>
+  <p class="small">Mean over 5 seeds, standard
+  deviation 2.34 points, range
+  11.0% to 18.1%. One run of a
+  network this size on 1,020 images is an anecdote.</p>
 </section>
 
 <!-- 43 -->
+<section data-menu-title="Quote the spread">
+  <h2>Why five runs and not one</h2>
+  <table>
+    <tr><th>Seed</th><th class="num">Test accuracy</th></tr>
+    <tr><td>42</td><td class="num">11.0%</td></tr>
+    <tr><td>43</td><td class="num">15.7%</td></tr>
+    <tr><td>44</td><td class="num">18.1%</td></tr>
+    <tr><td>45</td><td class="num">16.1%</td></tr>
+    <tr><td>46</td><td class="num">15.7%</td></tr>
+  </table>
+  <p class="lead fail">7.1 points between the
+  best and the worst, and nothing changed but the seed.</p>
+  <p class="small">Any comparison you make from here that is smaller than that
+  is not a comparison.</p>
+</section>
+
+<!-- 44 -->
 <section data-menu-title="Where that sits">
   <h2>Where that number sits</h2>
   <table>
     <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
-    <tr><td>Uniform random guess</td><td class="num">«pct2:l15_baseline_uniform»</td><td class="num">&mdash;</td></tr>
-    <tr><td>Always the commonest species</td><td class="num">«pct2:l15_baseline_majority»</td><td class="num">&mdash;</td></tr>
-    <tr><td class="fix">Convolutional network, from scratch</td><td class="num hit">«pct1:l15_test_acc»</td><td class="num fail">«f0:l15_seconds» s</td></tr>
+    <tr><td>Uniform random guess</td><td class="num">0.98%</td><td class="num">&mdash;</td></tr>
+    <tr><td>Always the commonest species</td><td class="num">3.87%</td><td class="num">&mdash;</td></tr>
+    <tr><td class="fix">Convolutional network, from scratch</td><td class="num hit">15.3%</td><td class="num fail">253 s</td></tr>
     <tr><td>What the operator needs</td><td class="num">90%</td><td class="num">&mdash;</td></tr>
   </table>
-  <p class="lead">«f0:l15_vs_majority» times the majority baseline &mdash; and
+  <p class="lead">4.0 times the majority baseline &mdash; and
   a long way from deployable.</p>
 </section>
 
-<!-- 44 -->
+<!-- 45 -->
 <section data-menu-title="Look inside">
   <h2>Look at what it learned</h2>
-  <p>The first layer's weights are «int:l16_dense_vs_conv.conv_weights»
+  <p>The first layer's weights are 4,704
   numbers arranged as 32 filters of $7 \times 7 \times 3$. That is small enough
   to <em>look at</em>.</p>
   <pre><code class="language-python" data-trim>
 w = net[0].weight.detach().cpu()      # (32, 3, 7, 7)
-w = (w - w.amin((1, 2, 3), keepdim=True)) / \
-    (w.amax((1, 2, 3), keepdim=True) - w.amin((1, 2, 3), keepdim=True))
-grid = w.permute(0, 2, 3, 1)          # (32, 7, 7, 3), ready for imshow
+lo = w.amin(dim=(1, 2, 3), keepdim=True)
+hi = w.amax(dim=(1, 2, 3), keepdim=True)
+grid = ((w - lo) / (hi - lo)).permute(0, 2, 3, 1)   # ready for imshow
   </code></pre>
   <p class="small muted">Each filter is rescaled to its own range, because
-  otherwise the strongest filter is the only one you can see.</p>
+  otherwise the strongest filter is the only one you can see. Keep the
+  initialisation, so there is something to compare against.</p>
 </section>
 
 <!-- FIG -->
@@ -801,30 +817,52 @@ grid = w.permute(0, 2, 3, 1)          # (32, 7, 7, 3), ready for imshow
   <h2>Thirty-two filters, before and after</h2>
   <figure class="fig fig-wide">
     <img src="../assets/figures/l15-filters.png"
-         alt="Two blocks of thirty-two small colour patches each: on the left the filters at random initialisation, uniform noise; on the right the same filters after training, showing coloured blobs and oriented light-dark boundaries.">
+         alt="Two montages of thirty-two seven-by-seven colour patches: on the left the filters at random initialisation, on the right the same filters after eighty epochs of training. The two blocks look the same.">
   </figure>
-  <p class="takeaway">On the left, noise. On the right, colour blobs and
-  oriented edges &mdash; learned from «int:l15_n_train» photographs and nothing
-  else.</p>
+  <p class="takeaway">Look at the two blocks for ten seconds before the next
+  slide, and say what changed.</p>
+  <aside class="notes">Give them the ten seconds. Somebody always says
+  &ldquo;nothing&rdquo;, hesitantly, expecting to be wrong. They are right, and
+  the whole of the next lecture hangs on it.</aside>
 </section>
 
-<!-- 45 -->
-<section data-menu-title="What the filters are">
-  <h2>What those patterns are</h2>
-  <ul class="tight small">
-    <li><strong>Colour blobs</strong> &mdash; a filter that responds to yellow
-        against green, which on this dataset is most of the work</li>
-    <li><strong>Oriented edges</strong> &mdash; light on one side, dark on the
-        other, at a particular angle: a petal boundary</li>
-    <li><strong>Flat filters</strong> &mdash; several are nearly constant, which
-        means they contribute almost nothing. Wasted capacity</li>
-  </ul>
-  <p class="small">Nobody specified any of this. It is the shape that minimises
-  the loss, and it is the same shape the first layer of every vision network
-  ever trained has found.</p>
-  <aside class="notes">If the room is quick, ask why that last sentence should
-  make them suspicious of training a first layer at all. That is next lecture's
-  repair, and someone usually gets there unprompted.</aside>
+<!-- 46 -->
+<section data-menu-title="Nothing changed">
+  <h2>It moved a little. It did not become anything</h2>
+  <pre><code class="language-python" data-trim>
+import torch.nn.functional as F
+
+before, after = init_filters.flatten(), net[0].weight.flatten()
+print(f"cosine similarity {F.cosine_similarity(before, after, dim=0):.4f}")
+print(f"mean |change| / mean |weight| "
+      f"{(after - before).abs().mean() / before.abs().mean():.1%}")
+  </code></pre>
+  <table>
+    <tr><th></th><th class="num">Value</th></tr>
+    <tr><td class="fix">cosine similarity, all 4,704 weights before against after</td><td class="num hit">0.9694</td></tr>
+    <tr><td>mean absolute change, as a share of the mean weight</td><td class="num">23.9%</td></tr>
+    <tr><td>weights that changed sign</td><td class="num">247</td></tr>
+  </table>
+  <p class="lead fail">The weights moved. No structure appeared &mdash; the
+  right-hand block is still noise, and 253 seconds of training
+  bought it.</p>
+</section>
+
+<!-- 46b -->
+<section data-menu-title="Why nothing appeared">
+  <h2>Two reasons, and both are worth knowing</h2>
+  <ol class="tight small">
+    <li><strong>The gradient that reaches it is small.</strong> Ten layers of
+        chain rule separate the loss from these weights, and 1,020
+        images give 2,560 optimiser steps in total</li>
+    <li><strong>Its scale does not matter.</strong> A batch norm follows
+        immediately, and normalising the output makes the overall size of these
+        weights irrelevant to the function &mdash; so there is no gradient
+        pressure on it at all</li>
+  </ol>
+  <p class="small">The textbook picture of a first layer &mdash; colour blobs,
+  oriented edges &mdash; is real, and you will see it next lecture. It comes
+  from a corpus a thousand times this size.</p>
 </section>
 
 <!-- FIG -->
@@ -838,7 +876,7 @@ grid = w.permute(0, 2, 3, 1)          # (32, 7, 7, 3), ready for imshow
   down they do not, and that is the point.</p>
 </section>
 
-<!-- 46 -->
+<!-- 47 -->
 <section data-menu-title="Reading feature maps">
   <h2>Reading a feature map</h2>
   <ul class="tight small">
@@ -847,7 +885,7 @@ grid = w.permute(0, 2, 3, 1)          # (32, 7, 7, 3), ready for imshow
     <li>The spatial layout survives: a bright patch is where in the image the
         pattern was found</li>
     <li>After four pooling stages the map is 8 &times; 8, so one cell answers
-        for a «int:l16_equivariance.cell_covers_px»-pixel square of the
+        for a 256-pixel square of the
         original</li>
   </ul>
   <p class="small">That last line is a loss of information we chose. Next
@@ -858,14 +896,14 @@ grid = w.permute(0, 2, 3, 1)          # (32, 7, 7, 3), ready for imshow
 <!-- THE WORKED ASSISTANT FAILURE                                         -->
 <!-- ==================================================================== -->
 
-<!-- 47 -->
+<!-- 48 -->
 <section class="divider" data-menu-title="◆ Assistant failure">
   <p class="kicker">The worked assistant failure</p>
   <h1>A prompt with one hole in it</h1>
   <p class="clock">Four beats: prompt, code, review question, specification</p>
 </section>
 
-<!-- 48 -->
+<!-- 49 -->
 <section data-menu-title="The prompt">
   <h2>Beat 1 &middot; the prompt</h2>
   <div class="panel">
@@ -877,7 +915,7 @@ grid = w.permute(0, 2, 3, 1)          # (32, 7, 7, 3), ready for imshow
   thing missing, and it is a noun.</p>
 </section>
 
-<!-- 49 -->
+<!-- 50 -->
 <section data-menu-title="The code">
   <h2>Beat 2 &middot; the code it returns</h2>
   <pre><code class="language-python" data-trim data-line-numbers>from torch.utils.data import ConcatDataset
@@ -896,53 +934,53 @@ def normalise(batch_u8):
   standard deviations. Nothing warns.</p>
 </section>
 
-<!-- 50 -->
+<!-- 51 -->
 <section data-menu-title="The review question">
   <h2>Beat 3 &middot; the review question</h2>
   <div class="panel panel-fail">
     <span class="panel-title">Reviewer question 1</span>
     <strong>What touched the test set?</strong> &mdash; <code>ConcatDataset</code>
     on line 3. The mean and standard deviation that will scale every training
-    image were computed from a set that includes all «int:l15_n_test» test
+    image were computed from a set that includes all 6,149 test
     images.
   </div>
   <p class="small">The prompt said &ldquo;the dataset&rdquo;. There are three
   of them, and the assistant picked the one that makes the code shortest.</p>
 </section>
 
-<!-- 51 -->
+<!-- 52 -->
 <section data-menu-title="The statistics">
   <h2>How different are the two sets of statistics?</h2>
   <table>
-    <tr><th>Channel</th><th class="num">train only</th><th class="num">all «int:l15_n_total»</th></tr>
-    <tr><td>red</td><td class="num">«f4:l15_leak.mean_train.0»</td><td class="num">«f4:l15_leak.mean_all.0»</td></tr>
-    <tr><td>green</td><td class="num">«f4:l15_leak.mean_train.1»</td><td class="num">«f4:l15_leak.mean_all.1»</td></tr>
-    <tr><td>blue</td><td class="num">«f4:l15_leak.mean_train.2»</td><td class="num">«f4:l15_leak.mean_all.2»</td></tr>
+    <tr><th>Channel</th><th class="num">train only</th><th class="num">all 8,189</th></tr>
+    <tr><td>red</td><td class="num">0.4330</td><td class="num">0.4355</td></tr>
+    <tr><td>green</td><td class="num">0.3819</td><td class="num">0.3777</td></tr>
+    <tr><td>blue</td><td class="num">0.2964</td><td class="num">0.2880</td></tr>
   </table>
   <p class="lead">Largest difference in any channel mean:
-  «f4:l15_leak.mean_abs_diff».</p>
+  0.0085.</p>
   <p class="small muted">Do not guess at the consequence from that. Measure
   it.</p>
 </section>
 
-<!-- 52 -->
+<!-- 53 -->
 <section data-menu-title="Measure the damage">
   <h2>Measure the damage</h2>
-  <p>Train the same network both ways, «int:l15_leak.seeds» seeds each,
-  «int:l15_leak.epochs» epochs, everything else identical.</p>
+  <p>Train the same network both ways, 5 seeds each,
+  40 epochs, everything else identical.</p>
   <table>
     <tr><th>Statistics from</th><th class="num">Mean test accuracy</th><th class="num">sd over seeds</th></tr>
-    <tr><td class="fix">the training split</td><td class="num">«pct2:l15_leak.honest_mean»</td><td class="num">«pct2:l15_leak.honest_sd»</td></tr>
-    <tr><td class="fail">all «int:l15_n_total» images</td><td class="num">«pct2:l15_leak.leaky_mean»</td><td class="num">«pct2:l15_leak.leaky_sd»</td></tr>
+    <tr><td class="fix">the training split</td><td class="num">14.74%</td><td class="num">2.59%</td></tr>
+    <tr><td class="fail">all 8,189 images</td><td class="num">14.99%</td><td class="num">2.20%</td></tr>
   </table>
-  <p class="big-num">«f2:l15_leak.gap_pts» points</p>
+  <p class="big-num">0.25 points</p>
 </section>
 
 <!-- FIG -->
 <section class="figslide" data-menu-title="◆ The leak, measured">
   <h2>Ten runs, two conditions</h2>
   <figure class="fig fig-wide">
-    <img src="../assets/figures/l16-leak.svg"
+    <img src="../assets/figures/l15-leak.svg"
          alt="Two rows of five dots each on a test-accuracy axis: honest runs on the upper row, leaky runs on the lower row, the two clouds overlapping substantially.">
   </figure>
   <p class="takeaway">The clouds overlap. The difference between the two
@@ -950,15 +988,15 @@ def normalise(batch_u8):
   condition.</p>
 </section>
 
-<!-- 53 -->
+<!-- 54 -->
 <section data-menu-title="So why is it a bug">
   <h2>So why is it still a bug</h2>
   <ol class="tight small">
     <li><strong>You did not know it was small until you measured.</strong>
         Nothing in the code said so, and neither did the output</li>
     <li><strong>It is small for reasons you can name</strong> &mdash; the
-        statistics are two numbers per channel, estimated from «int:l15_n_train»
-        images against «int:l15_n_total», and the map they define is an
+        statistics are two numbers per channel, estimated from 1,020
+        images against 8,189, and the map they define is an
         invertible affine one applied identically to every image</li>
     <li><strong>A leaked score and an honest score can be identical</strong>,
         so you cannot detect this from the number</li>
@@ -967,13 +1005,13 @@ def normalise(batch_u8):
   about a dollar. Same shape of argument, different application.</p>
 </section>
 
-<!-- 54 -->
+<!-- 55 -->
 <section data-menu-title="When it has teeth">
   <h2>When the same mistake has teeth</h2>
   <table>
     <tr><th>Change one thing</th><th>What happens</th></tr>
     <tr><td>Statistics per image instead of per dataset</td><td>no leak at all &mdash; nothing crosses the split</td></tr>
-    <tr><td class="fail">A test set of 50 images, not «int:l15_n_test»</td><td class="fail">the statistics are then largely <em>about</em> the test set</td></tr>
+    <tr><td class="fail">A test set of 50 images, not 6,149</td><td class="fail">the statistics are then largely <em>about</em> the test set</td></tr>
     <tr><td class="fail">Statistics of the <em>target</em>, not the input</td><td class="fail">the answer is inside the transform</td></tr>
     <tr><td class="fail">Any transform that is not invertible &mdash; a PCA, a codebook</td><td class="fail">unbounded</td></tr>
   </table>
@@ -982,7 +1020,7 @@ def normalise(batch_u8):
   from the score.</p>
 </section>
 
-<!-- 55 -->
+<!-- 56 -->
 <section data-menu-title="The fixed prompt">
   <h2>Beat 4 &middot; the corrected specification</h2>
   <div class="panel panel-fix">
@@ -997,7 +1035,7 @@ def normalise(batch_u8):
   and a check with a known answer.</p>
 </section>
 
-<!-- 56 -->
+<!-- 57 -->
 <section data-menu-title="The assertion">
   <h2>The check with a known answer</h2>
   <pre><code class="language-python" data-trim>
@@ -1006,7 +1044,7 @@ assert z.mean((0, 2, 3)).abs().max() < 1e-3, "not centred"
 assert (z.std((0, 2, 3)) - 1).abs().max() < 1e-2, "not scaled"
 
 # and the one that catches the leak itself
-assert mean.shape == (3,) and len(X_used_for_stats) == len(X_train)
+assert mean.shape == (3,) and n_used_for_stats == len(X_train)
   </code></pre>
   <p class="small">The last line is the interesting one. It does not check the
   statistics; it checks <em>what they were computed from</em>, which is the
@@ -1017,34 +1055,34 @@ assert mean.shape == (3,) and len(X_used_for_stats) == len(X_train)
 <!-- CLOSING                                                              -->
 <!-- ==================================================================== -->
 
-<!-- 57 -->
+<!-- 58 -->
 <section class="divider" data-menu-title="◆ Where we are">
   <p class="kicker">Part four</p>
   <h1>Where we are</h1>
   <p class="clock">Hold the number</p>
 </section>
 
-<!-- 58 -->
+<!-- 59 -->
 <section data-menu-title="The scoreboard">
   <h2>The scoreboard</h2>
   <table>
     <tr><th></th><th class="num">Test accuracy</th></tr>
-    <tr><td>Uniform guess</td><td class="num">«pct2:l15_baseline_uniform»</td></tr>
-    <tr><td>Commonest species</td><td class="num">«pct2:l15_baseline_majority»</td></tr>
-    <tr><td class="fix">Yours, today</td><td class="num hit">«pct1:l15_test_acc»</td></tr>
+    <tr><td>Uniform guess</td><td class="num">0.98%</td></tr>
+    <tr><td>Commonest species</td><td class="num">3.87%</td></tr>
+    <tr><td class="fix">Yours, today</td><td class="num hit">15.3%</td></tr>
     <tr><td>Operator's requirement</td><td class="num">90%</td></tr>
   </table>
   <p class="lead">Write your measured number on the same sheet, next to the one
   you predicted.</p>
 </section>
 
-<!-- 59 -->
+<!-- 60 -->
 <section data-menu-title="What we did not do">
   <h2>What we deliberately did not do</h2>
   <ul class="tight small">
     <li>No data augmentation &mdash; the network saw exactly
-        «int:l15_n_train» images, «int:l15_epochs» times each</li>
-    <li>No pretrained weights &mdash; every one of the «int:l15_n_params»
+        1,020 images, 80 times each</li>
+    <li>No pretrained weights &mdash; every one of the 4,807,494
         parameters started at random</li>
     <li>No learning-rate schedule beyond a constant $3 \times 10^{-4}$</li>
     <li>No architecture search &mdash; one architecture, chosen and kept</li>
@@ -1054,23 +1092,24 @@ assert mean.shape == (3,) and len(X_used_for_stats) == len(X_train)
   this course put together.</p>
 </section>
 
-<!-- 60 -->
+<!-- 61 -->
 <section data-menu-title="Honest limits">
   <h2>What this number is and is not</h2>
   <ul class="tight small">
-    <li><strong>Is</strong>: one seed, one architecture, one split, measured
-        once on «int:l15_n_test» held-out images</li>
+    <li><strong>Is</strong>: the mean of 5 runs of
+        one architecture on one split, each measured on 6,149
+        held-out images</li>
     <li><strong>Is not</strong>: a claim about convolutional networks. It is a
-        claim about this one, trained on «int:l15_n_train» images</li>
-    <li>The seed-to-seed spread we measured on the shorter schedule was
-        «f2:l15_leak.seed_spread_pts» points. Any comparison smaller than that
-        is not a comparison</li>
+        claim about this one, trained on 1,020 images</li>
+    <li>The seed-to-seed standard deviation was
+        2.34 points. Any comparison smaller than that is
+        not a comparison</li>
   </ul>
   <p class="small">Quote the spread whenever you quote the number. It is the
   difference between a measurement and an anecdote.</p>
 </section>
 
-<!-- 61 -->
+<!-- 62 -->
 <section data-menu-title="Red-team preview">
   <h2>Before the next lecture</h2>
   <p>Swap notebooks with the team beside you and answer the five questions on
@@ -1086,7 +1125,7 @@ assert mean.shape == (3,) and len(X_used_for_stats) == len(X_train)
   it is a keyword argument of <code>nn.Conv2d</code>.</p>
 </section>
 
-<!-- 62 -->
+<!-- 63 -->
 <section data-menu-title="Vocabulary">
   <h2>The vocabulary, in one place</h2>
   <table>
@@ -1100,7 +1139,7 @@ assert mean.shape == (3,) and len(X_used_for_stats) == len(X_train)
   </table>
 </section>
 
-<!-- 63 -->
+<!-- 64 -->
 <section data-menu-title="Receptive field">
   <h2>Receptive field, since it is on the list</h2>
   <p>One unit of the first layer sees $7 \times 7$ pixels. Stack a
@@ -1114,28 +1153,29 @@ assert mean.shape == (3,) and len(X_used_for_stats) == len(X_train)
   any single filter &mdash; depth buys extent.</p>
 </section>
 
-<!-- 64 -->
+<!-- 65 -->
 <section data-menu-title="Common mistakes">
   <h2>Five ways this build goes wrong quietly</h2>
   <table>
     <tr><th>Mistake</th><th>Symptom</th></tr>
     <tr><td><code>padding=0</code> left at the default</td><td>maps shrink; a shape error many layers later</td></tr>
     <tr><td>Forgetting <code>net.eval()</code></td><td>the score wobbles between calls &mdash; Lecture 12</td></tr>
-    <tr><td>Normalising with test statistics</td><td>nothing; measured today at «f2:l15_leak.gap_pts» points</td></tr>
-    <tr><td><code>BatchNorm2d</code> before, not after, the convolution</td><td>trains, worse, no error</td></tr>
+    <tr><td>Normalising with test statistics</td><td>measured today at 0.25 points</td></tr>
+    <tr><td><code>lr</code> left at Adam's default</td><td>12.1 points, and no error</td></tr>
     <tr><td>Pooling before any convolution</td><td>throws away the pixels before anything reads them</td></tr>
   </table>
 </section>
 
-<!-- 65 -->
+<!-- 66 -->
 <section data-menu-title="Why not deeper">
   <h2>Why not simply make it deeper</h2>
   <p class="lead">Because you tried that in Lecture 13, and because there is
   nothing left to learn from.</p>
   <ul class="tight small">
-    <li>The training accuracy is already «pct1:l15_scratch.train_acc». More
-        capacity fits the same «int:l15_n_train» images harder</li>
-    <li>The gap is «f0:l15_gap.final_gap_pts» points. That is a variance
+    <li>The training accuracy on the plotted run is
+        71.8%. More capacity fits the same
+        1,020 images harder</li>
+    <li>The gap is 58 points. That is a variance
         problem, and Lecture 6 says variance is fixed with more data or more
         constraint, not more parameters</li>
   </ul>
@@ -1143,7 +1183,7 @@ assert mean.shape == (3,) and len(X_used_for_stats) == len(X_train)
   question the next lecture answers.</p>
 </section>
 
-<!-- 66 -->
+<!-- 67 -->
 <section data-menu-title="Scope">
   <h2>Scope</h2>
   <table>
@@ -1157,7 +1197,7 @@ assert mean.shape == (3,) and len(X_used_for_stats) == len(X_train)
   </table>
 </section>
 
-<!-- 67 -->
+<!-- 68 -->
 <section data-menu-title="Homework">
   <h2>Before the next lecture</h2>
   <ol class="tight small">
@@ -1172,18 +1212,17 @@ assert mean.shape == (3,) and len(X_used_for_stats) == len(X_train)
   they did not write down.</p>
 </section>
 
-<!-- 68 -->
+<!-- 69 -->
 <section data-menu-title="A question to sit with">
   <h2>One question to sit with</h2>
-  <p class="lead">The first layer learned colour blobs and oriented edges from
-  «int:l15_n_train» photographs of flowers.</p>
-  <p class="lead">What, exactly, about those filters is <em>about
-  flowers</em>?</p>
+  <p class="lead">1,020 labelled photographs were not enough to
+  make the first layer into anything you can look at.</p>
+  <p class="lead">Whose labels should have paid for that layer?</p>
   <p class="small muted">Do not answer it now. The answer is the whole of the
   next lecture's repair.</p>
 </section>
 
-<!-- 69 -->
+<!-- 70 -->
 <section class="divider" data-menu-title="Next">
   <p class="kicker">Lecture 16 &middot; Fix</p>
   <h1>Don&rsquo;t train from scratch</h1>

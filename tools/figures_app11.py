@@ -265,7 +265,7 @@ def fig_oov(oc):
     ax.set_ylabel("out of vocabulary, %")
     ax.annotate(f"subword, {oc['subword_vocab']:,} pieces: "
                 f"{100*oc['subword_oov']:.2f}%",
-                xy=(1.6, 100 * oc["subword_oov"]), xytext=(1.6, 16),
+                xy=(4.6, 100 * oc["subword_oov"]), xytext=(3.5, 33),
                 color=SUCCESS, fontsize=SMALL, ha="center",
                 bbox=dict(fc="white", ec=SUCCESS, lw=1.0,
                           boxstyle="round,pad=0.35"),
@@ -423,7 +423,7 @@ def train_rnn(d, enc, vocab, *, init=None, freeze=False, last_of_padding=False,
             loss = lossf(out, yf_d[j])
             loss.backward()
             opt.step()
-            running += float(loss) * len(j)
+            running += float(loss.detach()) * len(j)
         losses.append(running / len(Xf_d))
         curve.append(rnn_accuracy(net, Xv, Lv, d["val_y"]))
         print(f"        {tag} epoch {ep+1}: train loss {losses[-1]:.4f}  "
@@ -614,15 +614,16 @@ def fig_ce_stability(cs):
     ax.set_xscale("log"); ax.set_yscale("log")
     ax.set_xlabel("standard deviation of the logits")
     ax.set_ylabel("relative error against float64")
-    first = next(i for i, f in enumerate(frac) if f > 0)
-    ax.axvline(s[first], color=ACCENT, ls="--", lw=1.6)
-    ax.annotate(f"beyond {s[first]:.0f}, exp(z) overflows float32\n"
-                f"{frac[first]*100:.0f}% of rows return inf or nan",
-                xy=(s[first], 1e-9), xytext=(1.6, 1e-6),
-                color=ACCENT, fontsize=SMALL,
-                bbox=dict(fc="white", ec=ACCENT, lw=1.0,
-                          boxstyle="round,pad=0.35"),
-                arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
+    first = next((i for i, f in enumerate(frac) if f > 0), None)
+    if first is not None:
+        ax.axvline(s[first], color=ACCENT, ls="--", lw=1.6)
+        ax.annotate(f"beyond {s[first]:.0f}, exp(z) overflows float32\n"
+                    f"{frac[first]*100:.0f}% of rows return inf or nan",
+                    xy=(s[first], 1e-9), xytext=(1.6, 1e-6),
+                    color=ACCENT, fontsize=SMALL,
+                    bbox=dict(fc="white", ec=ACCENT, lw=1.0,
+                              boxstyle="round,pad=0.35"),
+                    arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     ax.legend(loc="lower right")
     ax.set_title("2,000 rows of 10 logits, float32, at each scale")
     fig.tight_layout()
@@ -827,7 +828,16 @@ def fig_clusters(cl):
     axes[0].set_title("choose k as in Lecture 9")
 
     sizes = [g["size"] for g in cl["groups"]]
-    labels = [", ".join(g["terms"][:3]) for g in cl["groups"]]
+    # bigram terms get long; a y-label wider than the axes shrinks the whole
+    # panel and takes the tick labels under the 15px floor with it
+    def _label(terms):
+        out = []
+        for t in terms:
+            if sum(len(x) + 2 for x in out) + len(t) > 30:
+                break
+            out.append(t)
+        return ", ".join(out or terms[:1])
+    labels = [_label(g["terms"]) for g in cl["groups"]]
     y = np.arange(len(sizes))[::-1]
     axes[1].barh(y, sizes, color=PRIMARY, height=0.62)
     axes[1].set_yticks(y); axes[1].set_yticklabels(labels, fontsize=SMALL)
@@ -900,6 +910,75 @@ def tokeniser_leak(d, n_seeds=20) -> dict:
     return out
 
 
+def _tfidf_score(X, y, tr, te) -> float:
+    """Fit the vectoriser on the training rows only, then score. No leak here —
+    the split is the only thing under test."""
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.linear_model import LogisticRegression
+    vec = TfidfVectorizer(min_df=1, ngram_range=(1, 2), max_features=60_000)
+    Ztr = vec.fit_transform([X[i] for i in tr])
+    clf = LogisticRegression(max_iter=2000, C=4.0).fit(Ztr, y[tr])
+    Zte = vec.transform([X[i] for i in te])
+    return float((clf.predict(Zte) == y[te]).mean())
+
+
+def duplicate_leak(d, n_unique=1_500, dup_frac=0.3, seeds=10) -> dict:
+    """The text leak that is expensive: the same document on both sides.
+
+    IMDb is deduplicated, so a corpus that is not has to be constructed — and
+    the slide says so. A third of the entries are submitted twice, which is
+    ordinary for a feedback desk with a resubmit button and no de-duplication.
+    Everything else is done correctly: the vectoriser is fitted inside each
+    split. The only difference between the two rows is whether the split keeps
+    both copies of an entry on the same side.
+    """
+    from sklearn.model_selection import GroupShuffleSplit, train_test_split
+
+    all_x = list(d["train_x"]) + list(d["test_x"])
+    all_y = np.concatenate([d["train_y"], d["test_y"]])
+
+    naive, grouped, twins = [], [], []
+    for s in range(seeds):
+        rng = np.random.default_rng(SEED + 100 + s)
+        idx = rng.choice(len(all_x), size=n_unique, replace=False)
+        X = [all_x[i] for i in idx]
+        y = all_y[idx]
+        g = np.arange(n_unique)
+
+        dup = rng.choice(n_unique, size=int(dup_frac * n_unique), replace=False)
+        X = X + [X[i] for i in dup]
+        y = np.concatenate([y, y[dup]])
+        g = np.concatenate([g, g[dup]])
+
+        # (a) the split a careless pipeline makes: random over rows
+        tr, te = train_test_split(np.arange(len(X)), test_size=0.25,
+                                  random_state=SEED + s, stratify=y)
+        naive.append(_tfidf_score(X, y, tr, te))
+        twins.append(float(np.isin(g[te], g[tr]).mean()))
+
+        # (b) the split that keeps every copy of an entry on one side
+        gss = GroupShuffleSplit(n_splits=1, test_size=0.25,
+                                random_state=SEED + s)
+        tr2, te2 = next(gss.split(np.arange(len(X)), y, groups=g))
+        grouped.append(_tfidf_score(X, y, tr2, te2))
+
+    naive, grouped = np.array(naive), np.array(grouped)
+    gap = naive - grouped
+    print(f"      duplicates: random split {naive.mean():.4f}  "
+          f"grouped split {grouped.mean():.4f}  "
+          f"gap {100*gap.mean():+.2f} points (sd {100*gap.std():.2f})")
+    return {"n_unique": n_unique, "dup_frac": dup_frac, "seeds": seeds,
+            "n_rows": n_unique + int(dup_frac * n_unique),
+            "naive_mean": float(naive.mean()), "naive_sd": float(naive.std()),
+            "grouped_mean": float(grouped.mean()),
+            "grouped_sd": float(grouped.std()),
+            "gap_mean": float(gap.mean()), "gap_sd": float(gap.std()),
+            "gap_points": float(100 * gap.mean()),
+            "seeds_leak_wins": int((gap > 0).sum()),
+            "twin_share": float(np.mean(twins)),
+            "gaps": [float(v) for v in gap]}
+
+
 def duplicate_check(d) -> dict:
     """Is any test review also a training review? On text this is the leak
     that costs the most and is checked the least."""
@@ -937,6 +1016,28 @@ def fig_leak(lk):
     save(fig, "l22-leak")
 
 
+def fig_duplicate_leak(dl):
+    fig, ax = plt.subplots(figsize=(7.6, 2.9))
+    x = np.arange(2)
+    vals = [100 * dl["naive_mean"], 100 * dl["grouped_mean"]]
+    errs = [100 * dl["naive_sd"], 100 * dl["grouped_sd"]]
+    ax.bar(x, vals, yerr=errs, capsize=7, width=0.5,
+           color=[ACCENT, SUCCESS], error_kw=dict(ecolor="#16212b", lw=1.6))
+    for xi, v in zip(x, vals):
+        ax.text(xi, v + 1.6, f"{v:.1f}%", ha="center", fontsize=SMALL,
+                color="#16212b")
+    ax.set_xticks(x)
+    ax.set_xticklabels(["random split\n(copies land on both sides)",
+                        "grouped split\n(copies kept together)"],
+                       fontsize=SMALL)
+    ax.set_ylabel("reported accuracy, %")
+    ax.set_ylim(0, 108)
+    ax.set_title(f"{dl['seeds']} seeds; bars are the mean, whiskers one "
+                 f"standard deviation")
+    fig.tight_layout()
+    save(fig, "l22-duplicates")
+
+
 # ------------------------------------------------------------ result figures
 
 def fig_baselines(bl, scratch):
@@ -969,7 +1070,12 @@ def fig_swap(runs, bl):
              "subword pieces\npretrained, tuned"]
     vals = [runs[k]["test_acc"] for k in order]
     base = vals[0]
-    colors = [PRIMARY] + [SUCCESS if v > base else ACCENT for v in vals[1:]]
+    # A single-seed difference under a third of a point is not a ranking, so it
+    # is not painted as one — see the null result on the swap-1 slide.
+    tie = 0.003
+    colors = [PRIMARY] + [SUCCESS if v > base + tie else
+                          ACCENT if v < base - tie else PRIMARY
+                          for v in vals[1:]]
     fig, ax = plt.subplots(figsize=(8.0, 3.1))
     x = np.arange(4)
     ax.bar(x, 100 * np.array(vals), color=colors, width=0.6)
@@ -981,7 +1087,10 @@ def fig_swap(runs, bl):
         ax.text(xi, 100 * v + 0.6, f"{100*v:.1f}%", ha="center", fontsize=SMALL,
                 color="#16212b")
     ax.set_xticks(x); ax.set_xticklabels(names, fontsize=SMALL)
-    ax.set_ylim(min(70, 100 * min(vals) - 5), 100 * max(vals) + 5)
+    # the bag-of-words rule has to stay inside the axes even when it is above
+    # every bar, which on this corpus it may well be
+    ax.set_ylim(min(70, 100 * min(vals) - 5),
+                max(100 * max(vals), 100 * bl["bigram"]["acc"]) + 4)
     ax.set_ylabel("test accuracy, %")
     ax.set_title("identical GRU, identical seed, identical four epochs")
     fig.tight_layout()
@@ -1129,6 +1238,8 @@ def main() -> int:
     facts["l21_pretrained_acc"] = runs["wp_tuned"]["test_acc"]
     facts["l21_swap_gain_points"] = 100 * (runs["wp_tuned"]["test_acc"]
                                            - runs["word_random"]["test_acc"])
+    facts["l21_wp_random_delta"] = 100 * (runs["wp_random"]["test_acc"]
+                                          - runs["word_random"]["test_acc"])
     facts["l21_bow_minus_rnn_points"] = 100 * (bl["bigram"]["acc"]
                                                - runs["word_random"]["test_acc"])
 
@@ -1150,7 +1261,7 @@ def main() -> int:
     fig_gradient(gc)
     facts["l22_gradient"] = gc
     print(f"      |autograd - (p - y)| = {gc['max_abs_error']:.3e}")
-    cs = cached("app11_ce_stability", ce_stability)
+    cs = cached("app11_ce_stability_v2", ce_stability)
     fig_ce_stability(cs)
     facts["l22_stability"] = cs
     kl = ce_vs_kl()
@@ -1213,6 +1324,11 @@ def main() -> int:
     facts["l22_dupes"] = dup
     print(f"      exact duplicates across the official split: "
           f"{dup['train_test_dupes']}")
+
+    print("Lecture 22 — the leak that is expensive:")
+    dl = cached("app11_duplicate_leak", lambda: duplicate_leak(d))
+    fig_duplicate_leak(dl)
+    facts["l22_duplicate_leak"] = dl
 
     export(**facts)
 

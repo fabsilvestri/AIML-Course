@@ -32,9 +32,17 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from figkit import (setup, save, cached, load_cache, export, OUT, SEED,   # noqa: E402
+from figkit import (setup, save, cached, load_cache, plain_log, export, OUT, SEED,   # noqa: E402
                     PRIMARY, ACCENT, SUCCESS, MATH, MUTED, RULE, AXIS,
                     BODY, SMALL, TICK, check_text_floor)
+from matplotlib.ticker import (FuncFormatter, NullFormatter,
+                               NullLocator)                     # noqa: E402
+
+# TRICKS §9.1, third renderer: `text.parse_math` is off script-wide, and
+# matplotlib's default log-scale formatter emits mathtext. With parsing off it
+# is printed literally, so a log axis labels its ticks
+# "$\mathdefault{10^{2}}$". Every log axis in this file sets this instead.
+PLAIN = FuncFormatter(lambda v, _: f"{v:,.0f}" if v >= 1 else f"{v:g}")
 
 import torch                                                    # noqa: E402
 import torch.nn as nn                                           # noqa: E402
@@ -46,6 +54,15 @@ from torchvision.models import ResNet18_Weights                 # noqa: E402
 CACHE = Path("/private/tmp/claude-501/aiml-data")
 DATA = CACHE / "flowers"
 
+# figkit.cached() writes one shared pickle for the whole course, and it does a
+# read-modify-write with no lock. With several applications regenerating at
+# once, whichever process loaded the file first wins and every key another
+# process added in the meantime is silently dropped — this application lost
+# forty minutes of fits that way. Point this run at its own file, which is what
+# a per-application figure script should have had from the start.
+import figkit as _figkit                                        # noqa: E402
+_figkit._mf._CACHE_FILE = CACHE / "fits-app08.pkl"
+
 DEVICE = ("cuda" if torch.cuda.is_available()
           else "mps" if torch.backends.mps.is_available() else "cpu")
 
@@ -56,6 +73,7 @@ BATCH = 32
 EPOCHS = 80
 LR = 3e-4                 # Adam; 1e-3 does not train this net on 1,020 images
 DROPOUT = 0.5
+SCRATCH_SEEDS = 5         # the headline from-scratch number is a mean of these
 
 TRANSFER_IMG = 224        # what the pretrained weights were trained at
 PROBE_EPOCHS = 60         # the linear head on frozen features
@@ -566,11 +584,38 @@ def finetune(*, augmented=True, epochs=FT_EPOCHS, seed=SEED) -> dict:
     seconds = time.perf_counter() - t0
 
     test_acc = accuracy(rn, imagenet_norm(Xte), yte, bs=64)
+
+    # The Lecture 16 assistant failure, measured on the FINISHED model: score
+    # one fixed set of weights on an augmented validation set, ten times. A
+    # deterministic function of fixed weights and fixed data does not wobble.
+    clean = accuracy(rn, imagenet_norm(Xva), yva, bs=64)
+    scores = [accuracy(rn, imagenet_norm(augment(Xva, gen)), yva, bs=64)
+              for _ in range(10)]
+    wobble = {"clean": clean, "scores": scores, "repeats": len(scores),
+              "mean": float(np.mean(scores)), "sd": float(np.std(scores)),
+              "spread_pts": float(100 * (max(scores) - min(scores))),
+              "penalty_pts": float(100 * (clean - np.mean(scores)))}
+
     return {"hist": hist, "seconds": seconds, "test_acc": test_acc,
             "val_acc": hist["val_acc"][-1], "epochs": epochs,
             "n_trainable": int(n_train), "n_frozen": int(n_froz),
-            "augmented": augmented,
+            "augmented": augmented, "wobble": wobble,
             "state_fc": {k: v.detach().cpu() for k, v in rn.fc.state_dict().items()}}
+
+
+def lr_sweep(d, *, lr, seeds=3, epochs=40) -> dict:
+    """One learning rate, several seeds, the short schedule.
+
+    The comparison the slide makes is against the `normalisation_leak` honest
+    runs, which are the same architecture at the same epoch count and seeds
+    with lr = LR — so the two rows of that table are paired, not two
+    independent experiments quoted side by side.
+    """
+    accs = [train_scratch(d, epochs=epochs, lr=lr, seed=SEED + s,
+                          track=False)["test_acc"] for s in range(seeds)]
+    return {"lr": lr, "seeds": seeds, "epochs": epochs,
+            "values": accs, "mean": float(np.mean(accs)),
+            "sd": float(np.std(accs)), "sd_pts": float(100 * np.std(accs))}
 
 
 # ------------------------------------------- Lecture 15 · the assistant failure
@@ -614,51 +659,33 @@ def normalisation_leak(d, *, seeds=5, epochs=40) -> dict:
 
 # ------------------------------------------- Lecture 16 · the assistant failure
 
-def augmented_val_wobble(*, repeats=10) -> dict:
-    """Score one fixed set of weights on an augmented validation set, ten times.
-
-    A deterministic model on a fixed set returns the same number every time. If
-    it does not, something in the evaluation path is still random — which is the
-    Lecture 12 reviewer question, applied to a new default.
-    """
-    Xva, yva = preload("val", TRANSFER_IMG)
-    torch.manual_seed(SEED)
-    rn = torchvision.models.resnet18(weights=ResNet18_Weights.DEFAULT)
-    rn.fc = nn.Linear(512, N_CLASSES)
-    rn = rn.to(DEVICE).eval()
-    gen = torch.Generator().manual_seed(SEED)
-
-    clean = accuracy(rn, imagenet_norm(Xva), yva, bs=64)
-    scores = [accuracy(rn, imagenet_norm(augment(Xva, gen)), yva, bs=64)
-              for _ in range(repeats)]
-    return {"clean": clean, "scores": scores, "repeats": repeats,
-            "mean": float(np.mean(scores)), "sd": float(np.std(scores)),
-            "spread_pts": float(100 * (max(scores) - min(scores)))}
-
-
 # ------------------------------------------------------- Lecture 15 · figures
 
 def fig_grid(d):
-    """Sixteen flowers with their species names, four per row."""
+    """Twelve flowers with their species names, six per row.
+
+    Six columns and not eight: at eight, a 15pt species name is wider than its
+    cell and the names of neighbouring flowers run into one another. Names are
+    truncated to what fits rather than shrunk below the 15px floor.
+    """
     rng = np.random.default_rng(SEED)
     labels = d["y_train"].numpy()
-    chosen = []
-    for c in rng.choice(N_CLASSES, 16, replace=False):
-        chosen.append(int(np.where(labels == c)[0][0]))
+    chosen = [int(np.where(labels == c)[0][0])
+              for c in rng.choice(N_CLASSES, 12, replace=False)]
 
-    fig, axes = plt.subplots(2, 8, figsize=(11.0, 3.4))
+    fig, axes = plt.subplots(2, 6, figsize=(11.0, 4.2))
     for ax, i in zip(axes.ravel(), chosen):
         ax.imshow(d["X_train"][i].permute(1, 2, 0).numpy())
         ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
         for s in ax.spines.values():
             s.set_visible(False)
         name = CLASS_NAMES[labels[i]]
-        ax.set_title(name if len(name) <= 17 else name[:16] + "…",
-                     fontsize=SMALL, color=MUTED, pad=4)
-    fig.suptitle(f"16 of the {N_CLASSES} species, one image each, "
+        ax.set_title(name if len(name) <= 16 else name[:15] + "…",
+                     fontsize=SMALL, color=MUTED, pad=5)
+    fig.suptitle(f"12 of the {N_CLASSES} species, one image each, "
                  f"resized to {IMG} × {IMG}",
                  fontsize=SMALL, color=MUTED, x=0.02, ha="left")
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.tight_layout(rect=(0, 0, 1, 0.94), h_pad=2.2)
     save(fig, "l15-grid", raster=True)
 
 
@@ -721,34 +748,81 @@ def fig_baseline(base):
     save(fig, "l15-baseline")
 
 
-def _filter_image(w: torch.Tensor) -> np.ndarray:
-    """One (3, k, k) filter, rescaled to [0, 1] so its structure is visible."""
-    a = w.numpy().transpose(1, 2, 0)
-    lo, hi = a.min(), a.max()
-    return (a - lo) / (hi - lo + 1e-12)
+def _montage(w: torch.Tensor, cols=8, pad=1) -> np.ndarray:
+    """A block of filters as one image, each rescaled to its own range.
+
+    One `imshow` of a montage rather than 32 subplots: a subplot grid this fine
+    leaves most of each cell empty, and the filters end up a sixth of the size
+    they could be. Rescaling per filter is necessary because otherwise the
+    loudest filter is the only one visible.
+    """
+    a = w.numpy()
+    n, _, k, _ = a.shape
+    rows = -(-n // cols)
+    lo = a.min(axis=(1, 2, 3), keepdims=True)
+    hi = a.max(axis=(1, 2, 3), keepdims=True)
+    z = ((a - lo) / (hi - lo + 1e-12)).transpose(0, 2, 3, 1)
+    out = np.ones((rows * (k + pad) + pad, cols * (k + pad) + pad, 3))
+    for i in range(n):
+        r, c = divmod(i, cols)
+        out[pad + r * (k + pad): pad + r * (k + pad) + k,
+            pad + c * (k + pad): pad + c * (k + pad) + k] = z[i]
+    return out
 
 
-def fig_filters(res):
-    """The 32 first-layer filters, at initialisation and after training."""
+def fig_filters(res) -> dict:
+    """The 32 first-layer filters, at initialisation and after training.
+
+    The finding this figure exists to report is a negative one, so the size of
+    the change is measured and returned rather than left to the eye.
+    """
     after = res["state"]["0.weight"]
     before = res["init_filters"]
-    fig, axes = plt.subplots(4, 16, figsize=(11.0, 3.2))
-    for col, (block, title) in enumerate(((before, "at initialisation"),
-                                          (after, "after training"))):
-        for j in range(32):
-            r, c = divmod(j, 8)
-            ax = axes[r, c + 8 * col]
-            ax.imshow(_filter_image(block[j]), interpolation="nearest")
-            ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
-            for s in ax.spines.values():
-                s.set_visible(False)
-        axes[0, 8 * col + 3].set_title(title, fontsize=BODY, color=MUTED,
-                                       loc="left", pad=8)
-    fig.suptitle(f"All 32 filters of the first layer, 7 × 7 × 3, "
-                 f"each rescaled to its own range",
+    delta = (after - before).abs()
+    stats = {"max_abs_delta": float(delta.max()),
+             "mean_abs_delta": float(delta.mean()),
+             "weight_sd": float(before.std()),
+             "mean_abs_weight": float(before.abs().mean()),
+             "mean_rel_pct": float(100 * delta.mean() / before.abs().mean()),
+             # the single cleanest summary: how much of the filter bank, as one
+             # 4,704-dimensional vector, is still the vector it started as
+             "cosine": float(F.cosine_similarity(after.flatten(),
+                                                 before.flatten(), dim=0)),
+             "n_sign_flips": int(((after * before) < 0).sum()),
+             "n_weights": int(before.numel())}
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.0, 3.0))
+    for ax, block, title in ((axes[0], before, "at initialisation"),
+                             (axes[1], after, f"after {res['epochs']} epochs")):
+        ax.imshow(_montage(block), interpolation="nearest")
+        ax.set_title(title, fontsize=BODY, color=MUTED, loc="left", pad=8)
+        ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
+        for s in ax.spines.values():
+            s.set_visible(False)
+    fig.suptitle("All 32 filters of the first layer, 7 × 7 × 3, "
+                 "each rescaled to its own range",
                  fontsize=SMALL, color=MUTED, x=0.02, ha="left")
     fig.tight_layout(rect=(0, 0, 1, 0.90))
     save(fig, "l15-filters", raster=True)
+    return stats
+
+
+def fig_imagenet_filters() -> dict:
+    """What the same layer looks like when 1.28 million labels pay for it."""
+    rn = torchvision.models.resnet18(weights=ResNet18_Weights.DEFAULT)
+    w = rn.conv1.weight.detach()          # (64, 3, 7, 7)
+    fig, ax = plt.subplots(figsize=(11.0, 2.6))
+    ax.imshow(_montage(w, cols=16), interpolation="nearest")
+    ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
+    for s in ax.spines.values():
+        s.set_visible(False)
+    fig.suptitle("resnet18, first layer: 64 filters of 7 × 7 × 3, "
+                 "trained on 1.28 million labelled photographs",
+                 fontsize=SMALL, color=MUTED, x=0.02, ha="left")
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
+    save(fig, "l16-imagenet-filters", raster=True)
+    return {"n_filters": int(w.shape[0]), "k": int(w.shape[-1]),
+            "n_weights": int(w.numel())}
 
 
 def fig_featmaps(res, d):
@@ -812,7 +886,7 @@ def fig_curve(res, base):
     ax.set_ylim(0, 100)
     ax.legend(loc="upper left")
     ax.set_title(f"{res['epochs']} epochs, {res['n_params']:,} parameters, "
-                 f"1,020 training images")
+                 f"1,020 training images — one of {SCRATCH_SEEDS} seeds")
     fig.tight_layout()
     save(fig, "l15-curve")
 
@@ -840,8 +914,12 @@ def fig_gap(res):
 
 def fig_pooling():
     """Max pooling, worked on numbers, so nobody has to take it on trust."""
-    rng = np.random.default_rng(SEED)
-    a = rng.integers(0, 10, (4, 4))
+    # the same four rows the slide prints as a REPL session, so the figure and
+    # the code beside it are the same example rather than two examples
+    a = np.array([[5, 3, 8, 1],
+                  [2, 9, 4, 0],
+                  [1, 6, 7, 3],
+                  [4, 2, 5, 8]])
     pooled = a.reshape(2, 2, 2, 2).max(axis=(1, 3))
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(6.6, 2.8),
@@ -875,10 +953,14 @@ def fig_params(dc):
     vals = [dc["dense_weights"], dc["conv_weights"]]
     bars = ax.barh(names[::-1], vals[::-1], color=[SUCCESS, ACCENT], height=0.55)
     ax.set_xscale("log")
-    ax.set_xlim(1e2, 1e12)
+    ax.set_xlim(1e3, 1e13)
+    ax.set_xticks([1e3, 1e5, 1e7, 1e9, 1e11])
+    ax.set_xticklabels(["thousand", "100 thousand", "10 million",
+                        "billion", "100 billion"], fontsize=TICK)
+    ax.xaxis.set_minor_formatter(NullFormatter())
+    ax.xaxis.set_minor_locator(NullLocator())
     for b, v in zip(bars, vals[::-1]):
-        ax.annotate(f"{v:,} weights", (v, b.get_y() + b.get_height() / 2),
-                    xytext=(8, 0), textcoords="offset points",
+        ax.annotate(f"{v:,} weights", (v * 1.6, b.get_y() + b.get_height() / 2),
                     va="center", fontsize=SMALL, color=MUTED)
     ax.set_xlabel("weights, log scale")
     ax.set_title(f"A factor of {dc['ratio']:,.0f}")
@@ -940,6 +1022,12 @@ def fig_memory(mem):
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     ax.set_xscale("log", base=2); ax.set_yscale("log")
     ax.set_xticks(b); ax.set_xticklabels([str(v) for v in b])
+    ax.set_yticks([10, 30, 100, 300, 1000, 3000])
+    ax.yaxis.set_major_formatter(PLAIN)
+    ax.yaxis.set_minor_formatter(NullFormatter())
+    ax.yaxis.set_minor_locator(NullLocator())
+    ax.xaxis.set_minor_formatter(NullFormatter())
+    ax.xaxis.set_minor_locator(NullLocator())
     ax.set_xlabel("batch size")
     ax.set_ylabel("memory, MB (log)")
     ax.legend(loc="upper left")
@@ -970,8 +1058,13 @@ def fig_memory_layers(mem):
     ax.set_title("Activation memory, layer by layer")
     fig.tight_layout()
     save(fig, "l16-memory-layers")
+    convs = [(s, m) for s, m in zip(keep, mb) if s["layer"] == "Conv2d"]
     return {"first_two_mb": mb[0] + mb[1],
-            "first_two_pct": 100 * (mb[0] + mb[1]) / sum(mb)}
+            "first_two_pct": 100 * (mb[0] + mb[1]) / sum(mb),
+            "conv_total_mb": sum(m for _, m in convs),
+            "first_conv_mb": convs[0][1],
+            "third_conv_mb": convs[2][1],
+            "last_conv_mb": convs[-1][1]}
 
 
 def fig_transfer(scratch, probe, ft):
@@ -995,7 +1088,8 @@ def fig_transfer(scratch, probe, ft):
     ax.set_ylabel("validation accuracy, %")
     ax.set_ylim(0, 100)
     ax.legend(loc="center right")
-    ax.set_title("Same data, same laptop, same 1,020 labelled images")
+    ax.set_title("Same data, same laptop, same 1,020 labelled images "
+                 f"— one run each")
     fig.tight_layout()
     save(fig, "l16-transfer")
 
@@ -1069,12 +1163,13 @@ def fig_leak(leak):
     ax.set_title(f"{leak['seeds']} seeds each, {leak['epochs']} epochs — "
                  f"the two clouds overlap")
     fig.tight_layout()
-    save(fig, "l16-leak")
+    save(fig, "l15-leak")
 
 
 # ------------------------------------------------------- hand-drawn diagrams
 
-SVG_HEAD = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb}"
+SVG_HEAD = """<svg xmlns="http://www.w3.org/2000/svg"
+     width="{w}" height="{h}" viewBox="{vb}"
      font-family="'Source Sans 3','Source Sans Pro',Helvetica,sans-serif">
   <style>
     .box   {{ fill:#fff; stroke:#0b3d62; stroke-width:2; }}
@@ -1100,8 +1195,15 @@ SVG_HEAD = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb}"
 
 
 def write_svg(name: str, viewbox: str, body: str) -> None:
+    """Write a hand-authored diagram.
+
+    width and height are written explicitly, not left to the viewBox: an SVG
+    loaded through <img> takes no intrinsic size from a viewBox alone, and
+    renders at 0x0. Measured in Chrome, and checked by make_figures.py.
+    """
+    _, _, w, h = viewbox.split()
     (OUT / f"{name}.svg").write_text(
-        SVG_HEAD.format(vb=viewbox) + body + "\n</svg>\n")
+        SVG_HEAD.format(vb=viewbox, w=w, h=h) + body + "\n</svg>\n")
     print(f"  assets/figures/{name}.svg")
 
 
@@ -1309,6 +1411,9 @@ def main() -> int:
         "l15_dropout": DROPOUT,
         "l15_baseline_majority": base["majority"],
         "l15_baseline_uniform": base["uniform"],
+        # Fashion MNIST's own constants, for the comparison table on the first
+        # data slide. 60,000 and 6,000 are the dataset's, not a subset of ours.
+        "l15_vs_fashion": 60_000 / len(d["y_train"]),
         "l15_train_mean": d["mean"].tolist(),
         "l15_train_std": d["std"].tolist(),
         "l15_device": DEVICE,
@@ -1335,13 +1440,44 @@ def main() -> int:
                                 if r["layer"] == "Flatten"][0]["activations"]
     facts["l15_total_steps"] = EPOCHS * facts["l15_steps_per_epoch"]
     facts["l16_resnet_params"] = int(n_params(torchvision.models.resnet18()))
+    facts["l15_params_per_image"] = (facts["l15_n_params"]
+                                     / len(d["y_train"]))
+    facts["l15_conv_share_pct"] = (100 * facts["l15_conv_params"]
+                                   / facts["l15_n_params"])
+    facts["l15_head_share_pct"] = (100 * facts["l15_dense_head_params"]
+                                   / facts["l15_n_params"])
     print(f"    {facts['l15_n_params']:,} parameters, "
           f"{facts['l15_dense_head_params']:,} of them in the first dense "
           f"layer")
 
     print(f"Lecture 15 — training from scratch ({EPOCHS} epochs, {DEVICE}):")
     scratch = cached("app08_scratch", lambda: train_scratch(d))
-    fig_filters(scratch)
+    facts["l15_filter_change"] = fig_filters(scratch)
+    facts["l16_imagenet_filters"] = fig_imagenet_filters()
+    print(f"    the first layer moved by at most "
+          f"{facts['l15_filter_change']['max_abs_delta']:.4f}, against a "
+          f"weight sd of {facts['l15_filter_change']['weight_sd']:.4f}")
+    # One seed is an anecdote. TRICKS §4: on 1,020 training images the
+    # run-to-run spread of this network is several accuracy points, so the
+    # headline number the decks quote is the mean over SCRATCH_SEEDS runs and
+    # every slide that quotes it also quotes the spread. The learning curve
+    # figure is the seed-42 run and is labelled as one run.
+    reps = cached("app08_scratch_seeds",
+                  lambda: [_strip(train_scratch(d, seed=SEED + s))
+                           for s in range(SCRATCH_SEEDS)])
+    accs = np.array([r["test_acc"] for r in reps])
+    secs = np.array([r["seconds"] for r in reps])
+    facts["l15_scratch_seeds"] = {
+        "seeds": SCRATCH_SEEDS, "epochs": EPOCHS,
+        "test_acc": accs.tolist(), "seconds": secs.tolist(),
+        "mean": float(accs.mean()), "sd": float(accs.std()),
+        "min": float(accs.min()), "max": float(accs.max()),
+        "spread_pts": float(100 * (accs.max() - accs.min())),
+        "sd_pts": float(100 * accs.std()),
+        "mean_seconds": float(secs.mean())}
+    print(f"    {SCRATCH_SEEDS} seeds: mean {100 * accs.mean():.2f}% "
+          f"(sd {100 * accs.std():.2f}, {100 * accs.min():.2f}–"
+          f"{100 * accs.max():.2f})")
     fig_featmaps(scratch, d)
     fig_curve(scratch, base)
     facts["l15_gap"] = fig_gap(scratch)
@@ -1350,11 +1486,13 @@ def main() -> int:
         "val_acc": scratch["val_acc"], "train_acc": scratch["train_acc"],
         "epochs": scratch["epochs"], "n_params": scratch["n_params"],
         "hist": scratch["hist"]}
-    facts["l15_test_acc"] = scratch["test_acc"]
+    # the headline is the mean over seeds, not the one run that was plotted
+    facts["l15_test_acc"] = facts["l15_scratch_seeds"]["mean"]
+    facts["l15_test_acc_sd_pts"] = facts["l15_scratch_seeds"]["sd_pts"]
     facts["l15_seconds"] = scratch["seconds"]
     facts["l15_minutes"] = scratch["seconds"] / 60
-    facts["l15_vs_majority"] = scratch["test_acc"] / base["majority"]
-    print(f"    test {100 * scratch['test_acc']:.2f}%  in "
+    facts["l15_vs_majority"] = facts["l15_test_acc"] / base["majority"]
+    print(f"    seed 42, plotted: test {100 * scratch['test_acc']:.2f}%  in "
           f"{scratch['seconds']:.0f} s")
 
     print("Lecture 15 — the assistant's normalisation statistics:")
@@ -1365,6 +1503,19 @@ def main() -> int:
           f"leaky {100 * leak['leaky_mean']:.2f}%  "
           f"gap {leak['gap_pts']:+.2f} pts against a seed spread of "
           f"{leak['seed_spread_pts']:.2f} pts")
+
+    print("Lecture 15 — Adam's default learning rate, on this network:")
+    hi = cached("app08_lr_1e-3", lambda: lr_sweep(d, lr=1e-3))
+    facts["l15_lr_sweep"] = {
+        "epochs": hi["epochs"],
+        "default_lr": 1e-3, "default_mean": hi["mean"],
+        "default_sd_pts": hi["sd_pts"], "default_seeds": hi["seeds"],
+        "chosen_lr": LR, "chosen_mean": leak["honest_mean"],
+        "chosen_sd_pts": leak["seed_spread_pts"], "chosen_seeds": leak["seeds"],
+        "cost_pts": 100 * (leak["honest_mean"] - hi["mean"])}
+    print(f"    lr 1e-3: {100 * hi['mean']:.2f}%  against "
+          f"lr {LR:g}: {100 * leak['honest_mean']:.2f}%  "
+          f"at {hi['epochs']} epochs")
 
     print("Thread 8 — a dense layer against a convolutional one:")
     dc = dense_vs_conv()
@@ -1400,18 +1551,19 @@ def main() -> int:
 
     print("Lecture 16 — the frozen backbone:")
     probe = cached("app08_probe", linear_probe)
+    probe["params_per_image"] = probe["n_trainable"] / len(d["y_train"])
     facts["l16_probe"] = probe
     print(f"    test {100 * probe['test_acc']:.2f}%  in "
           f"{probe['seconds']:.0f} s "
           f"({probe['feature_seconds']:.0f} s of it extracting features)")
 
     print("Lecture 16 — fine-tuning layer4 with augmentation:")
-    ft = cached("app08_finetune", lambda: _strip(finetune()))
+    ft = cached("app08_finetune_v2", lambda: _strip(finetune()))
     facts["l16_finetune"] = ft
     print(f"    test {100 * ft['test_acc']:.2f}%  in {ft['seconds']:.0f} s")
 
     print("Lecture 16 — fine-tuning without augmentation:")
-    ft_noaug = cached("app08_finetune_noaug",
+    ft_noaug = cached("app08_finetune_noaug_v2",
                       lambda: _strip(finetune(augmented=False)))
     facts["l16_finetune_noaug"] = ft_noaug
     print(f"    test {100 * ft_noaug['test_acc']:.2f}%  in "
@@ -1422,21 +1574,25 @@ def main() -> int:
     fig_augment()
 
     print("Lecture 16 — the assistant's augmented validation set:")
-    wob = cached("app08_aug_wobble", augmented_val_wobble)
+    wob = ft["wobble"]
     facts["l16_aug_wobble"] = wob
     print(f"    the same weights score {100 * min(wob['scores']):.2f}% to "
           f"{100 * max(wob['scores']):.2f}% — a spread of "
           f"{wob['spread_pts']:.2f} points")
 
     # the comparison the whole application exists to make
+    scratch_acc = facts["l15_scratch_seeds"]["mean"]
+    scratch_secs = facts["l15_scratch_seeds"]["mean_seconds"]
     facts["l16_comparison"] = {
-        "scratch_acc": scratch["test_acc"], "scratch_seconds": scratch["seconds"],
+        "scratch_acc": scratch_acc, "scratch_seconds": scratch_secs,
+        "scratch_sd_pts": facts["l15_scratch_seeds"]["sd_pts"],
         "probe_acc": probe["test_acc"], "probe_seconds": probe["seconds"],
         "ft_acc": ft["test_acc"], "ft_seconds": ft["seconds"],
-        "acc_gain_pts": 100 * (ft["test_acc"] - scratch["test_acc"]),
-        "acc_ratio": ft["test_acc"] / scratch["test_acc"],
-        "probe_speedup": scratch["seconds"] / probe["seconds"],
-        "ft_speedup": scratch["seconds"] / ft["seconds"],
+        "acc_gain_pts": 100 * (ft["test_acc"] - scratch_acc),
+        "acc_ratio": ft["test_acc"] / scratch_acc,
+        "probe_gain_pts": 100 * (probe["test_acc"] - scratch_acc),
+        "probe_speedup": scratch_secs / probe["seconds"],
+        "ft_speedup": scratch_secs / ft["seconds"],
         "aug_gain_pts": 100 * (ft["test_acc"] - ft_noaug["test_acc"]),
     }
 

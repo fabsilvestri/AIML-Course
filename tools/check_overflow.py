@@ -9,6 +9,11 @@ illegible on a projector at the back of the room. TRICKS section 9.6.
 Three things are measured:
 
 1. **Vertical overflow** — content taller than reveal's 720px canvas. Fails.
+2b. **Horizontal overflow of anything else** — a display equation, table or
+   figure wider than the 1280px canvas. KaTeX lays a long `$$…$$` out at its
+   natural width and simply overhangs both edges; nothing clips, nothing warns,
+   and the two ends of the identity are off the projector. Fails.
+
 2. **Horizontal overflow of code** — a `pre` whose scrollWidth exceeds its
    clientWidth. This is the one that shows up on the podium machine and never on
    yours, because it depends on the fallback mono. Fails.
@@ -56,10 +61,24 @@ MEASURE = """() => {
       const over = el.scrollWidth - el.clientWidth;
       if (over > codeOver) codeOver = over;
     });
+    // anything else that runs off the side. A long display equation is the
+    // usual culprit: KaTeX lays it out at its natural width and simply
+    // overhangs, silently, off both edges of the canvas. Measured against the
+    // slide's own box rather than the canvas, so padding counts.
+    const W = Reveal.getConfig().width;
+    let sideOver = 0, sideWhat = '';
+    s.querySelectorAll('.katex-display > .katex, table, figure, blockquote')
+     .forEach(el => {
+      const w = Math.max(el.scrollWidth, el.getBoundingClientRect().width /
+                         (Reveal.getScale() || 1));
+      const over = w - W;
+      if (over > sideOver) { sideOver = over; sideWhat = el.tagName.toLowerCase(); }
+    });
     if (hidden) { s.style.display = ''; s.style.visibility = ''; }
     out.push({n: i + 1, title: s.dataset.menuTitle || '(untitled)',
               height: Math.round(bottom), limit: H,
               code_over: Math.round(codeOver),
+              side_over: Math.round(sideOver), side_what: sideWhat,
               // the footer is suppressed on these two, so they may use the full
               // canvas; every other slide has to stop short of it
               footered: !(s.classList.contains('divider') ||
@@ -99,16 +118,23 @@ def main() -> int:
             limit = rows[0]["limit"]
             over = [r for r in rows if r["height"] > limit]
             wide = [r for r in rows if r["code_over"] > 0]
+            # 8px of slack: KaTeX's own reported width rounds a little high on
+            # equations that in fact sit inside the canvas.
+            side = [r for r in rows if r["side_over"] > 8]
             footer = [r for r in rows if r["footered"]
                       and limit - FOOTER_PX < r["height"] <= limit]
 
             print(f"\n{deck.relative_to(ROOT)}: {len(rows)} slides, "
                   f"{len(over)} over {limit}px, {len(wide)} with code too wide, "
+                  f"{len(side)} running off the side, "
                   f"{len(footer)} under the footer")
             for r in sorted(over, key=lambda r: -r["height"]):
                 print(f"  OVER  {r['height']:5d}px  #{r['n']:3d}  {r['title']}")
             for r in sorted(wide, key=lambda r: -r["code_over"]):
                 print(f"  WIDE  +{r['code_over']:4d}px  #{r['n']:3d}  {r['title']}")
+            for r in sorted(side, key=lambda r: -r["side_over"]):
+                print(f"  SIDE  +{r['side_over']:4d}px  #{r['n']:3d}  {r['title']}"
+                      f"   ({r['side_what']} wider than the canvas)")
             for r in sorted(footer, key=lambda r: -r["height"]):
                 print(f"  warn  {r['height']:5d}px  #{r['n']:3d}  {r['title']}"
                       f"   (footer starts at {limit - FOOTER_PX})")
@@ -116,7 +142,7 @@ def main() -> int:
                 print("  --- tallest ---")
                 for r in sorted(rows, key=lambda r: -r["height"])[:args.top]:
                     print(f"        {r['height']:5d}px  #{r['n']:3d}  {r['title']}")
-            problems += len(over) + len(wide)
+            problems += len(over) + len(wide) + len(side)
         browser.close()
 
     return 1 if problems else 0

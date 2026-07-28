@@ -90,9 +90,17 @@ def plain_log(ax, which="y", ticks=None, fmt="{:,.0f}"):
         plain_log(ax, "y", [1, 10, 100, 1_000])
         plain_log(ax, "y", [0.005, 0.05, 0.5], fmt="{:.3f}")   # small values
 
+    **Call it AFTER you plot, not before.** `semilogx`/`semilogy`/`loglog`
+    re-apply the log scale on every call, and applying a scale installs that
+    scale's default formatter — so a `plain_log` written above the plotting line
+    is silently undone. Two of the thirteen figures were "fixed" that way first
+    and came back still broken.
+
     Passing `ticks` is strongly advised: without explicit ticks matplotlib may
     place minor ticks that the major formatter never reaches, and the minor
-    labels come back in mathtext.
+    labels come back in mathtext. Where the majors are hand-labelled, kill the
+    minors outright with `NullLocator` — a blanking formatter still leaves
+    matplotlib free to re-derive them.
     """
     from matplotlib.ticker import FuncFormatter, NullFormatter
     axis = ax.yaxis if which == "y" else ax.xaxis

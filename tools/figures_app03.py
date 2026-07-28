@@ -39,7 +39,7 @@ import pandas as pd
 
 from figkit import (ACCENT, AXIS, BODY, MATH, MUTED, OUT, PRIMARY, RULE, SEED,
                     SMALL, SUCCESS, TICK, cached, check_text_floor, export,
-                    load_cache, save, setup)
+                    load_cache, plain_log, save, setup)
 
 CACHE = Path("/private/tmp/claude-501/aiml-data")
 SOFT = "#f4f7f9"
@@ -1009,6 +1009,7 @@ def fig_alpha_curve(rs, ds):
     for name, (colour, label) in styles.items():
         r = rs[name]
         ax.semilogx(r["C"], r["log_loss"], color=colour, lw=3, label=label)
+        plain_log(ax, "x", fmt="{:g}")
         ax.plot([r["best_C"]], [r["best_log_loss"]], "o", color=colour, ms=10,
                 zorder=5)
     unreg = ds["by_degree"][rs["degree"]]["cv_log_loss"]
@@ -1061,6 +1062,9 @@ def fig_paths(cp):
         for j in keep:
             ax.semilogx(Cs, A[:, j], color=PRIMARY if name == "ridge" else ACCENT,
                         lw=1.3, alpha=0.55)
+        # after plotting: semilogx re-applies the log scale, which would reset
+        # the formatter and put mathtext back on the axis
+        plain_log(ax, "x", fmt="{:g}")
         ax.axhline(0, color=AXIS, lw=1.4)
         ax.set_xlabel("C  =  1/α")
         ax.set_title(title)
@@ -1069,6 +1073,7 @@ def fig_paths(cp):
     ax2 = axes[1].twinx()
     ax2.semilogx(cp["lasso"]["C"], cp["lasso"]["n_nonzero"], color=SUCCESS,
                  lw=3)
+    plain_log(ax2, "x", fmt="{:g}")
     ax2.set_ylabel("non-zero weights", color=SUCCESS)
     ax2.tick_params(axis="y", colors=SUCCESS)
     ax2.grid(False)
@@ -1113,6 +1118,8 @@ def condition_numbers(X_tr) -> dict:
 def fig_condition(cn):
     fig, ax = plt.subplots(figsize=(10.6, 4.2))
     ax.loglog(cn["alphas"], cn["cond"], color=MATH, lw=3)
+    plain_log(ax, "x", fmt="{:g}")
+    plain_log(ax, "y", fmt="{:,.0f}")
     ax.axhline(cn["cond_alpha_zero"], color=ACCENT, lw=2, ls="--")
     ax.text(1e-12, cn["cond_alpha_zero"] * 0.35,
             f"α = 0:  condition number {cn['cond_alpha_zero']:.1e}",
