@@ -73,6 +73,35 @@ FLOOR_PX = _mf.FLOOR_PX
 check_text_floor = _mf.check_text_floor
 
 
+def plain_log(ax, which="y", ticks=None, fmt="{:,.0f}"):
+    """Label a log axis without mathtext. **Call this on every log axis.**
+
+    `setup()` sets ``text.parse_math: False`` course-wide, because two dollar
+    signs in one string are mathtext to matplotlib exactly as they are maths to
+    KaTeX (TRICKS §9.1). Matplotlib's own log formatter then loses: it emits
+    ``$\\mathdefault{10^{3}}$`` and, with parsing off, that string is drawn
+    **literally** on the axis.
+
+    It is silent, it survives every check we have, and it has already shipped
+    into three finished decks — eight figures across Lectures 6, 12 and 16 are
+    currently displaying raw LaTeX where their tick labels should be.
+
+        ax.set_yscale("log")
+        plain_log(ax, "y", [1, 10, 100, 1_000])
+        plain_log(ax, "y", [0.005, 0.05, 0.5], fmt="{:.3f}")   # small values
+
+    Passing `ticks` is strongly advised: without explicit ticks matplotlib may
+    place minor ticks that the major formatter never reaches, and the minor
+    labels come back in mathtext.
+    """
+    from matplotlib.ticker import FuncFormatter, NullFormatter
+    axis = ax.yaxis if which == "y" else ax.xaxis
+    if ticks is not None:
+        (ax.set_yticks if which == "y" else ax.set_xticks)(ticks)
+    axis.set_major_formatter(FuncFormatter(lambda v, _: fmt.format(v)))
+    axis.set_minor_formatter(NullFormatter())
+
+
 def export(**values) -> None:
     """Merge measured numbers into assets/figures/figures.json.
 

@@ -37,7 +37,7 @@ import numpy as np
 import figkit as fk
 from figkit import (ACCENT, AXIS, BODY, MATH, MUTED, PRIMARY, RULE, SMALL,
                     SUCCESS, TICK, cached, check_text_floor, export, load_cache,
-                    save, setup)
+                    plain_log, save, setup)
 
 CACHE = fk._mf.CACHE
 SOFT = "#f4f7f9"
@@ -56,24 +56,6 @@ COVER_TYPES = ["Spruce/Fir", "Lodgepole Pine", "Ponderosa Pine",
 
 facts: dict = {}
 
-
-def plain_log(ax, which="y", ticks=None, fmt="{:,.0f}"):
-    """Log ticks without mathtext.
-
-    setup() sets text.parse_math=False course-wide (TRICKS §9.1), and
-    matplotlib's log formatter emits "$\\mathdefault{10^{3}}$" — which then
-    renders as that literal string. Any log axis in this course must set its own
-    ticks and a plain formatter.
-    """
-    from matplotlib.ticker import FuncFormatter, NullFormatter
-    axis = ax.yaxis if which == "y" else ax.xaxis
-    if ticks is not None:
-        (ax.set_yticks if which == "y" else ax.set_xticks)(ticks)
-    axis.set_major_formatter(FuncFormatter(lambda v, _: fmt.format(v)))
-    axis.set_minor_formatter(NullFormatter())
-
-
-# --------------------------------------------------------------------- data
 
 def short_names(names: list[str]) -> list[str]:
     """Feature names that fit inside a plotted tree node."""
@@ -652,14 +634,11 @@ def fig_instability(inst, names):
     ax.set_xlabel("node in the top three levels")
     ax.set_title(f"{inst['n_signatures']} distinct structures among 20 trees")
     ax.grid(False)
-    # the questions barely move; the thresholds do, and that is where the
-    # instability lives
-    for c in range(7):
-        k = len({round(sig[c][1], 1) for sig in sigs if sig[c][0] != "leaf"})
-        ax.text(c, len(sigs) - 0.32, f"{k}", ha="center", va="top",
-                fontsize=TICK, color=ACCENT)
-    ax.text(-0.62, len(sigs) - 0.32, "distinct\nthresholds:", ha="right",
-            va="top", fontsize=TICK, color=ACCENT)
+    # The per-node threshold counts used to live here as an extra row. They
+    # collided with the rotated tick labels below and with the title above, and
+    # the panel already carries a six-entry legend -- one takeaway per figure
+    # (TRICKS 11.8). The numbers are still exported, and the deck states them
+    # in the table beside this figure.
     ax.legend(handles=[Patch(facecolor=palette[i % len(palette)],
                              label=names[f]) for i, f in enumerate(seen[:6])],
               loc="upper left", bbox_to_anchor=(1.005, 1.0), fontsize=TICK,
@@ -694,9 +673,9 @@ def fig_variance_law():
     ax.set_xlabel("n, the number of averaged predictors")
     ax.set_ylabel("variance of the average  (σ² = 1)")
     ax.set_title("The floor is ρσ². No amount of averaging goes below it")
-    ax.set_ylim(0, 1.02)
+    ax.set_ylim(0, 1.28)
     ax.legend(loc="upper right", ncols=4, fontsize=TICK)
-    ax.annotate("this part vanishes\nlike 1/n", xy=(12, 0.55), xytext=(30, 0.76),
+    ax.annotate("this part vanishes\nlike 1/n", xy=(12, 0.55), xytext=(34, 0.60),
                 fontsize=SMALL, color=MUTED,
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=RULE, lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=MUTED, lw=1.8))
