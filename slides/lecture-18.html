@@ -812,7 +812,7 @@ print(iou([0, 0, 100, 100], [200, 200, 300, 300]))  # 1.0</code></pre>
   <pre><code class="language-python" data-line-numbers="1-12|3-5|7-12">import itertools
 
 def iou_checked(a, b):
-    v = iou_clamped(a, b)
+    v = iou(a, b)                          # the clamped one, from slide 9
     assert 0.0 &lt;= v &lt;= 1.0, f"IoU out of range: {v}"
     return v
 
@@ -952,8 +952,8 @@ keep = batched_nms(torch.tensor(boxes),      # (N, 4), corners
                    torch.tensor(labels),     # (N,) — per class
                    iou_threshold=0.5)
 
-boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
-assert len(keep) &lt;= len(scores) + len(keep)  # keep is an index array</code></pre>
+assert len(keep) &lt;= len(boxes), "suppression cannot add boxes"
+boxes, scores, labels = boxes[keep], scores[keep], labels[keep]</code></pre>
   <p class="small"><code>batched_nms</code> rather than <code>nms</code>: a
   bottle overlapping a glass must not suppress it, because they are different
   classes and both are true.</p>
