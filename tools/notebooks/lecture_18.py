@@ -1,0 +1,882 @@
+"""
+Lecture 18 — Scoring a box, scoring a detector.  (Fix)
+
+Thread 9: IoU's vanishing gradient, and mAP as a mean of a mean.
+
+Exports build() -> list[nbformat cell]. Self-contained: it reloads the corpus
+and re-runs the detector rather than assuming Lecture 17's kernel is still
+alive. A notebook that only runs because a previous one left variables in
+memory is not reproducible.
+
+Everything scored here is scored on 128 images of COCO val2017 and the
+notebook says so beside every number.
+"""
+
+from __future__ import annotations
+
+import nbformat as nbf
+
+
+def md(text: str) -> nbf.NotebookNode:
+    return nbf.v4.new_markdown_cell(text.strip("\n"))
+
+
+def code(text: str) -> nbf.NotebookNode:
+    return nbf.v4.new_code_cell(text.strip("\n"))
+
+
+HEADER = """
+# Scoring a box, scoring a detector
+
+**Lecture 18 · Fix** · Géron, Chapter 12 · *Mathematical thread: IoU's
+vanishing gradient, and mAP as a mean of a mean*
+
+Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
+
+---
+
+**How to use this notebook.** Read before you run. The cell marked
+**⚠ read before running** contains the defect this lecture is about: an IoU
+function that reports two boxes 200 pixels apart as a perfect match.
+
+**The corpus is 128 images** of COCO's 5,000-image `val2017` split. Every mAP
+below is a measurement on 128 images. torchvision reports 37.0 box mAP for the
+same weights on all 5,000, and we compare against it at the end — because a
+score without its sample size is not a score.
+"""
+
+SETUP = '''
+# --- setup -------------------------------------------------------------------
+import sys, json, time, itertools, urllib.request, zipfile, io, collections
+from pathlib import Path
+
+import numpy as np
+import torch, torchvision
+import matplotlib.pyplot as plt
+from PIL import Image
+
+print(f"python       {sys.version.split()[0]}")
+print(f"torch        {torch.__version__}")
+print(f"torchvision  {torchvision.__version__}")
+
+RANDOM_STATE = 42
+np.random.seed(RANDOM_STATE)
+torch.manual_seed(RANDOM_STATE)
+
+DEVICE = ("cuda" if torch.cuda.is_available()
+          else "mps" if torch.backends.mps.is_available() else "cpu")
+print(f"device       {DEVICE}")
+
+N_IMAGES = 128
+DATA = Path("datasets/coco")
+DATA.mkdir(parents=True, exist_ok=True)
+'''
+
+RELOAD = '''
+# --- the same corpus as the previous lecture ---------------------------------
+# Reloaded from scratch. The seed and the "128 lowest ids" rule guarantee the
+# same 128 images, so the numbers below are comparable with Lecture 17's.
+ANN = DATA / "instances_val2017.json"
+IMG_DIR = DATA / "images"
+IMG_DIR.mkdir(exist_ok=True)
+
+if not ANN.is_file():
+    url = ("http://images.cocodataset.org/annotations/"
+           "annotations_trainval2017.zip")
+    print(f"downloading annotations (~241 MB)")     # ⏱ 60-90 s, once
+    blob = urllib.request.urlopen(url).read()
+    with zipfile.ZipFile(io.BytesIO(blob)) as z:
+        ANN.write_bytes(z.read("annotations/instances_val2017.json"))
+
+raw = json.loads(ANN.read_text())
+images = sorted(raw["images"], key=lambda i: i["id"])[:N_IMAGES]
+ids = {im["id"] for im in images}
+cat_name = {c["id"]: c["name"] for c in raw["categories"]}
+
+for im in images:
+    p = IMG_DIR / im["file_name"]
+    if not p.is_file():
+        urllib.request.urlretrieve(
+            "http://images.cocodataset.org/val2017/" + im["file_name"], p)
+
+gt, n_crowd = {i: {"boxes": [], "labels": []} for i in ids}, 0
+for a in raw["annotations"]:
+    if a["image_id"] not in ids:
+        continue
+    if a["iscrowd"]:
+        n_crowd += 1
+        continue
+    x, y, w, h = a["bbox"]                       # COCO is x, y, w, h
+    gt[a["image_id"]]["boxes"].append([x, y, x + w, y + h])
+    gt[a["image_id"]]["labels"].append(a["category_id"])
+
+for g in gt.values():
+    g["boxes"] = np.asarray(g["boxes"], dtype=float).reshape(-1, 4)
+    g["labels"] = np.asarray(g["labels"], dtype=np.int64)
+
+n_true = np.array([len(gt[im["id"]]["labels"]) for im in images])
+assert len(gt) == N_IMAGES and n_true.sum() == 898, n_true.sum()
+print(f"{N_IMAGES} images, {n_true.sum()} objects, {n_crowd} crowd regions "
+      f"dropped — identical to the previous lecture")
+'''
+
+
+def build() -> list:
+    return [
+        md(HEADER),
+        md("## 1 · Setup"), code(SETUP),
+        md("## 2 · The same 128 images"), code(RELOAD),
+
+        # ------------------------------------------------ thread, part 1
+        md("""
+## 3 · Thread 9, part 1 — intersection over union
+
+Last time you were asked for a number that says how right a box is. It has to
+
+1. be 1 for identical boxes and 0 for disjoint ones,
+2. punish a box for being **too large**,
+3. punish a box for being **too small**,
+4. be dimensionless.
+
+Requirement 2 forces the predicted area into the denominator; requirement 3
+forces the true area in too; requirement 4 forces the numerator to be an area.
+There is essentially one candidate:
+
+$$\\mathrm{IoU}(A,B) \\;=\\; \\frac{|A \\cap B|}{|A \\cup B|}
+  \\;=\\; \\frac{|A \\cap B|}{|A| + |B| - |A \\cap B|}$$
+"""),
+        code('''
+def iou(a, b):
+    """IoU of two corner-form boxes [x1, y1, x2, y2].
+
+    The clip is not defensive programming. Without it two disjoint boxes give
+    a negative width AND a negative height, whose product is a positive
+    "intersection".
+    """
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    lt = np.maximum(a[:2], b[:2])
+    rb = np.minimum(a[2:], b[2:])
+    wh = np.clip(rb - lt, 0.0, None)
+    inter = wh[0] * wh[1]
+    area_a = (a[2] - a[0]) * (a[3] - a[1])
+    area_b = (b[2] - b[0]) * (b[3] - b[1])
+    return float(inter / (area_a + area_b - inter))
+
+box = np.array([0.0, 0.0, 100.0, 100.0])
+assert iou(box, box) == 1.0
+assert iou(box, box + np.array([100, 0, 100, 0])) == 0.0      # edge to edge
+assert abs(iou(box, box + np.array([50, 0, 50, 0])) - 1 / 3) < 1e-12
+
+for name, other in [("identical",        box),
+                    ("half overlapping", box + [50, 0, 50, 0]),
+                    ("edge to edge",     box + [100, 0, 100, 0]),
+                    ("300 px away",      box + [300, 0, 300, 0])]:
+    print(f"{name:18s} IoU = {iou(box, other):.3f}")
+'''),
+
+        # ------------------------------------------------ assistant failure
+        md("""
+### 3.1 · An assistant writes this function
+
+> *"Write a NumPy function that takes two bounding boxes in `[x1, y1, x2, y2]`
+> format and returns their intersection over union."*
+
+**⚠ Read before running.** Format specified, library specified, return value
+specified — a better prompt than most. One thing is missing.
+"""),
+        code('''
+def iou_broken(a, b):
+    x1 = max(a[0], b[0]);  y1 = max(a[1], b[1])
+    x2 = min(a[2], b[2]);  y2 = min(a[3], b[3])
+
+    inter = (x2 - x1) * (y2 - y1)              # <- no clamp
+    area_a = (a[2] - a[0]) * (a[3] - a[1])
+    area_b = (b[2] - b[0]) * (b[3] - b[1])
+    return inter / (area_a + area_b - inter)
+
+# every test a reasonable person writes first is a pair of OVERLAPPING boxes
+print(iou_broken([0, 0, 100, 100], [50, 0, 150, 100]))     # 0.333... correct
+print(iou_broken([0, 0, 100, 100], [10, 10, 110, 110]))    # 0.680... correct
+'''),
+        md("""
+### Test against a case whose answer you know
+
+*What does it return for two boxes that do not touch?*
+"""),
+        code('''
+print("one axis apart :", iou_broken([0, 0, 100, 100], [300, 0, 400, 100]))
+print("both axes, 150 :", iou_broken([0, 0, 100, 100], [150, 150, 250, 250]))
+print("both axes, 200 :", iou_broken([0, 0, 100, 100], [200, 200, 300, 300]))
+print("\\nThe last line reports two boxes 200 px apart in BOTH directions")
+print("as a perfect match. Two negative differences multiply to a positive.")
+'''),
+        md("""
+Plot it and the failure is undeniable: the broken function is symmetric about
+100 pixels, so it reports **more** overlap the further apart the boxes get.
+"""),
+        code('''
+d = np.arange(0, 201, 10, dtype=float)
+ok  = [iou(box, box + [x, x, x, x]) for x in d]
+bad = [iou_broken(box, box + np.array([x, x, x, x])) for x in d]
+
+plt.figure(figsize=(9, 3.6))
+plt.plot(d, ok,  color="#14663a", lw=3, marker="o", ms=4,
+         label="IoU, with the clamp")
+plt.plot(d, bad, color="#c0392b", lw=3, ls="--", marker="s", ms=4,
+         label="IoU, clamp removed")
+plt.axvline(100, color="#4b5563", lw=1.2, ls=":")
+plt.xlabel("diagonal separation of two 100 x 100 boxes (pixels)")
+plt.ylabel("reported overlap"); plt.legend(); plt.grid(alpha=0.3)
+plt.title("the boxes are disjoint beyond 100 px; one curve does not know")
+plt.tight_layout(); plt.show()
+
+print(f"broken value at 200 px apart: {bad[-1]:.3f}   (should be 0.000)")
+'''),
+        md("""
+### The corrected specification
+
+> *"… returns their intersection over union. **Clamp the overlap width and
+> height at zero.** Include tests for identical boxes, boxes sharing an edge,
+> **boxes separated along one axis** and **boxes separated along both axes**.
+> **Assert that the result is always in [0, 1].**"*
+
+The last assertion is the one that fails immediately, on the first disjoint
+pair, without anyone having to think of the diagonal case.
+"""),
+        code('''
+def iou_checked(a, b):
+    v = iou(a, b)
+    assert 0.0 <= v <= 1.0, f"IoU out of range: {v}"
+    return v
+
+# state the PROPERTY, not the values: zero if and only if disjoint on some axis
+n_checked = 0
+for dx, dy in itertools.product([0, 50, 100, 150, 200], repeat=2):
+    other = box + np.array([dx, dy, dx, dy])
+    v = iou_checked(box, other)
+    assert (v == 0.0) == (dx >= 100 or dy >= 100), (dx, dy, v)
+    n_checked += 1
+print(f"{n_checked} pairs checked, property holds")
+
+# and the broken one fails the same loop
+try:
+    for dx, dy in itertools.product([0, 200], repeat=2):
+        v = iou_broken(box, box + np.array([dx, dy, dx, dy]))
+        assert 0.0 <= v <= 1.0 and (v == 0.0) == (dx >= 100 or dy >= 100)
+    print("broken version passed — it should not have")
+except AssertionError:
+    print("broken version fails the property test, as it must")
+'''),
+
+        # ------------------------------------------------ vanishing gradient
+        md("""
+## 4 · Thread 9, part 2 — the gradient that is not there
+
+IoU does three jobs: matching, suppression, and serving as a loss. Only the
+third needs a derivative, and that is the one that breaks.
+
+Pull two 100 × 100 boxes apart and ask autograd for the derivative at each
+separation. Nothing here depends on a dataset: the conclusion is a property of
+the formula.
+"""),
+        code('''
+def t_iou(a, b):
+    lt = torch.maximum(a[:2], b[:2])
+    rb = torch.minimum(a[2:], b[2:])
+    wh = torch.clamp(rb - lt, min=0.0)
+    inter = wh[0] * wh[1]
+    area_a = (a[2] - a[0]) * (a[3] - a[1])
+    area_b = (b[2] - b[0]) * (b[3] - b[1])
+    return inter / (area_a + area_b - inter)
+
+def t_giou(a, b):
+    v = t_iou(a, b)
+    lt_c = torch.minimum(a[:2], b[:2]); rb_c = torch.maximum(a[2:], b[2:])
+    wh_c = torch.clamp(rb_c - lt_c, min=0.0)
+    area_c = wh_c[0] * wh_c[1]
+    lt_i = torch.maximum(a[:2], b[:2]); rb_i = torch.minimum(a[2:], b[2:])
+    wh_i = torch.clamp(rb_i - lt_i, min=0.0)
+    inter = wh_i[0] * wh_i[1]
+    union = ((a[2] - a[0]) * (a[3] - a[1])
+             + (b[2] - b[0]) * (b[3] - b[1]) - inter)
+    return v - (area_c - union) / area_c
+
+A = torch.tensor([0.0, 0.0, 100.0, 100.0], dtype=torch.float64)
+
+rows = []
+for dv in np.arange(0, 301, 10, dtype=float):
+    d = torch.tensor(dv, dtype=torch.float64, requires_grad=True)
+    B = torch.stack([d, torch.zeros_like(d),
+                     d + 100.0, torch.full_like(d, 100.0)])
+    vals = {}
+    for nm, fn in (("iou", t_iou), ("giou", t_giou)):
+        v = fn(A, B)
+        g, = torch.autograd.grad(v, d)
+        vals[nm] = (float(v.detach()), float(g))
+    rows.append((dv, vals["iou"][0], vals["iou"][1],
+                 vals["giou"][0], vals["giou"][1]))
+
+print(f"{'d':>5s} {'IoU':>8s} {'dIoU/dd':>10s} {'GIoU':>8s} {'dGIoU/dd':>10s}")
+for dv, i, gi, g, gg in rows[::5]:
+    print(f"{dv:5.0f} {i:8.3f} {gi:10.5f} {g:8.3f} {gg:10.5f}")
+'''),
+        md("""
+Read rows four and five. Two boxes 150 px apart and two boxes 300 px apart are,
+to IoU, **exactly equally wrong** — same value, same gradient, and the gradient
+is not small but zero.
+
+Assert it rather than eyeballing it:
+"""),
+        code('''
+past = [r for r in rows if r[0] > 100]
+assert all(r[1] == 0.0 for r in past), "IoU should be identically zero"
+assert all(r[2] == 0.0 for r in past), "and so should its gradient"
+assert all(r[4] < 0.0 for r in past), "GIoU should still be descending"
+print(f"{len(past)} separations past 100 px:")
+print(f"  max IoU there          {max(r[1] for r in past):.6f}")
+print(f"  max |dIoU/dd| there    {max(abs(r[2]) for r in past):.6f}")
+print(f"  GIoU at 300 px         {past[-1][3]:.3f}")
+print(f"  dGIoU/dd at 300 px     {past[-1][4]:.5f}")
+'''),
+        md("""
+### Why it is exactly zero, not merely small
+
+For $d \\geq 100$ the overlap width is $\\max(0, 100 - d) = 0$, so the
+intersection is identically zero, so IoU is **constant** on the whole disjoint
+region. A constant has no descent direction — not a weak one, none. No
+optimiser, learning rate or initialisation repairs that.
+
+### The repairs
+
+$$\\mathrm{GIoU} = \\mathrm{IoU} - \\frac{|C| - |A \\cup B|}{|C|}, \\qquad
+  \\mathrm{CIoU} = \\mathrm{IoU} - \\frac{\\rho^2}{\\ell^2} - \\alpha v$$
+
+where $C$ is the smallest box containing both, $\\rho$ is the distance between
+centres, $\\ell$ is the diagonal of $C$, and $v$ measures aspect-ratio
+disagreement. When the boxes are disjoint and move apart, $|C|$ grows and
+$|A \\cup B|$ does not, so the penalty grows.
+"""),
+        code('''
+def t_ciou(a, b):
+    v = t_iou(a, b)
+    ca = torch.stack([(a[0] + a[2]) / 2, (a[1] + a[3]) / 2])
+    cb = torch.stack([(b[0] + b[2]) / 2, (b[1] + b[3]) / 2])
+    rho2 = ((ca - cb) ** 2).sum()
+    lt = torch.minimum(a[:2], b[:2]); rb = torch.maximum(a[2:], b[2:])
+    c2 = ((rb - lt) ** 2).sum()
+    wa, ha = a[2] - a[0], a[3] - a[1]
+    wb, hb = b[2] - b[0], b[3] - b[1]
+    vv = (4 / torch.pi ** 2) * (torch.atan(wa / ha) - torch.atan(wb / hb)) ** 2
+    alpha = vv / (1 - v + vv + 1e-12)
+    return v - rho2 / c2 - alpha * vv
+
+same_shape = torch.tensor([120.0, 0.0, 220.0, 100.0], dtype=torch.float64)
+thin       = torch.tensor([120.0, 0.0, 320.0,  50.0], dtype=torch.float64)
+
+for nm, B in (("same shape 100x100", same_shape), ("different 200x50", thin)):
+    print(f"{nm:20s} IoU {float(t_iou(A, B)):6.3f}   "
+          f"CIoU {float(t_ciou(A, B)):7.3f}")
+print("\\nThe aspect term is exactly zero when the shapes agree, which is why")
+print("it is invisible in the figure above: every pair there is square.")
+'''),
+        md("""
+**An honest caveat.** GIoU and CIoU are *losses*: their value is in the
+backward pass of a detector you are fitting. Nothing in this application fits a
+detector, so what you have just seen is a property of the functions rather than
+a measured improvement in a model we built. The rest of the notebook is about
+the evaluation, which we *can* measure.
+"""),
+
+        # ------------------------------------------------ AP
+        md("""
+## 5 · Thread 9, part 3 — average precision
+
+⏱ **about 40 seconds** on a GPU or MPS, several minutes on CPU: the same
+detector as last lecture, over the same 128 images.
+"""),
+        code('''
+from torchvision.models.detection import (
+    fasterrcnn_resnet50_fpn, FasterRCNN_ResNet50_FPN_Weights)
+
+weights = FasterRCNN_ResNet50_FPN_Weights.COCO_V1
+model = fasterrcnn_resnet50_fpn(weights=weights).eval().to(DEVICE)
+preprocess = weights.transforms()
+names = weights.meta["categories"]
+
+t0 = time.time()
+preds = {}
+with torch.inference_mode():
+    for im in images:
+        img = Image.open(IMG_DIR / im["file_name"]).convert("RGB")
+        out = model([preprocess(img).to(DEVICE)])[0]
+        preds[im["id"]] = {k: v.cpu().numpy().astype(float)
+                           for k, v in out.items()}
+        preds[im["id"]]["labels"] = preds[im["id"]]["labels"].astype(np.int64)
+
+assert len(preds) == N_IMAGES
+print(f"{N_IMAGES} images in {time.time() - t0:.1f} s on {DEVICE}")
+'''),
+        md("""
+### 5.1 · Matching, precision, recall
+
+A detector is a **ranking** — Lecture 4's shape of problem. For one class and
+one IoU threshold:
+
+1. sort every detection of that class, over the whole corpus, by score;
+2. walk down the list; for each detection find the best **unmatched**
+   annotation in the same image;
+3. IoU at least $t$ → true positive, and that annotation is now used up.
+   Otherwise → false positive.
+
+Step 2's word *unmatched* is what makes a second box on the same bottle a false
+positive rather than a second success.
+"""),
+        code('''
+def iou_many(one, many):
+    """IoU of one box against an (M, 4) array of boxes."""
+    if len(many) == 0:
+        return np.zeros(0)
+    lt = np.maximum(one[:2], many[:, :2])
+    rb = np.minimum(one[2:], many[:, 2:])
+    wh = np.clip(rb - lt, 0.0, None)
+    inter = wh[:, 0] * wh[:, 1]
+    area_1 = (one[2] - one[0]) * (one[3] - one[1])
+    area_m = (many[:, 2] - many[:, 0]) * (many[:, 3] - many[:, 1])
+    return inter / np.maximum(area_1 + area_m - inter, 1e-12)
+
+
+def pr_curve(cls, t):
+    """Cumulative precision and recall for one class at one IoU threshold."""
+    n_gt, gt_by_img = 0, {}
+    for iid, g in gt.items():
+        m = g["labels"] == cls
+        gt_by_img[iid] = g["boxes"][m]
+        n_gt += int(m.sum())
+
+    rows = []
+    for iid, p in preds.items():
+        m = p["labels"] == cls
+        rows += [(float(s), iid, b) for b, s in zip(p["boxes"][m],
+                                                    p["scores"][m])]
+    rows.sort(key=lambda r: -r[0])
+
+    used = {iid: np.zeros(len(g), bool) for iid, g in gt_by_img.items()}
+    tp = np.zeros(len(rows))
+    for k, (_s, iid, b) in enumerate(rows):
+        g = gt_by_img[iid]
+        free = ~used[iid]
+        if len(g) and free.any():
+            v = iou_many(b, g[free])
+            j = int(v.argmax())
+            if v[j] >= t:
+                tp[k] = 1.0
+                used[iid][np.flatnonzero(free)[j]] = True
+    ctp = tp.cumsum()
+    cfp = (1.0 - tp).cumsum()
+    return ctp / max(n_gt, 1), ctp / np.maximum(ctp + cfp, 1e-12), n_gt
+
+
+recall, precision, n_gt = pr_curve(cls=1, t=0.5)          # 1 == person
+print(f"person: {n_gt} annotations, {len(precision)} detections in the ranking")
+print(f"true positives: {int(round(precision[-1] * len(precision)))}")
+print(f"highest recall reached: {recall[-1]:.3f}")
+'''),
+        md("""
+### 5.2 · Precision is not monotone — Lecture 4, on boxes
+
+Classify every step of the ranking exactly, the way Lecture 4 did for MNIST.
+"""),
+        code('''
+step = np.diff(precision)
+down = int((step < -1e-12).sum())
+up   = int((step >  1e-12).sum())
+flat = int((np.abs(step) <= 1e-12).sum())
+n_tp = int(round(precision[-1] * len(precision)))
+n_fp = len(precision) - n_tp
+
+print(f"steps down (precision falls) : {down}")
+print(f"steps up   (precision rises) : {up}")
+print(f"steps flat (already at 1)    : {flat}")
+print(f"total steps                  : {down + up + flat}")
+
+# the identity: every FP is a step down; every TP but the first is up or flat
+assert down == n_fp, (down, n_fp)
+assert up + flat == n_tp - 1, (up, flat, n_tp)
+assert down + up + flat == len(precision) - 1
+print(f"\\nfalse positives = {n_fp} = steps down, exactly")
+print(f"true positives  = {n_tp}, less the one at the top of the ranking,")
+print(f"                  = {n_tp - 1} = {up} up + {flat} flat")
+
+leading = int(np.flatnonzero(precision < 1.0)[0])
+print(f"\\nthe {flat} flat steps are one run: the top {leading} person")
+print("detections in the whole corpus are all correct")
+'''),
+        md("""
+### 5.3 · The repair Lecture 4 promised
+
+Lecture 4 proved precision has no monotone envelope you can rely on. Average
+precision is defined using the **maximum precision at or above each recall
+level**, and that maximum exists for exactly one reason: to replace a
+non-monotone quantity by a monotone one.
+
+$$p_{\\text{env}}(r) = \\max_{\\tilde r \\geq r} p(\\tilde r),
+  \\qquad \\mathrm{AP} = \\int_0^1 p_{\\text{env}}(r)\\,\\mathrm{d}r$$
+
+No threshold appears anywhere. That is the whole point.
+"""),
+        code('''
+def envelope(p):
+    """Maximum precision at or above each recall level. One sweep, right to
+    left. Monotone non-increasing by construction."""
+    out = np.asarray(p, float).copy()
+    for i in range(len(out) - 2, -1, -1):
+        out[i] = max(out[i], out[i + 1])
+    return out
+
+
+def average_precision(precision, recall):
+    """Area under the enveloped curve — the all-point definition."""
+    if len(precision) == 0:
+        return 0.0
+    mrec = np.concatenate([[0.0], recall, [recall[-1]]])
+    mpre = envelope(np.concatenate([[0.0], precision, [0.0]]))
+    idx = np.flatnonzero(mrec[1:] != mrec[:-1])
+    return float(((mrec[idx + 1] - mrec[idx]) * mpre[idx + 1]).sum())
+
+
+# check it on a case you can do by hand: 4 detections, 2 annotations,
+# labels TP, FP, TP, FP in score order.
+#   after 1: P=1,   R=0.5
+#   after 2: P=0.5, R=0.5
+#   after 3: P=2/3, R=1.0
+#   after 4: P=0.5, R=1.0
+# envelope: max precision at recall >= 0.5 is 1 ... but at recall 1.0 it is 2/3
+# AP = (0.5 - 0) * 1.0 + (1.0 - 0.5) * (2/3) = 0.5 + 1/3 = 0.8333...
+hand_p = np.array([1.0, 0.5, 2 / 3, 0.5])
+hand_r = np.array([0.5, 0.5, 1.0, 1.0])
+assert abs(average_precision(hand_p, hand_r) - (0.5 + 1 / 3)) < 1e-12
+print("hand-computable case passes:",
+      f"{average_precision(hand_p, hand_r):.4f}")
+
+ap_person = average_precision(precision, recall)
+print(f"\\nAP for person at IoU 0.5, on 128 images: {ap_person:.3f}")
+'''),
+        md("""
+### 5.4 · Draw it
+"""),
+        code('''
+env = envelope(precision)
+
+fig, axes = plt.subplots(1, 2, figsize=(13, 4))
+ax = axes[0]
+ax.step(recall, precision, where="post", color="#c0392b", lw=2,
+        label="precision as measured")
+ax.step(recall, env, where="post", color="#14663a", lw=2.6,
+        label="max precision at or above")
+ax.fill_between(recall, 0, env, step="post", color="#14663a", alpha=0.12)
+ax.set_xlabel("recall"); ax.set_ylabel("precision"); ax.set_ylim(0, 1.05)
+ax.set_title(f"person, IoU >= 0.5, AP = {ap_person:.3f}")
+ax.legend(loc="lower left"); ax.grid(alpha=0.3)
+
+ax = axes[1]
+lo, hi = 50, 140
+k = np.arange(lo + 1, hi + 1)
+ax.plot(k, precision[lo:hi], color="#c0392b", lw=2, marker="o", ms=3,
+        label="precision")
+ax.step(k, env[lo:hi], where="post", color="#14663a", lw=2.4,
+        label="its maximum")
+ax.set_xlabel("detections accepted, in score order")
+ax.set_ylabel("precision")
+ax.set_title("the sawtooth, and the staircase that repairs it")
+ax.legend(loc="lower left"); ax.grid(alpha=0.3)
+plt.tight_layout(); plt.show()
+'''),
+
+        # ------------------------------------------------ mAP
+        md("""
+## 6 · Thread 9, part 4 — mAP, a mean of a mean
+
+⏱ **about 60 seconds**: 73 classes × 10 IoU thresholds.
+"""),
+        code('''
+present = sorted({int(c) for g in gt.values() for c in g["labels"]})
+print(f"{len(present)} of COCO's 80 categories appear in our 128 images")
+
+IOU_TS = np.round(np.arange(0.50, 0.96, 0.05), 2)
+
+t0 = time.time()
+ap = {}                                    # ap[(class, t)] -> AP
+for t in IOU_TS:
+    for c in present:
+        r, p, n = pr_curve(c, float(t))
+        if n:
+            ap[(c, float(t))] = average_precision(p, r)
+print(f"{len(ap)} class-threshold pairs in {time.time() - t0:.0f} s")
+
+map_at = {float(t): float(np.mean([ap[(c, float(t))] for c in present
+                                   if (c, float(t)) in ap]))
+          for t in IOU_TS}
+
+print(f"\\nmAP @ 0.50            {map_at[0.50]:.3f}")
+print(f"mAP @ 0.75            {map_at[0.75]:.3f}")
+print(f"mAP @ [0.50:0.95]     {np.mean(list(map_at.values())):.3f}")
+print("\\n...all on 128 images, and 73 classes.")
+'''),
+        md("""
+### 6.1 · What the first mean hides
+"""),
+        code('''
+per50 = sorted(((names[c], ap[(c, 0.5)]) for c in present if (c, 0.5) in ap),
+               key=lambda r: -r[1])
+inst = collections.Counter()
+for g in gt.values():
+    for c in g["labels"]:
+        inst[names[int(c)]] += 1
+
+m50 = map_at[0.50]
+perfect = [n for n, v in per50 if v == 1.0]
+print(f"classes scoring exactly 1.000: {len(perfect)}")
+print("  and their instance counts:",
+      sorted(inst[n] for n in perfect))
+print(f"\\nbest   {per50[0][0]:12s} {per50[0][1]:.3f} "
+      f"({inst[per50[0][0]]} instances)")
+print(f"median {'':12s} {np.median([v for _n, v in per50]):.3f}")
+print(f"mean   {'= the mAP':12s} {m50:.3f}")
+print(f"worst  {per50[-1][0]:12s} {per50[-1][1]:.3f} "
+      f"({inst[per50[-1][0]]} instances)")
+print(f"\\nclasses below the mean: {sum(1 for _n, v in per50 if v < m50)}")
+print("A class with one annotation scores 1.000 or 0.000 and nothing")
+print("between, and it weighs as much in the mean as person with 350.")
+'''),
+        md("""
+### 6.2 · What the second mean hides
+"""),
+        code('''
+plt.figure(figsize=(9, 3.6))
+plt.plot(IOU_TS, [map_at[float(t)] for t in IOU_TS], color="#0b3d62", lw=3,
+         marker="o")
+plt.axhline(np.mean(list(map_at.values())), color="#6c3483", ls="--", lw=2,
+            label=f"mean over the ten = {np.mean(list(map_at.values())):.3f}")
+plt.xlabel("IoU threshold at which a detection counts as correct")
+plt.ylabel("mAP over the 73 classes present")
+plt.legend(); plt.grid(alpha=0.3)
+plt.title("128 images: 0.659 at the loosest threshold, 0.040 at the tightest")
+plt.tight_layout(); plt.show()
+
+print(f"mAP at 0.50: {map_at[0.50]:.3f}")
+print(f"mAP at 0.95: {map_at[0.95]:.3f}")
+print("One number in the middle stands for both.")
+'''),
+
+        # ------------------------------------------------ second failure
+        md("""
+## 7 · The second silent failure: per-image averaging
+
+An assistant asked to *"report mAP over the dataset"* will sometimes compute AP
+for each image and average those. It runs, and it is worth a great deal of free
+mAP.
+
+⏱ **about 30 seconds.**
+"""),
+        code('''
+# ⚠ read before running — this is the WRONG way, on purpose
+all_preds, all_gt = preds, gt
+per_image = []
+for im in images:
+    iid = im["id"]
+    preds, gt = {iid: all_preds[iid]}, {iid: all_gt[iid]}       # one image
+    vals = []
+    for c in sorted({int(x) for x in all_gt[iid]["labels"]}):
+        r, p, n = pr_curve(c, 0.5)
+        if n:
+            vals.append(average_precision(p, r))
+    if vals:
+        per_image.append(float(np.mean(vals)))
+preds, gt = all_preds, all_gt                                    # put it back
+
+wrong = float(np.mean(per_image))
+print(f"accumulated over the corpus, correctly : {m50:.3f}")
+print(f"computed per image, then averaged      : {wrong:.3f}")
+print(f"free mAP                               : {wrong - m50:+.3f}")
+assert wrong > m50, "the per-image version should be optimistic"
+'''),
+        md("""
+This is *the metric averaged per batch rather than over the set* — the same
+entry in the course's silent-failure catalogue you met in Lecture 12, wearing
+detection clothes.
+
+Why it inflates: a single image usually contains one or two classes and a
+handful of objects, so its own AP is often exactly 1.0. Averaging a lot of easy
+1.0s is not the same as ranking every detection in the corpus against every
+other.
+"""),
+
+        # ------------------------------------------------ NMS
+        md("""
+## 8 · Non-maximum suppression
+
+The detector you ran had already thrown away nine tenths of its own output
+before you saw it, using IoU, at a threshold you did not set.
+
+⏱ **about 60 seconds**: the same 128 images with suppression switched off.
+"""),
+        code('''
+from torchvision.ops import batched_nms
+
+raw_model = fasterrcnn_resnet50_fpn(
+    weights=weights, box_score_thresh=0.05, box_nms_thresh=1.0,
+    box_detections_per_img=300).eval().to(DEVICE)
+
+t0 = time.time()
+raw_preds = {}
+with torch.inference_mode():
+    for im in images:
+        img = Image.open(IMG_DIR / im["file_name"]).convert("RGB")
+        out = raw_model([preprocess(img).to(DEVICE)])[0]
+        raw_preds[im["id"]] = {k: v.cpu().numpy() for k, v in out.items()}
+print(f"{time.time() - t0:.0f} s")
+
+n_raw = np.mean([len(p["scores"]) for p in raw_preds.values()])
+n_sup = np.mean([len(p["scores"]) for p in preds.values()])
+print(f"\\ncandidate boxes per image, no suppression : {n_raw:.1f}")
+print(f"after suppression at IoU 0.5              : {n_sup:.1f}")
+print(f"actual objects per image                  : {n_true.mean():.2f}")
+'''),
+        code('''
+# the rule, applied by hand at several thresholds
+for t in [0.1, 0.3, 0.5, 0.7, 0.9]:
+    kept = []
+    for iid, p in raw_preds.items():
+        keep = batched_nms(torch.tensor(p["boxes"]),
+                           torch.tensor(p["scores"]),
+                           torch.tensor(p["labels"]), t).numpy()
+        kept.append(len(keep))
+    print(f"NMS IoU {t:.1f} -> {np.mean(kept):6.1f} boxes per image")
+
+print("\\nToo low and two people standing close together become one person.")
+print("Too high and every object keeps its duplicates. It is another knob.")
+'''),
+
+        # ------------------------------------------------ segmentation
+        md("""
+## 9 · Per-pixel prediction
+
+A box was always an approximation: a bicycle's box is mostly not bicycle. Ask
+instead for a label on every pixel.
+
+* **Semantic** segmentation: one class per pixel. Two people standing together
+  are one `person` region and you cannot count them.
+* **Instance** segmentation: one mask per object. You can.
+
+Mask R-CNN is Faster R-CNN with one extra head. Two lines away from what you
+already ran.
+
+⏱ **about 20 seconds**, including the weight download the first time.
+"""),
+        code('''
+from torchvision.models.detection import (
+    maskrcnn_resnet50_fpn, MaskRCNN_ResNet50_FPN_Weights)
+
+mw = MaskRCNN_ResNet50_FPN_Weights.COCO_V1
+mask_model = maskrcnn_resnet50_fpn(weights=mw).eval().to(DEVICE)
+print("torchvision's reported scores on all 5,000 val2017 images:",
+      mw.meta["_metrics"])
+
+# the busiest image in the corpus
+busy = max(images, key=lambda im: len(gt[im["id"]]["labels"]))["id"]
+im = next(i for i in images if i["id"] == busy)
+pic = Image.open(IMG_DIR / im["file_name"]).convert("RGB")
+
+with torch.inference_mode():
+    out = mask_model([mw.transforms()(pic).to(DEVICE)])[0]
+
+masks = out["masks"][:, 0].cpu().numpy()
+labels = out["labels"].cpu().numpy()
+scores = out["scores"].cpu().numpy()
+print(f"\\nmasks shape {out['masks'].shape}  -- (N, 1, H, W), soft in [0, 1]")
+keep = np.flatnonzero(scores >= 0.7)
+print(f"{len(keep)} objects at score >= 0.7, "
+      f"{len(set(labels[keep]))} distinct classes")
+'''),
+        code('''
+base = np.asarray(pic, dtype=float) / 255.0
+palette = plt.get_cmap("tab10")
+
+inst = base.copy()
+for k, j in enumerate(keep):
+    inst = inst * (1 - 0.55 * masks[j][..., None]) \\
+         + 0.55 * masks[j][..., None] * np.array(palette(k % 10)[:3])
+
+sem, colour = base.copy(), {}
+for j in keep:
+    c = int(labels[j])
+    colour.setdefault(c, np.array(palette(len(colour) % 10)[:3]))
+    sem = sem * (1 - 0.55 * masks[j][..., None]) \\
+        + 0.55 * masks[j][..., None] * colour[c]
+
+fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+for ax, img, ttl in zip(axes, [base, sem, inst],
+                        ["the image",
+                         f"semantic: {len(colour)} classes",
+                         f"instance: {len(keep)} objects"]):
+    ax.imshow(np.clip(img, 0, 1)); ax.set_title(ttl, fontsize=10, loc="left")
+    ax.set_xticks([]); ax.set_yticks([])
+plt.tight_layout(); plt.show()
+'''),
+        md("""
+### 9.1 · And the annotation for that image
+
+Look at what COCO actually recorded for it, and at what the detector found.
+"""),
+        code('''
+here = [a for a in raw["annotations"] if a["image_id"] == busy]
+by = collections.Counter((cat_name[a["category_id"]], a["iscrowd"])
+                         for a in here)
+print(f"detector finds  {len(keep)} objects at score >= 0.7")
+print("COCO annotates:")
+for (nm, crowd), k in by.most_common():
+    print(f"  {nm:10s} {k:3d}" + ("   (crowd region)" if crowd else ""))
+print("\\nThe detector is probably right and the ground truth is probably not")
+print("wrong. They answer different questions, and every metric in this")
+print("lecture is measured against the annotator's decision.")
+'''),
+
+        md("""
+## 10 · Where we ended up
+
+| Application 9, 128 images of COCO val2017 | Value |
+|---|---|
+| Count MAE, the metric we committed to | 3.00 |
+| mAP at IoU 0.50 | **0.659** |
+| mAP averaged 0.50 to 0.95 | **0.439** |
+| The same weights on all 5,000 images | 0.370 |
+
+The first row is not wrong; it is blind. The last row is the one that keeps the
+other two honest: our number is **6.9 points higher for an identical model**,
+and the difference is the sample rather than the detector.
+
+## 11 · Red-team
+
+Swap notebooks. Fifteen minutes. Five questions:
+
+1. What touched the test set? *(was any threshold chosen by looking at the
+   128?)*
+2. What was fitted, and on what?
+3. What is the shape here? *(`masks` is `(N, 1, H, W)`; indexing it as
+   `(N, H, W)` silently gives you the first object)*
+4. What was dropped — rows, columns, NaNs? Count them. *(8 crowd regions, and
+   every detection below the score cut-off)*
+5. What is the default I did not ask for? *(score 0.05, NMS 0.5, 100 detections
+   per image, IoU 0.5 for matching)*
+
+Three bugs to hunt for by name:
+
+* **The missing clamp.** Feed their IoU function two boxes separated
+  diagonally. Eight seconds.
+* **Per-image AP.** A loop over images with an `np.mean` at the end.
+* **Corner against size.** Assert `x2 >= x1` on every box in the notebook.
+
+All three run. All three produce a plausible number. Two of the three make the
+score look better.
+"""),
+    ]
