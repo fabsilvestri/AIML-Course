@@ -1243,6 +1243,10 @@ def main() -> int:
                        title="the two most crowded images in the first forty; "
                              "labels shown for scores \u2265 0.97")
     fig_wholebox(corpus, show_ids[0], "l17-wholebox")
+    # the counts the takeaway under l17-detections-busy quotes in words
+    export(l17_busy_image={
+        "boxes_at_50": int((preds[busy_ids[0]]["scores"] >= SHOW_THRESH).sum()),
+        "gt": int(len(gt[busy_ids[0]]["labels"]))})
     fig_baseline_bars([
         ("one box per image", mae(baseline_counts, counts_true), False),
         ("every box returned", mae(counts_raw, counts_true), False),
