@@ -60,10 +60,9 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.ticker import FixedLocator, FuncFormatter, NullLocator
 
 from figkit import (ACCENT, AXIS, MATH, MUTED, PRIMARY, RULE, SMALL, SUCCESS,
-                    check_text_floor, export, save, setup)
+                    OUT, check_text_floor, export, plain_log, save, setup)
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = Path("/private/tmp/claude-501/aiml-data/app12")
@@ -796,19 +795,6 @@ def fig_catalogue(entries):
     return save(fig, "l23-catalogue", raster=True)
 
 
-def plain_log(ax, axis, ticks, fmt=lambda v: f"{v:g}"):
-    """Plain-text log tick labels.
-
-    matplotlib's log formatter writes mathtext, and `text.parse_math` is off
-    project-wide (TRICKS §9.1), so the default labels ship as the literal string
-    `$\\mathdefault{10^{-1}}$`. Set the ticks by hand instead.
-    """
-    a = ax.xaxis if axis == "x" else ax.yaxis
-    a.set_major_locator(FixedLocator(ticks))
-    a.set_minor_locator(NullLocator())
-    a.set_major_formatter(FuncFormatter(lambda v, _: fmt(v)))
-
-
 def _pair_hist(ax, matched, random_, *, title, xlabel, headroom=1.42,
                labels=("unrelated pairs", "the caption of that image")):
     lo = min(min(matched), min(random_))
@@ -966,8 +952,8 @@ def fig_concentration(co):
                    label="measured sd of the cosine")
     axes[0].loglog(co["dims"], co["theory_sd"], "--", color=AXIS, lw=2,
                    label="1 / sqrt(d)")
-    plain_log(axes[0], "x", [2, 8, 32, 128, 512, 2048], lambda v: f"{v:.0f}")
-    plain_log(axes[0], "y", [0.01, 0.03, 0.1, 0.3, 0.7])
+    plain_log(axes[0], "x", [2, 8, 32, 128, 512, 2048], "{:.0f}")
+    plain_log(axes[0], "y", [0.01, 0.03, 0.1, 0.3, 0.7], "{:g}")
     axes[0].set_xlabel("dimension d")
     axes[0].set_ylabel("sd of the cosine")
     axes[0].legend(loc="upper right")
@@ -1052,7 +1038,7 @@ def fig_temperature(ts):
                      arrowprops=dict(arrowstyle="->", color=SUCCESS),
                      bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.3"))
     axes[0].invert_xaxis()
-    plain_log(axes[0], "x", ticks)
+    plain_log(axes[0], "x", ticks, "{:g}")
     axes[0].set_xlabel("temperature tau  (colder to the right)")
     axes[0].set_ylabel("contrastive loss")
     axes[0].set_title(f"one set of {ts['n']} cosines, twelve temperatures")
@@ -1065,7 +1051,7 @@ def fig_temperature(ts):
                      label="top-1 accuracy — flat")
     axes[1].axvline(ts["learned_tau"], color=SUCCESS, ls="--", lw=1.5)
     axes[1].invert_xaxis()
-    plain_log(axes[1], "x", ticks)
+    plain_log(axes[1], "x", ticks, "{:g}")
     axes[1].set_xlabel("temperature tau")
     axes[1].set_ylabel("mean probability")
     axes[1].set_ylim(-0.03, 1.28)
@@ -1091,7 +1077,7 @@ def fig_batch(bs):
                      color=PRIMARY)
     axes[0].annotate("chance = 1/B", xy=(B[2], chance[2] + 7), fontsize=SMALL,
                      color=AXIS)
-    plain_log(axes[0], "x", B, lambda v: f"{v:.0f}")
+    plain_log(axes[0], "x", B, "{:.0f}")
     axes[0].set_xlabel("batch size B = 1 positive and B-1 negatives")
     axes[0].set_ylabel("in-batch top-1, %")
     axes[0].set_ylim(0, 112)
@@ -1101,7 +1087,7 @@ def fig_batch(bs):
                      label="measured loss")
     axes[1].semilogx(B, bs["log_chance"], "--", color=AXIS, lw=2,
                      base=2, label="log B — a scorer that knows nothing")
-    plain_log(axes[1], "x", B, lambda v: f"{v:.0f}")
+    plain_log(axes[1], "x", B, "{:.0f}")
     axes[1].set_xlabel("batch size B")
     axes[1].set_ylabel("contrastive loss")
     axes[1].set_ylim(0, max(bs["log_chance"]) * 1.32)
@@ -1198,6 +1184,76 @@ def fig_commitment(cl, base, sm):
 
 
 # ------------------------------------------------------------------------ main
+
+# Lecture 24's last 25 minutes quote a measurement from every earlier
+# application. Those numbers are not ours: their owners re-run their scripts,
+# and `substitute.py` is one-shot, so a re-measurement upstream leaves the close
+# quoting a value that no longer exists anywhere.
+#
+# `check_provenance.py` will not catch it — it only reads money amounts and
+# thousands-separated integers, so "96.9%" and "0.439" sail past, and 32,768
+# once passed only because some unrelated key happened to hold that value.
+#
+# So: (dotted path into figures.json, the format the slide uses). Every one of
+# these must still appear verbatim in the deck.
+COURSE_CLOSE = [
+    ("baseline.mean_train_rmse",                           "{:,.0f}"),
+    ("best_cv_rmse",                                       "{:,.0f}"),
+    ("never_fires_accuracy_train",                         "{:.1%}"),
+    ("headline.accuracy",                                  "{:.1%}"),
+    ("headline.missed_fives_pct",                          "{:.1f}"),
+    ("l06_final.committed_degree5_unregularised.log_loss", "{:.2f}"),
+    ("l06_final.best_unregularised_degree2.log_loss",      "{:.2f}"),
+    ("instability_disagree_mean",                          "{:.1%}"),
+    ("l09_sweep_seconds",                                  "{:.0f}"),
+    ("l10_speedup",                                        "{:.0f}"),
+    ("l12_sk_seconds",                                     "{:.0f}"),
+    ("l12_zero_grad.acc_cost_pts",                         "{:.0f}"),
+    ("app10.margins.linear.random_mae",                    "{:,.0f}"),
+    ("app10.margins.linear.honest_mae",                    "{:,.0f}"),
+    ("app10.margins.linear.gap_pct",                       "{:.1f}"),
+    ("l17_n_images",                                       "{:,.0f}"),
+    ("l17_at_50.mae",                                      "{:.1f}"),
+    ("l17_best_mae",                                       "{:.2f}"),
+    ("l18_map50",                                          "{:.3f}"),
+    ("l18_map5095",                                        "{:.3f}"),
+    ("l18_map_per_image",                                  "{:.3f}"),
+    ("l18_map_gap",                                        "{:.3f}"),
+    ("l15_n_train",                                        "{:,.0f}"),
+    ("l16_comparison.scratch_acc",                         "{:.1%}"),
+    ("l16_comparison.ft_acc",                              "{:.1%}"),
+]
+
+
+def check_course_close() -> list[str]:
+    """Every number Lecture 24 borrows from an earlier lecture, re-checked."""
+    path = OUT / "figures.json"
+    if not path.is_file():
+        return ["figures.json is missing"]
+    data = json.loads(path.read_text())
+    deck = (ROOT / "slides" / "lecture-24.html").read_text()
+
+    problems = []
+    for dotted, fmt in COURSE_CLOSE:
+        node = data
+        for part in dotted.split("."):
+            if not isinstance(node, dict) or part not in node:
+                node = None
+                break
+            node = node[part]
+        if node is None:
+            problems.append(f"{dotted}: no longer in figures.json — the lecture "
+                            f"that owns it has renamed or dropped it")
+            continue
+        rendered = fmt.format(node)
+        if rendered not in deck:
+            problems.append(
+                f"{dotted} is now {rendered}, and that string is not in "
+                f"lecture-24.html. The owning lecture re-measured; edit the "
+                f"slide to match, because the script is right and the slide is "
+                f"a bug.")
+    return problems
+
 
 def strip_heavy(d: dict) -> dict:
     """figures.json is read by check_provenance and by substitute; the raw
@@ -1324,6 +1380,14 @@ def main() -> int:
     if problems:
         print("\ntext floor:")
         for p in problems:
+            print("  " + p)
+        return 1
+
+    borrowed = check_course_close()
+    print(f"\ncourse close: {len(COURSE_CLOSE)} borrowed quantities re-checked "
+          f"against the lectures that own them")
+    if borrowed:
+        for p in borrowed:
             print("  " + p)
         return 1
     return 0
