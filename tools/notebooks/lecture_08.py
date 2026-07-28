@@ -123,8 +123,8 @@ print(f"resamples entropy won  {(diff > 0).sum()} of {len(rows)}")
         md("""
 Three statements, all true, and only the third is a recommendation:
 
-1. The effect is **real** — the sign is consistent and the mean is more than one
-   standard deviation from zero.
+1. The effect is **real** — the sign is consistent, and gini wins on 8 of the
+   10 resamples.
 2. The effect is **tiny** — a fraction of a point, against the several points
    `max_depth` was worth in the previous lecture.
 3. So **do not spend your tuning budget here.** Leave the default.
