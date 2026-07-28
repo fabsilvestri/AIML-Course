@@ -835,14 +835,19 @@ def main():
     from sklearn.tree import DecisionTreeClassifier, export_text
 
     names = D["names"]
+    # Prefixed. These were bare (n_train, n_test, ...) and collided with the
+    # housing values make_figures.py writes under the same names — figures.json
+    # ended up holding 16,512/4,128 while Lectures 7 and 8 quote 48,000/12,000
+    # thirteen times between them. Provenance passed only because those two
+    # numbers happened to be reachable by another route.
     facts.update(
-        n_rows_total=int(D["X_all_shape"][0]),
-        n_features=int(D["X_all_shape"][1]),
-        n_classes=7,
-        n_sample=int(N_SAMPLE),
-        n_train=int(len(D["y_tr"])),
-        n_test=int(len(D["y_te"])),
-        sample_fraction=round(N_SAMPLE / D["X_all_shape"][0], 4),
+        l07_n_rows_total=int(D["X_all_shape"][0]),
+        l07_n_features=int(D["X_all_shape"][1]),
+        l07_n_classes=7,
+        l07_n_sample=int(N_SAMPLE),
+        l07_n_train=int(len(D["y_tr"])),
+        l07_n_test=int(len(D["y_te"])),
+        l07_sample_fraction=round(N_SAMPLE / D["X_all_shape"][0], 4),
     )
 
     print("\nLecture 7 — class balance and the trivial baseline")
@@ -980,6 +985,7 @@ def main():
         instability_root_top_n=int(top_n),
         instability_thr_lo=round(float(min(thr[top_feat])), 1),
         instability_thr_hi=round(float(max(thr[top_feat])), 1),
+        instability_thr_span=round(float(max(thr[top_feat]) - min(thr[top_feat])), 1),
         instability_disagree_mean=round(float(inst["disagree"].mean()), 4),
         instability_disagree_max=round(float(inst["disagree"].max()), 4),
         instability_disagree_min=round(float(inst["disagree"].min()), 4),
