@@ -391,7 +391,7 @@ the evaluation, which we *can* measure.
         md("""
 ## 5 · Thread 9, part 3 — average precision
 
-⏱ **about 40 seconds** on a GPU or MPS, several minutes on CPU: the same
+⏱ **1 to 2 minutes** on a GPU or MPS, several minutes on CPU: the same
 detector as last lecture, over the same 128 images.
 """),
         code('''
@@ -737,9 +737,18 @@ with torch.inference_mode():
 print(f"{time.time() - t0:.0f} s")
 
 n_raw = np.mean([len(p["scores"]) for p in raw_preds.values()])
-n_sup = np.mean([len(p["scores"]) for p in preds.values()])
+
+# Suppress the SAME candidate pool, so the two rows are comparable. Comparing
+# against the stock pipeline's output instead would compare two different
+# pipelines — it caps at 100 detections after its own NMS — and the drop would
+# look smaller than it is.
+n_sup = np.mean([
+    len(batched_nms(torch.tensor(p["boxes"]), torch.tensor(p["scores"]),
+                    torch.tensor(p["labels"]), 0.5))
+    for p in raw_preds.values()])
+
 print(f"\\ncandidate boxes per image, no suppression : {n_raw:.1f}")
-print(f"after suppression at IoU 0.5              : {n_sup:.1f}")
+print(f"the same pool after NMS at IoU 0.5        : {n_sup:.1f}")
 print(f"actual objects per image                  : {n_true.mean():.2f}")
 '''),
         code('''
@@ -782,8 +791,9 @@ mask_model = maskrcnn_resnet50_fpn(weights=mw).eval().to(DEVICE)
 print("torchvision's reported scores on all 5,000 val2017 images:",
       mw.meta["_metrics"])
 
-# the busiest image in the corpus
-busy = max(images, key=lambda im: len(gt[im["id"]]["labels"]))["id"]
+# The most crowded of the first forty images — the same one the lecture's
+# figure uses, so the notebook and the slide show the same picture.
+busy = max(images[:40], key=lambda im: len(gt[im["id"]]["labels"]))["id"]
 im = next(i for i in images if i["id"] == busy)
 pic = Image.open(IMG_DIR / im["file_name"]).convert("RGB")
 

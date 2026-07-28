@@ -1018,6 +1018,9 @@ def main() -> int:
                               "mean_iou": float(whole_ious.mean()),
                               "max_iou": float(whole_ious.max()),
                               "iou_above_half": int((whole_ious >= 0.5).sum())},
+        # the REPL block on lecture-17 slide 39 prints these two shapes
+        l17_first_image={"boxes": int(len(preds[corpus["images"][0]["id"]]["scores"])),
+                         "gt": int(counts_true[0])},
         l17_score_quartiles={"q25": float(np.quantile(all_scores, 0.25)),
                              "median": float(np.median(all_scores)),
                              "q75": float(np.quantile(all_scores, 0.75)),

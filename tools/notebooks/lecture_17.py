@@ -294,8 +294,10 @@ print("on all 5,000 val2017 images:", weights.meta["_metrics"])
         md("""
 ### 5.1 · Run it
 
-⏱ **about 40 seconds** on a GPU or an Apple Silicon MPS backend; several
-minutes on a CPU-only runtime. No output does not mean it has hung.
+⏱ **1 to 2 minutes** on a GPU or an Apple Silicon MPS backend, and several
+minutes on a CPU-only runtime. It varies with what else the machine is doing:
+the same loop took 39 s on an idle laptop and 102 s on a busy one. No output
+does not mean it has hung.
 """),
         code('''
 t0 = time.time()
@@ -350,8 +352,8 @@ everything above `box_score_thresh`, which defaults to **0.05**, capped at
 `box_detections_per_img`, which defaults to **100**. It is not a count of
 objects. It is a count of *candidates*.
 
-Reviewer question 3 — *what is the shape here?* — finds it too: a shape of 66
-for a photograph with four things in it should stop you.
+Reviewer question 3 — *what is the shape here?* — finds it too: a shape of 88
+for a photograph with twenty annotated objects in it should stop you.
 
 **Now measure the damage.** Do not estimate it.
 """),
