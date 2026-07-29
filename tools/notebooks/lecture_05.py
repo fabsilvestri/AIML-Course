@@ -306,7 +306,8 @@ prep_v1 = ColumnTransformer([
     ("num", make_pipeline(SimpleImputer(strategy="median"),
                           StandardScaler()), NUM),
     ("cat", make_pipeline(SimpleImputer(strategy="most_frequent"),
-                          OneHotEncoder(handle_unknown="ignore")), CAT),
+                          OneHotEncoder(handle_unknown="infrequent_if_exist",
+                                        min_frequency=2)), CAT),
     ("bin", "passthrough", BIN),
 ])
 
@@ -604,7 +605,8 @@ prep_v2 = ColumnTransformer([
                           StandardScaler()), NUM2),
     ("cat", make_pipeline(SimpleImputer(strategy="most_frequent"),
                           OneHotEncoder(drop="first",
-                                        handle_unknown="ignore")), CAT),
+                                        handle_unknown="infrequent_if_exist",
+                                        min_frequency=2)), CAT),
     ("bin", "passthrough", BIN),
 ])
 
@@ -739,7 +741,8 @@ def poly_model(degree):
             PolynomialFeatures(degree=degree, include_bias=False)), NUM2),
         ("cat", make_pipeline(SimpleImputer(strategy="most_frequent"),
                               OneHotEncoder(drop="first",
-                                            handle_unknown="ignore")), CAT),
+                                            handle_unknown="infrequent_if_exist",
+                                        min_frequency=2)), CAT),
         ("bin", "passthrough", BIN)])
     return make_model(prep)
 

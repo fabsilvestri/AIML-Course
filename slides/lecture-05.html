@@ -1013,6 +1013,35 @@ NUM = ["Age", "Fare", "SibSp", "Parch"]        # FamilySize removed
   be asked to review.</p>
 </section>
 
+<!-- 60b -->
+<section data-menu-title="Where the two options collide">
+  <h2>And one pairing you must not use</h2>
+  <p>Read the two arguments together. <code>drop="first"</code> makes the
+  reference level <strong>all zeros</strong>. <code>handle_unknown="ignore"</code>
+  makes an unseen level <strong>all zeros</strong> as well.</p>
+  <pre><code class="language-python" data-trim>
+enc = OneHotEncoder(drop="first", handle_unknown="ignore")
+enc.fit([["A"], ["B"], ["C"]])       # Deck A is the reference
+
+enc.transform([["A"]])   # array([[0., 0.]])   the reference level
+enc.transform([["T"]])   # array([[0., 0.]])   a deck it has never seen
+  </code></pre>
+  <p class="fail">A passenger on a deck the model has never seen is silently
+  scored as though they were on deck A. There is a <code>UserWarning</code>, and
+  nothing else.</p>
+  <p class="small">This is the <code>ISLAND</code> failure of Lecture 2 wearing
+  a different hat &mdash; one category, too rare to appear in every fold, whose
+  encoding is indistinguishable from another category's. Our own data has it:
+  one passenger is on deck <code>T</code>, so one fold in ten holds them out.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">Pick one</span>
+    Either <code>handle_unknown="error"</code> and be told, and decide what to
+    do about it; or keep every level and remove the collinearity with a penalty
+    instead. What you must not do is choose both and let the model answer
+    confidently about a passenger it cannot represent.
+  </div>
+</section>
+
 <!-- 61 -->
 <section data-menu-title="It also scored better">
   <h2>And the honest number moved</h2>

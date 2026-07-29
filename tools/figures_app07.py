@@ -273,14 +273,24 @@ def act_profile(X, *, dtype=torch.float64, **kw) -> dict:
     net = make_net(dtype=dtype, **kw)
     net.eval()
     h = torch.as_tensor(X[:BATCH], dtype=dtype)
-    means, sds, sat = [], [], []
+    means, sds, signal, sat = [], [], [], []
     with torch.no_grad():
         for m in net:
             h = m(h)
             if isinstance(m, tuple(t for t in (nn.Sigmoid, nn.Tanh, nn.ReLU,
                                                nn.LeakyReLU, nn.ELU, nn.SELU))):
                 means.append(float(h.mean()))
+                # Two different questions, and only one of them is the one we
+                # are asking. h.std() over the whole tensor is dominated by the
+                # spread of the layer's random BIASES across units, which does
+                # not change with depth — so it sits near 0.07 at layer 20 and
+                # the network looks alive. What carries information is how much
+                # a unit's output moves when the INPUT changes, which is the sd
+                # down the batch, averaged over units. That falls by a factor of
+                # 0.14 a layer here: exactly the rate Thread 7 predicts from the
+                # fan-in, and exactly the rate the gradient falls at.
                 sds.append(float(h.std()))
+                signal.append(float(h.std(dim=0).mean()))
                 # "saturated" means the activation's own derivative has
                 # collapsed: for the logistic that is |a - 1/2| > 0.45.
                 if isinstance(m, nn.Sigmoid):
@@ -289,7 +299,8 @@ def act_profile(X, *, dtype=torch.float64, **kw) -> dict:
                     sat.append(float((h.abs() > 0.9).double().mean()))
                 else:
                     sat.append(float((h == 0).double().mean()))
-    return {"mean": means, "sd": sds, "saturated": sat}
+    return {"mean": means, "sd": sds, "sd_signal": signal,
+            "saturated": sat}
 
 
 def layer_hist(X, layers=(1, 10, 20), **kw) -> dict:
@@ -610,16 +621,33 @@ def run_l14(d) -> dict:
         ("+ dropout 0.1", dict(act="relu", init="he", norm="batch", clip=1.0,
                                schedule="onecycle", dropout=0.1)),
     ]
+    # Five seeds a rung, not one. The slide tells students this table is the
+    # deliverable and asks them to act on 2.8- and 4.2-point steps; a single
+    # seed cannot support a claim that size, and the course says so itself two
+    # lectures earlier (Lecture 15 reports sd 2.34 points for a run of the same
+    # shape) and again in Lecture 21, where it refuses to rank a 0.94-point gap
+    # measured one seed each. One pass is about 200 s, so this costs 17 minutes
+    # and buys the difference between a result and an anecdote.
+    LADDER_SEEDS = [SEED + k for k in range(5)]
     rows, prev = [], None
     for label, kw in ladder:
-        r = _strip(train(d, **kw))
-        rows.append({"label": label, "test_acc": r["test_acc"],
-                     "final_val": r["final_val"], "best_val": r["best_val"],
-                     "last_loss": r["last_loss"], "seconds": r["seconds"],
-                     "delta": 0.0 if prev is None else r["test_acc"] - prev})
-        prev = r["test_acc"]
-        print(f"      {label:32s} test {r['test_acc']:.4f}  "
-              f"({r['seconds']:.0f} s)")
+        runs = [_strip(train(d, seed=sd, **kw)) for sd in LADDER_SEEDS]
+        accs = [r["test_acc"] for r in runs]
+        mean = float(np.mean(accs))
+        sd = float(np.std(accs, ddof=1))
+        rows.append({"label": label, "test_acc": mean, "sd": sd,
+                     "sd_pts": 100 * sd, "n_seeds": len(LADDER_SEEDS),
+                     "accs": accs,
+                     "final_val": float(np.mean([r["final_val"] for r in runs])),
+                     "best_val": float(np.mean([r["best_val"] for r in runs])),
+                     "last_loss": float(np.mean([r["last_loss"] for r in runs])),
+                     "seconds": float(np.mean([r["seconds"] for r in runs])),
+                     "delta": 0.0 if prev is None else mean - prev})
+        prev = mean
+        print(f"      {label:32s} test {mean:.4f} +/- {100 * sd:.2f} pts  "
+              f"({np.mean([r['seconds'] for r in runs]):.0f} s a seed)")
+    # the typical seed-to-seed spread, for judging every step in the table
+    out["ladder_sd_pts"] = float(np.mean([r["sd_pts"] for r in rows]))
     out["ladder"] = rows
 
     print("    the same repairs, one at a time on the Lecture 13 network")

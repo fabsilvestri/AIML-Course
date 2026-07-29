@@ -135,7 +135,8 @@ def prep(degree=1):
     num = make_pipeline(SimpleImputer(strategy="median"), StandardScaler(),
                         PolynomialFeatures(degree=degree, include_bias=False))
     cat = make_pipeline(SimpleImputer(strategy="most_frequent"),
-                        OneHotEncoder(drop="first", handle_unknown="ignore"))
+                        OneHotEncoder(drop="first", handle_unknown="infrequent_if_exist",
+                                        min_frequency=2))
     return ColumnTransformer([("num", num, NUM), ("cat", cat, CAT),
                               ("bin", "passthrough", BIN)])
 
