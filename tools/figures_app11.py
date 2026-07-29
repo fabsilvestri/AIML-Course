@@ -265,7 +265,7 @@ def tokenisation_example(d) -> dict:
 
 def fig_lengths(cf):
     lens = cf["lens"]
-    fig, ax = plt.subplots(figsize=(7.6, 3.0))
+    fig, ax = plt.subplots(figsize=(10.4, 3.1))
     ax.hist(np.clip(lens, 0, 1200), bins=80, color=PRIMARY, alpha=0.85)
     ax.axvline(MAXLEN, color=ACCENT, lw=2.2, ls="--")
     ax.annotate(f"cut at {MAXLEN} tokens\n{cf['over_maxlen']*100:.0f}% of reviews "
@@ -283,7 +283,7 @@ def fig_lengths(cf):
 
 
 def fig_oov(oc):
-    fig, ax = plt.subplots(figsize=(7.6, 3.2))
+    fig, ax = plt.subplots(figsize=(10.4, 3.2))
     x = np.arange(len(oc["sizes"]))
     ax.plot(x, 100 * np.array(oc["token_oov"]), "o-", color=ACCENT, lw=2.4,
             ms=7, label="word tokenizer, tokens unseen")
@@ -647,7 +647,7 @@ def ce_vs_kl() -> dict:
 
 
 def fig_softmax_shift(ss):
-    fig, axes = plt.subplots(1, 2, figsize=(8.0, 2.9), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 3.0), sharey=True)
     x = np.arange(3)
     for ax, p, title, c in (
             (axes[0], ss["p_small"], "logits  1, 2, 3", PRIMARY),
@@ -680,7 +680,7 @@ def fig_ce_stability(cs):
                       for r, ok in zip(rows, n_ok)], dtype=float)
     stable = np.array([r["stable_rel_err"] for r in rows], dtype=float)
 
-    fig, axes = plt.subplots(1, 2, figsize=(9.0, 3.0))
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 3.2))
 
     ax = axes[0]
     ax.plot(g[n_ok], naive[n_ok], "o-", color=ACCENT, lw=2.4, ms=7,
@@ -723,7 +723,7 @@ def fig_gradient(gc):
     r = gc["row"]
     x = np.arange(5)
     onehot = np.zeros(5); onehot[r["target"]] = 1.0
-    fig, ax = plt.subplots(figsize=(7.8, 3.0))
+    fig, ax = plt.subplots(figsize=(10.4, 3.1))
     ax.bar(x - 0.21, r["probs"], width=0.4, color=PRIMARY, label="softmax(z)")
     ax.bar(x + 0.21, onehot, width=0.4, color=RULE, label="one-hot target y")
     ax.plot(x, r["grad"], "o", color=MATH, ms=11, zorder=5,
@@ -923,7 +923,7 @@ def label_efficiency(d, sizes=(200, 1_000, 5_000, 20_000), n_test=5_000,
 
 
 def fig_label_efficiency(le):
-    fig, ax = plt.subplots(figsize=(7.6, 3.0))
+    fig, ax = plt.subplots(figsize=(10.4, 3.1))
     x = np.array(le["sizes"], dtype=float)
     ax.plot(x, 100 * np.array(le["bow"]), "s--", color=MUTED, lw=2.2, ms=7,
             label="tf-idf + logistic regression")
@@ -1062,7 +1062,7 @@ def cluster_complaints(sr, ks=(3, 4, 5, 6, 8, 10, 12)) -> dict:
 
 
 def fig_clusters(cl):
-    fig, axes = plt.subplots(1, 2, figsize=(8.4, 3.1),
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 3.2),
                              gridspec_kw={"width_ratios": [1, 1.35]})
     ks = sorted(cl["silhouette"])
     vals = [cl["silhouette"][k] for k in ks]
@@ -1240,7 +1240,7 @@ def duplicate_check(d) -> dict:
 
 
 def fig_leak(lk):
-    fig, ax = plt.subplots(figsize=(7.6, 3.0))
+    fig, ax = plt.subplots(figsize=(10.4, 3.1))
     rng = np.random.default_rng(SEED)
     for i, (label, name) in enumerate((("small", "400 reviews"),
                                        ("full", "25,000 reviews"))):
@@ -1266,7 +1266,7 @@ def fig_leak(lk):
 
 
 def fig_duplicate_leak(dl):
-    fig, ax = plt.subplots(figsize=(7.6, 2.9))
+    fig, ax = plt.subplots(figsize=(10.4, 3.0))
     x = np.arange(2)
     vals = [100 * dl["naive_mean"], 100 * dl["grouped_mean"]]
     errs = [100 * dl["naive_sd"], 100 * dl["grouped_sd"]]
@@ -1297,7 +1297,7 @@ def fig_baselines(bl, scratch):
             scratch["test_acc"]]
     colors = [RULE, MUTED, PRIMARY,
               SUCCESS if vals[3] > vals[2] else ACCENT]
-    fig, ax = plt.subplots(figsize=(7.8, 3.1))
+    fig, ax = plt.subplots(figsize=(10.4, 3.2))
     x = np.arange(4)
     ax.bar(x, 100 * np.array(vals), color=colors, width=0.62)
     for xi, v in zip(x, vals):
@@ -1323,7 +1323,7 @@ def fig_swap(runs, bl):
     colors = [PRIMARY] + [SUCCESS if v > base + tie else
                           ACCENT if v < base - tie else PRIMARY
                           for v in vals[1:]]
-    fig, ax = plt.subplots(figsize=(8.0, 3.1))
+    fig, ax = plt.subplots(figsize=(10.4, 3.2))
     x = np.arange(4)
     ax.bar(x, 100 * np.array(vals), color=colors, width=0.6)
     ax.axhline(100 * base, color=PRIMARY, ls="--", lw=1.6)
@@ -1347,7 +1347,7 @@ def fig_swap(runs, bl):
 
 
 def fig_curves(runs):
-    fig, ax = plt.subplots(figsize=(7.6, 3.0))
+    fig, ax = plt.subplots(figsize=(10.4, 3.1))
     style = {
         "word_random": ("our words, random", PRIMARY, "o-"),
         "wp_random": ("subword, random", ACCENT, "s--"),
@@ -1373,7 +1373,7 @@ def fig_final(bl, scratch, swap, ft, zs):
     vals = [bl["majority"], bl["bigram"]["acc"], scratch["test_acc"],
             swap["test_acc"], zs["acc"], ft["test_acc"]]
     colors = [RULE, MUTED, PRIMARY, PRIMARY, ACCENT, SUCCESS]
-    fig, ax = plt.subplots(figsize=(8.4, 3.1))
+    fig, ax = plt.subplots(figsize=(10.4, 3.2))
     x = np.arange(len(vals))
     ax.bar(x, 100 * np.array(vals), color=colors, width=0.62)
     for xi, v in zip(x, vals):
