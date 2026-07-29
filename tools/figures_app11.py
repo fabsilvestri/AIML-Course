@@ -491,63 +491,85 @@ def ce_stability() -> dict:
     naive  :  p = softmax(z);  L = -log(p[y])
     stable :  L = -(z[y] - logsumexp(z))
     The float64 stable form is the reference both are scored against.
+
+    The sweep is over **how wrong the model is**, not over the scale of the
+    logits, because that is the quantity the failure depends on. A row whose
+    true class sits `gap` below the maximum has a loss of at least `gap`, and
+    the naive form has to represent exp(-gap) as a float32. Sweeping the
+    logits' standard deviation instead buries the effect: most rows then have a
+    loss near zero, where relative error is meaningless and both forms score
+    the same.
     """
     rng = np.random.default_rng(SEED)
-    scales = [1, 3, 10, 30, 60, 88, 100, 200, 400]
+    K, N = 10, 2_000
+    gaps = [1, 5, 10, 20, 40, 60, 80, 90, 100, 110]
+    idx = np.arange(N)
     rows = []
-    for s in scales:
-        z64 = rng.normal(0, s, size=(2_000, 10))
+    for gap in gaps:
+        z64 = rng.normal(0, 1.0, size=(N, K))
+        y = rng.integers(0, K, size=N)
+        z64[idx, y] = z64.max(1) - gap          # the true class, `gap` below
         z32 = z64.astype(np.float32)
-        y = rng.integers(0, 10, size=2_000)
 
-        ref = -(z64[np.arange(2_000), y]
-                - (z64.max(1) + np.log(np.exp(z64 - z64.max(1, keepdims=True))
-                                       .sum(1))))
+        lse64 = z64.max(1) + np.log(np.exp(z64 - z64.max(1, keepdims=True)).sum(1))
+        ref = -(z64[idx, y] - lse64)            # >= gap, so relative error is safe
+
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
             e = np.exp(z32)
             p = e / e.sum(1, keepdims=True)
-            naive = -np.log(p[np.arange(2_000), y])
+            naive = -np.log(p[idx, y])
         m = z32.max(1, keepdims=True)
-        stable = -(z32[np.arange(2_000), y]
-                   - (m[:, 0] + np.log(np.exp(z32 - m).sum(1))))
+        stable = -(z32[idx, y] - (m[:, 0] + np.log(np.exp(z32 - m).sum(1))))
 
-        bad = ~np.isfinite(naive)
-        rel = lambda a: float(np.nanmax(np.abs((a[~bad] - ref[~bad])
-                                               / np.maximum(ref[~bad], 1e-12))))
-        rows.append({
-            "scale": s,
-            "naive_nonfinite": float(bad.mean()),
-            "naive_rel_err": rel(naive.astype(np.float64)) if (~bad).any() else None,
-            "stable_rel_err": rel(stable.astype(np.float64)),
-        })
-        print(f"      sd {s:>3}: naive non-finite {bad.mean()*100:5.1f}%  "
-              f"naive rel err {rows[-1]['naive_rel_err']}  "
-              f"stable {rows[-1]['stable_rel_err']:.3e}")
+        def score(a):
+            a = a.astype(np.float64)
+            ok = np.isfinite(a)
+            return (float(1 - ok.mean()),
+                    float(np.median(np.abs(a[ok] - ref[ok]) / ref[ok]))
+                    if ok.any() else None)
 
-    # one concrete row, small enough to print on a slide and to check by hand
-    z = np.array([100.0, 0.0, -100.0], dtype=np.float32)
-    tgt = 2
-    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-        e = np.exp(z)
-        p32 = e / e.sum()
-        naive_one = float(-np.log(p32[tgt]))
+        n_bad, n_err = score(naive)
+        s_bad, s_err = score(stable)
+        rows.append({"gap": gap, "mean_loss": float(ref.mean()),
+                     "naive_nonfinite": n_bad, "naive_rel_err": n_err,
+                     "stable_nonfinite": s_bad, "stable_rel_err": s_err})
+        print(f"      gap {gap:>3}: naive non-finite {n_bad*100:5.1f}%  "
+              f"median rel err  naive {n_err}  stable {s_err}")
+
+    # Two concrete rows, small enough to print on a slide and check by hand.
+    # The first is the loud failure; the second is the quiet one, and it is the
+    # quiet one that ships.
     lse = lambda v: v.max() + np.log(np.exp(v - v.max()).sum())
-    stable_one = float(-(z[tgt] - lse(z)))
-    z64 = z.astype(np.float64)
-    exact = float(-(z64[tgt] - lse(z64)))
     finite = lambda v: float(v) if np.isfinite(v) else (
         "inf" if np.isposinf(v) else "-inf" if np.isneginf(v) else "nan")
-    return {"rows": rows,
-            "example_logits": z.tolist(), "example_target": tgt,
-            "example_naive_numerator": finite(e[tgt]),
-            "example_naive_denominator": finite(e.sum()),
-            "example_naive": finite(naive_one),
-            "example_stable": stable_one,
-            "example_exact": exact,
-            "example_stable_err": abs(stable_one - exact),
-            "torch_agrees": float(
-                abs(float(nn.CrossEntropyLoss()(torch.tensor(z)[None, :],
-                                                torch.tensor([tgt]))) - exact))}
+
+    def one_row(logits, tgt=2):
+        z = np.array(logits, dtype=np.float32)
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            e = np.exp(z)
+            p32 = e / e.sum()
+            naive = float(-np.log(p32[tgt]))
+        stable = float(-(z[tgt] - lse(z)))
+        z64 = z.astype(np.float64)
+        exact = float(-(z64[tgt] - lse(z64)))
+        torch_val = float(nn.CrossEntropyLoss()(torch.tensor(z)[None, :],
+                                                torch.tensor([tgt])))
+        return {"logits": [float(v) for v in z], "target": tgt,
+                "p_true": finite(p32[tgt]),
+                "denominator": finite(e.sum()),
+                "naive": finite(naive), "stable": stable, "exact": exact,
+                "naive_err": finite(abs(naive - exact)),
+                "stable_err": abs(stable - exact),
+                "torch": torch_val, "torch_err": abs(torch_val - exact)}
+
+    loud = one_row([100.0, 0.0, -100.0])
+    quiet = one_row([0.0, 0.0, -100.0])
+    print(f"      loud : naive {loud['naive']}  stable {loud['stable']:.6f}  "
+          f"exact {loud['exact']:.6f}")
+    print(f"      quiet: naive {quiet['naive']}  stable {quiet['stable']:.6f}  "
+          f"exact {quiet['exact']:.6f}  naive off by {quiet['naive_err']}")
+    return {"rows": rows, "loud": loud, "quiet": quiet,
+            "torch_agrees": loud["torch_err"]}
 
 
 def ce_vs_kl() -> dict:
@@ -600,32 +622,33 @@ def fig_softmax_shift(ss):
 
 def fig_ce_stability(cs):
     rows = cs["rows"]
-    s = np.array([r["scale"] for r in rows], dtype=float)
-    naive = np.array([np.nan if r["naive_rel_err"] is None else r["naive_rel_err"]
-                      for r in rows])
-    stable = np.array([r["stable_rel_err"] for r in rows])
+    g = np.array([r["gap"] for r in rows], dtype=float)
+    nan_to = lambda v: 1e-9 if v is None else max(v, 1e-9)
+    naive = np.array([nan_to(r["naive_rel_err"]) for r in rows])
+    stable = np.array([nan_to(r["stable_rel_err"]) for r in rows])
     frac = np.array([r["naive_nonfinite"] for r in rows])
 
-    fig, ax = plt.subplots(figsize=(7.8, 3.1))
-    ax.plot(s, np.maximum(naive, 1e-17), "o-", color=ACCENT, lw=2.4, ms=7,
-            label="naive:  −log(softmax(z))")
-    ax.plot(s, np.maximum(stable, 1e-17), "s-", color=SUCCESS, lw=2.4, ms=6,
-            label="stable:  −(z[y] − logsumexp z)")
-    ax.set_xscale("log"); ax.set_yscale("log")
-    ax.set_xlabel("standard deviation of the logits")
-    ax.set_ylabel("relative error against float64")
-    first = next((i for i, f in enumerate(frac) if f > 0), None)
-    if first is not None:
-        ax.axvline(s[first], color=ACCENT, ls="--", lw=1.6)
-        ax.annotate(f"beyond {s[first]:.0f}, exp(z) overflows float32\n"
-                    f"{frac[first]*100:.0f}% of rows return inf or nan",
-                    xy=(s[first], 1e-9), xytext=(1.6, 1e-6),
-                    color=ACCENT, fontsize=SMALL,
-                    bbox=dict(fc="white", ec=ACCENT, lw=1.0,
-                              boxstyle="round,pad=0.35"),
-                    arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
-    ax.legend(loc="lower right")
-    ax.set_title("2,000 rows of 10 logits, float32, at each scale")
+    fig, axes = plt.subplots(1, 2, figsize=(8.6, 3.0), sharex=True)
+
+    ax = axes[0]
+    ax.plot(g, naive, "o-", color=ACCENT, lw=2.4, ms=7, label="naive")
+    ax.plot(g, stable, "s-", color=SUCCESS, lw=2.4, ms=6, label="combined")
+    ax.set_yscale("log")
+    ax.set_xlabel("true loss of the row, in nats")
+    ax.set_ylabel("median relative error")
+    ax.legend(loc="upper left")
+    ax.set_title("precision, on the rows that return a number")
+
+    ax = axes[1]
+    ax.plot(g, 100 * frac, "o-", color=ACCENT, lw=2.4, ms=7, label="naive")
+    ax.plot(g, 100 * np.array([r["stable_nonfinite"] for r in rows]), "s-",
+            color=SUCCESS, lw=2.4, ms=6, label="combined")
+    ax.set_xlabel("true loss of the row, in nats")
+    ax.set_ylabel("rows returning inf or nan, %")
+    ax.set_ylim(-4, 104)
+    ax.legend(loc="upper left")
+    ax.set_title("and whether it returns one at all")
+
     fig.tight_layout()
     save(fig, "l22-ce-stability")
 
@@ -1261,7 +1284,7 @@ def main() -> int:
     fig_gradient(gc)
     facts["l22_gradient"] = gc
     print(f"      |autograd - (p - y)| = {gc['max_abs_error']:.3e}")
-    cs = cached("app11_ce_stability_v2", ce_stability)
+    cs = cached("app11_ce_stability_v3", ce_stability)
     fig_ce_stability(cs)
     facts["l22_stability"] = cs
     kl = ce_vs_kl()

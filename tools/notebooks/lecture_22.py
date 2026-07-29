@@ -194,17 +194,25 @@ assert analytic.abs().max() <= 1.0, "p - y must lie in [-1, 1]"
 
 Two ways to compute the same number in `float32`, scored against `float64`.
 """),
+        md("""
+Sweep **how wrong the row is**, not the scale of the logits: the naive form has
+to represent $e^{-\\text{loss}}$ as a `float32`, so the loss is the quantity the
+failure depends on. Sweeping the standard deviation instead buries the effect,
+because most rows then have a loss near zero where both forms agree trivially.
+"""),
         code('''
-rows = []
+K, N = 10, 2_000
+idx = np.arange(N)
 rng32 = np.random.default_rng(RANDOM_STATE)
-for scale in (1, 3, 10, 30, 60, 88, 100, 200):
-    z64 = rng32.normal(0, scale, size=(2_000, 10))
-    z32 = z64.astype(np.float32)
-    yy  = rng32.integers(0, 10, size=2_000)
-    idx = np.arange(2_000)
+lse = lambda v: v.max(1) + np.log(np.exp(v - v.max(1, keepdims=True)).sum(1))
 
-    lse = lambda v: v.max(1) + np.log(np.exp(v - v.max(1, keepdims=True)).sum(1))
-    ref = -(z64[idx, yy] - lse(z64))
+rows = []
+for gap in (1, 5, 10, 20, 40, 60, 80, 90, 100, 110):
+    z64 = rng32.normal(0, 1.0, size=(N, K))
+    yy  = rng32.integers(0, K, size=N)
+    z64[idx, yy] = z64.max(1) - gap        # true class `gap` below the largest
+    z32 = z64.astype(np.float32)
+    ref = -(z64[idx, yy] - lse(z64))       # >= gap, so relative error is safe
 
     with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
         e     = np.exp(z32)
@@ -212,42 +220,70 @@ for scale in (1, 3, 10, 30, 60, 88, 100, 200):
         naive = -np.log(p32[idx, yy])
     stable = -(z32[idx, yy] - lse(z32))
 
-    bad = ~np.isfinite(naive)
-    rel = lambda a: (np.abs(a[~bad] - ref[~bad]) / np.abs(ref[~bad])).max() \\
-        if (~bad).any() else np.nan
-    rows.append((scale, bad.mean(), rel(naive.astype(np.float64)),
-                 rel(stable.astype(np.float64))))
-    print(f"sd {scale:>3}   non-finite {bad.mean():6.1%}   "
-          f"naive {rows[-1][2]:.2e}   stable {rows[-1][3]:.2e}")
-'''),
-        code('''
-s = np.array([r[0] for r in rows], dtype=float)
-plt.figure(figsize=(9, 3))
-plt.loglog(s, np.maximum([r[2] for r in rows], 1e-17), "o-",
-           label="naive:  -log(softmax(z))")
-plt.loglog(s, np.maximum([r[3] for r in rows], 1e-17), "s-",
-           label="stable: -(z[y] - logsumexp z)")
-plt.xlabel("standard deviation of the logits")
-plt.ylabel("relative error against float64")
-plt.legend(); plt.tight_layout(); plt.show()
-'''),
-        code('''
-# one row, small enough to check by hand
-z1 = np.array([100., 0., -100.], dtype=np.float32)
-with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-    e = np.exp(z1)
-    print(f"numerator   exp(-100) -> {e[2]}")
-    print(f"denominator exp(z).sum() -> {e.sum()}")
-    print(f"naive loss  -> {-np.log(e[2] / e.sum())}")
+    def score(a):
+        a = a.astype(np.float64)
+        ok = np.isfinite(a)
+        return (1 - ok.mean(),
+                np.median(np.abs(a[ok] - ref[ok]) / ref[ok]) if ok.any() else np.nan)
 
-lse1   = lambda v: v.max() + np.log(np.exp(v - v.max()).sum())
-stable = -(z1[2] - lse1(z1))
-exact  = -(z1.astype(np.float64)[2] - lse1(z1.astype(np.float64)))
-torch_ = float(nn.CrossEntropyLoss()(torch.tensor(z1)[None, :], torch.tensor([2])))
-print(f"\\nstable      -> {stable:.4f}")
-print(f"float64     -> {exact:.4f}")
-print(f"PyTorch     -> {torch_:.4f}")
-assert abs(torch_ - exact) < 1e-3, "the library is not doing the stable thing"
+    nb, ne = score(naive)
+    sb, se = score(stable)
+    rows.append((gap, nb, ne, sb, se))
+    print(f"loss {gap:>3}   naive: {nb:6.1%} non-finite, median err {ne:.2e}   "
+          f"stable: {sb:6.1%}, {se:.2e}")
+
+assert rows[0][3] == 0.0 and rows[-1][3] == 0.0, "the stable form should never fail"
+'''),
+        code('''
+g = np.array([r[0] for r in rows], dtype=float)
+fig, ax = plt.subplots(1, 2, figsize=(10, 3))
+ax[0].semilogy(g, np.maximum([r[2] for r in rows], 1e-9), "o-", label="naive")
+ax[0].semilogy(g, np.maximum([r[4] for r in rows], 1e-9), "s-", label="combined")
+ax[0].set_xlabel("true loss of the row, in nats")
+ax[0].set_ylabel("median relative error"); ax[0].legend()
+ax[1].plot(g, [100 * r[1] for r in rows], "o-", label="naive")
+ax[1].plot(g, [100 * r[3] for r in rows], "s-", label="combined")
+ax[1].set_xlabel("true loss of the row, in nats")
+ax[1].set_ylabel("rows returning inf or nan, %"); ax[1].legend()
+plt.tight_layout(); plt.show()
+'''),
+        md("""
+### Two rows, small enough to check by hand
+
+The first failure is loud. The second is the one that ships.
+"""),
+        code('''
+lse1 = lambda v: v.max() + np.log(np.exp(v - v.max()).sum())
+
+def both_ways(logits, tgt=2):
+    z = np.array(logits, dtype=np.float32)
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        e = np.exp(z)
+        p = e / e.sum()
+        naive = -np.log(p[tgt])
+    stable = -(z[tgt] - lse1(z))
+    z64    = z.astype(np.float64)
+    exact  = -(z64[tgt] - lse1(z64))
+    torch_ = float(nn.CrossEntropyLoss()(torch.tensor(z)[None, :],
+                                         torch.tensor([tgt])))
+    print(f"z = {list(logits)}")
+    print(f"  p(true class) {p[tgt]:.4e}   denominator {e.sum():.4e}")
+    print(f"  naive    {naive}")
+    print(f"  combined {stable}")
+    print(f"  float64  {exact}")
+    print(f"  PyTorch  {torch_}")
+    return float(naive), float(stable), float(exact), torch_
+
+print("--- the loud failure ---")
+n1, s1, e1, t1 = both_ways([100., 0., -100.])
+print("\\n--- the quiet failure ---")
+n2, s2, e2, t2 = both_ways([0., 0., -100.])
+print(f"\\nnaive is off by {abs(n2 - e2):.4f} — finite, plausible, and wrong")
+
+assert not np.isfinite(n1), "expected the naive form to overflow here"
+assert abs(s1 - e1) < 1e-3 and abs(t1 - e1) < 1e-3
+assert abs(n2 - e2) > 1e-3, "expected the naive form to lose precision here"
+assert abs(s2 - e2) < 1e-4, "the combined form should be exact here"
 '''),
 
         md("""

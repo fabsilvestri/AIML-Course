@@ -664,18 +664,45 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true",
                     help="execute each notebook and fail on the first error")
+    ap.add_argument("--only", default="",
+                    help="comma-separated lecture numbers, e.g. --only 19,20. "
+                         "Executing all 24 takes hours, so a notebook under "
+                         "development needs a way to be checked on its own.")
     args = ap.parse_args()
+    wanted = {int(x) for x in args.only.split(",") if x.strip()}
 
     OUT.mkdir(parents=True, exist_ok=True)
     written = []
     for n, fn in sorted(LECTURES.items()):
+        if wanted and n not in wanted:
+            continue
         path = OUT / f"lecture-{n:02d}.ipynb"
         nbf.write(fn(), path)
-        n_code = sum(c.cell_type == "code" for c in nbf.read(path, as_version=4).cells)
+        cells = nbf.read(path, as_version=4).cells
+        n_code = sum(c.cell_type == "code" for c in cells)
+        # Compile every code cell before claiming the notebook was written. The
+        # modules hold cell bodies as ''' literals, so a single
+        # backslash-n in one becomes a REAL newline in the generated cell and
+        # cuts an f-string in half — valid Python in the module, a SyntaxError
+        # in the notebook, and invisible until someone runs it. Executing all 24
+        # to find that out takes hours; compiling them takes milliseconds.
+        for i, c in enumerate(cells):
+            if c.cell_type != "code":
+                continue
+            src = c.source
+            if any(line.lstrip().startswith(("!", "%")) for line in src.splitlines()):
+                continue                      # shell and magic lines are not Python
+            try:
+                compile(src, f"{path.name}:cell{i}", "exec")
+            except SyntaxError as exc:
+                print(f"  {path.name}: cell {i} does not compile — "
+                      f"{exc.msg} at line {exc.lineno}")
+                print(f"    {(exc.text or '').strip()[:90]}")
+                return 1
         print(f"  {path.relative_to(ROOT)}  {n_code} code cells")
         written.append(path)
 
-    missing = [n for n in range(1, 25) if n not in LECTURES]
+    missing = [] if wanted else [n for n in range(1, 25) if n not in LECTURES]
     if missing:
         print(f"\nnot yet written: lectures {missing[0]}–{missing[-1]} "
               f"({len(missing)} of 24)")
