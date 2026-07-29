@@ -141,11 +141,32 @@ def check(path: Path) -> list[str]:
     return out
 
 
+def check_site_index() -> list[str]:
+    """The course site must link to all 24 lectures and all 24 notebooks.
+
+    index.html was written while the course was half-built, so eleven cards said
+    "in preparation" long after the lecture existed — and nothing noticed,
+    because a card with no link is not a broken link. The absence of a link is
+    exactly what has to be checked.
+    """
+    out: list[str] = []
+    src = (ROOT / "index.html").read_text()
+    for n in range(1, 25):
+        if f'href="slides/lecture-{n:02d}.html"' not in src:
+            out.append(f"index.html: no link to lecture {n:02d}'s slides")
+        if f"notebooks/lecture-{n:02d}.ipynb" not in src:
+            out.append(f"index.html: no link to lecture {n:02d}'s notebook")
+    if 'class="pending"' in src:
+        out.append('index.html: still says "in preparation" somewhere')
+    return out
+
+
 def main() -> int:
     problems: list[str] = []
     for page in PAGES:
         if page.exists():
             problems += check(page)
+    problems += check_site_index()
 
     if problems:
         print(f"{len(problems)} problem(s):\n")
