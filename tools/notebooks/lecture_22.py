@@ -52,6 +52,15 @@ def build() -> list:
 
         md("## 1 · Setup and the same corpus"),
         code('''
+# Not examinable, and only needed on macOS: PyTorch and scikit-learn each ship
+# their own OpenMP runtime, and with both loaded the KMeans cell near the end of
+# this notebook deadlocks. It has to be set BEFORE torch is imported, which is
+# why it is the first thing in the notebook.
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 import sys, re, time, tarfile, urllib.request
 from pathlib import Path
 from collections import Counter
@@ -462,6 +471,15 @@ N_FT, N_SCORE = 2_000, 3_000        # the deck uses 20,000 and all 25,000
 ids, am = encode_bert(fit_x[:N_FT])
 yb = torch.from_numpy(fit_y[:N_FT])
 assert ids.shape == (N_FT, MAXLEN)
+
+# The corpus ships every positive review first and every negative second, so
+# test_x[:3000] is all positives and any "accuracy" on it is really recall.
+# Shuffle once and take every subset through this.
+score_i = np.random.default_rng(RANDOM_STATE + 7).permutation(len(test_x))[:N_SCORE]
+score_x = [test_x[i] for i in score_i]
+score_y = test_y[score_i]
+assert abs(score_y.mean() - 0.5) < 0.03, "the scoring subset is not balanced"
+print(f"scoring on {N_SCORE:,} test reviews, {score_y.mean():.1%} positive")
 '''),
         code('''
 @torch.no_grad()
@@ -476,7 +494,7 @@ def bert_accuracy(model, texts, labels, batch=32):
     return (preds == labels).mean()
 
 # the head is random and nothing has been trained: this is the floor
-zero_shot = bert_accuracy(model, test_x[:N_SCORE], test_y[:N_SCORE])
+zero_shot = bert_accuracy(model, score_x, score_y)
 print(f"pretrained body, random head, no training: {zero_shot:.1%}")
 '''),
         code('''
@@ -501,9 +519,9 @@ for k, i in enumerate(range(0, len(ids), 16)):
 print(f"one epoch on {N_FT:,} reviews: {time.perf_counter() - t0:.0f}s")
 '''),
         code('''
-ft_acc      = bert_accuracy(model, test_x[:N_SCORE], test_y[:N_SCORE])
-Xt, Lt      = encode_words(test_x[:N_SCORE])
-scratch_acc = accuracy(good, Xt, Lt, test_y[:N_SCORE])
+ft_acc      = bert_accuracy(model, score_x, score_y)
+Xt, Lt      = encode_words(score_x)
+scratch_acc = accuracy(good, Xt, Lt, score_y)
 
 print(f"{'always one class':32s} {max(test_y.mean(), 1-test_y.mean()):.1%}")
 print(f"{'DistilBERT, untrained head':32s} {zero_shot:.1%}")

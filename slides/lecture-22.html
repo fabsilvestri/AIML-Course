@@ -43,13 +43,13 @@
   <h2>Where we left off</h2>
   <table>
     <tr><th>Model</th><th class="num">Test accuracy</th></tr>
-    <tr><td>Always one class</td><td class="num">«pct1:l21_majority»</td></tr>
-    <tr><td>tf-idf + logistic regression</td><td class="num">«pct1:l21_bow.bigram.acc»</td></tr>
-    <tr><td>GRU from scratch</td><td class="num">«pct1:l21_scratch_acc»</td></tr>
-    <tr><td>GRU, pretrained embeddings</td><td class="num">«pct1:l21_pretrained_acc»</td></tr>
+    <tr><td>Always one class</td><td class="num">50.0%</td></tr>
+    <tr><td>tf-idf + logistic regression</td><td class="num">90.1%</td></tr>
+    <tr><td>GRU from scratch</td><td class="num">83.4%</td></tr>
+    <tr><td>GRU, pretrained embeddings</td><td class="num">84.2%</td></tr>
   </table>
   <p class="lead">Borrowing one tensor was worth
-  «f2:l21_swap_gain_points» points.</p>
+  0.79 points.</p>
   <p class="small muted">Today: what happens if you borrow all of them.</p>
 </section>
 
@@ -157,7 +157,7 @@ return self.head(torch.cat([h[0], h[1]], dim=1))     # (B, 2)
          alt="Two bar charts of softmax probabilities, one for logits one two three and one for logits fifty-one fifty-two fifty-three, with identical bar heights labelled to four decimal places.">
   </figure>
   <p class="takeaway">The two panels agree to
-  «g:l22_softmax.max_shift_diff». Not approximately: the same numbers.</p>
+  5.96046e-08. Not approximately: the same numbers.</p>
 </section>
 
 <!-- 9 -->
@@ -168,7 +168,7 @@ return self.head(torch.cat([h[0], h[1]], dim=1))     # (B, 2)
     $$\begin{aligned}
       e^{x} \text{ overflows float32 when }
         x \;&amp;&gt;\; \log(3.4 \times 10^{38}) \\[4pt]
-        &amp;\approx\; «f1:l22_softmax.overflow_at»
+        &amp;\approx\; 88.7
       \end{aligned}$$
   </div>
   <ul class="tight small">
@@ -310,7 +310,7 @@ array([0.09003057, 0.24472848, 0.66524094], dtype=float32)
   </figure>
   <p class="takeaway">The dots are what PyTorch computed. The bars are what the
   algebra predicts. They agree to
-  «g:l22_gradient.max_abs_error».</p>
+  5.55112e-17.</p>
 </section>
 
 <!-- 17 -->
@@ -383,9 +383,10 @@ stable = -(z[rows, y] - (m[:, 0] + np.log(np.exp(z - m).sum(1))))
     <img src="../assets/figures/l22-ce-stability.svg"
          alt="Log-log chart of relative error against the standard deviation of the logits: the stable form stays near machine epsilon across the range while the naive form rises steeply and its rows become non-finite past a dashed vertical line.">
   </figure>
-  <p class="takeaway fail">Left: the naive form matches to <code>float32</code>
-  precision until the loss reaches about 85 nats, then loses digits. Right: past
-  about 104 it stops returning a number at all. The combined form does neither.</p>
+  <p class="takeaway fail">Left: the two agree to <code>float32</code> precision
+  until the loss reaches about 90 nats; at 100 the naive form is four orders of
+  magnitude worse. Right: at 110 it returns nothing at all. The combined form
+  does neither.</p>
 </section>
 
 <!-- 20 -->
@@ -396,13 +397,13 @@ z = [100., 0., -100.]   float32,   true class = 2
   </code></pre>
   <table>
     <tr><th>Computed as</th><th class="num">Loss</th></tr>
-    <tr><td>float64 reference</td><td class="num">«f4:l22_stability.loud.exact»</td></tr>
-    <tr><td class="fail">naive, probabilities first</td><td class="num fail">«str:l22_stability.loud.naive»</td></tr>
-    <tr><td class="fix">combined, from logits</td><td class="num hit">«f4:l22_stability.loud.stable»</td></tr>
+    <tr><td>float64 reference</td><td class="num">200.0000</td></tr>
+    <tr><td class="fail">naive, probabilities first</td><td class="num fail">inf</td></tr>
+    <tr><td class="fix">combined, from logits</td><td class="num hit">200.0000</td></tr>
   </table>
   <p class="small">The denominator $e^{100}$ overflows to
-  «str:l22_stability.loud.denominator», the ratio collapses to zero, and the
-  logarithm of zero is «str:l22_stability.loud.naive». The combined form
+  inf, the ratio collapses to zero, and the
+  logarithm of zero is inf. The combined form
   subtracts the maximum first, so the largest exponential it evaluates is
   $e^{0}$.</p>
   <p class="small muted">At least this one announces itself &mdash; and then
@@ -417,12 +418,12 @@ z = [0., 0., -100.]   float32,   true class = 2
   </code></pre>
   <table>
     <tr><th>Computed as</th><th class="num">Loss</th><th class="num">Error</th></tr>
-    <tr><td>float64 reference</td><td class="num">«f5:l22_stability.quiet.exact»</td><td class="num">&mdash;</td></tr>
-    <tr><td class="fail">naive, probabilities first</td><td class="num fail">«f5:l22_stability.quiet.naive»</td><td class="num fail">«f4:l22_stability.quiet.naive_err»</td></tr>
-    <tr><td class="fix">combined, from logits</td><td class="num hit">«f5:l22_stability.quiet.stable»</td><td class="num hit">«g:l22_stability.quiet.stable_err»</td></tr>
+    <tr><td>float64 reference</td><td class="num">100.69315</td><td class="num">&mdash;</td></tr>
+    <tr><td class="fail">naive, probabilities first</td><td class="num fail">100.63987</td><td class="num fail">0.0533</td></tr>
+    <tr><td class="fix">combined, from logits</td><td class="num hit">100.69315</td><td class="num hit">1.42861e-06</td></tr>
   </table>
   <p class="fail small">Nothing overflowed. The probability
-  $e^{-100}/(2 + e^{-100})$ is «g:l22_stability.quiet.p_true», which
+  $e^{-100}/(2 + e^{-100})$ is 1.96182e-44, which
   <code>float32</code> can only hold as a <em>subnormal</em> with a handful of
   significant bits &mdash; so the logarithm of it is wrong in the second decimal,
   finitely, plausibly, and without a warning.</p>
@@ -435,7 +436,7 @@ z = [0., 0., -100.]   float32,   true class = 2
 nn.CrossEntropyLoss()(torch.tensor([[100., 0., -100.]]), torch.tensor([2]))
   </code></pre>
   <p>agrees with the <code>float64</code> reference to
-  «g:l22_stability.torch_agrees».</p>
+  0.</p>
   <div class="panel panel-fix">
     <span class="panel-title">The rule this gives you</span>
     When a library offers a fused operation with a name like
@@ -499,13 +500,13 @@ nn.CrossEntropyLoss()(torch.tensor([[100., 0., -100.]]), torch.tensor([2]))
   0.1 spread over four others &mdash; the entropy is no longer zero:</p>
   <table>
     <tr><th>Quantity</th><th class="num">Value</th></tr>
-    <tr><td>$H(\mathbf{y})$</td><td class="num">«f4:l22_kl.smooth.H»</td></tr>
-    <tr><td>$D_{\mathrm{KL}}(\mathbf{y} \Vert \mathbf{p})$</td><td class="num">«f4:l22_kl.smooth.KL»</td></tr>
-    <tr><td class="fix">$H(\mathbf{y}) + D_{\mathrm{KL}}$</td><td class="num hit">«f4:l22_kl.smooth.H_plus_KL»</td></tr>
-    <tr><td class="fix">$H(\mathbf{y}, \mathbf{p})$</td><td class="num hit">«f4:l22_kl.smooth.CE»</td></tr>
+    <tr><td>$H(\mathbf{y})$</td><td class="num">0.4637</td></tr>
+    <tr><td>$D_{\mathrm{KL}}(\mathbf{y} \Vert \mathbf{p})$</td><td class="num">0.8178</td></tr>
+    <tr><td class="fix">$H(\mathbf{y}) + D_{\mathrm{KL}}$</td><td class="num hit">1.2815</td></tr>
+    <tr><td class="fix">$H(\mathbf{y}, \mathbf{p})$</td><td class="num hit">1.2815</td></tr>
   </table>
-  <p class="small">Identical to «g:l22_kl.residual». The constant is
-  «f4:l22_kl.smooth.H», it does not depend on the model, and that is why it can
+  <p class="small">Identical to 1.11022e-16. The constant is
+  0.4637, it does not depend on the model, and that is why it can
   be dropped.</p>
 </section>
 
@@ -552,8 +553,8 @@ nn.CrossEntropyLoss()(torch.tensor([[100., 0., -100.]]), torch.tensor([2]))
   </div>
   <table>
     <tr><th>Reality</th><th class="num">Test accuracy</th></tr>
-    <tr><td>Counting words</td><td class="num">«pct1:l21_bow.bigram.acc»</td></tr>
-    <tr><td>Your recurrent network</td><td class="num">«pct1:l21_scratch_acc»</td></tr>
+    <tr><td>Counting words</td><td class="num">90.1%</td></tr>
+    <tr><td>Your recurrent network</td><td class="num">83.4%</td></tr>
   </table>
   <p class="small muted">Score them out loud. Ask specifically who wrote a
   number <em>below</em> the bag of words, and how they felt about it at the
@@ -567,12 +568,12 @@ nn.CrossEntropyLoss()(torch.tensor([[100., 0., -100.]]), torch.tensor([2]))
     <li>Nothing was measured dishonestly. The vocabulary came from the fit split,
         the validation set was separate, the test set was touched once</li>
     <li>The from-scratch model lost to a linear model on word counts by
-        «f2:l21_bow_minus_rnn_points» points</li>
-    <li>Borrowing an embedding table recovered «f2:l21_swap_gain_points» of them</li>
+        6.72 points</li>
+    <li>Borrowing an embedding table recovered 0.79 of them</li>
   </ul>
   <div class="panel panel-fail">
     <span class="panel-title">So the diagnosis is not a leak this time</span>
-    It is that «int:l21_n_fit» labelled reviews are not enough to learn a
+    It is that 20,000 labelled reviews are not enough to learn a
     language from, and the architecture was never the binding constraint.
   </div>
 </section>
@@ -647,13 +648,14 @@ loss = nn.CrossEntropyLoss()(model(xb, lb), yb)
   <h2>Measure the damage</h2>
   <table>
     <tr><th>Same architecture, same seed, same four epochs</th><th class="num">Final training loss</th><th class="num">Test accuracy</th></tr>
-    <tr><td class="fix">Logits into the loss</td><td class="num">«f4:l21_runs.word_random.train_loss.3»</td><td class="num hit">«pct1:l21_scratch_acc»</td></tr>
-    <tr><td class="fail">Probabilities into the loss</td><td class="num fail">«f4:l22_double_softmax.train_loss.3»</td><td class="num fail">«pct1:l22_double_softmax.test_acc»</td></tr>
+    <tr><td class="fix">Logits into the loss</td><td class="num">0.2092</td><td class="num hit">83.4%</td></tr>
+    <tr><td class="fail">Probabilities into the loss</td><td class="num fail">0.4468</td><td class="num fail">81.7%</td></tr>
   </table>
-  <p class="big-num bad">«f2:l22_double_softmax_cost» points</p>
-  <p class="small">Look at the loss column first. It sits above 0.3 and stops,
-  exactly where the algebra said it would &mdash; and <strong>that</strong> is
-  the tell, not the accuracy.</p>
+  <p class="big-num bad">1.67 points</p>
+  <p class="small">Look at the loss column first. The broken run is still above
+  the 0.313 floor the algebra predicted while the correct one has passed well
+  under it &mdash; and <strong>that</strong> is the tell. The accuracy gap is
+  1.67 points, which on its own you would shrug at.</p>
 </section>
 
 <!-- 34 -->
@@ -688,14 +690,14 @@ loss = nn.CrossEntropyLoss()(model(xb, lb), yb)
 <!-- 36 -->
 <section data-menu-title="The real limitation">
   <h2>Now the real limitation</h2>
-  <p>With that bug fixed we are back to «pct1:l21_scratch_acc», and the
+  <p>With that bug fixed we are back to 83.4%, and the
   diagnosis at the top of this block stands.</p>
   <ul class="tight small">
     <li>An embedding table gives each token <strong>one</strong> vector.
         <em>Bank</em> has one vector in every sentence it appears in</li>
     <li>A recurrent layer compresses the whole review into 128 numbers, and
         everything not in those 128 numbers is gone</li>
-    <li>Both the table and the recurrence were trained on «int:l21_n_fit»
+    <li>Both the table and the recurrence were trained on 20,000
         labelled reviews</li>
   </ul>
   <p class="lead">We borrowed the first layer. The question is why we stopped
@@ -718,7 +720,7 @@ loss = nn.CrossEntropyLoss()(model(xb, lb), yb)
   <h2>The argument, stated plainly</h2>
   <table>
     <tr><th></th><th class="num">Text seen</th><th class="num">Labels seen</th></tr>
-    <tr><td>Our GRU</td><td class="num">«int:l21_n_fit» reviews</td><td class="num">«int:l21_n_fit»</td></tr>
+    <tr><td>Our GRU</td><td class="num">20,000 reviews</td><td class="num">20,000</td></tr>
     <tr><td class="fix">A pretrained language model</td><td class="num hit">billions of words</td><td class="num">0</td></tr>
   </table>
   <p>The pretrained model never saw a sentiment label. It learned English by
@@ -752,7 +754,7 @@ loss = nn.CrossEntropyLoss()(model(xb, lb), yb)
   <h2>Why that matters for a review</h2>
   <table>
     <tr><th></th><th>Recurrent</th><th>Attention</th></tr>
-    <tr><td>Path between two positions</td><td class="fail">up to «int:l21_maxlen» steps</td><td class="fix">1</td></tr>
+    <tr><td>Path between two positions</td><td class="fail">up to 256 steps</td><td class="fix">1</td></tr>
     <tr><td>Representation of a token</td><td>one vector per token, plus state</td><td class="fix">depends on the whole sentence</td></tr>
     <tr><td>Positions processed</td><td class="fail">one at a time</td><td class="fix">all at once</td></tr>
   </table>
@@ -767,12 +769,12 @@ loss = nn.CrossEntropyLoss()(model(xb, lb), yb)
   <h2>The model we borrow</h2>
   <table>
     <tr><th>Property</th><th class="num">Value</th></tr>
-    <tr><td>Parameters</td><td class="num">«int:l22_finetune.n_params»</td></tr>
-    <tr><td>Vocabulary &mdash; the same one we used last lecture</td><td class="num">«int:l21_oov.subword_vocab»</td></tr>
+    <tr><td>Parameters</td><td class="num">66,955,010</td></tr>
+    <tr><td>Vocabulary &mdash; the same one we used last lecture</td><td class="num">30,522</td></tr>
     <tr><td>Embedding width</td><td class="num">768</td></tr>
     <tr><td>Pretraining task</td><td class="num">predict masked words</td></tr>
   </table>
-  <p>Last lecture we took «int:l21_oov.subword_vocab» &times; 768 numbers out of
+  <p>Last lecture we took 30,522 &times; 768 numbers out of
   this model and threw the rest away. The rest is where the language is.</p>
 </section>
 
@@ -802,14 +804,17 @@ lossf = nn.CrossEntropyLoss()          # logits in, as always
   <p>Run the same backbone with its untrained head and no fine-tuning at all:</p>
   <table>
     <tr><th>Model</th><th class="num">Test accuracy</th></tr>
-    <tr><td class="fail">Pretrained body, random head, no training</td><td class="num fail">«pct1:l22_zeroshot.acc»</td></tr>
-    <tr><td>Always one class</td><td class="num">«pct1:l21_majority»</td></tr>
+    <tr><td class="fail">Pretrained body, random head, no training</td><td class="num fail">40.1%</td></tr>
+    <tr><td>Always one class</td><td class="num">50.0%</td></tr>
   </table>
-  <p class="small">Measured on «int:l22_zeroshot.n» test reviews. The
-  pretraining on its own predicts nothing about sentiment &mdash; it has no idea
-  what the two output units are supposed to mean. Everything that follows is
-  what one pass of fine-tuning does with a representation it did not have to
-  build.</p>
+  <p class="small">Measured on 5,000 test reviews sampled at
+  random, 49.8% of them positive. Note it is
+  <em>below</em> the majority class: an untrained head is an arbitrary
+  hyperplane, and which side it puts each class on is a coin toss. The
+  pretraining on its own predicts nothing about sentiment, because nothing has
+  told it what the two output units mean.</p>
+  <p class="small muted">Everything that follows is what one pass of fine-tuning
+  does with a representation it did not have to build.</p>
 </section>
 
 <!-- 44 -->
@@ -817,16 +822,16 @@ lossf = nn.CrossEntropyLoss()          # logits in, as always
   <h2>What it costs</h2>
   <table>
     <tr><th>Setting</th><th class="num">Value</th></tr>
-    <tr><td>Reviews used to fine-tune</td><td class="num">«int:l22_finetune.n_fit»</td></tr>
-    <tr><td>Epochs</td><td class="num">«int:l22_finetune.epochs»</td></tr>
-    <tr><td>Batch size, learning rate</td><td class="num">«int:l22_finetune.batch», 0.00002</td></tr>
-    <tr><td>Training wall clock</td><td class="num">«f0:l22_finetune.train_seconds» s</td></tr>
-    <tr><td>Scoring «int:l21_n_test» test reviews</td><td class="num">«f0:l22_finetune.test_seconds» s</td></tr>
+    <tr><td>Reviews used to fine-tune</td><td class="num">20,000</td></tr>
+    <tr><td>Epochs run, and the one validation chose</td><td class="num">2, 1</td></tr>
+    <tr><td>Batch size, learning rate</td><td class="num">16, 0.00002</td></tr>
+    <tr><td>Training wall clock</td><td class="num">346 s</td></tr>
+    <tr><td>Scoring 25,000 test reviews</td><td class="num">178 s</td></tr>
   </table>
-  <p class="small">Measured on an Apple MPS backend, in
-  <code>float32</code>. Comparable to the from-scratch GRU's
-  «f0:l21_runs.word_random.seconds» seconds, for a model 25 times larger &mdash;
-  attention parallelises and recurrence does not.</p>
+  <p class="small">Measured on an Apple MPS backend, in <code>float32</code>.
+  The number of epochs is a hyperparameter, so it is chosen on the
+  5,000-review validation split, exactly as in Lecture 2 &mdash;
+  never on the test set.</p>
 </section>
 
 <!-- 45 -->
@@ -834,14 +839,17 @@ lossf = nn.CrossEntropyLoss()          # logits in, as always
   <h2>The result</h2>
   <table>
     <tr><th>Model</th><th class="num">Test accuracy</th></tr>
-    <tr><td>Always one class</td><td class="num">«pct1:l21_majority»</td></tr>
-    <tr><td>tf-idf + logistic regression</td><td class="num">«pct1:l21_bow.bigram.acc»</td></tr>
-    <tr><td>GRU from scratch</td><td class="num">«pct1:l21_scratch_acc»</td></tr>
-    <tr><td>GRU, pretrained embeddings</td><td class="num">«pct1:l21_pretrained_acc»</td></tr>
-    <tr><td class="fix">DistilBERT, fine-tuned</td><td class="num hit">«pct1:l22_finetune_acc»</td></tr>
+    <tr><td>Always one class</td><td class="num">50.0%</td></tr>
+    <tr><td>tf-idf + logistic regression</td><td class="num">90.1%</td></tr>
+    <tr><td>GRU from scratch</td><td class="num">83.4%</td></tr>
+    <tr><td>GRU, pretrained embeddings</td><td class="num">84.2%</td></tr>
+    <tr><td class="fix">DistilBERT, fine-tuned</td><td class="num hit">90.6%</td></tr>
   </table>
-  <p class="lead fix">«f2:l22_gain_over_scratch» points over the model you
-  built, and «f2:l22_gain_over_bow» over the bag of words.</p>
+  <p class="lead fix">7.18 points over the model you
+  built.</p>
+  <p class="small">And only 0.45 points over the bag of words
+  &mdash; which is the second result of the afternoon, and the less comfortable
+  one.</p>
 </section>
 
 <!-- FIG -->
@@ -859,14 +867,65 @@ lossf = nn.CrossEntropyLoss()          # logits in, as always
 <section data-menu-title="Count the errors">
   <h2>Say it in errors, not in points</h2>
   <table>
-    <tr><th>Model</th><th class="num">Reviews misclassified, out of «int:l21_n_test»</th></tr>
-    <tr><td>GRU from scratch</td><td class="num fail">«int:l22_errors_scratch»</td></tr>
-    <tr><td class="fix">DistilBERT, fine-tuned</td><td class="num hit">«int:l22_errors_finetuned»</td></tr>
+    <tr><th>Model</th><th class="num">Reviews misclassified, out of 25,000</th></tr>
+    <tr><td>GRU from scratch</td><td class="num fail">4,146</td></tr>
+    <tr><td class="fix">DistilBERT, fine-tuned</td><td class="num hit">2,352</td></tr>
   </table>
-  <p class="big-num good">«pct0:l22_error_drop»</p>
+  <p class="big-num good">43%</p>
   <p class="small">of the mistakes removed. Percentage points flatter a model
   near the top of the range; the error count is the number the desk actually
   cares about, because each one is a review someone has to fix by hand.</p>
+</section>
+
+<!-- 46b -->
+<section data-menu-title="Why is the bag so close">
+  <h2>Why is counting words still that close?</h2>
+  <ul class="tight small">
+    <li>Sentiment in a film review is mostly <strong>lexical</strong>.
+        <em>Terrible</em>, <em>waste of time</em>, <em>brilliant</em> &mdash;
+        and bigrams already catch <em>not good</em></li>
+    <li>25,000 labelled reviews is a great deal of supervision for a
+        linear model with 200,000 features</li>
+    <li>The transformer's advantage is in what a bag cannot represent: negation
+        at a distance, sarcasm, and a verdict that depends on order</li>
+  </ul>
+  <p class="lead">So the question is not <em>which is better</em>. It is
+  <em>better at what budget</em> &mdash; and that is measurable.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Label efficiency">
+  <h2>Where the pretrained model earns its place</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-label-efficiency.svg"
+         alt="Test accuracy against the number of labelled reviews on a log axis: the fine-tuned DistilBERT curve is far above the bag-of-words curve at two hundred labels and the two converge by twenty thousand.">
+  </figure>
+  <p class="takeaway fix">The gap is largest where labels are scarcest &mdash;
+  which is the situation every real feedback desk starts in.</p>
+</section>
+
+<!-- 46c -->
+<section data-menu-title="Label efficiency measured">
+  <h2>Label efficiency, measured</h2>
+  <table>
+    <tr><th class="num">Labelled reviews</th><th class="num">Bag of words</th><th class="num">DistilBERT</th><th class="num">Gap</th></tr>
+    <tr><td class="num">200</td><td class="num">75.7%</td><td class="num hit">83.9%</td><td class="num fix">8.12</td></tr>
+    <tr><td class="num">1,000</td><td class="num">83.0%</td><td class="num hit">87.0%</td><td class="num fix">3.98</td></tr>
+    <tr><td class="num">5,000</td><td class="num">88.2%</td><td class="num hit">88.9%</td><td class="num fix">0.74</td></tr>
+    <tr><td class="num">20,000</td><td class="num">90.5%</td><td class="num hit">90.1%</td><td class="num">-0.34</td></tr>
+  </table>
+  <p class="small">Each model's budget is <strong>chosen on the validation
+  split at every size</strong> &mdash; the number of optimisation steps for the
+  transformer, the regularisation strength for the linear model. Fixing the
+  epochs instead would give the 200-review model 13 steps, and fixing the steps
+  would undertrain the 20,000-review one; measured, those two protocols disagree
+  about the <em>sign</em> at 20,000 labels.</p>
+  <p class="small muted">Scored on 5,000 test
+  reviews rather than all 25,000, to keep the sweep inside a
+  lecture &mdash; sampled at random, because the corpus ships all the positives
+  first.</p>
+  <p class="small muted">The pretraining is worth thousands of labels. That is
+  the number to quote to whoever is paying for the annotation.</p>
 </section>
 
 <!-- 47 -->
@@ -926,7 +985,7 @@ vec  = torch.nn.functional.normalize(vec, dim=1)   # onto the unit sphere
   <ul class="tight small">
     <li>Length carries no meaning here, and a long review would otherwise
         dominate every ranking</li>
-    <li>Searching «int:l22_search.n» reviews becomes one matrix product</li>
+    <li>Searching 5,000 reviews becomes one matrix product</li>
   </ul>
   <p class="small muted">Normalisation onto the sphere returns as the first
   line of thread 12, where it is doing rather more work.</p>
@@ -939,8 +998,8 @@ vec  = torch.nn.functional.normalize(vec, dim=1)   # onto the unit sphere
 sims = query_vec @ corpus_vecs.T          # (1, N) cosine similarities
 top  = np.argsort(-sims[0])[:3]
   </code></pre>
-  <p>«int:l22_search.n» negative reviews, embedded once in
-  «f0:l22_search.seconds» seconds, «int:l22_search.dim» dimensions each. No
+  <p>5,000 negative reviews, embedded once in
+  11 seconds, 384 dimensions each. No
   index, no training, no labels.</p>
   <div class="panel">
     <span class="panel-title">Compare with what it replaces</span>
@@ -953,37 +1012,46 @@ top  = np.argsort(-sims[0])[:3]
 <!-- 52 -->
 <section data-menu-title="Search measured">
   <h2>One query, two searches</h2>
-  <p class="small"><strong>Query:</strong> <em>&ldquo;«str:l22_query.1»&rdquo;</em></p>
+  <p class="small"><strong>Query:</strong> <em>&ldquo;the acting was wooden and unconvincing&rdquo;</em></p>
   <div class="panel panel-fix">
-    <span class="panel-title">Nearest by embedding &mdash; cosine «f3:l22_search.hits.1.top_sim.0»</span>
-    <span class="small">«str:l22_hit_text.1»</span>
+    <span class="panel-title">Nearest by embedding &mdash; cosine 0.638</span>
+    <span class="small">I caught this film late at night on HBO. Talk about wooden acting, unbelievable plot, et al. Very little going in its favor. Skip it.</span>
   </div>
   <p class="small"><strong>Nearest by keyword overlap</strong> &mdash; tf-idf
-  cosine «f3:l22_search.hits.1.keyword_top_sim.0»:</p>
-  <p class="small">&ldquo;«str:l22_keyword_text.1»&rdquo;</p>
+  cosine 0.229:</p>
+  <p class="small">&ldquo;This is by far the worst non-English horror movie I've ever seen. The acting is wooden, the dialogues are simply stupid and the story is totally...&rdquo;</p>
+  <p class="small muted">Both found it. The scores are not comparable across the
+  two methods &mdash; different spaces &mdash; so the interesting question is
+  the next slide's.</p>
 </section>
 
 <!-- 53 -->
 <section data-menu-title="Why search differs">
-  <h2>Why the two disagree</h2>
-  <p>Of the three reviews each method returns for that query, the two lists
-  share «int:l22_search.hits.1.overlap_at_3» of three.</p>
-  <ul class="tight small">
-    <li>Keyword search can only retrieve documents that reuse the query's
-        words &mdash; and a complaint rarely uses the desk's vocabulary</li>
-    <li>The embedding was trained so that sentences with the same meaning land
-        near each other, whatever words they use</li>
-  </ul>
-  <p class="fail small">It also fails differently. Cosine similarity has no
-  notion of negation, so <em>the sound was perfect</em> and <em>the sound was
-  not perfect</em> sit close together. Do not deploy this without measuring it
-  on your own queries.</p>
+  <h2>Where they disagree, over three queries</h2>
+  <table>
+    <tr><th>Query</th><th class="num">Shared in the top 3</th></tr>
+    <tr><td class="smaller">&ldquo;the acting was wooden and unconvincing&rdquo;</td><td class="num">0 of 3</td></tr>
+    <tr><td class="smaller">&ldquo;the sound mix made the dialogue impossible to follow&rdquo;</td><td class="num">0 of 3</td></tr>
+    <tr><td class="smaller">&ldquo;far too long, it should have ended an hour earlier&rdquo;</td><td class="num">0 of 3</td></tr>
+  </table>
+  <p class="small">Not one document in common, on any of the three. Keyword
+  search can only retrieve documents that reuse the query's words, and a
+  complaint rarely uses the desk's vocabulary; the embedding was trained so that
+  sentences with the same meaning land near each other, whatever words they
+  use.</p>
+  <p class="fail small">That is a difference, not a victory &mdash; and nothing
+  here measures which list is <em>better</em>. Judged by eye, on one of these
+  three the keyword search returns the more relevant review. Cosine similarity
+  also has no notion of negation, so <em>the sound was perfect</em> and <em>the
+  sound was not perfect</em> sit close together. If you deploy this, you owe
+  yourself labelled queries and a retrieval metric &mdash; which is Lecture
+  23.</p>
 </section>
 
 <!-- 54 -->
 <section data-menu-title="Clustering">
   <h2>&ldquo;What do people keep complaining about?&rdquo;</h2>
-  <p>Cluster the «int:l22_search.n» negative reviews in the same embedding
+  <p>Cluster the 5,000 negative reviews in the same embedding
   space. This is Lecture 9, unchanged &mdash; k-means, and the choice of $k$ by
   silhouette rather than by eye.</p>
   <pre><code class="language-python" data-trim>
@@ -1013,16 +1081,16 @@ for k in (3, 4, 5, 6, 8, 10, 12):
   <h2>The three largest groups</h2>
   <table>
     <tr><th class="num">Reviews</th><th>Terms most characteristic of the group</th></tr>
-    <tr><td class="num">«int:l22_clusters.groups.0.size»</td><td>«str:l22_cluster_terms.0»</td></tr>
-    <tr><td class="num">«int:l22_clusters.groups.1.size»</td><td>«str:l22_cluster_terms.1»</td></tr>
-    <tr><td class="num">«int:l22_clusters.groups.2.size»</td><td>«str:l22_cluster_terms.2»</td></tr>
+    <tr><td class="num">1,936</td><td>bad, worst, movies, acting</td></tr>
+    <tr><td class="num">1,198</td><td>woman, character, women, role</td></tr>
+    <tr><td class="num">1,170</td><td>horror, monster, zombie, scary</td></tr>
   </table>
   <p class="small">The terms are not the cluster centres. They are the words
   whose average tf-idf weight is highest <em>inside</em> the group relative to
   outside it &mdash; a group is named by what makes it different, not by what is
   common everywhere.</p>
-  <p class="small muted">«int:l22_clusters.best_k» groups in total, chosen by a
-  silhouette of «f4:l22_best_silhouette».</p>
+  <p class="small muted">4 groups in total, chosen by a
+  silhouette of 0.0179.</p>
 </section>
 
 <!-- 56 -->
@@ -1030,9 +1098,9 @@ for k in (3, 4, 5, 6, 8, 10, 12):
   <h2>What the desk actually gets</h2>
   <table>
     <tr><th>They asked for</th><th>They get</th></tr>
-    <tr><td>a complaint flag</td><td>«pct1:l22_finetune_acc» accurate, «f0:l22_finetune.test_seconds» s for «int:l21_n_test» reviews</td></tr>
-    <tr><td>&ldquo;find me ones like this&rdquo;</td><td>cosine search over «int:l22_search.n» vectors</td></tr>
-    <tr><td>&ldquo;what recurs&rdquo;</td><td>«int:l22_clusters.best_k» groups, each named by its own words</td></tr>
+    <tr><td>a complaint flag</td><td>90.6% accurate, 178 s for 25,000 reviews</td></tr>
+    <tr><td>&ldquo;find me ones like this&rdquo;</td><td>cosine search over 5,000 vectors</td></tr>
+    <tr><td>&ldquo;what recurs&rdquo;</td><td>4 groups, each named by its own words</td></tr>
   </table>
   <p class="small">Three deliverables, one pretrained representation, and one
   afternoon. None of the three required a labelled example of the thing being
@@ -1107,11 +1175,11 @@ print(f"accuracy {(clf.predict(X_te) == y_te).mean():.3f}")
   <p>The same experiment at two corpus sizes, because the answer depends on the
   size and that is the lesson:</p>
   <ul class="tight small">
-    <li><strong>«int:l22_leak.full.n_docs» documents</strong> &mdash; the whole
-        of IMDb, «int:l22_leak.full.seeds» seeds</li>
-    <li><strong>«int:l22_leak.small.n_docs» documents</strong> &mdash; the size
+    <li><strong>25,000 documents</strong> &mdash; the whole
+        of IMDb, 5 seeds</li>
+    <li><strong>400 documents</strong> &mdash; the size
         of a real feedback corpus in its first month,
-        «int:l22_leak.small.seeds» seeds</li>
+        20 seeds</li>
   </ul>
   <p class="small">Leaky and honest are run on identical splits with identical
   seeds, so the difference is the leak and nothing else.</p>
@@ -1132,50 +1200,55 @@ print(f"accuracy {(clf.predict(X_te) == y_te).mean():.3f}")
 <section data-menu-title="Leak measured">
   <h2>The leak, measured</h2>
   <table>
-    <tr><th>Corpus</th><th class="num">Leaky</th><th class="num">Honest</th><th class="num">Difference</th></tr>
-    <tr><td>«int:l22_leak.full.n_docs» reviews</td><td class="num">«pct2:l22_leak.full.leaky_mean»</td><td class="num">«pct2:l22_leak.full.honest_mean»</td><td class="num">«f2:l22_leak.full.gap_points» pts</td></tr>
-    <tr><td class="fail">«int:l22_leak.small.n_docs» reviews</td><td class="num fail">«pct2:l22_leak.small.leaky_mean»</td><td class="num">«pct2:l22_leak.small.honest_mean»</td><td class="num fail">«f2:l22_leak.small.gap_points» pts</td></tr>
+    <tr><th>Corpus</th><th class="num">Leaky</th><th class="num">Honest</th><th class="num">Difference</th><th class="num">sd over seeds</th></tr>
+    <tr><td>25,000 reviews</td><td class="num">90.28%</td><td class="num">90.22%</td><td class="num">0.06 pts</td><td class="num">0.07%</td></tr>
+    <tr><td>400 reviews</td><td class="num">75.90%</td><td class="num">75.60%</td><td class="num">0.30 pts</td><td class="num fail">2.53%</td></tr>
   </table>
-  <p class="small">On the small corpus the leak wins on
-  «int:l22_leak.small.seeds_leak_wins» of «int:l22_leak.small.seeds» seeds, with
-  a standard deviation of «pct2:l22_leak.small.gap_sd» across seeds &mdash; so
-  quoting a single seed here would tell you almost nothing.</p>
+  <p class="lead">Read the last column before the one beside it.</p>
+  <p class="small">On the small corpus the mean gap is
+  0.30 points and the spread across seeds is
+  2.53% &mdash; eight times larger. The leak wins on
+  10 of 20 seeds:
+  exactly half. <strong>This is a null result.</strong></p>
 </section>
 
 <!-- 63 -->
 <section data-menu-title="Why the size matters">
-  <h2>Why the size decides it</h2>
+  <h2>Why it is so cheap &mdash; and this is the useful part</h2>
+  <p class="small">The leaky vocabulary really is bigger:
+  60,000 columns against
+  54,074. So why does it buy nothing?</p>
   <ul class="tight small">
-    <li>At «int:l22_leak.full.n_docs» documents the inverse document frequencies
-        are an average over «int:l22_leak.full.n_docs» draws. Removing a quarter
-        of them barely moves any of them</li>
-    <li>At «int:l22_leak.small.n_docs», the leaky vocabulary has
-        «int:l22_leak.small_vocab_leaky» columns against
-        «int:l22_leak.small_vocab_honest» honest ones &mdash; and every extra
-        column exists <em>because</em> a test document used it</li>
-    <li>A term appearing in exactly one test document gets a large idf and a
-        coefficient fitted on nothing, and the model can key on it</li>
+    <li>A term that occurs only in test documents has an <strong>all-zero
+        column</strong> in the training rows. Logistic regression gives it
+        coefficient exactly zero &mdash; there is no gradient to move it</li>
+    <li>What actually leaks is the inverse document frequencies, and an idf is
+        an average over the whole corpus. Removing a quarter of the documents
+        barely moves it</li>
+    <li>So the leak changes the <em>scale</em> of features the model already
+        had, and a regularised linear model is nearly indifferent to that</li>
   </ul>
   <div class="panel panel-fix">
-    <span class="panel-title">The decision rule</span>
-    Fit the vectoriser inside the pipeline, always &mdash; not because the
-    damage is always large, but because it scales with the reciprocal of your
-    corpus size, and the corpus is smallest exactly when the project starts.
+    <span class="panel-title">The decision rule, and it is not about the size</span>
+    Fit the vectoriser inside the pipeline anyway. Not because this leak is
+    expensive &mdash; measured, it is not &mdash; but because
+    <strong>the next fitted object in the pipeline may not have that
+    property</strong>, and you will not re-derive the argument each time.
   </div>
 </section>
 
 <!-- 64 -->
 <section data-menu-title="Cost is not the argument">
-  <h2>And the cost is still not the argument</h2>
-  <p class="small">The same shape as Lecture 1's scale-before-split leak, worth
-  about a dollar, and Lecture 12's per-batch mean, worth
-  0.382 accuracy points. Three leaks, three small
-  numbers, one rule.</p>
+  <h2>Three leaks, three small numbers</h2>
+  <p class="small">Lecture 1's scale-before-split leak was worth about a dollar.
+  Lecture 12's per-batch mean was worth 0.382
+  accuracy points. Today's vectoriser leak is worth nothing you can measure.</p>
   <div class="panel panel-fail">
-    <span class="panel-title">You cannot tell from the number</span>
-    A leaked score and an honest score can be identical. The procedure is what
-    separates them, so the procedure is what is checked in review &mdash; not
-    the size of the gap, which you only know after measuring it.
+    <span class="panel-title">And that is not a reason to relax</span>
+    A leaked score and an honest score can be identical, so you cannot tell from
+    the number which one you are holding. The procedure is what separates them
+    &mdash; which is why the procedure is what gets checked in review, and why
+    the next slide matters more than this one.
   </div>
 </section>
 
@@ -1199,22 +1272,25 @@ dupes = sum(1 for s in test_x if norm(s) in train_norm)
   <h2>First, check the corpus you have</h2>
   <table>
     <tr><th>On the official IMDb split</th><th class="num">Count</th></tr>
-    <tr><td class="fix">Test reviews also present in training</td><td class="num hit">«int:l22_dupes.train_test_dupes»</td></tr>
-    <tr><td>Duplicate reviews within training</td><td class="num">«int:l22_dupes.within_train_dupes»</td></tr>
+    <tr><td class="fail">Test reviews also present in training</td><td class="num fail">123</td></tr>
+    <tr><td class="fail">Duplicate reviews within training</td><td class="num fail">96</td></tr>
   </table>
-  <p>Clean, because the corpus authors deduplicated it. Three lines to run, and
-  you now <em>know</em> rather than assume.</p>
-  <p class="small muted">Which also means the cost cannot be measured on this
-  corpus. So we build one that is not clean, and say so on the slide.</p>
+  <p><strong>Not zero.</strong> The corpus authors separated the <em>films</em>
+  between train and test, and said so; they did not deduplicate the
+  <em>reviews</em>. Three lines to run, and you now know rather than assume.</p>
+  <p class="small muted">123 out of
+  25,000 is too few to move our numbers. It is also exactly the check
+  nobody ran, on the corpus everybody uses.</p>
 </section>
 
 <!-- 65c -->
 <section data-menu-title="A corpus with duplicates">
   <h2>A feedback corpus that was never deduplicated</h2>
-  <p class="small">Take «int:l22_duplicate_leak.n_unique» reviews and let a third
-  of them be submitted twice &mdash; «int:l22_duplicate_leak.n_rows» rows, of
-  which some are copies. Then split two ways and fit the same honest pipeline
-  inside each.</p>
+  <p class="small">123 duplicates in
+  25,000 is not enough to measure a cost with, so build a corpus where
+  it is: 1,500 reviews, a third of them submitted
+  twice, 1,950 rows in all. Then split two ways and fit
+  the same honest pipeline inside each.</p>
   <pre><code class="language-python" data-trim data-line-numbers="1-8|2-3|5-7">groups = np.concatenate([np.arange(n_unique), duplicated_ids])
 tr, te = train_test_split(np.arange(len(X)), test_size=0.25,
                           random_state=seed, stratify=y)
@@ -1223,7 +1299,7 @@ gss = GroupShuffleSplit(n_splits=1, test_size=0.25, random_state=seed)
 tr2, te2 = next(gss.split(np.arange(len(X)), y, groups=groups))
   </code></pre>
   <p class="fail small">Under the random split,
-  «pct0:l22_duplicate_leak.twin_share» of the test rows have a copy of
+  35% of the test rows have a copy of
   themselves in the training set.</p>
 </section>
 
@@ -1242,13 +1318,13 @@ tr2, te2 = next(gss.split(np.arange(len(X)), y, groups=groups))
 <section data-menu-title="Duplicate leak measured">
   <h2>The duplicate leak, measured</h2>
   <table>
-    <tr><th>Split</th><th class="num">Reported accuracy</th><th class="num">Spread over «int:l22_duplicate_leak.seeds» seeds</th></tr>
-    <tr><td class="fail">random over rows</td><td class="num fail">«pct2:l22_duplicate_leak.naive_mean»</td><td class="num">«pct2:l22_duplicate_leak.naive_sd»</td></tr>
-    <tr><td class="fix">grouped by entry</td><td class="num hit">«pct2:l22_duplicate_leak.grouped_mean»</td><td class="num">«pct2:l22_duplicate_leak.grouped_sd»</td></tr>
+    <tr><th>Split</th><th class="num">Reported accuracy</th><th class="num">Spread over 10 seeds</th></tr>
+    <tr><td class="fail">random over rows</td><td class="num fail">90.00%</td><td class="num">1.87%</td></tr>
+    <tr><td class="fix">grouped by entry</td><td class="num hit">82.17%</td><td class="num">2.88%</td></tr>
   </table>
-  <p class="big-num bad">«f2:l22_duplicate_leak.gap_points» points</p>
-  <p class="small">The leak wins on «int:l22_duplicate_leak.seeds_leak_wins» of
-  «int:l22_duplicate_leak.seeds» seeds. Compare with the vectoriser leak two
+  <p class="big-num bad">7.83 points</p>
+  <p class="small">The leak wins on 10 of
+  10 seeds. Compare with the vectoriser leak two
   slides ago: <strong>the object that was fitted wrongly cost far less than the
   rows that were split wrongly.</strong></p>
 </section>
@@ -1283,7 +1359,7 @@ tr2, te2 = next(gss.split(np.arange(len(X)), y, groups=groups))
     </div>
     <div>
       <div class="panel panel-fix small">
-        &ldquo;This pipeline reports «pct1:l22_finetune_acc» accuracy. List
+        &ldquo;This pipeline reports 90.6% accuracy. List
         every object in it that is <em>fitted</em>, say which rows each one saw,
         and name the one whose statistics would change if a quarter of the
         documents were removed.&rdquo;
@@ -1303,18 +1379,18 @@ tr2, te2 = next(gss.split(np.arange(len(X)), y, groups=groups))
     <tr><td>Accuracy under class imbalance</td><td>Lecture 4</td><td class="num">a useless model above 90%</td></tr>
     <tr><td>Missing <code>zero_grad()</code></td><td>Lecture 12</td><td class="num">76.7 points</td></tr>
     <tr><td>Random split on a time series</td><td>Lecture 20</td><td class="num">an unreproducible score</td></tr>
-    <tr><td class="fail">Summarising at the padded last position</td><td class="fail">Lecture 21</td><td class="num fail">«f2:l21_padding_cost_points» points</td></tr>
-    <tr><td class="fail">Softmax before the loss</td><td class="fail">today</td><td class="num fail">«f2:l22_double_softmax_cost» points</td></tr>
-    <tr><td class="fail">Vectoriser fitted before the split</td><td class="fail">today</td><td class="num fail">«f2:l22_leak.small.gap_points» points at «int:l22_leak.small.n_docs» docs</td></tr>
-    <tr><td class="fail">Duplicate documents across the split</td><td class="fail">today</td><td class="num fail">«f2:l22_duplicate_leak.gap_points» points</td></tr>
+    <tr><td class="fail">Summarising at the padded last position</td><td class="fail">Lecture 21</td><td class="num fail">18.24 points</td></tr>
+    <tr><td class="fail">Softmax before the loss</td><td class="fail">today</td><td class="num fail">1.67 points</td></tr>
+    <tr><td>Vectoriser fitted before the split</td><td>today</td><td class="num">0.30 points &mdash; not distinguishable from zero</td></tr>
+    <tr><td class="fail">Duplicate documents across the split</td><td class="fail">today</td><td class="num fail">7.83 points</td></tr>
   </table>
 </section>
 
 <!-- 69 -->
 <section data-menu-title="Is that good">
-  <h2>Is «pct1:l22_finetune_acc» good?</h2>
-  <p class="small">Against the desk's own criterion: «int:l22_errors_finetuned»
-  reviews out of «int:l21_n_test» are routed wrongly, and nobody sees them
+  <h2>Is 90.6% good?</h2>
+  <p class="small">Against the desk's own criterion: 2,352
+  reviews out of 25,000 are routed wrongly, and nobody sees them
   again. Whether that is acceptable depends on what happens to a missed
   complaint, and we have not asked.</p>
   <div class="panel panel-fix">

@@ -290,7 +290,10 @@ print(f"vocabulary: ours {VOCAB:,}   WordPiece {tk.vocab_size:,}")
 '''),
         code('''
 # How often does WordPiece have to give up? Measure rather than assume.
-sample = test_x[:2_000]
+# NB: the corpus ships positives first, so test_x[:2000] is all positives. It
+# does not matter for a rate that ignores the label, but take the habit anyway.
+sample_i = np.random.default_rng(RANDOM_STATE + 7).permutation(len(test_x))[:2_000]
+sample = [test_x[i] for i in sample_i]
 n_unk = n_tok = 0
 for s in sample:
     ids = tk(s, truncation=True, max_length=512)["input_ids"]
@@ -403,12 +406,20 @@ def accuracy(net, X, L, y, batch=256):
     return hits / len(y)            # counted over the SET, not a mean of batches
 
 def train(net, Xf, Lf, yf, Xv, Lv, yv, double_softmax=False, tag=""):
+    """Train, and keep the weights from the best validation epoch.
+
+    Early stopping, from Lecture 6. Reporting the last epoch instead is worth
+    several points to whichever run overfits hardest — and the run that
+    overfits hardest is the one with the pretrained embeddings, because it
+    starts from vectors that already mean something.
+    """
     net = net.to(device)
     params = [p for p in net.parameters() if p.requires_grad]
     opt    = torch.optim.Adam(params, lr=LR)
     lossf  = nn.CrossEntropyLoss()
     Xf_d, yf_d = Xf.to(device), torch.from_numpy(yf).to(device)
     curve, losses = [], []
+    best_state, best_val, best_epoch = None, -1.0, 0
     t0 = time.perf_counter()
     for ep in range(EPOCHS):
         net.train()
@@ -422,11 +433,17 @@ def train(net, Xf, Lf, yf, Xv, Lv, yv, double_softmax=False, tag=""):
             loss = lossf(out, yf_d[j])
             loss.backward()
             opt.step()
-            running += float(loss) * len(j)
+            running += float(loss.detach()) * len(j)
         losses.append(running / len(Xf_d))
         curve.append(accuracy(net, Xv, Lv, yv))
+        if curve[-1] > best_val:
+            best_val, best_epoch = curve[-1], ep + 1
+            best_state = {k: v.detach().cpu().clone()
+                          for k, v in net.state_dict().items()}
         print(f"  {tag} epoch {ep + 1}: loss {losses[-1]:.4f}  "
               f"val {curve[-1]:.4f}  ({time.perf_counter() - t0:.0f}s)")
+    net.load_state_dict({k: v.to(device) for k, v in best_state.items()})
+    print(f"  {tag}: keeping epoch {best_epoch} (val {best_val:.4f})")
     return net, curve, losses
 '''),
         code('''

@@ -24,6 +24,25 @@ guarantees, and the decks say so.
 
 from __future__ import annotations
 
+import os
+
+# Three env vars, all of which must be set before torch is imported, and all of
+# which were paid for.
+#
+# TOKENIZERS_PARALLELISM: the Rust tokenizer keeps a thread pool and
+# scikit-learn forks; a fork with that pool live warns loudly and deadlocks.
+#
+# OMP_NUM_THREADS / KMP_DUPLICATE_LIB_OK: torch and scikit-learn each bring
+# their own OpenMP runtime, and on macOS loading both kills the process inside
+# KMeans with `OMP: Error #179: pthread_mutex_init failed` and no Python
+# traceback at all. It killed this script four times, always on the same line,
+# and the log showed only that the process had stopped existing. Verified:
+# KMP_DUPLICATE_LIB_OK alone still segfaults; the thread limit is the load-
+# bearing one.
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import pickle
 import re
 import sys
@@ -39,7 +58,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from figkit import (setup, save, export, OUT, SEED,                  # noqa: E402
+from figkit import (setup, save, export, OUT, SEED, plain_log,        # noqa: E402
                     PRIMARY, ACCENT, SUCCESS, MATH, MUTED, RULE, AXIS,
                     BODY, SMALL, TICK, check_text_floor)
 
@@ -123,12 +142,25 @@ def load_imdb() -> dict:
     rng = np.random.default_rng(SEED)
     order = rng.permutation(len(tr_x))
     fit_i, val_i = order[:N_FIT], order[N_FIT:N_FIT + N_VAL]
+
+    # The corpus ships positives first and negatives second, so te_x[:n] is
+    # every positive review and nothing else. Any "accuracy" measured on that
+    # slice is positive-class recall wearing a different name -- it read 97.7%
+    # once, above the full-test score, which is what gave it away. Shuffle once,
+    # here, and take every subset through test_subset().
+    test_order = np.random.default_rng(SEED + 7).permutation(len(te_x))
     return {
         "train_x": tr_x, "train_y": tr_y,
-        "test_x": te_x, "test_y": te_y,
+        "test_x": te_x, "test_y": te_y, "test_order": test_order,
         "fit_x": [tr_x[i] for i in fit_i], "fit_y": tr_y[fit_i],
         "val_x": [tr_x[i] for i in val_i], "val_y": tr_y[val_i],
     }
+
+
+def test_subset(d, n: int):
+    """A class-balanced slice of the test set, the same one every run."""
+    idx = d["test_order"][:n]
+    return [d["test_x"][i] for i in idx], d["test_y"][idx]
 
 
 def word_tokens(s: str) -> list[str]:
@@ -194,7 +226,7 @@ def oov_curve(d) -> dict:
         types.append(1 - sum(1 for w in te_cnt if w in keep) / len(te_cnt))
 
     tk = AutoTokenizer.from_pretrained(BERT)
-    sample = d["test_x"][:2_000]
+    sample = [d["test_x"][i] for i in d["test_order"][:2_000]]
     unk = tk.unk_token_id
     n_unk = n_tok = 0
     for s in sample:
@@ -407,6 +439,7 @@ def train_rnn(d, enc, vocab, *, init=None, freeze=False, last_of_padding=False,
     n_trainable = sum(p.numel() for p in trainable)
 
     curve, losses = [], []
+    best_state, best_val, best_epoch = None, -1.0, 0
     t0 = time.perf_counter()
     for ep in range(epochs):
         net.train()
@@ -426,12 +459,26 @@ def train_rnn(d, enc, vocab, *, init=None, freeze=False, last_of_padding=False,
             running += float(loss.detach()) * len(j)
         losses.append(running / len(Xf_d))
         curve.append(rnn_accuracy(net, Xv, Lv, d["val_y"]))
+        if curve[-1] > best_val:
+            best_val, best_epoch = curve[-1], ep + 1
+            best_state = {k: v.detach().cpu().clone()
+                          for k, v in net.state_dict().items()}
         print(f"        {tag} epoch {ep+1}: train loss {losses[-1]:.4f}  "
               f"val {curve[-1]:.4f}  ({time.perf_counter()-t0:.0f}s)")
     seconds = time.perf_counter() - t0
+
+    # Early stopping on validation, as in Lecture 6. Reporting the last epoch
+    # instead cost the pretrained-embedding run 3.5 points here: its training
+    # loss reaches 0.03 by epoch 4 and it has memorised the fit split.
+    test_last = rnn_accuracy(net, Xt, Lt, d["test_y"])
+    net.load_state_dict({k: v.to(DEVICE) for k, v in best_state.items()})
     test_acc = rnn_accuracy(net, Xt, Lt, d["test_y"])
-    return {"val_curve": curve, "train_loss": losses, "best_val": max(curve),
-            "test_acc": test_acc, "seconds": seconds, "epochs": epochs,
+    print(f"        {tag}: best val at epoch {best_epoch} -> test {test_acc:.4f}"
+          f"   (last epoch would have been {test_last:.4f})")
+    return {"val_curve": curve, "train_loss": losses, "best_val": best_val,
+            "best_epoch": best_epoch, "test_acc": test_acc,
+            "test_acc_last_epoch": test_last,
+            "seconds": seconds, "epochs": epochs,
             "n_params": n_par, "n_trainable": n_trainable, "vocab": vocab}
 
 
@@ -623,33 +670,52 @@ def fig_softmax_shift(ss):
 def fig_ce_stability(cs):
     rows = cs["rows"]
     g = np.array([r["gap"] for r in rows], dtype=float)
-    nan_to = lambda v: 1e-9 if v is None else max(v, 1e-9)
-    naive = np.array([nan_to(r["naive_rel_err"]) for r in rows])
-    stable = np.array([nan_to(r["stable_rel_err"]) for r in rows])
     frac = np.array([r["naive_nonfinite"] for r in rows])
 
-    fig, axes = plt.subplots(1, 2, figsize=(8.6, 3.0), sharex=True)
+    # Where the naive form returns nothing there is no error to plot, so its
+    # line stops. Substituting a floor there would draw a number that does not
+    # exist -- and would draw it going the reassuring way.
+    n_ok = np.array([r["naive_rel_err"] is not None for r in rows])
+    naive = np.array([r["naive_rel_err"] if ok else np.nan
+                      for r, ok in zip(rows, n_ok)], dtype=float)
+    stable = np.array([r["stable_rel_err"] for r in rows], dtype=float)
+
+    fig, axes = plt.subplots(1, 2, figsize=(9.0, 3.0))
 
     ax = axes[0]
-    ax.plot(g, naive, "o-", color=ACCENT, lw=2.4, ms=7, label="naive")
+    ax.plot(g[n_ok], naive[n_ok], "o-", color=ACCENT, lw=2.4, ms=7,
+            label="naive")
     ax.plot(g, stable, "s-", color=SUCCESS, lw=2.4, ms=6, label="combined")
     ax.set_yscale("log")
+    ax.set_ylim(6e-9, 3e-3)
+    # after plotting, not before: set_yscale reinstalls the mathtext formatter
+    plain_log(ax, "y", [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3], fmt="{:.0e}")
     ax.set_xlabel("true loss of the row, in nats")
     ax.set_ylabel("median relative error")
-    ax.legend(loc="upper left")
-    ax.set_title("precision, on the rows that return a number")
+    ax.legend(loc="upper left", fontsize=SMALL)
+    ax.set_title("where it answers", fontsize=SMALL)
+    if (~n_ok).any():
+        ax.annotate("the naive line stops where\nthere is nothing left to score",
+                    xy=(55, 1.3e-6), ha="center", va="center",
+                    fontsize=SMALL, color=MUTED)
 
     ax = axes[1]
     ax.plot(g, 100 * frac, "o-", color=ACCENT, lw=2.4, ms=7, label="naive")
     ax.plot(g, 100 * np.array([r["stable_nonfinite"] for r in rows]), "s-",
             color=SUCCESS, lw=2.4, ms=6, label="combined")
     ax.set_xlabel("true loss of the row, in nats")
-    ax.set_ylabel("rows returning inf or nan, %")
-    ax.set_ylim(-4, 104)
-    ax.legend(loc="upper left")
-    ax.set_title("and whether it returns one at all")
+    ax.set_ylabel("rows returning inf, %")
+    ax.set_ylim(-5, 108)
+    ax.legend(loc="center left", fontsize=SMALL)
+    ax.set_title("whether it answers at all", fontsize=SMALL)
+    first = int(np.argmax(frac > 0)) if (frac > 0).any() else None
+    if first is not None:
+        ax.annotate(f"every row, past\n{g[first]:.0f} nats", xy=(g[first], 100),
+                    xytext=(g[first] - 6, 78), ha="right", fontsize=SMALL,
+                    color=ACCENT,
+                    arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
 
-    fig.tight_layout()
+    fig.tight_layout(w_pad=2.5)
     save(fig, "l22-ce-stability")
 
 
@@ -674,7 +740,14 @@ def fig_gradient(gc):
 
 # ------------------------------------------------------------- the fine-tune
 
-def finetune_distilbert(d, n_fit=N_FIT, epochs=1, batch=16, lr=2e-5) -> dict:
+def finetune_distilbert(d, n_fit=N_FIT, epochs=2, batch=16, lr=2e-5) -> dict:
+    """Fine-tune, scoring validation AND test after every epoch.
+
+    The number of epochs is a hyperparameter, so it is chosen on the validation
+    split like every other one in this course. Both epochs' test scores are
+    recorded so the deck can show that the choice was not made on the test set —
+    but the headline is whichever epoch validation preferred.
+    """
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
     torch.manual_seed(SEED)
     tk = AutoTokenizer.from_pretrained(BERT)
@@ -691,9 +764,24 @@ def finetune_distilbert(d, n_fit=N_FIT, epochs=1, batch=16, lr=2e-5) -> dict:
     opt = torch.optim.AdamW(model.parameters(), lr=lr)
     lossf = nn.CrossEntropyLoss()
 
+    ids_v, am_v = encode(d["val_x"])
+    ids_t, am_t = encode(d["test_x"])
+
+    @torch.no_grad()
+    def score(i_all, a_all, labels, chunk=64):
+        model.eval()
+        preds = np.zeros(len(i_all), dtype=np.int64)
+        for i in range(0, len(i_all), chunk):
+            out = model(input_ids=i_all[i:i + chunk].to(DEVICE),
+                        attention_mask=a_all[i:i + chunk].to(DEVICE)).logits
+            preds[i:i + chunk] = out.argmax(1).cpu().numpy()
+        return float((preds == labels).mean()), preds
+
+    val_curve, test_curve, epoch_seconds = [], [], []
     t0 = time.perf_counter()
-    model.train()
+    preds = None
     for ep in range(epochs):
+        model.train()
         perm = torch.randperm(len(ids))
         for k, i in enumerate(range(0, len(ids), batch)):
             j = perm[i:i + batch]
@@ -704,27 +792,164 @@ def finetune_distilbert(d, n_fit=N_FIT, epochs=1, batch=16, lr=2e-5) -> dict:
             loss.backward()
             opt.step()
             if k % 200 == 0:
-                print(f"        step {k}: loss {float(loss):.4f} "
+                print(f"        step {k}: loss {float(loss.detach()):.4f} "
                       f"({time.perf_counter()-t0:.0f}s)")
-    train_seconds = time.perf_counter() - t0
+        epoch_seconds.append(time.perf_counter() - t0)
+        v, _ = score(ids_v, am_v, d["val_y"])
+        t1 = time.perf_counter()
+        a, preds = score(ids_t, am_t, d["test_y"])
+        val_curve.append(v)
+        test_curve.append(a)
+        print(f"        epoch {ep+1}: val {v:.4f}  test {a:.4f} "
+              f"({epoch_seconds[-1]:.0f}s train, "
+              f"{time.perf_counter()-t1:.0f}s to score the test set)")
 
-    model.eval()
-    ids_t, am_t = encode(d["test_x"])
-    preds = np.zeros(len(ids_t), dtype=np.int64)
-    t1 = time.perf_counter()
-    with torch.no_grad():
-        for i in range(0, len(ids_t), 64):
-            out = model(input_ids=ids_t[i:i + 64].to(DEVICE),
-                        attention_mask=am_t[i:i + 64].to(DEVICE)).logits
-            preds[i:i + 64] = out.argmax(1).cpu().numpy()
-    acc = float((preds == d["test_y"]).mean())
+    # the epoch is a hyperparameter: chosen on validation, never on test
+    best = int(np.argmax(val_curve))
+    acc = test_curve[best]
     n_par = sum(p.numel() for p in model.parameters())
-    print(f"      DistilBERT fine-tuned: {acc:.4f} "
-          f"({train_seconds:.0f}s train, {time.perf_counter()-t1:.0f}s test)")
-    return {"test_acc": acc, "train_seconds": train_seconds,
+    print(f"      DistilBERT fine-tuned: validation prefers epoch {best+1}, "
+          f"test {acc:.4f}")
+    return {"test_acc": acc, "chosen_epoch": best + 1,
+            "val_curve": val_curve, "test_curve": test_curve,
+            "train_seconds": epoch_seconds[best],
             "test_seconds": time.perf_counter() - t1, "n_params": n_par,
             "n_fit": n_fit, "epochs": epochs, "batch": batch, "lr": lr,
-            "errors": int((preds != d["test_y"]).sum())}
+            "errors": int(round((1 - acc) * len(d["test_y"])))}
+
+
+def label_efficiency(d, sizes=(200, 1_000, 5_000, 20_000), n_test=5_000,
+                     checkpoints=(100, 200, 400, 800, 1600), batch=16,
+                     n_val=2_000) -> dict:
+    """Where the pretrained model actually earns its place: few labels.
+
+    At 20,000 labelled reviews a linear model on bigrams is nearly as good, so
+    the honest question is not "is the transformer better" but "better at what
+    budget".
+
+    The trap here is the training protocol, and both obvious choices are unfair
+    at one end. A fixed number of *epochs* gives the 200-review model 13
+    optimisation steps, which does not train the randomly initialised head at
+    all -- that measures undertraining and calls it label efficiency. A fixed
+    number of *steps* then undertrains the 20,000-review model, because 400
+    steps is a third of an epoch there. Measured, those two protocols disagree
+    about the sign of the effect at 20,000 labels.
+
+    So neither is used. Each model gets **its own budget, chosen on the
+    validation split** at every size, exactly as every other hyperparameter in
+    this course: the transformer's number of steps from `checkpoints`, and the
+    logistic regression's regularisation from a small grid. The test subset is
+    scored once, at the chosen budget.
+    """
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.linear_model import LogisticRegression
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+    tk = AutoTokenizer.from_pretrained(BERT)
+    test_x, test_y = test_subset(d, n_test)
+    val_x, val_y = d["val_x"][:n_val], d["val_y"][:n_val]
+
+    def encode(texts):
+        out = tk(list(texts), truncation=True, max_length=MAXLEN,
+                 padding="max_length", return_tensors="pt")
+        return out["input_ids"], out["attention_mask"]
+
+    ids_v, am_v = encode(val_x)
+    ids_t, am_t = encode(test_x)
+
+    @torch.no_grad()
+    def predict(model, i_all, a_all, chunk=64):
+        model.eval()
+        out = np.zeros(len(i_all), dtype=np.int64)
+        for i in range(0, len(i_all), chunk):
+            lg = model(input_ids=i_all[i:i + chunk].to(DEVICE),
+                       attention_mask=a_all[i:i + chunk].to(DEVICE)).logits
+            out[i:i + chunk] = lg.argmax(1).cpu().numpy()
+        return out
+
+    bow, bert, chosen_C, chosen_steps = [], [], [], []
+    for n in sizes:
+        fx, fy = d["fit_x"][:n], d["fit_y"][:n]
+
+        # --- the linear model: C chosen on validation
+        vec = TfidfVectorizer(min_df=1, ngram_range=(1, 2), max_features=200_000)
+        Z, Zv, Zt = vec.fit_transform(fx), None, None
+        Zv, Zt = vec.transform(val_x), vec.transform(test_x)
+        best = (-1.0, None, None)
+        for C in (0.25, 1.0, 4.0, 16.0):
+            clf = LogisticRegression(max_iter=2000, C=C).fit(Z, fy)
+            v = float((clf.predict(Zv) == val_y).mean())
+            if v > best[0]:
+                best = (v, C, float((clf.predict(Zt) == test_y).mean()))
+        bow.append(best[2]); chosen_C.append(best[1])
+
+        # --- the transformer: number of steps chosen on validation
+        torch.manual_seed(SEED)
+        g = torch.Generator().manual_seed(SEED)
+        model = AutoModelForSequenceClassification.from_pretrained(
+            BERT, num_labels=2).to(DEVICE)
+        opt = torch.optim.AdamW(model.parameters(), lr=2e-5)
+        lossf = nn.CrossEntropyLoss()
+        ids, am = encode(fx)
+        yb = torch.from_numpy(fy)
+
+        done, best_b = 0, (-1.0, None, None)
+        for target in checkpoints:
+            model.train()
+            for _ in range(target - done):
+                j = torch.randint(0, len(ids), (batch,), generator=g)
+                opt.zero_grad()
+                out = model(input_ids=ids[j].to(DEVICE),
+                            attention_mask=am[j].to(DEVICE)).logits
+                lossf(out, yb[j].to(DEVICE)).backward()
+                opt.step()
+            done = target
+            v = float((predict(model, ids_v, am_v) == val_y).mean())
+            if v > best_b[0]:
+                best_b = (v, target,
+                          float((predict(model, ids_t, am_t) == test_y).mean()))
+        bert.append(best_b[2]); chosen_steps.append(best_b[1])
+        del model
+
+        print(f"      {n:>6,} labels: bag of words {bow[-1]:.4f} (C={chosen_C[-1]})"
+              f"   DistilBERT {bert[-1]:.4f} ({chosen_steps[-1]} steps)"
+              f"   gap {100*(bert[-1]-bow[-1]):+.2f} pts")
+
+    return {"sizes": list(sizes), "bow": bow, "bert": bert, "n_test": n_test,
+            "n_val": n_val, "batch": batch, "chosen_C": chosen_C,
+            "chosen_steps": chosen_steps, "checkpoints": list(checkpoints),
+            "test_pos_rate": float(test_y.mean()),
+            "gaps": [100 * (b - w) for b, w in zip(bert, bow)]}
+
+
+def fig_label_efficiency(le):
+    fig, ax = plt.subplots(figsize=(7.6, 3.0))
+    x = np.array(le["sizes"], dtype=float)
+    ax.plot(x, 100 * np.array(le["bow"]), "s--", color=MUTED, lw=2.2, ms=7,
+            label="tf-idf + logistic regression")
+    ax.plot(x, 100 * np.array(le["bert"]), "o-", color=SUCCESS, lw=2.6, ms=8,
+            label="DistilBERT, fine-tuned")
+    ax.set_xscale("log")
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{int(v):,}" for v in x])
+    ax.set_xlabel("labelled reviews used to fit")
+    ax.set_ylabel("test accuracy, %")
+    lo = 100 * min(min(le["bow"]), min(le["bert"]))
+    hi = 100 * max(max(le["bow"]), max(le["bert"]))
+    ax.set_ylim(lo - 4, hi + 8)          # headroom for the legend, above the data
+    ax.legend(loc="upper left", fontsize=SMALL)
+    i = 0
+    ax.annotate(f"{le['gaps'][i]:+.1f} points at {le['sizes'][i]:,} labels",
+                xy=(x[i], 100 * (le["bow"][i] + le["bert"][i]) / 2),
+                xytext=(x[1] * 2.6, 100 * le["bow"][0] - 1.0),
+                color=SUCCESS, fontsize=SMALL, ha="center",
+                bbox=dict(fc="white", ec=SUCCESS, lw=1.0,
+                          boxstyle="round,pad=0.35"),
+                arrowprops=dict(arrowstyle="->", color=SUCCESS, lw=1.8))
+    ax.set_title(f"same reviews, same {le['n_test']:,} test reviews; each "
+                 f"model's budget chosen on validation")
+    fig.tight_layout()
+    save(fig, "l22-label-efficiency")
 
 
 def zero_shot_head(d, n=5_000) -> dict:
@@ -734,7 +959,8 @@ def zero_shot_head(d, n=5_000) -> dict:
     tk = AutoTokenizer.from_pretrained(BERT)
     model = AutoModelForSequenceClassification.from_pretrained(
         BERT, num_labels=2).to(DEVICE).eval()
-    out = tk(list(d["test_x"][:n]), truncation=True, max_length=MAXLEN,
+    tx, ty = test_subset(d, n)
+    out = tk(tx, truncation=True, max_length=MAXLEN,
              padding="max_length", return_tensors="pt")
     preds = np.zeros(n, dtype=np.int64)
     with torch.no_grad():
@@ -742,8 +968,8 @@ def zero_shot_head(d, n=5_000) -> dict:
             lg = model(input_ids=out["input_ids"][i:i + 64].to(DEVICE),
                        attention_mask=out["attention_mask"][i:i + 64].to(DEVICE)).logits
             preds[i:i + 64] = lg.argmax(1).cpu().numpy()
-    y = d["test_y"][:n]
-    return {"acc": float((preds == y).mean()), "n": n}
+    return {"acc": float((preds == ty).mean()), "n": n,
+            "pos_rate": float(ty.mean())}
 
 
 # ------------------------------------------------- embeddings, search, groups
@@ -845,7 +1071,7 @@ def fig_clusters(cl):
     axes[0].plot([best], [cl["silhouette"][best]], "o", color=SUCCESS, ms=13,
                  zorder=5)
     axes[0].annotate(f"k = {best}", xy=(best, cl["silhouette"][best]),
-                     xytext=(best + 1.2, cl["silhouette"][best] + 0.004),
+                     xytext=(best + 1.4, cl["silhouette"][best] - 0.0015),
                      color=SUCCESS, fontsize=SMALL)
     axes[0].set_xlabel("clusters, k"); axes[0].set_ylabel("silhouette")
     axes[0].set_title("choose k as in Lecture 9")
@@ -1087,10 +1313,8 @@ def fig_baselines(bl, scratch):
 
 def fig_swap(runs, bl):
     order = ["word_random", "wp_random", "wp_frozen", "wp_tuned"]
-    names = ["our words\nrandom embeddings",
-             "subword pieces\nrandom embeddings",
-             "subword pieces\npretrained, frozen",
-             "subword pieces\npretrained, tuned"]
+    names = ["our words\nrandom", "subword\nrandom",
+             "subword\npretrained, frozen", "subword\npretrained, tuned"]
     vals = [runs[k]["test_acc"] for k in order]
     base = vals[0]
     # A single-seed difference under a third of a point is not a ranking, so it
@@ -1106,9 +1330,11 @@ def fig_swap(runs, bl):
     ax.axhline(100 * bl["bigram"]["acc"], color=MUTED, ls=":", lw=2.0)
     ax.text(3.42, 100 * bl["bigram"]["acc"] + 0.6, "bag of words",
             fontsize=SMALL, color=MUTED, ha="right")
+    # inside the bars: the dashed baseline sits within a point of three of the
+    # four tops, so a label above the bar lands on the rule
     for xi, v in zip(x, vals):
-        ax.text(xi, 100 * v + 0.6, f"{100*v:.1f}%", ha="center", fontsize=SMALL,
-                color="#16212b")
+        ax.text(xi, 100 * v - 2.4, f"{100*v:.1f}%", ha="center", fontsize=SMALL,
+                color="white", fontweight="semibold")
     ax.set_xticks(x); ax.set_xticklabels(names, fontsize=SMALL)
     # the bag-of-words rule has to stay inside the axes even when it is above
     # every bar, which on this corpus it may well be
@@ -1216,7 +1442,7 @@ def main() -> int:
     facts["l21_under_maxlen"] = 1 - cf["over_maxlen"]
 
     print("Lecture 21 — tokenisation:")
-    oc = cached("app11_oov", lambda: oov_curve(d))
+    oc = cached("app11_oov_v2", lambda: oov_curve(d))
     fig_oov(oc)
     facts["l21_oov"] = oc
     te = cached("app11_tokexample_v2", lambda: tokenisation_example(d))
@@ -1234,12 +1460,12 @@ def main() -> int:
     enc_w, v_w = word_encoder(d)
     runs = {}
     runs["word_random"] = cached(
-        "app11_rnn_word_random",
+        "app11_rnn_word_random_es",
         lambda: train_rnn(d, enc_w, v_w, tag="word/random"))
 
     enc_s, v_s = subword_encoder()
     runs["wp_random"] = cached(
-        "app11_rnn_wp_random",
+        "app11_rnn_wp_random_es",
         lambda: train_rnn(d, enc_s, v_s, tag="wp/random"))
 
     E, evr = cached("app11_pretrained_emb", lambda: pretrained_embeddings(v_s))
@@ -1247,10 +1473,10 @@ def main() -> int:
     print(f"      PCA 768 -> {EMB_DIM}: {evr:.3f} of the variance")
 
     runs["wp_frozen"] = cached(
-        "app11_rnn_wp_frozen",
+        "app11_rnn_wp_frozen_es",
         lambda: train_rnn(d, enc_s, v_s, init=E, freeze=True, tag="wp/frozen"))
     runs["wp_tuned"] = cached(
-        "app11_rnn_wp_tuned",
+        "app11_rnn_wp_tuned_es",
         lambda: train_rnn(d, enc_s, v_s, init=E, freeze=False, tag="wp/tuned"))
 
     fig_baselines(bl, runs["word_random"])
@@ -1263,12 +1489,16 @@ def main() -> int:
                                            - runs["word_random"]["test_acc"])
     facts["l21_wp_random_delta"] = 100 * (runs["wp_random"]["test_acc"]
                                           - runs["word_random"]["test_acc"])
+    facts["l21_earlystop_gain"] = 100 * (runs["wp_tuned"]["test_acc"]
+                                         - runs["wp_tuned"]["test_acc_last_epoch"])
+    facts["l21_frozen_delta"] = 100 * (runs["wp_frozen"]["test_acc"]
+                                       - runs["word_random"]["test_acc"])
     facts["l21_bow_minus_rnn_points"] = 100 * (bl["bigram"]["acc"]
                                                - runs["word_random"]["test_acc"])
 
     print("Lecture 21 — the assistant's padding bug:")
     pad_run = cached(
-        "app11_rnn_padding_bug",
+        "app11_rnn_padding_bug_es",
         lambda: train_rnn(d, enc_w, v_w, last_of_padding=True, tag="pad-bug"))
     facts["l21_padding_bug"] = pad_run
     facts["l21_padding_cost_points"] = 100 * (runs["word_random"]["test_acc"]
@@ -1292,7 +1522,7 @@ def main() -> int:
     print(f"      CE - H(p) - KL = {kl['residual']:.3e}")
 
     print("Lecture 22 — the double-softmax bug:")
-    ds = cached("app11_rnn_double_softmax",
+    ds = cached("app11_rnn_double_softmax_es",
                 lambda: train_rnn(d, enc_w, v_w, double_softmax=True,
                                   tag="double-softmax"))
     facts["l22_double_softmax"] = ds
@@ -1302,10 +1532,15 @@ def main() -> int:
           f"{facts['l22_double_softmax_cost']:.2f} points")
 
     print("Lecture 22 — fine-tuning:")
-    ft = cached("app11_finetune", lambda: finetune_distilbert(d))
+    ft = cached("app11_finetune_v2", lambda: finetune_distilbert(d))
     facts["l22_finetune"] = ft
-    zs = cached("app11_zeroshot", lambda: zero_shot_head(d))
+    zs = cached("app11_zeroshot_v2", lambda: zero_shot_head(d))
     facts["l22_zeroshot"] = zs
+
+    print("Lecture 22 — where the pretrained model earns its place:")
+    le = cached("app11_label_efficiency_v3", lambda: label_efficiency(d))
+    fig_label_efficiency(le)
+    facts["l22_label_efficiency"] = le
     facts["l22_finetune_acc"] = ft["test_acc"]
     facts["l22_gain_over_scratch"] = 100 * (ft["test_acc"]
                                             - runs["word_random"]["test_acc"])
