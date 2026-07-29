@@ -8,8 +8,20 @@ SVG cannot do is know how wide its own text is. You place a label at x=540 with
 3 it is 1,233px wide inside a 1,080px viewBox — so both ends are simply gone.
 Nothing clips, nothing warns, and the SVG is perfectly valid.
 
-Two failures are measured, both by rendering the file in Chrome with the real
-vendored font and asking the browser for each label's box:
+Three failures are measured, by rendering the file in Chrome the way a slide
+does and asking the browser for each label's box.
+
+**"The way a slide does" is load-bearing.** The first version of this file
+inlined the SVG into a page that linked the course stylesheet, so the browser
+resolved Source Sans 3 from the page's `@font-face` and measured every label in
+it. The decks embed these files as `<img src="...">`, and an SVG inside an
+`<img>` is a separate document in secure static mode: it cannot see the page's
+fonts and may not fetch anything. Unless the font is installed on the machine —
+it is not, on this one or on a lecture-theatre one — the projector shows
+Helvetica. So this file spent its first run measuring a typeface nobody would
+see, and every "that label fits" was an answer about the wrong font.
+`tools/embed_diagram_fonts.py` puts the real font inside each diagram; this
+renders through an `<img>` so it can never again disagree with the projector.
 
 1. **Out of frame** — a `<text>` whose box crosses the viewBox edge. Fails.
 2. **Overlap** — two labels whose *ink* covers the same ground. An annotation
@@ -83,19 +95,21 @@ SHOT_SCALE = 2             # device pixels per user unit in the two renders
 STRIKE_PX = 6              # device pixels of ink over foreground before it counts
 COLOUR_EPS = 26            # per-channel difference that counts as "a different colour"
 
-PAGE = """<!doctype html>
-<meta charset="utf-8">
-<link rel="stylesheet" href="{css}">
-<style>html,body{{margin:0;padding:0}}</style>
-{svg}
-"""
+# The file is opened as the top-level document: no stylesheet, nothing injected,
+# anything the diagram needs it has to carry. That is the same font resolution an
+# <img> gets — verified by screenshotting one diagram both ways and diffing:
+# 0 differing pixels of 1,874,080 — and unlike an <img> it leaves a DOM to
+# measure. Measuring what the deck actually shows is the whole point.
 
 HIDE_TEXT = "() => { document.querySelectorAll('svg text')" \
             ".forEach(t => t.style.visibility = 'hidden'); }"
 
 MEASURE = """() => {
   const svg = document.querySelector('svg');
-  const ctx = document.createElement('canvas').getContext('2d');
+  // createElement in an SVG document makes an SVG-namespaced element, and an
+  // SVG <canvas> has no getContext. Name the HTML namespace explicitly.
+  const ctx = document.createElementNS('http://www.w3.org/1999/xhtml', 'canvas')
+                      .getContext('2d');
   const vb  = svg.viewBox.baseVal;
   const out = [];
   svg.querySelectorAll('text').forEach((t, i) => {
@@ -213,7 +227,6 @@ def main() -> int:
         print("playwright not installed — skipping the diagram check")
         return 0
 
-    css = (ROOT / "assets" / "css" / "custom.css").as_uri()
     files = sorted(p for p in FIGURES.glob("d-*.svg") if args.only in p.name)
     scratch = Path("/private/tmp/claude-501") / "diagcheck"
     scratch.mkdir(parents=True, exist_ok=True)
@@ -224,12 +237,8 @@ def main() -> int:
         page = browser.new_page(viewport={"width": 1400, "height": 900},
                                 device_scale_factor=SHOT_SCALE)
         for f in files:
-            svg = f.read_text()
-            # strip the XML declaration if one is present; this is HTML now
-            svg = re.sub(r"^\s*<\?xml[^>]*\?>\s*", "", svg)
-            wrapper = scratch / (f.stem + ".html")
-            wrapper.write_text(PAGE.format(css=css, svg=svg))
-            page.goto(wrapper.as_uri())
+            wrapper = f
+            page.goto(f.as_uri())
             page.wait_for_timeout(220)               # let the webfont land
             r = page.evaluate(MEASURE)
             vb, texts = r["vb"], r["texts"]

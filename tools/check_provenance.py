@@ -32,7 +32,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 FIGURES = ROOT / "assets" / "figures" / "figures.json"
-PAGES = sorted(ROOT.glob("slides/lecture-[0-9][0-9].html")) + [ROOT / "index.html"]
+# The hand-drawn diagrams too. They carry quantities — "all 20,640 rows" — and
+# for most of this course's life nothing read them, so d-course-arc.svg was free
+# to claim the rare-event detector "missed one five in four" when it missed
+# 22.8%. This catches the numerals; a claim written out in words is still only
+# caught by a person reading the diagram, which is worth knowing about.
+PAGES = (sorted(ROOT.glob("slides/lecture-[0-9][0-9].html"))
+         + sorted(ROOT.glob("assets/figures/d-*.svg"))
+         + [ROOT / "index.html"])
 
 # Quantities that are not measurements. Keep the reason attached.
 ALLOWED: dict[float, str] = {
@@ -97,9 +104,30 @@ def derived(values: set[float]) -> set[float]:
     return out
 
 
-def quantities(src: str):
+def only_text_elements(src: str) -> str:
+    """Blank everything in an SVG that is not drawn as words.
+
+    Geometry is full of pairs that look exactly like thousands-separated
+    integers: `points="120,290 620,290 780,410"` is four of them. Only a `<text>`
+    element is read by anybody in the room, so only a `<text>` element is held to
+    the provenance contract. Blanked rather than removed, so reported line
+    numbers still point at the right line.
+    """
+    out = list(" " * len(src))
+    for m in re.finditer(r"<text\b[^>]*>(.*?)</text>", src, re.S):
+        for i in range(m.start(1), m.end(1)):
+            out[i] = src[i]
+    for i, ch in enumerate(src):
+        if ch == "\n":
+            out[i] = "\n"
+    return "".join(out)
+
+
+def quantities(src: str, svg: bool = False):
     """Yield (line, text, value) for each money amount or 000-separated integer."""
     blank = lambda m: " " * len(m.group())
+    if svg:
+        src = only_text_elements(src)
     body = re.sub(r"<script.*?</script>", blank, src, flags=re.S)
     body = re.sub(r"<style.*?</style>", blank, body, flags=re.S)
     body = re.sub(r"<!--.*?-->", blank, body, flags=re.S)
@@ -144,7 +172,8 @@ def main() -> int:
         if not page.is_file():
             continue
         rel = page.relative_to(ROOT)
-        for line, text, val in quantities(page.read_text()):
+        for line, text, val in quantities(page.read_text(),
+                                          svg=page.suffix == ".svg"):
             if val in allowed or val in reachable:
                 matched += 1
                 if verbose:

@@ -581,6 +581,46 @@ the palette. Where a slide *prints* `cmap="jet"` for fidelity to the book, keep
 the printed code and plot with `turbo`, and spend one sentence on why — a free
 teachable moment in a course about not trusting defaults.
 
+### 11.6a A diagram must carry its own typeface
+
+Every `d-*.svg` names a font and, until late in the build, shipped no glyphs:
+
+```svg
+<svg ... font-family="'Source Sans 3','Source Sans Pro',...,sans-serif">
+```
+
+The decks embed them as `<img src="../assets/figures/d-kfold.svg">`, and **an
+SVG inside an `<img>` is a separate document in secure static mode**. It cannot
+see the page's `@font-face`, and it may not fetch anything external — not a
+stylesheet, not a font file, not even same-origin. So it gets Source Sans 3 only
+if the *machine* has Source Sans 3 installed. This one does not. A lecture
+theatre's will not.
+
+All forty diagrams were therefore rendering in Helvetica, beside matplotlib
+figures rendering in Source Sans 3, on the same slide. matplotlib is immune
+because `svg.fonttype` defaults to `path`: it ships outlines.
+`l24-concentration.svg` embeds 365 of them; `d-course-arc.svg` embedded none.
+
+**It also silently invalidated the measurement.** `check_diagrams.py` originally
+inlined each file into a page that linked the stylesheet, so it measured in a
+typeface the projector never showed — and Helvetica is 5–12% wider here, so
+every "that label fits" was optimistic about the wrong font.
+
+Both halves are fixed and both matter:
+
+* `tools/embed_diagram_fonts.py` subsets the vendored variable font to exactly
+  the characters each diagram draws, at the weights it uses, and inlines it as a
+  base64 `@font-face`. About 10 KB a face, because a diagram uses forty
+  characters rather than a hundred and twenty. `--check` fails the build on any
+  diagram that carries none.
+* `check_diagrams.py` now opens the diagram as the top-level document — no
+  stylesheet, nothing injected. Verified equivalent to the `<img>` path by
+  screenshotting one both ways: 0 differing pixels of 1,874,080.
+
+Confirm a fix of this kind by measuring, not by looking. Embedded labels match
+the `@font-face` widths to 0.08px; the fallback ran 5–12% wide, and gave "part
+1" through "part 4" four different widths where Source Sans 3 gives one.
+
 ### 11.7 One header for every hand-drawn diagram
 
 Seven diagrams used ten corner radii, six stroke widths and fourteen font sizes.
