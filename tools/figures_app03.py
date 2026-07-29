@@ -135,8 +135,14 @@ def prep(degree: int = 1):
                                        StandardScaler)
     num = make_pipeline(SimpleImputer(strategy="median"), StandardScaler(),
                         PolynomialFeatures(degree=degree, include_bias=False))
+    # drop="first" makes the reference level all-zeros and handle_unknown="ignore"
+    # makes an unseen level all-zeros too, so the pair silently scores a passenger
+    # on an unseen deck as though they were on the reference deck. Titanic has one
+    # deck-T passenger, so one CV fold in ten does exactly that. min_frequency
+    # gives rare and unseen levels a column of their own instead.
     cat = make_pipeline(SimpleImputer(strategy="most_frequent"),
-                        OneHotEncoder(drop="first", handle_unknown="ignore"))
+                        OneHotEncoder(drop="first", min_frequency=2,
+                                      handle_unknown="infrequent_if_exist"))
     return ColumnTransformer([("num", num, NUM), ("cat", cat, CAT),
                               ("bin", "passthrough", BIN)])
 
@@ -626,6 +632,9 @@ def degree_sweep(X_tr, y_tr) -> dict:
         out[deg] = {
             "n_features": n_feat,
             "n_iter": int(n_iter[0] if hasattr(n_iter, "__len__") else n_iter),
+            # the largest fitted weight, which the deck quotes per degree and
+            # which was hand-typed alongside the iteration counts
+            "max_abs_coef": float(abs(fitted[-1].coef_).max()),
             "converged": bool((n_iter[0] if hasattr(n_iter, "__len__")
                                else n_iter) < 4000),
             "train_log_loss": float(-r["train_neg_log_loss"].mean()),
@@ -985,7 +994,11 @@ def regularisation_sweep(X_tr, y_tr) -> dict:
     deg = 5          # the overfitting one, so the repair has something to do
     out = {}
     for name, kw in (("ridge", dict(penalty="l2", solver="lbfgs")),
-                     ("lasso", dict(penalty="l1", solver="liblinear")),
+                     # saga, not liblinear: liblinear penalises the intercept
+                     # (at C=0.001 it fits exactly 0.0000 where saga fits 4.90),
+                     # and this deck states that the bias term is not penalised.
+                     ("lasso", dict(penalty="l1", solver="saga",
+                                    max_iter=5000)),
                      ("elastic", dict(penalty="elasticnet", solver="saga",
                                       l1_ratio=0.5, max_iter=3000))):
         scores, nz = [], []
@@ -1042,7 +1055,8 @@ def coef_paths(X_tr, y_tr) -> dict:
     deg = 5
     out = {}
     for name, kw in (("ridge", dict(penalty="l2", solver="lbfgs")),
-                     ("lasso", dict(penalty="l1", solver="liblinear"))):
+                     ("lasso", dict(penalty="l1", solver="saga",
+                                    max_iter=5000))):
         paths = []
         for C in Cs:
             m = quiet(lambda: model(degree=deg, C=float(C), **kw)
@@ -1264,7 +1278,8 @@ def final_scores(X_tr, y_tr, X_te, y_te, rs, ds) -> dict:
         "best_unregularised_degree2": model(degree=2),
         "ridge_degree5_tuned": model(degree=5, C=rs["ridge"]["best_C"]),
         "lasso_degree5_tuned": model(degree=5, C=rs["lasso"]["best_C"],
-                                     penalty="l1", solver="liblinear"),
+                                     penalty="l1", solver="saga",
+                                     max_iter=5000),
         "sklearn_default_degree1": model(degree=1, C=1.0),
     }
     for name, m in variants.items():

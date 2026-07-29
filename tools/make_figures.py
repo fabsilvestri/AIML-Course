@@ -1238,7 +1238,12 @@ def island_check(h, sp):
 
 # Mirrors .fig-wide / .fig-tall in assets/css/custom.css. If those caps change,
 # change these.
-CANVAS_W, CAP_WIDE, CAP_TALL, FLOOR_PX = 1280, 420, 528, 15.0
+# CAP_WIDE mirrors `.fig-wide img { max-height }` in custom.css. The two
+# moved apart once for one commit — the CSS went to 520 and this stayed at
+# 420 — and the floor check immediately reported two diagrams as too small
+# that were in fact fine. A constant that mirrors a stylesheet has to be
+# changed in the same commit as the stylesheet.
+CANVAS_W, CAP_WIDE, CAP_TALL, FLOOR_PX = 1280, 520, 528, 15.0
 
 
 def _natural_css_px(path: Path) -> tuple[float, float]:

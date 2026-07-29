@@ -69,6 +69,10 @@ ALLOWED: dict[float, str] = {
     # this course was initialised that badly, and running one to NaN to fill in
     # a table cell would teach nothing the row does not already say.
     1.4: "rho > 1, the illustrative row of Lecture 14's variance table",
+    # Lecture 22 tabulates -log(p) at four probabilities to show why a confident
+    # mistake is expensive. These are the logarithm, not a measurement of
+    # anything: 0.69, 2.30 and 4.61 are -ln(1/2), -ln(1/10) and -ln(1/100).
+    4.61: "-ln(0.01), Lecture 22's cross-entropy table",
 }
 
 # Tolerated roundings, as (divisor, label). The sub-dollar steps are needed for

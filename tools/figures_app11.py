@@ -972,6 +972,89 @@ def zero_shot_head(d, n=5_000) -> dict:
             "pos_rate": float(ty.mean())}
 
 
+def inference_cost(d, repeats=5) -> dict:
+    """Seconds to score every test review, from raw strings.
+
+    The brief says "within the hour", which makes inference cost a stated
+    requirement -- and the deck quoted accuracy against it without ever timing
+    anything. This times all four models the same way, end to end: tokenising
+    or vectorising the raw text *and* the forward pass, because that is what the
+    desk actually pays per review.
+
+    Two things make it cheap enough to do properly. Inference cost depends on
+    the architecture, the vocabulary and the data, not on the values in the
+    weights, so the networks here are constructed rather than retrained. And a
+    wall clock on a shared machine is the least reproducible number in this
+    course, so the **median** of `repeats` full passes is reported rather than
+    one pass -- the mean is dominated by whichever pass collided with another
+    job.
+    """
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.linear_model import LogisticRegression
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+    texts, n = d["test_x"], len(d["test_x"])
+    out: dict = {"n_reviews": n, "repeats": repeats, "device": DEVICE}
+
+    def record(name, fn):
+        runs = []
+        for _ in range(repeats):
+            t0 = time.perf_counter()
+            fn()
+            runs.append(time.perf_counter() - t0)
+        runs.sort()
+        med = runs[len(runs) // 2]
+        out[name] = {"seconds": med, "seconds_min": runs[0],
+                     "seconds_max": runs[-1],
+                     "ms_per_review": 1000 * med / n,
+                     "spread_pct": 100 * (runs[-1] - runs[0]) / med}
+        print(f"      {name:22s} {med:7.1f} s   "
+              f"{1000*med/n:6.2f} ms/review   "
+              f"(min {runs[0]:.1f}, max {runs[-1]:.1f})")
+
+    # --- bag of words: fitted once, untimed; only scoring is timed
+    for tag, ngram in (("bow_unigram", (1, 1)), ("bow", (1, 2))):
+        vec = TfidfVectorizer(min_df=2, ngram_range=ngram, max_features=200_000)
+        Xtr = vec.fit_transform(d["train_x"])
+        clf = LogisticRegression(max_iter=2000, C=4.0).fit(Xtr, d["train_y"])
+        record(tag, (lambda v, c: lambda: c.predict(v.transform(texts)))(vec, clf))
+
+    @torch.no_grad()
+    def run_rnn(net, enc):
+        X, L = enc(texts)
+        net.eval()
+        for i in range(0, len(X), 256):
+            net(X[i:i + 256].to(DEVICE), L[i:i + 256])
+
+    enc_w, v_w = word_encoder(d)
+    net_w = GRUClassifier(v_w).to(DEVICE)
+    record("gru_word", lambda: run_rnn(net_w, enc_w))
+
+    enc_s, v_s = subword_encoder()
+    net_s = GRUClassifier(v_s).to(DEVICE)
+    record("gru_subword", lambda: run_rnn(net_s, enc_s))
+
+    tk = AutoTokenizer.from_pretrained(BERT)
+    bert = AutoModelForSequenceClassification.from_pretrained(
+        BERT, num_labels=2).to(DEVICE).eval()
+
+    @torch.no_grad()
+    def run_bert():
+        enc = tk(list(texts), truncation=True, max_length=MAXLEN,
+                 padding="max_length", return_tensors="pt")
+        for i in range(0, n, 64):
+            bert(input_ids=enc["input_ids"][i:i + 64].to(DEVICE),
+                 attention_mask=enc["attention_mask"][i:i + 64].to(DEVICE))
+
+    record("distilbert", run_bert)
+
+    out["bert_over_bow"] = out["distilbert"]["seconds"] / out["bow"]["seconds"]
+    out["bert_over_gru"] = out["distilbert"]["seconds"] / out["gru_word"]["seconds"]
+    print(f"      DistilBERT is {out['bert_over_bow']:.0f}x the bag of words "
+          f"and {out['bert_over_gru']:.1f}x the GRU")
+    return out
+
+
 # ------------------------------------------------- embeddings, search, groups
 
 def sentence_embeddings(texts, batch=64) -> np.ndarray:
@@ -1551,6 +1634,14 @@ def main() -> int:
     facts["l22_errors_scratch"] = round(e_scratch * cf["n_test"])
     facts["l22_errors_finetuned"] = round(e_ft * cf["n_test"])
     fig_final(bl, runs["word_random"], runs["wp_tuned"], ft, zs)
+
+    print("Lecture 21/22 — what inference costs:")
+    ic = cached("app11_inference_v2", lambda: inference_cost(d))
+    # Both lectures put these in a class="num" cell, and check_provenance scopes
+    # those to the lecture that owns them, so both namespaces carry the values.
+    # One measurement, two keys -- not two measurements.
+    facts["l21_inference"] = ic
+    facts["l22_inference"] = ic
 
     print("Lecture 22 — search and grouping:")
     sr = cached("app11_search", lambda: semantic_search(d))
