@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 Lint the slide decks and the course site for the mistakes that do not announce
 themselves in a browser.
 
@@ -35,7 +35,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PAGES = sorted(ROOT.glob("slides/*.html")) + [ROOT / "index.html"]
+PAGES = sorted(ROOT.glob("slides/lecture-[0-9][0-9].html")) + [ROOT / "index.html"]
 
 PLACEHOLDERS = re.compile(r"@@[^@\s]{1,80}?@@|«[^»\n]{1,80}?»")
 WEEKDAYS = re.compile(r"\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|"

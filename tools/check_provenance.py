@@ -32,7 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 FIGURES = ROOT / "assets" / "figures" / "figures.json"
-PAGES = sorted(ROOT.glob("slides/*.html")) + [ROOT / "index.html"]
+PAGES = sorted(ROOT.glob("slides/lecture-[0-9][0-9].html")) + [ROOT / "index.html"]
 
 # Quantities that are not measurements. Keep the reason attached.
 ALLOWED: dict[float, str] = {

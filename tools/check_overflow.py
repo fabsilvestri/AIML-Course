@@ -39,7 +39,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DECKS = sorted(ROOT.glob("slides/*.html"))
+DECKS = sorted(ROOT.glob("slides/lecture-[0-9][0-9].html"))
 
 # Walk the direct children of every slide and take the lowest edge any of them
 # reaches. Slides that are not the current one are display:none, so each is

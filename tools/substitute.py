@@ -189,7 +189,7 @@ def main() -> int:
     data = json.loads(FIGURES.read_text())
 
     total, guessed, missing = 0, [], []
-    for deck in sorted(ROOT.glob("slides/*.html")):
+    for deck in sorted(ROOT.glob("slides/lecture-[0-9][0-9].html")):
         html = deck.read_text()
         # keys may contain spaces and percent signs ("40 at random",
         # "propagated to closest 75%"), so the path is "anything but @ or :"

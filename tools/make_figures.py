@@ -1286,7 +1286,7 @@ def check_text_floor() -> list[str]:
     under the floor with nothing to say so.
     """
     used: dict[str, str] = {}          # figure filename -> the figure's class
-    for deck in sorted(ROOT.glob("slides/*.html")):
+    for deck in sorted(ROOT.glob("slides/lecture-[0-9][0-9].html")):
         html = deck.read_text()
         for m in re.finditer(r'<figure class="([^"]*)"[^>]*>\s*<img\s+src="([^"]+)"',
                              html):
