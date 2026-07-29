@@ -254,7 +254,7 @@ def fig_hist_annotated(h):
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.6))
     a1.text(0.97, 0.44, "≈ tens of thousands of dollars:\n3 means about $30,000",
             transform=a1.transAxes, ha="right", fontsize=SMALL, color="#33414d",
-            bbox=dict(boxstyle="round,pad=0.45", facecolor="white",
+            bbox=dict(boxstyle="round,pad=0.5", facecolor="white",
                       edgecolor=RULE))
 
     a2.hist(h["median_house_value"], bins=50, color=PRIMARY, edgecolor="white",
@@ -392,7 +392,7 @@ def fig_income_value(train, clusters):
     ax.text(15.3, cap - 14000, f"${cap:,.0f} cap — {n_cap} districts",
             va="top", ha="right", fontsize=SMALL, color=ACCENT,
             fontweight="bold", zorder=5,
-            bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
+            bbox=dict(boxstyle="round,pad=0.5", facecolor="white",
                       edgecolor="none"))
     for value, _ in clusters["top"]:
         ax.axhline(value, color=ACCENT, lw=1.2, ls="--", alpha=0.75)
@@ -408,7 +408,7 @@ def fig_income_value(train, clusters):
             f"{clusters['background_count']:.0f}",
             transform=ax.transAxes, va="bottom", ha="right", fontsize=SMALL,
             color="#33414d", linespacing=1.5,
-            bbox=dict(boxstyle="round,pad=0.4", facecolor="white",
+            bbox=dict(boxstyle="round,pad=0.5", facecolor="white",
                       edgecolor=RULE))
     fig.tight_layout()
     return save(fig, "l1-income-value", raster=True)
@@ -987,7 +987,7 @@ def fig_residuals(gs, sp):
                 # empty space
                 xy=(500_500, 468_000), xytext=(14_000, 300_000), fontsize=SMALL,
                 color=ACCENT, fontweight="bold",
-                bbox=dict(boxstyle="round,pad=0.45", facecolor="white",
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="white",
                           edgecolor=ACCENT, alpha=0.95),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     # lower right: the upper left is where the callout goes, and at 15px the
@@ -1109,7 +1109,7 @@ def fig_error_slices(ea, overall):
                     f"${data[k]['rmse']:,.0f}", va="center", fontsize=SMALL,
                     color=colors[i], fontweight="bold", zorder=5,
                     # white ground: the reference line must not strike a label
-                    bbox=dict(boxstyle="round,pad=0.12", facecolor="white",
+                    bbox=dict(boxstyle="round,pad=0.5", facecolor="white",
                               edgecolor="none"))
         ax.axvline(overall, color=ACCENT, lw=1.8, ls="--", zorder=3)
 

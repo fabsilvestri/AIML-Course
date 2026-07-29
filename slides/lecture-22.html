@@ -827,12 +827,17 @@ lossf = nn.CrossEntropyLoss()          # logits in, as always
     <tr><td>Epochs run, and the one validation chose</td><td class="num">2, 1</td></tr>
     <tr><td>Batch size, learning rate</td><td class="num">16, 0.00002</td></tr>
     <tr><td>Training wall clock</td><td class="num">346 s</td></tr>
-    <tr><td>Scoring 25,000 test reviews</td><td class="num">178 s</td></tr>
+    <tr><td>Scoring 25,000 test reviews</td><td class="num">133 s</td></tr>
   </table>
   <p class="small">Measured on an Apple MPS backend, in <code>float32</code>.
   The number of epochs is a hyperparameter, so it is chosen on the
   5,000-review validation split, exactly as in Lecture 2 &mdash;
   never on the test set.</p>
+  <p class="small muted">The scoring time is the median of 5 passes, the same
+  protocol as Lecture 21's cost table. It is also the least reproducible number
+  in this deck: the five passes ran from
+  103 s to
+  160 s. Quote it to two figures or not at all.</p>
 </section>
 
 <!-- 45 -->
@@ -927,6 +932,26 @@ lossf = nn.CrossEntropyLoss()          # logits in, as always
   first.</p>
   <p class="small muted">The pretraining is worth thousands of labels. That is
   the number to quote to whoever is paying for the annotation.</p>
+</section>
+
+<!-- 46d -->
+<section data-menu-title="The other axis">
+  <h2>And the axis the accuracy plot does not have</h2>
+  <p class="small">Lecture 21 timed the anchors because the brief said
+  &ldquo;within the hour&rdquo;. Put the two together and the trade is
+  visible:</p>
+  <table>
+    <tr><th>Model</th><th class="num">Accuracy</th><th class="num">Scoring 25,000</th><th class="num">Per review</th></tr>
+    <tr><td>tf-idf + logistic regression</td><td class="num">90.1%</td><td class="num hit">3.6 s</td><td class="num">0.14 ms</td></tr>
+    <tr><td>GRU from scratch</td><td class="num">83.4%</td><td class="num">6.3 s</td><td class="num">0.25 ms</td></tr>
+    <tr><td class="fix">DistilBERT, fine-tuned</td><td class="num hit">90.6%</td><td class="num fail">133 s</td><td class="num fail">5.30 ms</td></tr>
+  </table>
+  <p class="lead">0.45 points, for
+  37 times the cost per review.</p>
+  <p class="small">Which is a decision, not a result. At
+  20,000 labelled reviews the desk would probably
+  make it against us; at 200 it would not, and the
+  previous slide says by how much.</p>
 </section>
 
 <!-- 47 -->
@@ -1099,7 +1124,7 @@ for k in (3, 4, 5, 6, 8, 10, 12):
   <h2>What the desk actually gets</h2>
   <table>
     <tr><th>They asked for</th><th>They get</th></tr>
-    <tr><td>a complaint flag</td><td>90.6% accurate, 178 s for 25,000 reviews</td></tr>
+    <tr><td>a complaint flag</td><td>90.6% accurate, 133 s for 25,000 reviews</td></tr>
     <tr><td>&ldquo;find me ones like this&rdquo;</td><td>cosine search over 5,000 vectors</td></tr>
     <tr><td>&ldquo;what recurs&rdquo;</td><td>4 groups, each named by its own words</td></tr>
   </table>

@@ -606,6 +606,58 @@ plt.legend(); plt.tight_layout(); plt.show()
 '''),
 
         md("""
+## 12b · The requirement the metric cannot see
+
+The brief said *"within the hour"*, which makes inference cost a stated
+requirement — and accuracy says nothing about it. So time it: raw strings
+in, labels out, tokenising **included**, because that is what the desk pays
+per review.
+
+A wall clock is the least reproducible number you will produce, so take the
+**median of several passes** and never a single one.
+
+⏱ **two to three minutes** — it re-tokenises the whole test set on every
+pass, which is exactly the cost being measured.
+"""),
+        code('''
+def score_time(fn, repeats=3):
+    """Median of `repeats` full passes. The mean is dominated by whichever
+    pass collided with something else on the machine."""
+    runs = []
+    for _ in range(repeats):
+        t0 = time.perf_counter()
+        fn()
+        runs.append(time.perf_counter() - t0)
+    return sorted(runs)[len(runs) // 2], min(runs), max(runs)
+
+@torch.no_grad()
+def rnn_pass(net, enc):
+    X, L = enc(test_x)
+    net.eval()
+    for i in range(0, len(X), 256):
+        net(X[i:i + 256].to(device), L[i:i + 256])
+
+costs = {
+    "tf-idf + logistic regression": score_time(
+        lambda: bow.predict(vec.transform(test_x))),
+    "GRU, our words":  score_time(lambda: rnn_pass(scratch, encode_words)),
+    "GRU, subword":    score_time(lambda: rnn_pass(tuned,   encode_pieces)),
+}
+for name, (med, lo, hi) in costs.items():
+    print(f"{name:30s} {med:6.1f} s   {1000 * med / len(test_x):5.2f} ms/review"
+          f"   (min {lo:.1f}, max {hi:.1f})")
+
+cheapest = min(costs, key=lambda k: costs[k][0])
+assert cheapest.startswith("tf-idf"), f"expected counting words to win, got {cheapest}"
+'''),
+        md("""
+None of these is anywhere near an hour, so on this brief the cost column does
+not decide anything. A requirement that turns out not to bind is still worth
+measuring — you did not know it did not bind until you measured. It starts
+to bind in the next lecture, where the model is 25 times larger.
+"""),
+
+        md("""
 ## 13 · Where we are
 
 Write your **best accuracy** on the same sheet of paper, next to what you

@@ -367,15 +367,18 @@ print(f"tf-idf + logistic regression: {acc:.1%}")
 <section data-menu-title="Baselines measured">
   <h2>The anchors, measured</h2>
   <table>
-    <tr><th>Model</th><th class="num">Features</th><th class="num">Test accuracy</th></tr>
-    <tr><td>Always predict one class</td><td class="num">&mdash;</td><td class="num">50.0%</td></tr>
-    <tr><td>tf-idf, single words</td><td class="num">44,798</td><td class="num">88.5%</td></tr>
-    <tr><td class="fix">tf-idf, words and pairs</td><td class="num">200,000</td><td class="num hit">90.1%</td></tr>
+    <tr><th>Model</th><th class="num">Features</th><th class="num">Test accuracy</th><th class="num">Scoring 25,000</th></tr>
+    <tr><td>Always predict one class</td><td class="num">&mdash;</td><td class="num">50.0%</td><td class="num">&mdash;</td></tr>
+    <tr><td>tf-idf, single words</td><td class="num">44,798</td><td class="num">88.5%</td><td class="num">1.4 s</td></tr>
+    <tr><td class="fix">tf-idf, words and pairs</td><td class="num">200,000</td><td class="num hit">90.1%</td><td class="num hit">3.6 s</td></tr>
   </table>
   <p class="lead">90.1%, from counting words, in
   10 seconds.</p>
   <p class="small">Adding pairs of adjacent words buys most of a point, and
-  pairs are the cheapest way a bag can see <em>not good</em>.</p>
+  pairs are the cheapest way a bag can see <em>not good</em>. The last column is
+  the brief's <em>other</em> requirement &mdash; &ldquo;within the hour&rdquo;
+  &mdash; and it is the one the metric cannot see, so it goes on the sheet
+  too.</p>
 </section>
 
 <!-- 23 -->
@@ -1207,16 +1210,39 @@ model.emb.weight.requires_grad = False       # frozen  — or True, tuned
 <section data-menu-title="Where we are">
   <h2>Where we are</h2>
   <table>
-    <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
-    <tr><td>Always one class</td><td class="num">50.0%</td><td class="num">&mdash;</td></tr>
-    <tr><td>tf-idf + logistic regression</td><td class="num">90.1%</td><td class="num">10 s</td></tr>
-    <tr><td>GRU from scratch</td><td class="num">83.4%</td><td class="num">460 s</td></tr>
-    <tr><td class="fix">GRU, pretrained embeddings</td><td class="num hit">84.2%</td><td class="num">302 s</td></tr>
-    <tr><td class="fail">the assistant's version</td><td class="num fail">65.2%</td><td class="num">173 s</td></tr>
+    <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">To fit</th><th class="num">To score 25,000</th></tr>
+    <tr><td>Always one class</td><td class="num">50.0%</td><td class="num">&mdash;</td><td class="num">&mdash;</td></tr>
+    <tr><td>tf-idf + logistic regression</td><td class="num">90.1%</td><td class="num">10 s</td><td class="num hit">3.6 s</td></tr>
+    <tr><td>GRU from scratch</td><td class="num">83.4%</td><td class="num">460 s</td><td class="num">6.3 s</td></tr>
+    <tr><td class="fix">GRU, pretrained embeddings</td><td class="num hit">84.2%</td><td class="num">302 s</td><td class="num">12.0 s</td></tr>
+    <tr><td class="fail">the assistant's version</td><td class="num fail">65.2%</td><td class="num">173 s</td><td class="num">6.3 s</td></tr>
   </table>
-  <p class="small">Five numbers, one architecture, one afternoon &mdash; and the
-  best of them is still 6.72 points behind counting
-  words.</p>
+  <p class="small">Two clocks, and they are not the same clock. The one that
+  matters to the desk is the last column, because it is paid once per review
+  forever; the middle one is paid once. The best accuracy here is still
+  6.72 points behind counting words, at
+  nearly twice the cost to run.</p>
+</section>
+
+<!-- 66b -->
+<section data-menu-title="What it costs to run">
+  <h2>The requirement the metric cannot see</h2>
+  <p class="small">Accuracy says nothing about &ldquo;within the hour&rdquo;. So
+  time it: raw strings in, labels out, tokenising or vectorising
+  <strong>included</strong>, because that is what the desk pays per review.</p>
+  <table>
+    <tr><th>Model</th><th class="num">Scoring 25,000</th><th class="num">Per review</th><th class="num">Relative</th></tr>
+    <tr><td class="fix">tf-idf + logistic regression</td><td class="num hit">3.6 s</td><td class="num">0.14 ms</td><td class="num">1&times;</td></tr>
+    <tr><td>GRU, our words</td><td class="num">6.3 s</td><td class="num">0.25 ms</td><td class="num">1.8&times;</td></tr>
+    <tr><td>GRU, subword pieces</td><td class="num">12.0 s</td><td class="num">0.48 ms</td><td class="num">3.4&times;</td></tr>
+  </table>
+  <p class="small">Median of 5 passes over the whole test set. Subword pieces
+  cost more than words for the reason we already measured: the same review is
+  1.86 times as many tokens.</p>
+  <aside class="notes">The point to make out loud: none of these is anywhere
+  near an hour, so on this brief the cost column does not decide anything — and
+  a requirement that turns out not to bind is still worth measuring, because you
+  did not know that until you did. It binds in the next lecture.</aside>
 </section>
 
 <!-- 67 -->

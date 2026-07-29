@@ -135,7 +135,7 @@ def box_cell(ax, i, ncol, h=64, w=64, gap=2, color=ACCENT, lw=2.4):
 def callout(ax, text, xy, xytext, colour):
     ax.annotate(text, xy=xy, xytext=xytext, textcoords="axes fraction",
                 fontsize=SMALL, color=colour,
-                bbox=dict(boxstyle="round,pad=0.4", fc="white", ec=RULE),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=RULE),
                 arrowprops=dict(arrowstyle="->", color=colour, lw=2))
 
 
@@ -454,7 +454,7 @@ def fig_timing_l09(sweep, k_max=K_MAX):
     ax.text(left * 0.5, 0.42, f"{spent} — and the answer it "
                               f"gives is still ambiguous",
             ha="center", fontsize=SMALL, color=ACCENT,
-            bbox=dict(boxstyle="round,pad=0.4", fc="white", ec=RULE))
+            bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=RULE))
     fig.tight_layout()
     save(fig, "l09-timing")
 

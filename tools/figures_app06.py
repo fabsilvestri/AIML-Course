@@ -139,7 +139,7 @@ def fig_class_balance(d):
                 f"so the majority-class baseline is exactly 10%",
                 xy=(4.5, counts.mean()), xytext=(1.2, counts.mean() * 0.45),
                 color=ACCENT,
-                bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=ACCENT, lw=1.2),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT, lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=2))
     ax.set_xticks(range(10))
     ax.set_xticklabels(CLASSES, rotation=30, ha="right")
@@ -164,7 +164,7 @@ def fig_activations():
     a.set_ylim(-0.35, 1.35)
     a.annotate("derivative is 0 everywhere it exists",
                xy=(1.6, 0.0), xytext=(-3.8, -0.28), color=MUTED,
-               bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=RULE, lw=1))
+               bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=RULE, lw=1))
     a.set_xlabel("z")
 
     b = axes[1]
@@ -295,7 +295,7 @@ def fig_loss_curve(run):
                      xytext=(len(run["loss"]) * 0.30,
                              100 * run["val_acc"][-1] - 4.0),
                      color=ACCENT,
-                     bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=ACCENT,
+                     bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT,
                                lw=1.2),
                      arrowprops=dict(arrowstyle="->", color=ACCENT, lw=2))
     fig.tight_layout()
@@ -480,7 +480,7 @@ def fig_crossover(cx):
     ax.annotate("below this line the\naccelerator is no help",
                 xy=(P[0], 1.0), xytext=(P[0] * 1.4, max(ratio.max() * 0.55, 0.5)),
                 color=ACCENT,
-                bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=ACCENT, lw=1.2),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT, lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=2))
     for p, r, row in zip(P, ratio, rows):
         ax.annotate("×".join(str(x) for x in row["widths"]), xy=(p, r),
@@ -512,7 +512,7 @@ def fig_fwd_vs_rev(fr):
                 f"and it grows linearly in P",
                 xy=(P[-1], fwd[-1]), xytext=(P[0] + 40, fwd[-1] * 0.10),
                 color=ACCENT,
-                bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=ACCENT, lw=1.2),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT, lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=2))
     ax.set_title("Same gradient, same values, two orders of association")
     fig.tight_layout()
@@ -638,7 +638,7 @@ def fig_zero_grad(with_zg, without_zg):
                      xy=(len(ep), 100 * without_zg["val_acc"]),
                      xytext=(len(ep) * 0.28, 100 * without_zg["val_acc"] + 18),
                      color=ACCENT,
-                     bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=ACCENT,
+                     bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT,
                                lw=1.2),
                      arrowprops=dict(arrowstyle="->", color=ACCENT, lw=2))
     axes[1].set_title("One missing line")
@@ -729,7 +729,7 @@ def fig_learning_curves(sk, pt):
                 xy=(len(ep), 100 * pt["hist"]["val_acc"][-1]),
                 xytext=(len(ep) * 0.30, 100 * pt["hist"]["val_acc"][-1] - 5),
                 color=MUTED,
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=RULE, lw=1),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=RULE, lw=1),
                 arrowprops=dict(arrowstyle="->", color=MUTED, lw=1.8))
     fig.tight_layout()
     save(fig, "l12-learning-curves")

@@ -410,7 +410,7 @@ def fig_class_balance(D):
     ax.annotate(f"always predict this and you are\nright {share[order[0]]*100:.1f}% of the time",
                 xy=(0.28, share[order[0]] * 100), xytext=(1.9, 43),
                 fontsize=SMALL, color=ACCENT,
-                bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=ACCENT,
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT,
                           lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     save(fig, "l07-class-balance")
@@ -467,7 +467,7 @@ def fig_depth(depths, rows):
     ax.set_title("So does the number of rules to read")
     ax.annotate(f"{lv[LEGIBLE_DEPTH-1]:,} rules", xy=(LEGIBLE_DEPTH, lv[LEGIBLE_DEPTH-1]),
                 xytext=(2.2, 3_000), fontsize=SMALL, color=SUCCESS,
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=SUCCESS, lw=1.2),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=SUCCESS, lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=SUCCESS, lw=1.8))
     fig.tight_layout()
     save(fig, "l07-depth")
@@ -517,7 +517,7 @@ def fig_paths(pl):
     ax.legend(loc="upper right")
     ax.annotate("nobody reads this", xy=(free.mean(), 400), xytext=(24, 22),
                 fontsize=SMALL, color=ACCENT,
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=ACCENT, lw=1.2),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT, lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     save(fig, "l07-paths")
 
@@ -570,7 +570,7 @@ def fig_impurity():
                 f"{p[np.argmax(ent/2 - gini)]:.2f}",
                 xy=(p[np.argmax(ent / 2 - gini)], np.max(ent / 2 - gini)),
                 xytext=(0.30, 0.020), fontsize=SMALL, color=ACCENT,
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=ACCENT, lw=1.2),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT, lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     fig.tight_layout()
     save(fig, "l08-impurity")
@@ -677,7 +677,7 @@ def fig_variance_law():
     ax.legend(loc="upper right", ncols=4, fontsize=TICK)
     ax.annotate("this part vanishes\nlike 1/n", xy=(12, 0.55), xytext=(34, 0.60),
                 fontsize=SMALL, color=MUTED,
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=RULE, lw=1.2),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=RULE, lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=MUTED, lw=1.8))
     save(fig, "l08-variance-law")
 
@@ -773,7 +773,7 @@ def fig_importance(ic, names):
     dy = int(np.where(np.array([lab[i] for i in order]) == "random_decoy")[0][0])
     ax.annotate("the decoy: +0.001 ± 0.002", xy=(0.004, y[dy]),
                 xytext=(0.10, y[dy] - 2.4), fontsize=SMALL, color=ACCENT,
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=ACCENT,
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT,
                           lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     fig.tight_layout()

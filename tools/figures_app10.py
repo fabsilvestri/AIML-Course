@@ -144,7 +144,7 @@ def fig_full_series(df):
                 xy=(pd.Timestamp("2020-04-15"), 120_000),
                 xytext=(pd.Timestamp("2013-06-01"), 200_000),
                 fontsize=SMALL, fontweight="bold", color=MUTED,
-                bbox=dict(boxstyle="round,pad=0.4", facecolor="white",
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="white",
                           edgecolor=RULE),
                 arrowprops=dict(arrowstyle="->", color=MUTED, lw=1.6))
     ax.axvspan(pd.Timestamp("2016-01-01"), pd.Timestamp("2019-06-01"),
@@ -176,7 +176,7 @@ def fig_weekly(df):
                 xy=(pd.Timestamp("2019-05-27"), 250_000),
                 xytext=(pd.Timestamp("2019-04-14"), 90_000),
                 fontsize=SMALL, fontweight="bold", color=MUTED,
-                bbox=dict(boxstyle="round,pad=0.35", facecolor="white",
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="white",
                           edgecolor=RULE),
                 arrowprops=dict(arrowstyle="->", color=MUTED, lw=1.6))
     fig.tight_layout()
@@ -231,7 +231,7 @@ def fig_naive(df):
                 xy=(worst, err.loc[worst]),
                 xytext=(pd.Timestamp("2019-03-20"), err.min() * 0.78),
                 fontsize=SMALL, fontweight="bold", color=ACCENT,
-                bbox=dict(boxstyle="round,pad=0.35", facecolor="white",
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="white",
                           edgecolor=RULE),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.6))
     fig.tight_layout()
@@ -341,7 +341,7 @@ def fig_weights(lw):
     ax.annotate(f"lag 1: {lw['by_lag'][1]:+.2f}", xy=(1.4, lw["by_lag"][1]),
                 xytext=(6, lw["by_lag"][1] * 0.80), fontsize=SMALL,
                 fontweight="bold", color=MUTED,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="white",
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="white",
                           edgecolor=RULE),
                 arrowprops=dict(arrowstyle="->", color=MUTED, lw=1.6))
     ax.text(0.99, 0.06, "red: every multiple of seven", transform=ax.transAxes,
@@ -369,7 +369,7 @@ def fig_stationarity(df):
                 xy=(pd.Timestamp("2012-06-01"), 640_000),
                 xytext=(pd.Timestamp("2003-06-01"), 700_000),
                 fontsize=SMALL, fontweight="bold", color=PRIMARY,
-                bbox=dict(boxstyle="round,pad=0.35", facecolor="white",
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="white",
                           edgecolor=RULE),
                 arrowprops=dict(arrowstyle="->", color=PRIMARY, lw=1.6))
     fig.tight_layout()
@@ -496,13 +496,13 @@ def fig_acf(af):
     a1.annotate(f"lag 7: {lvl[7]:.2f}", xy=(7, lvl[7]),
                 xytext=(11, 1.02), fontsize=SMALL, fontweight="bold",
                 color=ACCENT,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="white",
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="white",
                           edgecolor=RULE),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.6))
     a1.annotate(f"lag 1: {lvl[1]:.2f}", xy=(1, lvl[1]),
                 xytext=(2.2, -0.85), fontsize=SMALL, fontweight="bold",
                 color=PRIMARY,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="white",
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="white",
                           edgecolor=RULE),
                 arrowprops=dict(arrowstyle="->", color=PRIMARY, lw=1.6))
     a2.set_xlabel("lag, in days")
@@ -973,7 +973,7 @@ def fig_margin(mg):
             f"{mg['rnn']['margin_lost_pct']:.0f}% of the margin was the split",
             ha="center", va="center", fontsize=SMALL, fontweight="bold",
             color=ACCENT,
-            bbox=dict(boxstyle="round,pad=0.35", facecolor="white",
+            bbox=dict(boxstyle="round,pad=0.5", facecolor="white",
                       edgecolor=RULE))
     fig.tight_layout()
     return save(fig, "l20-margin")

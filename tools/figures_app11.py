@@ -273,7 +273,7 @@ def fig_lengths(cf):
                 xy=(MAXLEN, ax.get_ylim()[1] * 0.30),
                 xytext=(470, ax.get_ylim()[1] * 0.42),
                 color=ACCENT, fontsize=SMALL,
-                bbox=dict(fc="white", ec=ACCENT, lw=1.0, boxstyle="round,pad=0.35"),
+                bbox=dict(fc="white", ec=ACCENT, lw=1.0, boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     ax.set_xlabel("review length, in words")
     ax.set_ylabel("reviews")
@@ -300,7 +300,7 @@ def fig_oov(oc):
                 xy=(4.6, 100 * oc["subword_oov"]), xytext=(3.5, 33),
                 color=SUCCESS, fontsize=SMALL, ha="center",
                 bbox=dict(fc="white", ec=SUCCESS, lw=1.0,
-                          boxstyle="round,pad=0.35"),
+                          boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=SUCCESS, lw=1.8))
     ax.set_ylim(-6, 108)
     ax.legend(loc="center left", bbox_to_anchor=(0.015, 0.60), fontsize=SMALL)
@@ -944,7 +944,7 @@ def fig_label_efficiency(le):
                 xytext=(x[1] * 2.6, 100 * le["bow"][0] - 1.0),
                 color=SUCCESS, fontsize=SMALL, ha="center",
                 bbox=dict(fc="white", ec=SUCCESS, lw=1.0,
-                          boxstyle="round,pad=0.35"),
+                          boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=SUCCESS, lw=1.8))
     ax.set_title(f"same reviews, same {le['n_test']:,} test reviews; each "
                  f"model's budget chosen on validation")

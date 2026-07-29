@@ -318,7 +318,7 @@ def fig_class_counts(ytr):
     ax.annotate(f"our positive class:\n{counts[DIGIT]:,} of {counts.sum():,} = {p:.1f}%",
                 xy=(DIGIT, counts[DIGIT]), xytext=(6.4, counts.max() * 1.20),
                 fontsize=SMALL, color=ACCENT, fontweight="bold",
-                bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=ACCENT, lw=1.2),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT, lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     fig.tight_layout()
     save(fig, "l03-class-counts")
@@ -402,7 +402,7 @@ def fig_train_vs_cv(tvc):
                 f"{tvc['gap_positive']}/{tvc['n_pairs']})",
                 xy=(x[9], pairs[9].mean()), xytext=(x[10], 96.42),
                 fontsize=SMALL, color=ACCENT, fontweight="bold",
-                bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=ACCENT, lw=1.2),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT, lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     fig.tight_layout()
     return save(fig, "l03-train-vs-cv")
@@ -424,7 +424,7 @@ def fig_never_fires(base_rate, our_acc):
                 f"→ {100 * (1 - base_rate):.2f}% accuracy",
                 xy=(100 * base_rate, 100 * (1 - base_rate)),
                 xytext=(15, 62), fontsize=SMALL, color=ACCENT, fontweight="bold",
-                bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=ACCENT, lw=1.2),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT, lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     ax.set_xlabel("base rate — positives as a percentage of the data")
     ax.set_ylabel("accuracy (%)")
@@ -451,7 +451,7 @@ def fig_accuracy_weights(base_rate, spec):
                 f"{base_rate:.5f} × 10 = {100 * base_rate * 0.10:.2f} points of accuracy",
                 xy=(50, 100 * ((1 - base_rate) * spec + base_rate * 0.5)),
                 xytext=(14, 46), fontsize=SMALL, color=ACCENT, fontweight="bold",
-                bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=ACCENT, lw=1.2),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT, lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     fig.tight_layout()
     return save(fig, "l04-accuracy-weights")
@@ -508,7 +508,7 @@ def fig_nonmonotone(walk):
                  "and precision falls",
                  xy=(5.5, 81.7), xytext=(6.7, 59),
                  fontsize=SMALL, color=ACCENT, fontweight="bold",
-                 bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=ACCENT, lw=1.2),
+                 bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT, lw=1.2),
                  arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     ax2.set_xlabel("the top of our own ranking")
     ax2.set_ylabel("precision (%)")
@@ -538,7 +538,7 @@ def fig_pr_curve(prec, rec, thr, op):
     ax2.annotate(f"90% precision\n→ {100 * op['recall']:.1f}% recall",
                  xy=(100 * op["recall"], 100 * op["precision"]),
                  xytext=(24, 34), fontsize=SMALL, color=ACCENT, fontweight="bold",
-                 bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=ACCENT, lw=1.2),
+                 bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT, lw=1.2),
                  arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     ax2.set_xlabel("recall (%)"); ax2.set_ylabel("precision (%)")
     ax2.set_title("The same information, plotted against itself")

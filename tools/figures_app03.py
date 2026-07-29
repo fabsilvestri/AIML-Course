@@ -291,12 +291,12 @@ def fig_sigmoid():
     ax.annotate("t = 0  ⇒  p = 0.5\nequal odds", xy=(0, 0.5),
                 xytext=(-7.6, 0.74), fontsize=SMALL, color=ACCENT,
                 fontweight="bold",
-                bbox=dict(fc="white", ec=ACCENT, lw=1.2, boxstyle="round,pad=0.4"),
+                bbox=dict(fc="white", ec=ACCENT, lw=1.2, boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     ax.annotate("saturates: a large change in t\nbarely moves p",
                 xy=(6.0, 1 / (1 + np.exp(-6.0))), xytext=(1.1, 0.30),
                 fontsize=SMALL, color=MUTED,
-                bbox=dict(fc="white", ec=RULE, lw=1.2, boxstyle="round,pad=0.4"),
+                bbox=dict(fc="white", ec=RULE, lw=1.2, boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=MUTED, lw=1.8))
     ax.set_xlabel("t  =  θ·x   (the log-odds)")
     ax.set_ylabel("σ(t)  =  estimated probability")
@@ -550,13 +550,13 @@ def fig_threshold(sw):
                 xy=(h["t"], h["cost"]), xytext=(0.10, max(cost) * 0.86),
                 fontsize=SMALL, color=ACCENT, fontweight="bold",
                 bbox=dict(fc="white", ec=ACCENT, lw=1.2,
-                          boxstyle="round,pad=0.35"),
+                          boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     ax.annotate(f"cut-off {b['t']:.2f}\ncost {b['cost']:.0f}",
                 xy=(b["t"], b["cost"]), xytext=(0.44, max(cost) * 0.28),
                 fontsize=SMALL, color=SUCCESS, fontweight="bold",
                 bbox=dict(fc="white", ec=SUCCESS, lw=1.2,
-                          boxstyle="round,pad=0.35"),
+                          boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=SUCCESS, lw=1.8))
     ax.set_xlabel("cut-off on P(survived)")
     ax.set_ylabel(f"expected cost   ({COST_FN:.0f} : {COST_FP:.0f})")
@@ -672,7 +672,7 @@ def fig_degree_curves(ds):
                 xy=(b, d[b]["cv_log_loss"]), xytext=(2.5, 1.55),
                 fontsize=SMALL, color=SUCCESS, fontweight="bold",
                 bbox=dict(fc="white", ec=SUCCESS, lw=1.2,
-                          boxstyle="round,pad=0.35"),
+                          boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=SUCCESS, lw=1.8))
     ax.set_xlabel("polynomial degree on the five numeric columns")
     ax.set_ylabel("log loss (lower is better)")
@@ -980,7 +980,7 @@ def fig_learning_curve(lc):
                     xytext=(c["sizes"][0] + 30, top * 0.86), fontsize=SMALL,
                     color=ACCENT, fontweight="bold",
                     bbox=dict(fc="white", ec=ACCENT, lw=1.2,
-                              boxstyle="round,pad=0.32"),
+                              boxstyle="round,pad=0.5"),
                     arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     axes[0].set_ylabel("log loss")
     axes[0].legend(loc="lower right")
@@ -1150,7 +1150,7 @@ def fig_condition(cn):
                 xytext=(1e-6, 8), fontsize=SMALL, color=SUCCESS,
                 fontweight="bold",
                 bbox=dict(fc="white", ec=SUCCESS, lw=1.2,
-                          boxstyle="round,pad=0.35"),
+                          boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=SUCCESS, lw=1.8))
     ax.set_xlabel("α")
     ax.set_ylabel("condition number of  XᵀX + αI")
@@ -1201,14 +1201,14 @@ def fig_early_stopping(es):
                 xytext=(es["epochs"] * 0.30, max(es["valid"]) * 0.90),
                 fontsize=SMALL, color=SUCCESS, fontweight="bold",
                 bbox=dict(fc="white", ec=SUCCESS, lw=1.2,
-                          boxstyle="round,pad=0.35"),
+                          boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=SUCCESS, lw=1.8))
     ax.annotate("keep going and the training loss\nfalls while the real one rises",
                 xy=(es["epochs"] * 0.95, es["final_valid"]),
                 xytext=(es["epochs"] * 0.34, max(es["valid"]) * 0.60),
                 fontsize=SMALL, color=ACCENT,
                 bbox=dict(fc="white", ec=RULE, lw=1.2,
-                          boxstyle="round,pad=0.35"),
+                          boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     ax.set_xlabel("epoch")
     ax.set_ylabel("log loss")

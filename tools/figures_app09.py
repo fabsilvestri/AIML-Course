@@ -466,7 +466,7 @@ def fig_score_hist(scores, kept, path):
                 xy=(SHOW_THRESH, ax.get_ylim()[1] * 0.62),
                 xytext=(0.60, ax.get_ylim()[1] * 0.72),
                 color=ACCENT, fontsize=SMALL,
-                bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.35"),
+                bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=2))
     ax.set_xlabel("detection score")
     ax.set_ylabel("boxes")
@@ -495,7 +495,7 @@ def fig_count_vs_threshold(sweep, true_mean, path):
     ax.annotate(f"best at {ts[k]:.2f}\nMAE {mae[k]:.2f}",
                 xy=(ts[k], mae[k]), xytext=(ts[k] + 0.12, mae[k] + 2.0),
                 color=SUCCESS, fontsize=SMALL,
-                bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.35"),
+                bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=SUCCESS, lw=2))
     ax.set_xlabel("score threshold")
     ax.set_ylabel("mean absolute count error")
@@ -517,7 +517,7 @@ def fig_count_scatter(true_counts, pred_counts, path):
     below = int((pred_counts < true_counts).sum())
     ax.text(0.04, 0.94, f"{below} of {len(true_counts)} images undercounted",
             transform=ax.transAxes, va="top", color=ACCENT, fontsize=SMALL,
-            bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.35"))
+            bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.5"))
     fig.tight_layout()
     return save(fig, path)
 
@@ -593,7 +593,7 @@ def fig_wholebox(corpus, iid, path):
                       fontsize=TICK, color=MUTED, loc="left")
     axes[1].text(W * 0.5, H * 0.5, "it overlaps\nevery object",
                  color=ACCENT, fontsize=13, ha="center", va="center",
-                 bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.4"))
+                 bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.5"))
     fig.tight_layout()
     return save(fig, path, raster=True)
 
@@ -610,7 +610,7 @@ def fig_iou_flat(sep, path):
     ax.set_title("past 100 px the boxes are disjoint and IoU is exactly 0")
     ax.annotate("flat at zero for every separation beyond 100",
                 xy=(210, 0.0), xytext=(115, 0.42), color=ACCENT, fontsize=SMALL,
-                bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.35"),
+                bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=2))
     ax = axes[1]
     ax.plot(d, sep["g_iou"], color=ACCENT, lw=3.0, marker="o", ms=4,
@@ -641,7 +641,7 @@ def fig_clamp_bug(d, broken, correct, path):
     ax.annotate("it goes UP as they move apart",
                 xy=(180, broken[d == 180][0]), xytext=(105, 0.42),
                 color=ACCENT, fontsize=SMALL,
-                bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.35"),
+                bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=2))
     fig.tight_layout()
     return save(fig, path)
@@ -661,7 +661,7 @@ def fig_giou_ciou(sep, path):
     ax.legend(loc="upper right")
     ax.annotate("IoU stops here", xy=(100, 0.0), xytext=(28, -0.55),
                 color=ACCENT, fontsize=SMALL,
-                bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.35"),
+                bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=2))
     fig.tight_layout()
     return save(fig, path)
@@ -707,7 +707,7 @@ def fig_pr_sawtooth(precision, recall, ap, cls_name, n_gt, path):
     ax.legend(loc="lower left")
     ax.text(0.97, 0.94, f"AP = {ap:.3f}", transform=ax.transAxes, ha="right",
             va="top", color=SUCCESS, fontsize=BODY,
-            bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.35"))
+            bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.5"))
     ax = axes[1]
     lo, hi = 50, min(len(precision), 140)
     k = np.arange(lo + 1, hi + 1)
@@ -737,11 +737,11 @@ def fig_ap_by_iou(ts, aps, map_all, path):
     ax.legend(loc="upper right")
     ax.annotate(f"mAP@0.50 = {aps[0]:.3f}", xy=(ts[0], aps[0]),
                 xytext=(0.56, aps[0] * 0.96), color=PRIMARY, fontsize=SMALL,
-                bbox=dict(fc="white", ec=PRIMARY, boxstyle="round,pad=0.35"),
+                bbox=dict(fc="white", ec=PRIMARY, boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=PRIMARY, lw=2))
     ax.annotate(f"mAP@0.95 = {aps[-1]:.3f}", xy=(ts[-1], aps[-1]),
                 xytext=(0.70, aps[0] * 0.45), color=ACCENT, fontsize=SMALL,
-                bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.35"),
+                bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=2))
     fig.tight_layout()
     return save(fig, path)
@@ -792,7 +792,7 @@ def fig_per_class_ap(rows, counts, mean_ap, path):
     ax.annotate(f"{names[k]}: {int(n[k])} instances, AP {vals[k]:.2f}",
                 xy=(n[k], vals[k]), xytext=(3.0, 0.24), color=PRIMARY,
                 fontsize=SMALL,
-                bbox=dict(fc="white", ec=PRIMARY, boxstyle="round,pad=0.35"),
+                bbox=dict(fc="white", ec=PRIMARY, boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=PRIMARY, lw=2))
     fig.tight_layout()
     return save(fig, path)
@@ -813,7 +813,7 @@ def fig_nms_sweep(sweep, path):
     ax.annotate(f"best at {sweep['t'][k]:.2f}", xy=(sweep["t"][k], sweep["map50"][k]),
                 xytext=(sweep["t"][k] - 0.02, sweep["map50"][k] - 0.09),
                 color=MATH, fontsize=SMALL, ha="center",
-                bbox=dict(fc="white", ec=MATH, boxstyle="round,pad=0.35"),
+                bbox=dict(fc="white", ec=MATH, boxstyle="round,pad=0.5"),
                 arrowprops=dict(arrowstyle="->", color=MATH, lw=2))
     ax.set_xlabel("NMS IoU threshold")
     ax.set_ylabel("mAP@0.50")

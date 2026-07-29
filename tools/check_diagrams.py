@@ -27,7 +27,16 @@ renders through an `<img>` so it can never again disagree with the projector.
 2. **Overlap** — two labels whose *ink* covers the same ground. An annotation
    printed across a caption is unreadable at the back of a lecture theatre and
    invisible in a code review. Fails.
-3. **Struck through** — a label with something drawn underneath its ink. In
+3. **Crowded, or escaped.** A label's ink must keep clear of the border of the
+   shape that holds it. A caption wider than its own plate crosses that border;
+   far more often, a box was sized to its last line's BASELINE and the
+   descenders of g, y, p and the comma land on the bottom edge — 28 of the 38
+   tight cases in this course were that one habit. Attribution is by how much of
+   the LABEL a shape covers, never by containment, because a caption that
+   escapes its plate is not contained by it and a containment join can never
+   find the thing it is looking for. Fails.
+
+4. **Struck through** — a label with something drawn underneath its ink. In
    d-projection the projection arrow ran through the circumflex of `Xθ̂`, so a
    diagram whose whole subject is the distinction between θ and θ̂ displayed it
    as `Xθ`.
@@ -85,6 +94,16 @@ EDGE_SLACK = 3.0
 OVERLAP_MIN_DX = 0.25      # shared width, as a fraction of the narrower label
 INK_SLACK = 1.0            # px of ink overlap to forgive
 SHOT_SCALE = 2             # device pixels per user unit in the two renders
+# Clearance between a label's ink and the border of the shape holding it, in
+# ON-SLIDE pixels. 6 is defensible on acuity alone: at 3 m from a 1280-wide
+# canvas one canvas pixel is 2.34 mm, and the 1-arcmin limit at the back of a
+# 15 m room is 1.9 px — which is where two edges stop merging, not where a gap
+# reads as deliberate space. It is also roughly twice the 2.4-3.0 px weight of
+# the borders themselves. 10 is where this course's own authors already sit at
+# the lower quartile, so it is "match your best work" rather than a legibility
+# floor, and it warns rather than fails.
+CLEAR_FAIL = 6.0
+CLEAR_WARN = 10.0
 # Six device pixels, which sounds absurdly low until you measure the case this
 # was written for: the circumflex of `Xθ̂` crossing a 3.5px arrow puts exactly
 # 7px of ink on top of the line. A thin mark over a thin line IS a small number
@@ -138,7 +157,26 @@ MEASURE = """() => {
               inkBot: Math.min(inkBot, b.y + b.height),
               text: (t.textContent || '').replace(/\\s+/g, ' ').trim()});
   });
-  return {vb: {x: vb.x, y: vb.y, w: vb.width, h: vb.height}, texts: out};
+  // Shapes a label might live inside. A stroke or a fill makes a shape
+  // visible; under 14 units it is an ornament, not a container; and anything
+  // over 80% of the frame is a background, which the viewBox test already owns.
+  const shapes = [];
+  const frameArea = vb.width * vb.height;
+  svg.querySelectorAll('rect, circle, ellipse, polygon').forEach(el => {
+    const cs = getComputedStyle(el);
+    const stroked = cs.stroke && cs.stroke !== 'none' &&
+                    parseFloat(cs.strokeWidth) > 0;
+    const filled = cs.fill && cs.fill !== 'none';
+    if (!stroked && !filled) return;
+    let b; try { b = el.getBBox(); } catch (e) { return; }
+    if (b.width < 14 || b.height < 14) return;
+    if (b.width * b.height > 0.8 * frameArea) return;
+    shapes.push({x: b.x, y: b.y, w: b.width, h: b.height,
+                 sw: parseFloat(cs.strokeWidth) || 0,
+                 cls: el.getAttribute('class') || el.tagName});
+  });
+  return {vb: {x: vb.x, y: vb.y, w: vb.width, h: vb.height},
+          texts: out, shapes};
 }"""
 
 
@@ -219,6 +257,51 @@ def struck_labels(page, wrapper, texts, out_dir, stem, vb_w):
     return struck
 
 
+def owner_of(t: dict, shapes: list) -> dict | None:
+    """Which shape a label belongs to, for the purpose of measuring its border.
+
+    Attribution is by the fraction of the LABEL that a shape covers, never by
+    containment — because the defect being hunted destroys the evidence for
+    containment. A caption that runs out of its plate is, by definition, not
+    inside that plate, so a containment join can never attribute the label you
+    are looking for. Ties go to the smallest shape, so a node box wins over the
+    panel drawn around it.
+
+    d-nms is why the tie-break matters: three identical 170x150 rects all
+    enclose the label 0.98, because overlapping regions are the diagram's whole
+    subject. A join that cannot express that produced a confident false report
+    about that file.
+    """
+    best, best_f = None, 0.0
+    for sh in shapes:
+        dx = min(t["x"] + t["w"], sh["x"] + sh["w"]) - max(t["x"], sh["x"])
+        dy = min(t["y"] + t["h"], sh["y"] + sh["h"]) - max(t["y"], sh["y"])
+        if dx <= 0 or dy <= 0:
+            continue
+        f = (dx * dy) / ((t["w"] * t["h"]) or 1)
+        if f > best_f + 0.02 or (abs(f - best_f) <= 0.02 and best is not None
+                                 and sh["w"] * sh["h"] < best["w"] * best["h"]):
+            best, best_f = sh, max(f, best_f)
+    return best if best_f >= 0.50 else None
+
+
+def clearance(t: dict, sh: dict) -> tuple[float, str]:
+    """Smallest gap between a label's ink and its shape's border, and which side.
+
+    The stroke is centred on the path, so the inner edge is half a stroke in.
+    Vertical extents use the measured ink rather than the em box, because the
+    habit this catches is a box fitted to the last line's BASELINE, which leaves
+    the descenders of g, y, p and the comma sitting on the border.
+    """
+    half = sh["sw"] / 2
+    gaps = {"left":   t["x"] - (sh["x"] + half),
+            "right":  (sh["x"] + sh["w"] - half) - (t["x"] + t["w"]),
+            "top":    t["inkTop"] - (sh["y"] + half),
+            "bottom": (sh["y"] + sh["h"] - half) - t["inkBot"]}
+    side = min(gaps, key=gaps.get)
+    return gaps[side], side
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--list", action="store_true",
@@ -249,7 +332,7 @@ def main() -> int:
             vb, texts = r["vb"], r["texts"]
             struck = struck_labels(page, wrapper, texts, scratch, f.stem, vb["w"])
 
-            out_of_frame, collisions = [], []
+            out_of_frame, collisions, tight = [], [], []
             for t in texts:
                 over = max(vb["x"] - t["x"],
                            (t["x"] + t["w"]) - (vb["x"] + vb["w"]),
@@ -257,6 +340,14 @@ def main() -> int:
                            (t["y"] + t["h"]) - (vb["y"] + vb["h"]))
                 if over > EDGE_SLACK:
                     out_of_frame.append((over, t))
+            on_slide = 1280.0 / vb["w"]
+            for t in texts:
+                sh = owner_of(t, r.get("shapes", []))
+                if sh is None:
+                    continue                    # free-floating: test B only
+                gap, side = clearance(t, sh)
+                if gap * on_slide < CLEAR_FAIL:
+                    tight.append((gap * on_slide, side, t, sh))
             for i, a in enumerate(texts):
                 for b in texts[i + 1:]:
                     ink = clash(a, b)
@@ -270,7 +361,7 @@ def main() -> int:
                           f"{t['w']:6.1f}x{t['h']:5.1f}  {t['text'][:52]!r}")
                 continue
 
-            if out_of_frame or collisions or struck:
+            if out_of_frame or collisions or struck or tight:
                 print(f"\n{f.name}  (viewBox {vb['w']:.0f}x{vb['h']:.0f})")
                 for over, t in sorted(out_of_frame, reverse=True,
                                       key=lambda p: p[0]):
@@ -286,7 +377,13 @@ def main() -> int:
                     print(f"   STRUCK {n:5d}px of ink landed on something "
                           f"already drawn")
                     print(f"           {t['text'][:52]!r}")
-                problems += len(out_of_frame) + len(collisions) + len(struck)
+                for gap, side, t, sh in sorted(tight, key=lambda p: p[0]):
+                    verdict = "TIGHT" if gap >= 0 else "ESCAPES"
+                    print(f"   {verdict:7s} {gap:6.2f}px of clear space at the "
+                          f"{side} of its {sh['cls']}")
+                    print(f"           {t['text'][:52]!r}")
+                problems += (len(out_of_frame) + len(collisions) + len(struck)
+                             + len(tight))
         browser.close()
 
     if args.list:

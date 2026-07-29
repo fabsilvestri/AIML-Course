@@ -809,7 +809,7 @@ def fig_class_balance(d):
                 f"so the majority-class baseline is exactly 10%",
                 xy=(4.5, counts.mean()), xytext=(0.6, counts.mean() * 0.42),
                 color=ACCENT,
-                bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=ACCENT,
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT,
                           lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     ax.set_xticks(range(10))
@@ -836,7 +836,7 @@ def fig_loss_flat(l13):
                 xy=(len(deep["loss"]) * 0.62, chance),
                 xytext=(len(deep["loss"]) * 0.30, chance - 0.55),
                 color=MUTED,
-                bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=RULE),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=RULE),
                 arrowprops=dict(arrowstyle="->", color=MUTED, lw=1.6))
     ax.set_xlabel("epoch"); ax.set_ylabel("training loss")
     ax.set_title("Same data, same optimiser, same twenty epochs")
@@ -861,7 +861,7 @@ def fig_grad_by_depth(l13):
     ax.annotate(f"layer 20 : layer 1  =  {ratio:.1e}",
                 xy=(1.4, g[0] * 3), xytext=(4.0, g[0] * 3),
                 color=ACCENT,
-                bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=ACCENT,
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT,
                           lw=1.2),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
     ax.set_title("Gradient norm per weight matrix, at initialisation "
@@ -917,7 +917,7 @@ def fig_depth_sweep(l13):
     ax.axhline(10, color=MUTED, ls="--", lw=1.8)
     ax.annotate("the 10% baseline", xy=(0.15, 10), xytext=(0.15, 15.5),
                 color=MUTED,
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=RULE))
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=RULE))
     for b, v in zip(bars, acc):
         ax.text(b.get_x() + b.get_width() / 2, v + 0.8, f"{v:.1f}%",
                 ha="center", color=MUTED, fontsize=TICK)
@@ -1041,7 +1041,7 @@ def fig_clip(l14):
     top = ax.get_ylim()[1]
     ax.annotate("clip at 1.0", xy=(1.0, top * 0.55),
                 xytext=(8.0, top * 0.72), color=PRIMARY,
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=PRIMARY),
+                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=PRIMARY),
                 arrowprops=dict(arrowstyle="->", color=PRIMARY, lw=1.6))
     ax.set_xlabel("total gradient norm, one optimiser step")
     ax.set_ylabel("steps")
@@ -1108,7 +1108,7 @@ def fig_activations(l14):
     ax2.axhline(0.25, color=ACCENT, ls=":", lw=1.6)
     ax2.annotate("the logistic never exceeds 1/4", xy=(-4.6, 0.25),
                  xytext=(-4.6, 0.55), color=ACCENT, fontsize=TICK,
-                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=ACCENT))
+                 bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT))
     ax1.legend(fontsize=TICK, loc="upper left")
     ax2.set_ylim(-0.1, 1.35)
     fig.tight_layout()

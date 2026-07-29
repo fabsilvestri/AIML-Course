@@ -829,7 +829,7 @@ def fig_mismatch(sm):
                      f"sd of unrelated: {jl['random_sd']:.3f}",
                      xy=(0.02, 0.985), xycoords="axes fraction", fontsize=SMALL,
                      color=ACCENT, va="top",
-                     bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.35"))
+                     bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.5"))
     names = ["JL projection\n768 to 384", "truncate\nimage to 384",
              "zero-pad\ntext to 768"]
     keys = ["jl", "truncate", "pad"]
@@ -862,7 +862,7 @@ def fig_clip_sim(cl):
                 f"Cohen's d = {t2i['cohens_d']:.2f}",
                 xy=(0.66, 0.72), xycoords="axes fraction", fontsize=SMALL,
                 color=SUCCESS,
-                bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.35"))
+                bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.5"))
     fig.tight_layout()
     return save(fig, "l23-clip-sim")
 
@@ -962,7 +962,7 @@ def fig_concentration(co):
                      xy=(co["d"], co["gauss_sd"]), xytext=(0.04, 0.10),
                      textcoords="axes fraction", fontsize=SMALL, color=MATH,
                      arrowprops=dict(arrowstyle="->", color=MATH),
-                     bbox=dict(fc="white", ec=MATH, boxstyle="round,pad=0.3"))
+                     bbox=dict(fc="white", ec=MATH, boxstyle="round,pad=0.5"))
 
     axes[1].hist(co["gauss_sample"], bins=60, density=True, color=MATH, alpha=0.8)
     top = axes[1].get_ylim()[1] * 1.25
@@ -978,12 +978,12 @@ def fig_concentration(co):
                      textcoords="axes fraction",
                      fontsize=SMALL, color=SUCCESS,
                      arrowprops=dict(arrowstyle="->", color=SUCCESS),
-                     bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.3"))
+                     bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.5"))
     axes[1].annotate("where \"opposite\"\nwould be", xy=(-1, top * 0.30),
                      xytext=(0.04, 0.52), textcoords="axes fraction",
                      fontsize=SMALL, color=ACCENT,
                      arrowprops=dict(arrowstyle="->", color=ACCENT),
-                     bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.3"))
+                     bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.5"))
     fig.tight_layout()
     return save(fig, "l24-concentration")
 
@@ -1036,7 +1036,7 @@ def fig_temperature(ts):
                      xytext=(0.34, 0.46), textcoords="axes fraction",
                      fontsize=SMALL, color=SUCCESS,
                      arrowprops=dict(arrowstyle="->", color=SUCCESS),
-                     bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.3"))
+                     bbox=dict(fc="white", ec=SUCCESS, boxstyle="round,pad=0.5"))
     axes[0].invert_xaxis()
     plain_log(axes[0], "x", ticks, "{:g}")
     axes[0].set_xlabel("temperature tau  (colder to the right)")
@@ -1120,7 +1120,7 @@ def fig_normalisation(nf):
                      f"{nf['n_never_first_normalised']} on the sphere)",
                      xy=(0.03, 0.70), xycoords="axes fraction", fontsize=SMALL,
                      color=ACCENT,
-                     bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.35"))
+                     bbox=dict(fc="white", ec=ACCENT, boxstyle="round,pad=0.5"))
     fig.tight_layout()
     return save(fig, "l24-normalisation")
 
