@@ -1224,11 +1224,12 @@ def diagram_weight_sharing():
             b.append(f'<rect x="{x0 + j * cell}" y="{y0 + i * cell}" '
                      f'width="{cell}" height="{cell}" fill="#eef4f8" '
                      f'stroke="#b0bcc7" stroke-width="1"/>')
-    b.append(f'<text class="t-sub" x="{x0}" y="{y0 + 8 * cell + 24}">'
+    b.append(f'<text class="t-sub" x="{x0}" y="{y0 + 8 * cell + 26}">'
              f'input feature map</text>')
-    # three windows
+    # Three windows, none of them on the grid's own edge: a window flush with
+    # the boundary reads as overflowing it.
     for k, (i, j, col) in enumerate(((0, 0, "#c0392b"), (2, 3, "#c0392b"),
-                                     (5, 5, "#c0392b"))):
+                                     (4, 5, "#c0392b"))):
         b.append(f'<rect x="{x0 + j * cell}" y="{y0 + i * cell}" '
                  f'width="{3 * cell}" height="{3 * cell}" rx="7" fill="none" '
                  f'stroke="{col}" stroke-width="3"/>')
@@ -1256,45 +1257,54 @@ def diagram_weight_sharing():
                      f'stroke="#b0bcc7" stroke-width="1"/>')
     b.append(f'<text class="t-sub" x="{ox}" y="{110 + 6 * 28 + 24}">'
              f'output feature map</text>')
-    b.append('<text class="t" x="40" y="386">'
+    b.append('<text class="t" x="40" y="410">'
              'A dense layer would learn a different weight for every one of '
              'those windows.</text>')
-    write_svg("d-weightsharing", "0 0 1080 410", "\n".join(b))
+    write_svg("d-weightsharing", "0 0 1080 432", "\n".join(b))
 
 
 def diagram_equivariance():
-    """Equivariance moves the answer; invariance discards where it was."""
+    """Equivariance moves the answer; invariance discards where it was.
+
+    Read strictly left to right. The first version drew a down-arrow under each
+    input box toward a law box that sits to the RIGHT of it, so four arrows
+    pointed at empty canvas — the commonest way a hand-drawn diagram goes wrong
+    is an edge that leads nowhere.
+    """
     b = ['<text class="t-hd" x="20" y="34" fill="#0b3d62">'
          'Equivariance moves the answer &#183; invariance forgets where it '
          'was</text>']
-    rows = [(80, "#6c3483", "am", "equivariant", "conv(shift(x)) = shift(conv(x))"),
-            (250, "#14663a", "ag", "invariant",
+    rows = [(84, "#6c3483", "am", "m", "equivariant", "conv",
+             "conv(shift(x)) = shift(conv(x))"),
+            (232, "#14663a", "ag", "g", "invariant", "conv, then pool",
              "pool(conv(shift(x))) = pool(conv(x))")]
-    for y, col, mk, name, law in rows:
-        b.append(f'<text class="t" x="20" y="{y - 14}" fill="{col}">'
+    for y, col, mk, cls, name, op, law in rows:
+        b.append(f'<text class="t" x="20" y="{y - 12}" fill="{col}">'
                  f'{name}</text>')
-        for k, (bx, label) in enumerate(((60, "x"), (300, "shift(x)"))):
-            b.append(f'<rect x="{bx}" y="{y}" width="120" height="90" rx="7" '
+        for bx, label in ((60, "x"), (300, "shift(x)")):
+            b.append(f'<rect x="{bx}" y="{y}" width="120" height="92" rx="7" '
                      f'class="box"/>')
-            b.append(f'<text class="t-sub" x="{bx + 60}" y="{y + 52}" '
+            b.append(f'<text class="t" x="{bx + 60}" y="{y + 52}" '
                      f'text-anchor="middle">{label}</text>')
-        b.append(f'<line x1="180" y1="{y + 45}" x2="292" y2="{y + 45}" '
+        # x -> shift(x)
+        b.append(f'<line x1="182" y1="{y + 46}" x2="292" y2="{y + 46}" '
                  f'class="flow" stroke="#0b3d62" marker-end="url(#a)" '
                  f'stroke-dasharray="6 4"/>')
-        b.append(f'<text class="t-sub" x="236" y="{y + 34}" '
+        b.append(f'<text class="t-sub" x="237" y="{y + 32}" '
                  f'text-anchor="middle">shift</text>')
-        for k, bx in enumerate((60, 300)):
-            b.append(f'<line x1="{bx + 60}" y1="{y + 90}" x2="{bx + 60}" '
-                     f'y2="{y + 118}" class="flow" stroke="{col}" '
-                     f'marker-end="url(#{mk})"/>')
-        b.append(f'<rect x="560" y="{y}" width="440" height="90" rx="7" '
-                 f'class="box-{"m" if col == "#6c3483" else "g"}"/>')
-        b.append(f'<text class="t" x="780" y="{y + 52}" text-anchor="middle" '
+        # shift(x) -> the law it satisfies
+        b.append(f'<line x1="422" y1="{y + 46}" x2="552" y2="{y + 46}" '
+                 f'class="flow" stroke="{col}" marker-end="url(#{mk})"/>')
+        b.append(f'<text class="t-sub" x="487" y="{y + 32}" '
+                 f'text-anchor="middle" fill="{col}">{op}</text>')
+        b.append(f'<rect x="562" y="{y}" width="458" height="92" rx="7" '
+                 f'class="box-{cls}"/>')
+        b.append(f'<text class="t" x="791" y="{y + 52}" text-anchor="middle" '
                  f'fill="{col}">{law}</text>')
-    b.append('<text class="t" x="20" y="404">'
+    b.append('<text class="t" x="20" y="386">'
              'Classification wants the second line. Per-pixel prediction '
              'cannot afford it.</text>')
-    write_svg("d-equivariance", "0 0 1080 430", "\n".join(b))
+    write_svg("d-equivariance", "0 0 1080 406", "\n".join(b))
 
 
 def diagram_transfer(probe, ft):
