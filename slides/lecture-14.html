@@ -970,9 +970,10 @@ opt.step()
     <img src="../assets/figures/l14-schedules.svg"
          alt="Left panel: learning rate against epoch for a constant, exponential, cosine and one-cycle schedule. Right panel: validation accuracy against epoch for the same four runs.">
   </figure>
-  <p class="takeaway">Constant 39.6%, cosine
-  38.8%, 1-cycle
-  43.9% &mdash; on a twenty-epoch run.</p>
+  <p class="takeaway">Constant 39.6%, cosine 38.8%, 1-cycle 41.5% &mdash; on a
+  twenty-epoch run, one seed each. In the ablation the same schedule is worth
+  +0.5 points against a five-seed spread of
+  &plusmn;2.79, so read this panel as a shape, not a ranking.</p>
 </section>
 
 <!-- 48 -->
@@ -1135,18 +1136,25 @@ for m in model:
 <section data-menu-title="★ THE ABLATION TABLE">
   <h2>Each row adds one change to the row above</h2>
   <table class="small">
-    <tr><th>Configuration</th><th class="num">Test accuracy</th><th class="num">Change</th><th class="num">Final training loss</th></tr>
-    <tr><td class="fail">Lecture 13, unchanged</td><td class="num fail">10.0%</td><td class="num">&mdash;</td><td class="num fail">2.3036</td></tr>
-    <tr><td>+ Glorot initialisation</td><td class="num">10.0%</td><td class="num">+0.0%</td><td class="num fail">2.3066</td></tr>
-    <tr><td class="fix">+ ReLU and He initialisation</td><td class="num hit">41.1%</td><td class="num hit">+31.1%</td><td class="num hit">1.1388</td></tr>
-    <tr><td>+ batch normalisation</td><td class="num">36.8%</td><td class="num fail">-4.3%</td><td class="num">1.6016</td></tr>
-    <tr><td>+ gradient clipping</td><td class="num">39.6%</td><td class="num">+2.8%</td><td class="num">1.1285</td></tr>
-    <tr><td class="fix">+ a 1-cycle schedule</td><td class="num hit">43.9%</td><td class="num">+4.2%</td><td class="num hit">1.0945</td></tr>
-    <tr><td>+ dropout 0.1</td><td class="num">33.4%</td><td class="num fail">-10.4%</td><td class="num">1.6374</td></tr>
+    <tr><th>Configuration</th><th class="num">Test accuracy</th><th class="num">sd over 5 seeds</th><th class="num">Change</th><th class="num">Final training loss</th></tr>
+    <tr><td class="fail">Lecture 13, unchanged</td><td class="num">10.0%</td><td class="num">&plusmn;0.00</td><td class="num">&mdash;</td><td class="num">2.3035</td></tr>
+    <tr><td>+ Glorot initialisation</td><td class="num">10.0%</td><td class="num">&plusmn;0.00</td><td class="num">+0.0 <span class="muted">(noise)</span></td><td class="num">2.3062</td></tr>
+    <tr><td class="fix">+ ReLU and He initialisation</td><td class="num">41.3%</td><td class="num">&plusmn;0.35</td><td class="num hit">+31.3</td><td class="num">1.1373</td></tr>
+    <tr><td>+ batch normalisation</td><td class="num">36.5%</td><td class="num">&plusmn;0.64</td><td class="num fail">-4.7</td><td class="num">1.5461</td></tr>
+    <tr><td class="fix">+ gradient clipping</td><td class="num">40.8%</td><td class="num">&plusmn;0.76</td><td class="num hit">+4.3</td><td class="num">1.1064</td></tr>
+    <tr><td>+ a 1-cycle schedule</td><td class="num">41.3%</td><td class="num">&plusmn;2.79</td><td class="num">+0.5 <span class="muted">(noise)</span></td><td class="num">1.2773</td></tr>
+    <tr><td>+ dropout 0.1</td><td class="num">34.0%</td><td class="num">&plusmn;1.33</td><td class="num fail">-7.3</td><td class="num">1.6346</td></tr>
   </table>
-  <p class="small">This table is the deliverable of the lecture. Photograph it.
-  <strong>Two of the six steps are negative</strong>, and the best
-  configuration is not the last row.</p>
+  <p class="small">This table is the deliverable of the lecture. Photograph it
+  &mdash; and photograph the third column with it. Every row is the mean of five
+  seeds, and the typical seed-to-seed spread is
+  <strong>0.84 points</strong>.</p>
+  <p class="small">One row moves the number by <strong>+31.3
+  points</strong>, forty times that spread. Three more clear it. <strong>The
+  1-cycle schedule does not</strong>: it is worth
+  +0.5 points against a spread of
+  &plusmn;2.79, so on this evidence it does nothing, and the
+  single-seed version of this table called it the winner.</p>
   <aside class="notes">There is deliberately no wall-clock column: these
   figures were generated on a heavily shared machine and the per-run times were
   not comparable with one another. The normalisation slide carries a timing
@@ -1170,10 +1178,10 @@ for m in model:
   <h2>Where the gain came from</h2>
   <table>
     <tr><th></th><th class="num">Accuracy points</th></tr>
-    <tr><td class="fix">The largest single step &mdash; ReLU with He</td><td class="num hit">+31.1%</td></tr>
-    <tr><td class="fix">Best configuration, against the start</td><td class="num hit">+33.9%</td></tr>
-    <tr><td class="fail">The worst single step</td><td class="num fail">-10.4%</td></tr>
-    <tr><td>The last row, against the start</td><td class="num">+23.4%</td></tr>
+    <tr><td class="fix">The largest single step &mdash; ReLU with He</td><td class="num hit">+31.3%</td></tr>
+    <tr><td class="fix">Best configuration, against the start</td><td class="num hit">+31.3%</td></tr>
+    <tr><td class="fail">The worst single step</td><td class="num fail">-7.3%</td></tr>
+    <tr><td>The last row, against the start</td><td class="num">+24.0%</td></tr>
   </table>
   <p class="lead">One change is worth more than the whole ladder.</p>
   <p class="small">Which is the answer to &ldquo;should I add batch
@@ -1251,16 +1259,33 @@ for m in model:
     <tr><td>Always predict one class</td><td class="num">10.0%</td></tr>
     <tr><td class="fail">20 layers, as built</td><td class="num fail">10.0%</td></tr>
     <tr><td>2 layers, as built</td><td class="num">39.3%</td></tr>
-    <tr><td>20 layers, every repair applied</td><td class="num">33.4%</td></tr>
-    <tr><td class="fix">20 layers, the best row of the table</td><td class="num hit">43.9%</td></tr>
+    <tr><td>20 layers, every repair applied</td><td class="num">34.0%</td></tr>
+    <tr><td class="fix">20 layers, the best row of the table</td><td class="num hit">41.3%</td></tr>
   </table>
   <p class="lead">The number we report is
-  43.9%, not 33.4%.</p>
-  <p class="small">Same 20 epochs, same 10,000 images,
-  same seed as the broken run &mdash; identical in every respect except the
-  four lines that decide how the signal propagates. <strong>The ablation table
-  is what entitles us to drop the last rung</strong>; without it we would have
-  shipped 33.4% and called it the repaired model.</p>
+  41.3%, not 34.0%.</p>
+  <p class="small"><strong>The ablation table is what entitles us to drop the
+  last rung</strong>; without it we would have shipped 34.0% and called it the
+  repaired model.</p>
+</section>
+
+<!-- 61b -->
+<section data-menu-title="Which of the two">
+  <h2>Two rows that cannot be told apart</h2>
+  <table>
+    <tr><th>Configuration</th><th class="num">Test accuracy</th><th class="num">sd over 5 seeds</th></tr>
+    <tr><td class="fix">ReLU and He initialisation</td><td class="num">41.26%</td><td class="num hit">&plusmn;0.35</td></tr>
+    <tr><td>&hellip; and a 1-cycle schedule</td><td class="num">41.26%</td><td class="num fail">&plusmn;2.79</td></tr>
+  </table>
+  <p class="lead">The same mean, and one of them moves eight times as much
+  between seeds.</p>
+  <p class="small">So the schedule is not buying accuracy here. It is buying
+  variance. <strong>Report the simpler configuration</strong> &mdash; when two
+  models cannot be told apart, the tie-break is not the third decimal, it is
+  which one you would rather explain, debug and retrain in six months.</p>
+  <p class="small muted">The single-seed version of this table called the
+  1-cycle row the winner by 4.2 points. It was one draw from a distribution
+  five times that wide.</p>
 </section>
 
 <!-- 61 -->
@@ -1333,7 +1358,7 @@ for m in model:
     <tr><td>Accuracy under class imbalance</td><td>Lecture 4</td><td class="num">a useless model above 90%</td></tr>
     <tr><td>Missing <code>optimizer.zero_grad()</code></td><td>Lecture 12</td><td class="num">76.7 points</td></tr>
     <tr><td>Metric averaged per batch</td><td>Lecture 12</td><td class="num">0.382 points</td></tr>
-    <tr><td class="fail">A deep stack on default initialisation</td><td class="fail">Lecture 13</td><td class="num fail">33.9% points</td></tr>
+    <tr><td class="fail">A deep stack on default initialisation</td><td class="fail">Lecture 13</td><td class="num fail">31.3% points</td></tr>
     <tr><td class="fail">Glorot&rsquo;s constant used with ReLU</td><td class="fail">today</td><td class="num fail">1.5% points</td></tr>
   </table>
   <p class="small muted">Every one of them ran to completion and printed a

@@ -1381,6 +1381,15 @@ def main() -> int:
         for k, v in l14["var_sweep"].items()}
 
     facts["l14_ladder"] = l14["ladder"]
+    facts["l14_ladder_sd_pts"] = l14["ladder_sd_pts"]
+    facts["l14_ladder_seeds"] = l14["ladder"][0]["n_seeds"]
+    # which steps clear the seed spread, and which are noise wearing a sign
+    facts["l14_steps_real"] = sum(
+        1 for r in l14["ladder"][1:]
+        if abs(100 * r["delta"]) > 2 * l14["ladder_sd_pts"])
+    facts["l14_steps_noise"] = sum(
+        1 for r in l14["ladder"][1:]
+        if abs(100 * r["delta"]) <= 2 * l14["ladder_sd_pts"])
     facts["l14_alone"] = l14["alone"]
     facts["l14_norms"] = l14["norms"]
     facts["l14_optims"] = {k: {"test_acc": v["test_acc"], "lr": v["lr"],
