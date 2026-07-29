@@ -959,9 +959,13 @@ def fig_params(dc):
                         "billion", "100 billion"], fontsize=TICK)
     ax.xaxis.set_minor_formatter(NullFormatter())
     ax.xaxis.set_minor_locator(NullLocator())
+    # above the bar, not after it: at 25 billion the label is wider than the
+    # gap between the end of its bar and the right spine, and ran off the axis
     for b, v in zip(bars, vals[::-1]):
-        ax.annotate(f"{v:,} weights", (v * 1.6, b.get_y() + b.get_height() / 2),
-                    va="center", fontsize=SMALL, color=MUTED)
+        ax.annotate(f"{v:,} weights",
+                    (1.3e3, b.get_y() + b.get_height() + 0.05),
+                    va="bottom", fontsize=SMALL, color=MUTED)
+    ax.set_ylim(-0.55, 1.8)
     ax.set_xlabel("weights, log scale")
     ax.set_title(f"A factor of {dc['ratio']:,.0f}")
     fig.tight_layout()
@@ -1009,17 +1013,19 @@ def fig_memory(mem):
     ax.plot(b, act, "o-", color=ACCENT, lw=2.6, ms=9, label="activations")
     ax.axhline(mem["optimizer_mb"], color=PRIMARY, lw=2.4,
                label="weights + gradients + Adam state")
-    ax.annotate(f"{mem['optimizer_mb']:.0f} MB, whatever the batch",
-                xy=(8, mem["optimizer_mb"]), xytext=(1.6, 260),
-                fontsize=SMALL, color=PRIMARY,
-                bbox=dict(fc="white", ec="none", alpha=0.9),
-                arrowprops=dict(arrowstyle="->", color=PRIMARY, lw=1.8))
+    # the callouts sat on top of the legend, so the legend moves to the one
+    # corner both lines leave empty and the flat line is labelled in place
+    # Both callouts live in the wedge under the rising line and right of the
+    # flat one, which is the only region neither line nor the legend occupies.
     ax.annotate(f"batch {mem['batch']}: {mem['act_at_batch_mb']:,.0f} MB",
                 xy=(mem["batch"], mem["act_at_batch_mb"]),
-                xytext=(2.2, mem["act_at_batch_mb"] * 1.05),
+                xytext=(38, 140),
                 fontsize=SMALL, color=ACCENT,
                 bbox=dict(fc="white", ec="none", alpha=0.9),
                 arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
+    ax.annotate(f"{mem['optimizer_mb']:.0f} MB, whatever the batch",
+                xy=(34, 19), fontsize=SMALL, color=PRIMARY, va="bottom",
+                bbox=dict(fc="white", ec="none", alpha=0.9))
     ax.set_xscale("log", base=2); ax.set_yscale("log")
     ax.set_xticks(b); ax.set_xticklabels([str(v) for v in b])
     ax.set_yticks([10, 30, 100, 300, 1000, 3000])
