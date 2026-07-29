@@ -666,6 +666,45 @@ above or below the figure, or the same idea exists in two visual languages.
 U+03B8 + U+0302 renders with a detached, offset hat in every non-Mac fallback —
 it did, four times, in `d-projection.svg`.
 
+### 11.7a Author a diagram at 1080; present it at 1280
+
+Every `d-*.svg` carried `width` equal to its own viewBox width — 1080 — inside a
+1280 canvas. So all forty rendered at exactly 1:1, wasting 200px, **15.6% of the
+slide width, on every one**, and their 16px `.t-sub` labels arrived on screen at
+16px: under the 18px floor §11.4 sets for slide text.
+
+The instinct is to raise the type scale in forty files. The cheaper and better
+fix is one attribute:
+
+```svg
+<svg viewBox="0 0 1080 400" width="1280" height="474" ...>
+```
+
+An SVG scales its viewBox to `width`/`height`, so every coordinate, stroke and
+font size scales by 1280/1080 = 1.185 for free. Nothing is re-authored. The 16px
+labels become **19.0px** — over the text floor, comfortably under `.small` at
+23.4px. `.fig-wide`'s cap has to go to 520px in the same change, or the taller
+diagrams are re-clamped and the gain is zero.
+
+Note the trap in the discarded option: `max-height` on an element with
+`width: auto; height: auto` can only ever **shrink** it. Raising the cap alone
+does nothing for the 32 diagrams that were never being clamped.
+
+Three still fall short and want real work rather than an attribute:
+`d-compgraph` (aspect 0.52, needs re-laying-out wider), `d-projection` (aspect
+0.54, and the only 960 viewBox), `d-biasvariance` (uses a 14px font-size found
+nowhere in the 23/19/16 spec).
+
+**And a rejected change, recorded because the reasoning is the useful part.**
+The body scale was tried at 32px, on a measurement of all 2,003 slides that put
+the cost at two overflows. The measurement was right and the estimate was wrong,
+because splitting the six over-wide equations — asked for by the same review —
+converts a width problem into a height one. At 32px two maths-thread slides then
+sat over the canvas and could only be recovered by cutting a proof or by a
+per-slide font override, which §11.1 forbids and which these decks currently
+have **zero** of. Cutting maths to buy 2px of body text is the wrong trade. The
+diagram change above delivers more legibility for no content at all.
+
 ### 11.8 Restraint
 
 - **At most one `.panel` per slide.** At 65 panels across 199 slides, a callout

@@ -151,7 +151,7 @@ def clash(a: dict, b: dict) -> float:
     return dy if dy > INK_SLACK else 0.0
 
 
-def struck_labels(page, wrapper, texts, out_dir, stem):
+def struck_labels(page, wrapper, texts, out_dir, stem, vb_w):
     """Which labels have something already drawn where their ink lands.
 
     Two renders of the same file: one as it is, one with every label hidden.
@@ -168,27 +168,32 @@ def struck_labels(page, wrapper, texts, out_dir, stem):
     page.reload()
     page.wait_for_timeout(150)
 
+    # The screenshot is in CSS pixels, the boxes are in viewBox units, and since
+    # the diagrams are authored at viewBox 1080 but presented at width 1280 the
+    # two differ by 1.185. Assuming they were equal put the search window in the
+    # wrong place and invented four defects the moment the files were resized.
     a = Image.open(shot_a).convert("RGB")
     b = Image.open(shot_b).convert("RGB")
     if a.size != b.size:
         return []
     ap, bp = a.load(), b.load()
     W, H = a.size
+    px_per_unit = (W / SHOT_SCALE) / vb_w * SHOT_SCALE
 
     struck = []
     for t in texts:
         if t.get("haloed"):
             continue
-        x0 = max(0, int(t["x"] * SHOT_SCALE) - 1)
-        x1 = min(W, int((t["x"] + t["w"]) * SHOT_SCALE) + 2)
+        x0 = max(0, int(t["x"] * px_per_unit) - 1)
+        x1 = min(W, int((t["x"] + t["w"]) * px_per_unit) + 2)
         # the FULL box, not the tight ink box. The tight box comes from canvas
         # metrics, which know nothing of a tspan raised by dy — so searching it
         # skipped the circumflex of `Xθ̂`, which is the one piece of ink that was
         # actually struck through, and the check passed on the very file it was
         # written for. Being generous here is free: only pixels where the two
         # renders differ are counted, and those are text ink by construction.
-        y0 = max(0, int(t["y"] * SHOT_SCALE) - 1)
-        y1 = min(H, int((t["y"] + t["h"]) * SHOT_SCALE) + 2)
+        y0 = max(0, int(t["y"] * px_per_unit) - 1)
+        y1 = min(H, int((t["y"] + t["h"]) * px_per_unit) + 2)
         if x1 <= x0 or y1 <= y0:
             continue
         # the local background is whatever colour dominates the region with the
@@ -242,7 +247,7 @@ def main() -> int:
             page.wait_for_timeout(220)               # let the webfont land
             r = page.evaluate(MEASURE)
             vb, texts = r["vb"], r["texts"]
-            struck = struck_labels(page, wrapper, texts, scratch, f.stem)
+            struck = struck_labels(page, wrapper, texts, scratch, f.stem, vb["w"])
 
             out_of_frame, collisions = [], []
             for t in texts:
