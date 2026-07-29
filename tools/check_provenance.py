@@ -64,6 +64,11 @@ ALLOWED: dict[float, str] = {
     500_001: "the price cap, quoted from the book",
     15.0001: "median_income cap, quoted from the book",
     0.4999: "median_income floor, quoted from the book",
+    # Lecture 14's variance table shows what happens either side of rho = 1. The
+    # row above one is marked "illustrative" on the slide itself: no network in
+    # this course was initialised that badly, and running one to NaN to fill in
+    # a table cell would teach nothing the row does not already say.
+    1.4: "rho > 1, the illustrative row of Lecture 14's variance table",
 }
 
 # Tolerated roundings, as (divisor, label). The sub-dollar steps are needed for
@@ -157,6 +162,104 @@ def quantities(src: str, svg: bool = False):
         yield body[: m.start()].count("\n") + 1, m.group().strip(), val
 
 
+def flatten_keyed(obj, path: str = ""):
+    """Every number in figures.json, with the dotted path that reaches it.
+
+    `flatten` throws the keys away, which is all the money rule ever needed.
+    Scoping a cell to its own lecture needs to know who owns each number.
+    """
+    if isinstance(obj, bool):
+        return
+    if isinstance(obj, (int, float)):
+        yield path, float(obj)
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from flatten_keyed(v, f"{path}.{k}" if path else str(k))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            yield from flatten_keyed(v, f"{path}.{i}" if path else str(i))
+
+
+def own_values(keyed, lecture: int) -> list:
+    """The values this lecture is entitled to quote.
+
+    Matching a cell against all 700-odd measurements in the course is how a
+    check passes for the wrong reason: `353 s` found *something* within half a
+    unit of 353 and sailed through, which is the same coincidence that let an
+    invented `32,768` sit in Lecture 24 for days. A number on a slide belongs to
+    the application that measured it, so that is the pool it is checked against.
+
+    Lectures 1-4 predate the namespace and own the unprefixed keys.
+    """
+    app = (lecture + 1) // 2
+    pair = lecture - 1 if lecture % 2 == 0 else lecture + 1
+    own = (f"l{lecture:02d}_", f"l{pair:02d}_", f"app{app:02d}")
+    out = []
+    for key, v in keyed:
+        head = key.split(".")[0]
+        prefixed = re.match(r"l\d\d_|app\d\d", head)
+        if head.startswith(own) or (not prefixed and lecture <= 4):
+            out.append(v)
+    return out
+
+
+def cell_matches(text: str, val: float, measured) -> bool:
+    """Is a displayed cell value one of the measured ones, at its own precision?
+
+    A slide shows `96.84%` for a measurement stored as 0.9684, and `364 s` for
+    364.32452. So compare at the precision the slide chose — half a unit in the
+    last displayed place — and try the percentage reading as well as the bare
+    one. Matching on exact equality instead reported 370 false failures, nearly
+    all of them numbers that were in figures.json all along.
+    """
+    # Decimal places of the NUMBER, not of the cell. Counting them across the
+    # whole string made "77.18 points" eight decimal places and the tolerance
+    # 5e-9, so every cell carrying a unit failed.
+    num = NUMERIC.search(text)
+    frac = num.group().split(".")
+    dp = len(frac[1]) if len(frac) > 1 else 0
+    # A hair of slack: 0.96785 displays as "96.79%", and the difference is
+    # exactly half a unit in the last place — which binary floating point puts
+    # a whisker over the limit, failing a cell that is perfectly correct.
+    tol = 0.5 * 10 ** (-dp) + 1e-9
+    for v in measured:
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            continue
+        if abs(v - val) <= tol or abs(v * 100 - val) <= tol:
+            return True
+    return False
+
+
+NUM_CELL = re.compile(r'<t[dh] class="[^"]*\bnum\b[^"]*">(.*?)</t[dh]>', re.S)
+NUMERIC = re.compile(r"[\u2212+-]?[\d,]+(?:\.\d+)?")
+
+
+def table_numbers(src: str):
+    """Yield (line, text, value) for every purely numeric `class="num"` cell.
+
+    The money-and-thousands rule reads `$120,000` and `20,640`, and is blind to
+    every measurement under a thousand written without a separator — which is
+    almost all of them: accuracies, seconds, points, counts. Lecture 16 quoted
+    `353 s` for a wall clock that figures.json records as 364.3, in three tables,
+    with two speed-ups hand-computed from it, and provenance passed.
+
+    A `class="num"` cell is the one place a number cannot be prose. If it is in
+    that column it is a measurement, so it has to be reachable — which makes
+    this the cheapest strong rule available.
+    """
+    for m in NUM_CELL.finditer(src):
+        inner = html.unescape(re.sub(r"<[^>]+>", " ", m.group(1))).strip()
+        # a bare unit, a dash, or a range is not a single measurement
+        if not inner or len(NUMERIC.findall(inner)) != 1:
+            continue
+        raw = NUMERIC.search(inner).group()
+        try:
+            val = float(raw.replace(",", "").replace("\u2212", "-"))
+        except ValueError:
+            continue
+        yield src[: m.start()].count("\n") + 1, inner, val
+
+
 def main() -> int:
     verbose = "-v" in sys.argv
     if not FIGURES.is_file():
@@ -164,16 +267,22 @@ def main() -> int:
         return 1
 
     measured = flatten(json.loads(FIGURES.read_text()))
+    keyed = list(flatten_keyed(json.loads(FIGURES.read_text())))
+    measured_values = [v for _k, v in keyed]
     reachable = derived(measured)
     allowed = set(ALLOWED)
 
-    orphans, matched = [], 0
+    orphans, cell_orphans, borrowed, matched = [], [], [], 0
     for page in PAGES:
         if not page.is_file():
             continue
         rel = page.relative_to(ROOT)
-        for line, text, val in quantities(page.read_text(),
-                                          svg=page.suffix == ".svg"):
+        src = page.read_text()
+        cells = [] if page.suffix == ".svg" else list(table_numbers(src))
+        m_lec = re.search(r"lecture-(\d\d)\.html$", page.name)
+        page_values = (own_values(keyed, int(m_lec.group(1)))
+                       if m_lec else measured_values)
+        for line, text, val in list(quantities(src, svg=page.suffix == ".svg")):
             if val in allowed or val in reachable:
                 matched += 1
                 if verbose:
@@ -183,6 +292,37 @@ def main() -> int:
             orphans.append(f"{rel}:{line}: {text} is not in figures.json "
                            f"and is not a declared constant")
 
+        for line, text, val in cells:
+            if val in allowed or cell_matches(text, val, page_values):
+                matched += 1
+                continue
+            # Quoting another lecture's measurement is legitimate and the course
+            # does it deliberately — Lecture 24 revisits all twelve applications,
+            # and a thread's summary table cites the lecture it came from. So a
+            # number found outside this lecture's own namespace is reported, not
+            # failed; only a number found nowhere at all is a failure.
+            if cell_matches(text, val, measured_values):
+                borrowed.append(f"{rel}:{line}: {text!r} is another lecture's "
+                                f"measurement — check it is still the right one")
+                matched += 1
+                continue
+            cell_orphans.append(f"{rel}:{line}: table cell {text!r} is not in "
+                                f"figures.json and is not a declared constant")
+
+    if borrowed and "-v" in sys.argv:
+        print(f"{len(borrowed)} table cell(s) borrowed from another lecture:\n")
+        for bq in borrowed:
+            print("  " + bq)
+        print()
+
+    if cell_orphans:
+        print(f"{len(cell_orphans)} numeric table cell(s) not traceable:\n")
+        for o in cell_orphans[:60]:
+            print("  " + o)
+        if len(cell_orphans) > 60:
+            print(f"  ... and {len(cell_orphans) - 60} more")
+        print()
+
     if orphans:
         print(f"{len(orphans)} unprovenanced quantity(ies); {matched} verified:\n")
         for o in orphans:
@@ -191,6 +331,8 @@ def main() -> int:
               "ALLOWED with the reason it is not a measurement.")
         return 1
 
+    if cell_orphans:
+        return 1
     print(f"provenance clean — {matched} quantities, all traceable")
     return 0
 

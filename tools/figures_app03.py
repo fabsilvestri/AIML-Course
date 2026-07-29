@@ -619,8 +619,15 @@ def degree_sweep(X_tr, y_tr) -> dict:
             scoring=["neg_log_loss", "accuracy", "neg_brier_score"])
         fitted = quiet(lambda: model(degree=deg).fit(X_tr, y_tr))()
         n_feat = int(fitted[:-1].transform(X_tr).shape[1])
+        # Lecture 5 shows an "iterations used" row to make the convergence
+        # warning concrete. It was hand-typed and one of its six numbers was
+        # not a measurement of anything; lbfgs reports the real count.
+        n_iter = fitted[-1].n_iter_
         out[deg] = {
             "n_features": n_feat,
+            "n_iter": int(n_iter[0] if hasattr(n_iter, "__len__") else n_iter),
+            "converged": bool((n_iter[0] if hasattr(n_iter, "__len__")
+                               else n_iter) < 4000),
             "train_log_loss": float(-r["train_neg_log_loss"].mean()),
             "cv_log_loss": float(-r["test_neg_log_loss"].mean()),
             "cv_log_loss_std": float(r["test_neg_log_loss"].std()),
