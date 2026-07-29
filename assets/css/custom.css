@@ -32,6 +32,9 @@
   --aiml-muted-strong: #4b5563; /* secondary text a student must read      */
   --aiml-rule:     #b0bcc7;   /* hairlines that survive a projector        */
   --aiml-rule-faint: #d5dbe1; /* table cell rules only                     */
+  --aiml-rule-strong: #8a97a3; /* 3.06:1 — anything that BOUNDS a box.     */
+                              /* --aiml-rule is 1.93:1, which is right for */
+                              /* a gridline and wrong for a border.        */
   --aiml-bg-soft:  #f4f7f9;   /* panel background                          */
 
   /* Six steps. Never write an inline font-size; if none fits, add a step
@@ -72,7 +75,13 @@
 .reveal .slides > section.present.divider,
 .reveal .slides > section.present.figslide,
 .reveal .slides > section.present.commit-slide { display: flex !important; }
-.reveal .slides > section.figslide { justify-content: flex-start; }
+/* A figure slide is a content slide, not a title card. It shares the flex rule
+   above with the title slide and the divider, where centring is right — but it
+   inherited their text-align, so 228 headings sat at 167 different x positions
+   while the 3px rule beneath them still ran full-bleed, leaving each title
+   floating detached inside its own rule. The figure itself stays centred by the
+   margin:auto on the next line. */
+.reveal .slides > section.figslide { justify-content: flex-start; text-align: left; }
 .reveal .slides > section.figslide > figure { margin: auto; }
 .reveal .left { text-align: left; } .reveal .center { text-align: center; }
 
@@ -327,6 +336,15 @@
 .reveal table .hit  { color: var(--aiml-success); font-weight: 700; }
 .reveal table .miss { color: var(--aiml-accent);  font-weight: 700; }
 
+/* Monokai's comment grey is 3.03:1 on its own background and its keyword pink
+   3.93:1 — both under AA, on 313 slides. Comments here are not decoration: they
+   carry the measured output, the pointer to the planted defect, the wall clock.
+   The least legible text on the slide was the text the slide is about. */
+.reveal pre code .hljs-comment,
+.reveal pre code .hljs-quote { color: #9d987f; }        /* 4.62:1 */
+.reveal pre code .hljs-keyword,
+.reveal pre code .hljs-selector-tag { color: #ff79b8; } /* 4.52:1 */
+
 /* --- Code --------------------------------------------------------------- */
 
 /* was 0.46em = 13.8px = 1.9% of canvas height, about half the legibility floor
@@ -337,7 +355,12 @@
 .reveal pre {
   width: fit-content;
   max-width: 96%;
-  margin: var(--sp-3) auto;
+  /* Left-aligned, not centred. `width: fit-content` plus `auto` margins
+     re-centres every block on its own longest line, so 313 code slides had
+     76 different left edges spanning 377px and not one of them lined up
+     with the heading above it. Section 11.3 kills that on the vertical
+     axis; this is the same defect lying down. */
+  margin: var(--sp-3) 0;
   font-size: 0.62em;
   line-height: 1.42;
   box-shadow: none;
@@ -352,6 +375,7 @@
 .reveal code:not(pre code) {
   background: var(--aiml-bg-soft);
   border: 1px solid var(--aiml-rule-faint);
+  white-space: nowrap;   /* or the chip breaks and leaves two half-boxes */
   border-radius: 3px;
   padding: 0.06em 0.32em;
   font-size: 0.88em;
@@ -550,3 +574,30 @@ body {
    the highlighted one mean anything. */
 .reveal .hljs.has-highlights tr:not(.highlight-line) { opacity: 0.62; }
 .reveal .hljs.has-highlights .highlight-line { background: rgba(255,255,255,0.07); }
+
+/* ------------------------------------------------------------------------- */
+/* Redundant cues for the failure/repair pair.                                */
+/*                                                                            */
+/* --aiml-accent and --aiml-success are 90.5 apart in normal vision and 12.6  */
+/* apart under protanopia. .fail/.fix, .hit/.miss and .big-num carry their    */
+/* meaning in colour ALONE — same weight, same size, same shape — across      */
+/* 500-odd instances. A mark costs nothing and works in any vision.           */
+.reveal .fail::before { content: "\2717\00a0"; }
+.reveal .fix::before  { content: "\2713\00a0"; }
+.reveal table td.miss::after { content: "\00a0\2717"; }
+.reveal table td.hit::after  { content: "\00a0\2713"; }
+/* the panels already name themselves in their title, so they are exempt */
+.reveal .panel .fail::before,
+.reveal .panel .fix::before { content: none; }
+
+/* 9. The commit slide is the course's central ritual and was set four         */
+/* different ways — three inline line-heights plus one that was centred.       */
+.reveal .commit p {
+  text-align: left;
+  line-height: 1.85;
+  font-size: var(--t-sm);
+}
+
+/* 21. The "Next" divider's closing line was hardcoded #cfe2f0 inline, once in */
+/* every deck: a third light blue beside the divider's white and #9fc4dd.      */
+.reveal .divider .small { color: #9fc4dd; }
