@@ -120,10 +120,28 @@ def strip_existing(svg: str) -> str:
                   "", svg, flags=re.S)
 
 
+def normalise_size(svg: str) -> str:
+    """Present at the canvas width, whatever the file was authored at.
+
+    Four diagrams are EMITTED by figure scripts rather than hand-written, so a
+    regeneration silently reverted them to width=1080 — and took their embedded
+    font with it. Both properties are restored here, together, because they were
+    lost together and a person will not remember to do two things.
+    """
+    m = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', svg)
+    if not m:
+        return svg
+    vw, vh = float(m.group(1)), float(m.group(2))
+    nh = round(1280 * vh / vw)
+    svg = re.sub(r'\swidth="[\d.]+"', ' width="1280"', svg, count=1)
+    svg = re.sub(r'\sheight="[\d.]+"', f' height="{nh:g}"', svg, count=1)
+    return svg
+
+
 def embed(path: Path) -> tuple[bool, int]:
     """Rewrite one file. Returns (changed, added bytes)."""
     original = path.read_text()
-    svg = strip_existing(original)
+    svg = normalise_size(strip_existing(original))
     text = characters(svg)
     if not text:
         return False, 0
@@ -165,10 +183,12 @@ def main() -> int:
     files = sorted(FIGURES.glob("d-*.svg"))
     if args.check:
         bad = [f.name for f in files
-               if characters(f.read_text()) and MARK_OPEN not in f.read_text()]
+               if characters(f.read_text())
+               and (MARK_OPEN not in f.read_text()
+                    or ' width="1280"' not in f.read_text())]
         if bad:
-            print(f"{len(bad)} diagram(s) carry no font and will render in "
-                  f"Helvetica through an <img>:")
+            print(f"{len(bad)} diagram(s) carry no font, or are not presented "
+                  f"at the canvas width:")
             for name in bad:
                 print("  " + name)
             print("\nRun: python3 tools/embed_diagram_fonts.py")

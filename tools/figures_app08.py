@@ -1207,9 +1207,17 @@ def write_svg(name: str, viewbox: str, body: str) -> None:
     loaded through <img> takes no intrinsic size from a viewBox alone, and
     renders at 0x0. Measured in Chrome, and checked by make_figures.py.
     """
+    # Present at the canvas width, not the authoring width. Authored at 1080
+    # and written out at 1080, these render 1:1 inside a 1280 canvas — wasting
+    # 200px and putting 16px labels on screen at 16px, under the text floor.
+    # An SVG scales its viewBox to width/height, so emitting 1280 scales every
+    # coordinate, stroke and font size by 1.185 for free. TRICKS 11.7a.
     _, _, w, h = viewbox.split()
+    out_w = 1280.0
+    out_h = round(out_w * float(h) / float(w))
     (OUT / f"{name}.svg").write_text(
-        SVG_HEAD.format(vb=viewbox, w=w, h=h) + body + "\n</svg>\n")
+        SVG_HEAD.format(vb=viewbox, w=f"{out_w:g}", h=f"{out_h:g}")
+        + body + "\n</svg>\n")
     print(f"  assets/figures/{name}.svg")
 
 

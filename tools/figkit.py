@@ -134,7 +134,11 @@ def export(**values) -> None:
         # collision is silent.
         if re.match(r"l\d\d_", k):
             continue
-        if k in data and data[k] != v:
+        # Compare like with like. JSON has no integer keys, so a dict keyed by
+        # ints comes back keyed by strings, and a straight != then reports a
+        # collision on every re-run of a script that exports one. app10 exports
+        # a weight-per-lag map keyed by int and could not be re-run at all.
+        if k in data and data[k] != json.loads(json.dumps(v)):
             raise RuntimeError(
                 f"export('{k}') would overwrite a value another script wrote:\n"
                 f"    was {data[k]!r}\n    now {v!r}\n"
