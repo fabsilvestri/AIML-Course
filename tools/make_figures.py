@@ -223,7 +223,10 @@ def fig_histograms(h):
     cols = ["longitude", "latitude", "housing_median_age", "total_rooms",
             "total_bedrooms", "population", "households", "median_income",
             "median_house_value"]
-    fig, axes = plt.subplots(3, 3, figsize=(10.8, 6.6))
+    # Authored at the height it is shown at. Taller than the .fig cap and
+    # the slide shrinks the whole image, TEXT INCLUDED, so the same
+    # fontsize arrives on screen smaller here than on the plot beside it.
+    fig, axes = plt.subplots(3, 3, figsize=(10.8, 5.2))
     for ax, c in zip(axes.ravel(), cols):
         ax.hist(h[c].dropna(), bins=50, color=PRIMARY, edgecolor="white",
                 linewidth=0.25)
@@ -276,7 +279,7 @@ def fig_hist_annotated(h):
 def fig_geo(train):
     """Exploration plots — on the training set, after the split."""
     # plain
-    fig, ax = plt.subplots(figsize=(6.4, 6.7))
+    fig, ax = plt.subplots(figsize=(5.0, 5.2))
     ax.scatter(train["longitude"], train["latitude"], s=6, color=PRIMARY)
     ax.set_xlabel("longitude"); ax.set_ylabel("latitude")
     ax.set_title("alpha = 1.0  —  it looks like California, and that is all")
@@ -284,7 +287,7 @@ def fig_geo(train):
     save(fig, "l1-geo-plain", raster=True)
 
     # alpha, annotated
-    fig, ax = plt.subplots(figsize=(6.6, 6.8))
+    fig, ax = plt.subplots(figsize=(5.1, 5.2))
     ax.scatter(train["longitude"], train["latitude"], s=8, color=PRIMARY,
                alpha=0.2, linewidths=0)
     ax.set_xlabel("longitude"); ax.set_ylabel("latitude")
@@ -302,7 +305,7 @@ def fig_geo(train):
     save(fig, "l1-geo-alpha", raster=True)
 
     # price + population
-    fig, ax = plt.subplots(figsize=(7.4, 6.4))
+    fig, ax = plt.subplots(figsize=(6.0, 5.1))
     sc = ax.scatter(train["longitude"], train["latitude"],
                     s=train["population"] / 100,
                     c=train["median_house_value"],
@@ -1054,7 +1057,10 @@ def fig_test_ci(gs, sp):
 def fig_residuals(gs, sp):
     X_te, y_te = sp["X_test"], sp["y_test"]
     pred = gs.best_estimator_.predict(X_te)
-    fig, ax = plt.subplots(figsize=(6.8, 6.2))
+    # Authored at the height it is shown at. Taller than the .fig cap and
+    # the slide shrinks the whole image, TEXT INCLUDED, so the same
+    # fontsize arrives on screen smaller here than on the plot beside it.
+    fig, ax = plt.subplots(figsize=(6.2, 5.1))
     ax.scatter(y_te, pred, s=8, alpha=0.18, color=PRIMARY, linewidths=0)
     lim = [0, 520_000]
     ax.plot(lim, lim, color=ACCENT, lw=2, label="perfect prediction")
@@ -1328,6 +1334,17 @@ def island_check(h, sp):
 # that were in fact fine. A constant that mirrors a stylesheet has to be
 # changed in the same commit as the stylesheet.
 CANVAS_W, CAP_WIDE, CAP_TALL, FLOOR_PX = 1280, 520, 528, 15.0
+# On-slide pixels per authored point. An unclamped figure sits at 96/72 = 1.333
+# whatever its format; under that is a figure whose type has been silently
+# shrunk by a height clamp, along with its axes.
+#
+# Two tiers, because one number would be dishonest. These are single-figure
+# slides, so a 5-10% difference between two figures a student sees minutes apart
+# is not something anyone notices — calling that a failure would be inventing a
+# standard to have something to enforce. A fifth smaller IS visible, and it is
+# visible against the body text on the same slide, which does not shrink.
+# So: fail at 1.15 (>14% down), warn at 1.27 (>5% down), and say which.
+FIG_RATIO_NOMINAL, FIG_RATIO_FAIL, FIG_RATIO_WARN = 96 / 72, 1.15, 1.27
 
 
 def _natural_css_px(path: Path) -> tuple[float, float]:
@@ -1381,7 +1398,8 @@ def check_text_floor() -> list[str]:
                              html):
             used[Path(m.group(2)).name] = m.group(1)
 
-    problems = []
+    problems: list[str] = []
+    warnings_: list[str] = []
     for name, classes in sorted(used.items()):
         path = OUT / name
         if not path.is_file():
@@ -1395,6 +1413,29 @@ def check_text_floor() -> list[str]:
             problems.append(
                 f"{name}: smallest text renders at {on_slide:.1f}px on the "
                 f"slide (floor {FLOOR_PX:.0f}). Widen it, or raise its sizes.")
+
+        # A floor is not the only thing that matters. 229 figures should look
+        # like one hand, and they do not if the same `fontsize=SMALL` arrives on
+        # screen at 1.10px per point in one figure and 1.33 in the next — an 18%
+        # difference in a tick label, side by side on the same slide. It happens
+        # silently to any figure tall enough to be clamped by height, because
+        # the clamp shrinks the text along with the axes. The vector plots all
+        # sit at 1.333 because nothing clamps them; the rasters are the ones
+        # that drift. Author a tall figure at the height it will be shown at.
+        ratio = px_per_pt * scale
+        if ratio < FIG_RATIO_WARN:
+            down = 100 * (1 - ratio / FIG_RATIO_NOMINAL)
+            line = (f"{name}: text is {ratio:.2f} on-slide px per authored "
+                    f"point, {down:.0f}% under the {FIG_RATIO_NOMINAL:.2f} of an "
+                    f"unclamped figure — clamped by height ({nh:.0f}px natural, "
+                    f"cap {cap}). Author it shorter, or move its explanatory "
+                    f"panel into the slide's HTML.")
+            (problems if ratio < FIG_RATIO_FAIL else warnings_).append(line)
+    if warnings_:
+        print(f"\n{len(warnings_)} figure(s) a little smaller than their "
+              f"neighbours (warning only):")
+        for w in warnings_:
+            print("  " + w)
     return problems
 
 

@@ -526,7 +526,10 @@ def fig_confusion(D, tree):
     from sklearn.metrics import confusion_matrix
     cm = confusion_matrix(D["y_te"], tree.predict(D["X_te"]),
                           labels=range(1, 8), normalize="true")
-    fig, ax = plt.subplots(figsize=(7.4, 6.2))
+    # Authored at the height it is shown at. Taller than the .fig cap and
+    # the slide shrinks the whole image, TEXT INCLUDED, so the same
+    # fontsize arrives on screen smaller here than on the plot beside it.
+    fig, ax = plt.subplots(figsize=(6.4, 5.1))
     im = ax.imshow(cm * 100, cmap="Blues", vmin=0, vmax=100)
     ax.set_xticks(range(7), COVER_TYPES, rotation=40, ha="right")
     ax.set_yticks(range(7), COVER_TYPES)
