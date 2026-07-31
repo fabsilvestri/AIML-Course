@@ -485,7 +485,12 @@ def fig_boundary(X_tr, y_tr):
     P = m.predict_proba(grid)[:, 1].reshape(A.shape)
 
     fig, ax = plt.subplots(figsize=(10.4, 4.9))
-    cs = ax.contourf(A, F, P, levels=np.linspace(0, 1, 11), cmap="RdYlGn",
+    # PuOr, not RdYlGn. A red-to-green diverging map is the worst possible
+    # choice here twice over: it collides with this course's own failure/repair
+    # palette, and it is the one pair of hues 8% of men cannot separate — on a
+    # figure whose entire content is which side of a boundary a point falls.
+    # PuOr diverges about the same midpoint and survives any colour vision.
+    cs = ax.contourf(A, F, P, levels=np.linspace(0, 1, 11), cmap="PuOr",
                      alpha=0.55)
     line = ax.contour(A, F, P, levels=[0.5], colors=[PRIMARY], linewidths=3)
     ax.clabel(line, fmt={0.5: "p = 0.5"}, fontsize=SMALL, inline=True)

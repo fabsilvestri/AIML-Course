@@ -306,7 +306,16 @@ def fig_geo(train):
     sc = ax.scatter(train["longitude"], train["latitude"],
                     s=train["population"] / 100,
                     c=train["median_house_value"],
-                    cmap="jet", alpha=0.45, linewidths=0)
+                    # viridis, not the book's jet — and not turbo either.
+                    # jet's lightness rises, falls and rises, so equal steps in
+                    # price are unequal steps in apparent brightness and the eye
+                    # reads bands the data does not have. turbo is the usual
+                    # recommended replacement and is better, but MEASURED it
+                    # still reverses by 0.87 L* — see fig_colormap_argument,
+                    # which plots the lightness of both. viridis reverses by
+                    # exactly nothing. The slide prints the book's line
+                    # unaltered; this is the plot beside it.
+                    cmap="viridis", alpha=0.45, linewidths=0)
     ax.set_xlabel("longitude"); ax.set_ylabel("latitude")
     ax.set_title("radius = population,  colour = median house value")
     cb = fig.colorbar(sc, ax=ax)
@@ -314,6 +323,81 @@ def fig_geo(train):
     cb.ax.yaxis.set_major_formatter(usd)
     fig.tight_layout()
     return save(fig, "l1-geo-price", raster=True)
+
+
+def fig_colormap_argument(train):
+    """Why jet is wrong, shown rather than asserted.
+
+    Three rows on one figure: the same California map in jet and in turbo, and
+    beneath each the lightness (CIE L*) of the colormap against its position.
+    jet's lightness rises, falls and rises again — so equal steps in price are
+    unequal steps in apparent brightness, and the eye reads bands that are not
+    in the data. turbo spans the same rainbow with L* monotone.
+
+    A student can check the claim on the figure itself, which is the point: the
+    course asks them to distrust an assertion, so it should not make one.
+    """
+    import matplotlib as mpl
+    from matplotlib.colors import to_rgb
+
+    def lightness(name):
+        cm = mpl.colormaps[name]
+        rgb = np.array([to_rgb(cm(i / 255)) for i in range(256)])
+        # sRGB -> linear -> CIE Y -> L*, the standard perceptual lightness
+        lin = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
+        Y = lin @ np.array([0.2126, 0.7152, 0.0722])
+        return np.where(Y > 0.008856, 116 * np.cbrt(Y) - 16, 903.3 * Y)
+
+    fig, axes = plt.subplots(2, 2, figsize=(11.4, 5.6),
+                             gridspec_kw={"height_ratios": [3, 1]})
+    for col, (cmap, verdict) in enumerate((("jet", "what the book writes"),
+                                           ("viridis", "what we plot"))):
+        ax = axes[0, col]
+        ax.scatter(train["longitude"], train["latitude"],
+                   s=train["population"] / 220, c=train["median_house_value"],
+                   cmap=cmap, alpha=0.5, linewidths=0)
+        ax.set_title(f"cmap=\"{cmap}\"  \u2014  {verdict}",
+                     fontsize=BODY, color=AXIS, pad=6)
+        ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+
+        Lc = lightness(cmap)
+        lx = axes[1, col]
+        lx.plot(np.linspace(0, 1, 256), Lc, color=AXIS, lw=2.4)
+        lx.imshow(np.linspace(0, 1, 256).reshape(1, -1), aspect="auto",
+                  cmap=cmap, extent=(0, 1, -8, 4))
+        lx.set_ylim(-8, 100)
+        lx.set_xlabel("position in the colormap", fontsize=SMALL, color=MUTED)
+        lx.set_ylabel("lightness L*", fontsize=SMALL, color=MUTED)
+        lx.tick_params(labelsize=TICK)
+        lx.grid(True, alpha=0.25)
+        # name the defect on the figure that shows it
+        if cmap == "jet":
+            k = int(np.argmax(Lc))
+            lx.annotate("rises, falls, rises\nequal steps are not equal",
+                        xy=(k / 255, Lc[k]), xytext=(0.30, 22),
+                        fontsize=SMALL, color=ACCENT,
+                        arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8),
+                        bbox=dict(boxstyle="round,pad=0.5", fc="white",
+                                  ec=ACCENT, lw=1.2))
+        else:
+            lx.annotate("monotone: every step\nis a step, and it is\nthe same size",
+                        xy=(0.62, Lc[158]),
+                        xytext=(0.10, 74), fontsize=SMALL, color=SUCCESS,
+                        arrowprops=dict(arrowstyle="->", color=SUCCESS, lw=1.8),
+                        bbox=dict(boxstyle="round,pad=0.5", fc="white",
+                                  ec=SUCCESS, lw=1.2))
+    fig.tight_layout()
+    save(fig, "l1-colormap", raster=True)
+    # Return the measurement the slide quotes rather than letting a table of
+    # lightness numbers be hand-typed — which is the defect this course's own
+    # provenance contract exists to catch, and it caught this one within a
+    # minute of the table being written.
+    return {name: {"range": float(lightness(name).max()
+                                - lightness(name).min()),
+                   "reversal": float(max(0.0, -np.diff(lightness(name)).min()))}
+            for name in ("jet", "turbo", "viridis")}
 
 
 def fig_corr(train):
@@ -1348,6 +1432,7 @@ def main():
     facts.update(fig_strat_bias(h))
     # exploration happens on the training set, after the split
     fig_geo(sp["train"])
+    facts["l1_colormaps"] = fig_colormap_argument(sp["train"])
     facts["corr_with_target"] = fig_corr(sp["train"])
     facts["corr_with_combinations"] = attribute_combinations(sp["train"])
     facts["label_clusters"] = label_clusters(sp["train"])

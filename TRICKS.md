@@ -666,6 +666,39 @@ above or below the figure, or the same idea exists in two visual languages.
 U+03B8 + U+0302 renders with a detached, offset hat in every non-Mac fallback —
 it did, four times, in `d-projection.svg`.
 
+### 11.6b Colour scales, and a correction to this document
+
+§11.6 used to say: print the book's `cmap="jet"` on the slide, and plot with
+`turbo`. The first half is right. **The second half was wrong, and the figure
+written to argue it disproved it.**
+
+`jet` is not perceptually uniform: its CIE L\* rises, falls and rises again, so
+equal steps in the data are unequal steps in apparent brightness. It invents
+bands, buries detail in its yellow, and reverses rank order for the 8% of men
+with a red–green deficiency. All true.
+
+But `turbo`, the usual recommended replacement, is only *better*. Measured:
+
+| colormap | L\* range | largest reversal |
+|---|---|---|
+| `jet` | 83.0 | **1.06** |
+| `turbo` | 78.9 | **0.87** |
+| `viridis` | 75.9 | **0.00** |
+
+So plot with **`viridis`**. `l1-colormap.png` shows the lightness curve of each
+beside the map it produces, and `figures.json` carries the three measurements,
+so the slide quotes them rather than asserting them.
+
+The general point is worth more than the colormap: **a figure written to make an
+argument is the best available check on that argument.** This one was drawn to
+show that turbo fixes jet, and the lightness panel underneath it made plain that
+it does not. Draw the evidence, then read it.
+
+Related: `RdYlGn` for a probability surface (Lecture 5) was worse than either —
+it collides with this course's own failure/repair palette *and* is the one pair
+of hues a red–green deficiency cannot separate, on a figure whose whole content
+is which side of a boundary a point falls. Now `PuOr`.
+
 ### 11.7a Author a diagram at 1080; present it at 1280
 
 Every `d-*.svg` carried `width` equal to its own viewBox width — 1080 — inside a
