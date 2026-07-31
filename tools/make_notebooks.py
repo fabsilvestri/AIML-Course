@@ -647,7 +647,13 @@ LECTURES = {1: lecture_01, 2: lecture_02}
 # applications never touch the same file.
 def _discover() -> None:
     import importlib.util
-    for path in sorted((Path(__file__).parent / "notebooks").glob("lecture_*.py")):
+    # The lecture modules are loaded by FILE PATH, which leaves them with no
+    # package — so `from ._prompt import prompt` cannot resolve. Putting their
+    # own directory on sys.path lets them import siblings plainly instead.
+    mod_dir = Path(__file__).parent / "notebooks"
+    if str(mod_dir) not in sys.path:
+        sys.path.insert(0, str(mod_dir))
+    for path in sorted(mod_dir.glob("lecture_*.py")):
         n = int(path.stem.split("_")[1])
         if n in LECTURES:
             continue

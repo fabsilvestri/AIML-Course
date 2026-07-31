@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import nbformat as nbf
 
+from _prompt import prompt
+
 
 def md(text: str) -> nbf.NotebookNode:
     return nbf.v4.new_markdown_cell(text.strip("\n"))
@@ -100,7 +102,13 @@ print(f"{len(raw):,} rows as published")
 
 
 def build() -> list:
-    cells: list = [md(HEADER), md("## 1 · Setup"), code(SETUP)]
+    cells: list = [
+        md(HEADER), md("## 1 · Setup"),
+        prompt(output="library versions printed, one seed set everywhere, plot "
+                      "defaults fixed once",
+               constraint="not examinable — engineering hygiene, kept out of "
+                          "the way of the argument"),
+        code(SETUP)]
 
     cells += [
         md("""
@@ -109,6 +117,12 @@ def build() -> list:
 The Chicago Transit Authority publishes one row per day: how many people
 boarded a bus, how many boarded a train, and what kind of day it was.
 """),
+        prompt(input="the CTA daily-boardings CSV, fetched once and cached",
+               output="one row a day: date, day type, bus and rail counts",
+               constraint="download only if the file is not already on disk, so "
+                          "the notebook is re-runnable offline",
+               check="print the row count and compare it with what the "
+                     "publisher states"),
         code(LOADER),
         md("""
 ### Tidying, and one line that matters
@@ -122,6 +136,11 @@ Four operations. Three are housekeeping and one is a decision:
 
 Count the duplicates rather than assuming there are none.
 """),
+        prompt(
+               input="the raw frame, one row a day, columns as published",
+               output="a frame indexed by date with bus and rail only",
+               constraint="drop `total` — it is exactly bus + rail — and drop duplicate rows, reporting how many",
+               check="print the count removed and the date range that survives"),
         code('''
 df = raw.copy()
 df.columns = ["date", "day_type", "bus", "rail", "total"]
@@ -142,6 +161,11 @@ public holiday**. That last word is why the column is worth having — the model
 cannot see a calendar, and the fourth of July behaves like a Sunday whatever the
 date says.
 """),
+        prompt(
+               input="the tidied frame",
+               output="how many days of each type, and the three days around Memorial Day 2019",
+               constraint="do not assume U means Sunday — show a case where it is a public holiday on a Monday",
+               check="the three printed values are A, U, U"),
         code('''
 print(df["day_type"].value_counts().to_string())
 
@@ -157,6 +181,11 @@ print(list(df.loc["2019-05-25":"2019-05-27"]["day_type"]))
 Twenty-one years, then ten weeks, then a single year. Three time scales, three
 different facts, and none of them is visible at the other two scales.
 """),
+        prompt(
+               input="the rail series, all twenty-one years",
+               output="one line plot, rail boardings against date",
+               constraint="thin line, no markers — the shape is the point, not the individual days",
+               check="the 2020 cliff is visible without being pointed at"),
         code('''
 fig, ax = plt.subplots(figsize=(11, 3.2))
 df["rail"].plot(ax=ax, lw=0.6, color="#0b3d62")
@@ -170,6 +199,11 @@ a cliff. Everything after that cliff is a different process. We are not going to
 model across it: this notebook works on **2016-01 to 2019-05**, and Lecture 20
 returns to the cliff to ask what a model owes you when the world changes.
 """),
+        prompt(
+               input="bus and rail over ten weeks of 2019",
+               output="both series on one axis, with markers",
+               constraint="a window short enough that individual days are distinguishable",
+               check="every week shows a weekend trough; some weeks show a third"),
         code('''
 fig, ax = plt.subplots(figsize=(11, 3.2))
 df.loc["2019-03":"2019-05", ["bus", "rail"]].plot(ax=ax, marker=".", ms=4)
@@ -208,6 +242,11 @@ capacity on the days nobody is planning staffing for.
 We use **MAE, in boardings**. It is in the units the operations team already
 thinks in, and one unit of it is one person.
 """),
+        prompt(
+               input="two aligned series, either of which may have gaps",
+               output="mean absolute error, in boardings",
+               constraint="ignore days where either side is missing rather than filling them",
+               check="mae(x, x) is 0, and a series against a shifted copy of itself is not"),
         code('''
 def mae(truth, forecast):
     """Mean absolute error, ignoring days where either side is missing."""
@@ -230,6 +269,11 @@ print(f"scored {len(target):,} days, from {target.index.min().date()}")
 A number is only good or bad next to another number. Three forecasts that
 require no fitting at all:
 """),
+        prompt(
+               input="the 2016-01 to 2019-05 rail pool",
+               output="MAE for four forecasts that require no fitting",
+               constraint="every forecast scored on exactly the same days, so they are comparable",
+               check="copying last week beats copying yesterday — if not, the alignment is wrong"),
         code('''
 baselines = {
     "a constant (the mean)":  pd.Series(pool[:"2018-12"].mean(), index=target.index),
@@ -253,6 +297,11 @@ That is the number to beat. Not the mean. Not zero.
 Write it down now, before you have seen a model's score. It is much harder to
 call a result disappointing after you know what it is.
 """),
+        prompt(
+               input="the naive-forecast MAE",
+               output="a target MAE written down before any model is fitted",
+               constraint="the improvement is chosen and recorded now, not chosen later to fit the result",
+               check="the target is printed, so it cannot be quietly revised"),
         code('''
 NAIVE_MAE = mae(target, pool.shift(7)[WINDOW:])
 
@@ -280,6 +329,11 @@ weekday; eight of them give it enough repetitions to average over. And why divid
 by a million — because the numbers are around 600,000 and a network initialised
 in the usual way expects inputs near 1.
 """),
+        prompt(
+               input="a series as a tensor, and a window length",
+               output="a Dataset yielding (window, next step) pairs",
+               constraint="the target must be the step AFTER the window and never inside it — an off-by-one leaks one day and nothing later complains",
+               check="length is len(series) - window_length"),
         code('''
 class TimeSeriesDataset(torch.utils.data.Dataset):
     """Every window of `window_length` steps, and the step that follows it."""
@@ -301,11 +355,21 @@ Six numbers, a window of three. Read the output and check by eye that the target
 is the step *after* the window and never inside it. Off-by-one here would be a
 leak of exactly one day, and no later cell would complain.
 """),
+        prompt(
+               input="six integers and a window of three",
+               output="every window printed with the value that follows it",
+               constraint="test the class on data small enough to check by eye before trusting it",
+               check="read the output and confirm the target is never inside the window"),
         code('''
 toy = torch.tensor([[0], [1], [2], [3], [4], [5]])
 for window, t in TimeSeriesDataset(toy, window_length=3):
     print(window.flatten().tolist(), "->", t.item())
 '''),
+        prompt(
+               input="the rail pool, scaled by a million",
+               output="X of shape (rows, 56, 1) and y of shape (rows, 1)",
+               constraint="assert the shapes rather than printing them, so a wrong shape stops the notebook",
+               check="rows equals len(pool) - 56"),
         code('''
 series = torch.tensor(pool.values / 1e6, dtype=torch.float32).unsqueeze(1)
 dataset = TimeSeriesDataset(series, WINDOW)
@@ -341,6 +405,11 @@ The two lines left blank are the whole exercise. Below is what an assistant
 returns when you leave them blank — and it is the most ordinary code in this
 course.
 """),
+        prompt(
+               input="X flattened to (rows, 56), y as a vector",
+               output="a cross-validated MAE in boardings",
+               constraint="none stated — this is the under-specified prompt, and the missing constraint is the whole cell",
+               check="none stated either, which is why the number goes unchallenged"),
         code('''
 # ⚠ read before running — this is the assistant's answer to an under-specified
 # prompt. It runs. Its number is wrong.
@@ -373,6 +442,11 @@ already seen**. Nothing you will ever deploy has that.
 Score it the way it will be used — train on the past, predict the future — and
 the same model on the same data gives a materially worse number:
 """),
+        prompt(
+               input="the same X and y",
+               output="MAE from a single split at 80% of the way through time",
+               constraint="every training row must come before every test row",
+               check="compare against the shuffled number and state the gap in boardings and per cent"),
         code('''
 # The same model, split by time instead of at random.
 cut = int(len(Xflat) * 0.8)
@@ -405,6 +479,11 @@ that it is still not honest enough.
 against the lag, and the model tells you what it found, in a language you can
 check against the data.
 """),
+        prompt(
+               input="the fitted linear model's 56 coefficients",
+               output="coefficient against lag, with whole weeks marked",
+               constraint="lag 1 on the right, so the axis reads as time running backwards from today",
+               check="print the mean weight on weekly lags against all others rather than eyeballing"),
         code('''
 lags = np.arange(WINDOW, 0, -1)             # lag 56 first, lag 1 last
 fig, ax = plt.subplots(figsize=(11, 3.2))
@@ -441,6 +520,11 @@ $$\\mathbf{h}_t = \\tanh(W_x \\mathbf{x}_t + W_h \\mathbf{h}_{t-1} + \\mathbf{b}
 Same weights at every step. That is the parameter saving, and it is also the
 assumption: *what a value means does not depend on where in the window it sits.*
 """),
+        prompt(
+               input="a batch of windows, [batch, time, series]",
+               output="one number per window",
+               constraint="a linear head on the final step — the hidden state is bounded by tanh and ridership is not",
+               check="print the parameter count, split between recurrent and head"),
         code('''
 class SimpleRnn(nn.Module):
     def __init__(self, input_size=1, hidden_size=32, output_size=1):
@@ -474,6 +558,11 @@ Three choices worth stating:
   be, or every batch is one contiguous stretch and the gradients are correlated.
 * **Split by time.** Same 80/20 cut as above, so the two models are comparable.
 """),
+        prompt(
+               input="the training windows",
+               output="a trained network, with held-out MAE printed as it goes",
+               constraint="shuffle the WINDOWS but never the series; Huber loss so a strike day does not steer the fit; the same time split as the linear model",
+               check="held-out MAE should fall then flatten; if it rises, say so rather than picking the best epoch"),
         code('''
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -499,6 +588,11 @@ for epoch in range(EPOCHS):
         history.append((epoch + 1, val))
         print(f"epoch {epoch + 1:>3d}   held-out MAE {val:>10,.0f}")
 '''),
+        prompt(
+               input="the trained network and the held-out windows",
+               output="one table: baseline, linear, RNN, against the committed target",
+               constraint="report the committed number beside the results, whether or not they beat it",
+               check="the naive baseline appears in the table, not only in the prose"),
         code('''
 model.eval()
 with torch.no_grad():
