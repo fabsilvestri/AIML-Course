@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import nbformat as nbf
 
+from _prompt import prompt
+
 
 def md(text: str) -> nbf.NotebookNode:
     return nbf.v4.new_markdown_cell(text.strip("\n"))
@@ -90,7 +92,12 @@ print(f"{len(df):,} days on file; {len(pool):,} in the pool we model")
 
 
 def build() -> list:
-    cells: list = [md(HEADER), md("## 1 · Setup and the same data"), code(SETUP)]
+    cells: list = [md(HEADER), md("## 1 · Setup and the same data"),prompt(
+                                                                           input="the same CTA file as the previous lecture",
+                                                                           output="the tidied frame and the 2016-2019 pool, ready to model",
+                                                                           constraint="identical preparation to Lecture 19, so any difference in the numbers is the protocol and not the data",
+                                                                           check="print the day count and confirm it matches"),
+                                                                     code(SETUP)]
 
     cells += [
         md("""
@@ -109,6 +116,11 @@ the model is averaging two different worlds and is right about neither.
 
 Ridership is not stationary: there is a downward trend and a hard weekly cycle.
 """),
+prompt(
+       input="the rail pool, and the same series differenced at lag 1 and lag 7",
+       output="an augmented Dickey-Fuller p-value for each, with a verdict",
+       constraint="install statsmodels only if it is missing, so the notebook runs on a bare environment",
+       check="the level series should fail to look stationary where the differenced ones do not"),
         code('''
 try:
     from statsmodels.tsa.stattools import adfuller
@@ -141,6 +153,11 @@ so differencing at a lag where the autocorrelation $\\rho(h)$ is *below* $1/2$
 makes the variance **larger**, not smaller. Check it against the data rather than
 believing it.
 """),
+prompt(
+       input="the pool, and its autocorrelation at lags 1, 7 and 14",
+       output="predicted and measured standard deviation of each difference",
+       constraint="predict from the identity Var(X_t - X_t-h) = 2 gamma(0)(1 - rho(h)) BEFORE measuring, so the theory is exposed to the data",
+       check="flag any lag where differencing makes the spread larger, which is the point of the cell"),
         code('''
 sd = pool.std()
 print(f"{'series':28s} sd {sd:>10,.0f}")
@@ -162,6 +179,11 @@ That is the whole explanation of why "copy last week" was so hard to beat in the
 previous lecture: $\\nabla_7$ is close to white noise, and a naive forecast is
 exactly the model that assumes it *is*.
 """),
+prompt(
+       input="five months of the rail series, raw and differenced at lags 1 and 7",
+       output="three stacked panels sharing an x axis",
+       constraint="a zero line on each, so 'bigger swings' is visible rather than asserted",
+       check="the first difference should look wilder than the series it came from"),
         code('''
 fig, axes = plt.subplots(3, 1, figsize=(11, 6), sharex=True)
 recent = pool["2019-01":"2019-05"]
@@ -180,6 +202,11 @@ plt.tight_layout(); plt.show()
 One picture that contains everything above: correlation against lag. Spikes at
 7, 14, 21 and a slow decay elsewhere.
 """),
+prompt(
+       input="autocorrelation of the pool and of its seasonal difference, lags 0 to 42",
+       output="both on one bar chart",
+       constraint="plot them side by side at each lag, not on two charts, so the collapse at lag 7 is directly comparable",
+       check="spikes at 7, 14 and 21 in the raw series; nothing much left after differencing"),
         code('''
 lags = np.arange(0, 43)
 acf_level = [pool.autocorr(lag=int(k)) if k else 1.0 for k in lags]
@@ -203,6 +230,11 @@ plt.show()
 Exactly the cell from the previous lecture. Run it and look at the folds: they
 agree with one another, which is what a stable measurement looks like.
 """),
+prompt(
+       input="the pool as 56-lag windows",
+       output="a cross-validated MAE from a shuffled five-fold split",
+       constraint="this is the previous lecture's broken cell, reproduced exactly",
+       check="look at the fold spread — they agree with each other, which is what a stable measurement of the wrong quantity looks like"),
         code('''
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import KFold, TimeSeriesSplit, cross_val_score
@@ -225,6 +257,11 @@ print(f"random 5-fold   MAE {folds_random.mean():>10,.0f}   "
 `TimeSeriesSplit` never lets a training row come after a test row. One call
 changes, nothing else.
 """),
+prompt(
+       input="the same X and y",
+       output="the same five-fold MAE, split by time instead",
+       constraint="no training row may come after a test row; change one call and nothing else",
+       check="report the gap against the shuffled number in boardings and per cent"),
         code('''
 cv = TimeSeriesSplit(n_splits=5)          # was KFold(shuffle=True)
 folds_time = -cross_val_score(model, X, y, cv=cv,
@@ -253,6 +290,11 @@ both:
 
 `TimeSeriesSplit` fixes the first. The second needs a **gap**.
 """),
+prompt(
+       input="the same X and y again",
+       output="MAE with a gap of one window between train and test",
+       constraint="no training row may be ADJACENT to a test row either — two consecutive days are nearly the same number",
+       check="print mean and fold spread for all three protocols together"),
         code('''
 # Condition 2, made explicit: leave a gap the width of one window between the
 # end of training and the start of testing, so no test target can be predicted
@@ -274,6 +316,11 @@ for label, f in [("random 5-fold", folds_random),
 The number that matters is not the MAE. It is how much of the naive baseline's
 score the model actually takes off — and that is what the split was inflating.
 """),
+prompt(
+       input="the naive baseline and the four protocols' MAEs",
+       output="the margin over the baseline that each protocol reports",
+       constraint="quote the margin, not the MAE — the margin is what the shuffle was inflating",
+       check="state what share of the claimed margin was protocol rather than model"),
         code('''
 target = pool[WINDOW:]
 naive = pool.shift(7)[WINDOW:]
@@ -332,6 +379,11 @@ What actually helps is giving the model something it does not already have: bus
 ridership, and **tomorrow's day type**, which is known in advance from a calendar
 and is therefore not a leak.
 """),
+prompt(
+       input="rail, bus, and tomorrow's day type from the calendar",
+       output="a five-column frame, day type one-hot encoded",
+       constraint="shift(-1) on the CALENDAR is legitimate and shift(-1) on the target is a leak — the test is whether the value is knowable at prediction time",
+       check="assert the column names, so a silent change in encoding stops the notebook"),
         code('''
 mulvar = df[["rail", "bus"]] / 1e6
 mulvar["next_day_type"] = df["day_type"].shift(-1)   # known in advance
@@ -354,6 +406,11 @@ ridership is not.
 State the rule you are using, every time, in one line: *would I know this number
 when I have to make the prediction?*
 """),
+prompt(
+       input="the multivariate frame, a window and a horizon",
+       output="windows over all series, with rail alone as the target",
+       constraint="one windowing function used for every model below, so the comparison is like for like",
+       check="print the shapes and the train/test split sizes"),
         code('''
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -379,6 +436,11 @@ over 56 steps either vanish or explode — Lecture 13's thread, in a new place. 
 keep, and a reset gate that decides how much of it to use. Keeping is now
 addition rather than repeated multiplication, so a gradient can travel.
 """),
+prompt(
+       input="windows of five series",
+       output="a trained GRU and its held-out MAE",
+       constraint="gates rather than a plain RNN, because a 56-step recurrence multiplies by the same matrix every step",
+       check="watch the held-out MAE as it trains rather than reading only the final number"),
         code('''
 class GruModel(nn.Module):
     def __init__(self, input_size=5, hidden_size=32, output_size=1):
@@ -413,6 +475,11 @@ torch.manual_seed(RANDOM_STATE)
 print("GRU on five series:")
 gru_mae = train(GruModel(input_size=5), Xm[:cut], ym[:cut], Xm[cut:], ym[cut:])
 '''),
+prompt(
+       input="the same GRU, on rail alone",
+       output="its held-out MAE, beside the five-series version",
+       constraint="change ONE thing — two changes at once is not an experiment",
+       check="the table separates 'gates helped' from 'more series helped'"),
         code('''
 # The same model on rail alone, to separate "gates helped" from "more series
 # helped". Two changes at once is not an experiment.
@@ -439,6 +506,11 @@ for name, score in [("copy last week", NAIVE_MAE),
 A staffing decision needs more than tomorrow. Two changes: the target becomes 14
 values instead of 1, and the head produces 14 numbers.
 """),
+prompt(
+       input="the same windows, with a fourteen-day target",
+       output="MAE at each horizon, plotted against the naive baseline",
+       constraint="one head producing fourteen numbers, not fourteen models",
+       check="read the SHAPE — a single average would hide that day 14 is no better than copying last week"),
         code('''
 HORIZON = 14
 Xh, yh = make_windows(mulvar, horizon=HORIZON)
@@ -485,6 +557,11 @@ This is worth being precise about, because it is **not a leak and not a bug**.
 The protocol was correct, the measurement was honest, and the model is still
 useless afterwards. No split protects you from the world changing.
 """),
+prompt(
+       input="the whole series, through 2021",
+       output="the mean level before and after March 2020, and a plot spanning both",
+       constraint="this is not a leak and not a bug — say so plainly; the protocol was right and the model still stopped working",
+       check="the ratio of the two levels is printed, not described"),
         code('''
 level_2019 = df["rail"]["2019-01":"2019-05"].mean()
 level_2020 = df["rail"]["2020-04":"2020-08"].mean()
