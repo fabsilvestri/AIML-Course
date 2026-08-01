@@ -58,14 +58,6 @@ def build() -> list:
             left_open="why torch is imported at all in a Scikit-Learn lecture. torchvision is the tidiest loader for Fashion MNIST and nothing else here uses torch — the comment says so, because otherwise the import reads as a promise the notebook does not keep.",
             student="importing torch and reaching for it later, on the reasonable assumption that anything imported is fair game. Today is Scikit-Learn only, and the walls at the end are the reason.",
             catch="an import with no use is a question. Answer it in a comment or delete it."),
-        prompt(
-            label="setup",
-            input="nothing",
-            output="the versions of everything, and a fixed seed",
-            constraint="print the versions — a mismatch here produces a confusing error twenty cells later, in a cell that has nothing to do with it",
-            left_open="why torch is imported at all in a Scikit-Learn lecture. torchvision is the tidiest loader for Fashion MNIST and nothing else here uses torch — the comment says so, because otherwise the import reads as a promise the notebook does not keep.",
-            student="importing torch and reaching for it later, on the reasonable assumption that anything imported is fair game. Today is Scikit-Learn only, and the walls at the end are the reason.",
-            catch="an import with no use is a question. Answer it in a comment or delete it."),
         code('''
 # --- setup -------------------------------------------------------------------
 # Not examinable: engineering hygiene. It is here because a version mismatch
@@ -99,15 +91,6 @@ images in ten classes, which is the dataset Chapter 9 uses. Same shape of
 problem, and — unlike the bureau's archive — it is public, so your number is
 comparable with everyone else's.
 """),
-        prompt(
-            label="the data",
-            input="Fashion MNIST",
-            output="60,000 training and 10,000 test images as uint8 arrays, with the class names",
-            constraint="keep them as uint8 for now and print the pixel range — the next sections are about what happens when that range is not what the model expects",
-            check="assert both shapes and the dtype",
-            left_open="that the pixel range is 0 to 255 and nothing has been divided yet. Section 6 is entirely about a prompt that failed to say so.",
-            student="scaling immediately, out of habit, which is correct practice and removes the lecture's central demonstration. The scaling happens two sections down, deliberately.",
-            catch="assert the dtype, not just the shape. `uint8` versus `float32` is the difference between an image and a model input, and the failure is silent."),
         prompt(
             label="the data",
             input="Fashion MNIST",
@@ -151,14 +134,6 @@ are garments photographed the same way, and the background is exactly zero.
             left_open="two things to notice: several classes are garments photographed the same way, and the background is exactly zero. Both come back in the error analysis.",
             student="skipping this because the shape assert passed. The confusions the model makes later are exactly the ones you would make from this grid, and knowing that in advance is worth the thirty seconds.",
             catch="`gray_r` rather than `gray`. Fashion MNIST is white-on-black, and reversed it looks like the scanned document the brief is about."),
-        prompt(
-            label="look at it before you model it",
-            input="three examples of each of the ten classes",
-            output="a 3 by 10 grid, each column titled with its class",
-            constraint="`vmin=0, vmax=255` — without it every thumbnail is rescaled to its own range and a dark garment looks identical to a bright one",
-            left_open="two things to notice: several classes are garments photographed the same way, and the background is exactly zero. Both come back in the error analysis.",
-            student="skipping this because the shape assert passed. The confusions the model makes later are exactly the ones you would make from this grid, and knowing that in advance is worth the thirty seconds.",
-            catch="`gray_r` rather than `gray`. Fashion MNIST is white-on-black, and reversed it looks like the scanned document the brief is about."),
         code('''
 fig, axes = plt.subplots(3, 10, figsize=(13, 4.4))
 for c in range(10):
@@ -170,15 +145,6 @@ for c in range(10):
     axes[0, c].set_title(CLASSES[c], fontsize=8)
 plt.tight_layout(); plt.show()
 '''),
-        prompt(
-            label="the assertion that decides the metric",
-            input="the training labels",
-            output="the count per class",
-            constraint="assert the classes are EXACTLY balanced rather than observing that they look balanced",
-            check="min equals max equals 6,000",
-            left_open="what follows from it. The previous application spent an hour on why accuracy is worthless under imbalance; here the classes are balanced by construction, so accuracy is meaningful AND the trivial baseline is trivially computable.",
-            student="carrying the habit over uninspected — either using accuracy because it is familiar, or refusing to because the last lecture said not to. Check, then choose.",
-            catch="one assert here licenses every accuracy in the notebook. That is a lot of weight for one line, which is why it is an assert and not a print."),
         prompt(
             label="the assertion that decides the metric",
             input="the training labels",
@@ -227,15 +193,6 @@ are about to tune hyperparameters by hand and the test set is not for that.
             left_open="why scaling matters for a network specifically. The size of a gradient step is set once for every weight, so inputs two orders of magnitude apart make one step too big for some weights and too small for others.",
             student="reaching for StandardScaler, which is a fitted transform and would need to live inside a pipeline. Dividing by a known constant is not the same operation and does not carry the same risk.",
             catch="the disjointness assert on the two index sets. A permutation sliced in two cannot overlap, and asserting it anyway costs nothing and catches the day someone changes the slicing."),
-        prompt(
-            label="scale, and split",
-            input="the uint8 images",
-            output="784-dimensional float32 rows in [0,1], split into fit / validation / test",
-            constraint="divide by 255 — every feature is already on the same scale as every other, so there is nothing to FIT and therefore nothing to leak",
-            check="assert the sizes sum, that the indices are disjoint, and that the values really are in [0,1]",
-            left_open="why scaling matters for a network specifically. The size of a gradient step is set once for every weight, so inputs two orders of magnitude apart make one step too big for some weights and too small for others.",
-            student="reaching for StandardScaler, which is a fitted transform and would need to live inside a pipeline. Dividing by a known constant is not the same operation and does not carry the same risk.",
-            catch="the disjointness assert on the two index sets. A permutation sliced in two cannot overlap, and asserting it anyway costs nothing and catches the day someone changes the slicing."),
         code('''
 def flatten_scale(a):
     """(n, 28, 28) uint8  ->  (n, 784) float32 in [0, 1]."""
@@ -267,14 +224,6 @@ print(f"\\ntraining on the first {SUB:,} of them, so this finishes in the hour")
 Before anything is built: the dumbest model that is still a model. Ten balanced
 classes, so predicting the commonest one is right **one time in ten**.
 """),
-        prompt(
-            label="the anchor",
-            input="the majority class",
-            output="its accuracy on the test set",
-            constraint="assert it is exactly 0.10 — the test set has exactly 1,000 of each class, so anything else means the test set is not what you think it is",
-            left_open="that this is also why accuracy is READABLE here. A number is only informative relative to what it must beat.",
-            student="skipping the baseline because 'ten classes means 10%'. That is true of a balanced test set and this cell is what establishes the test set is balanced.",
-            catch="an exact assert is available here because the dataset is exactly balanced. Take exact asserts when the data allows them; they catch things tolerances do not."),
         prompt(
             label="the anchor",
             input="the majority class",
@@ -333,14 +282,6 @@ nothing exotic, it raises nothing, and it prints a believable number.
             left_open="reviewer question 5. Two defaults, and only one is visible: `max_iter=12` is ours, and `learning_rate_init=0.001` is scikit-learn's — the default for inputs of order ONE. We handed the network integers up to 255.",
             student="reading the accuracy and moving on. Nothing in the prompt said 'scale the pixels', nothing in the output said it had not happened, and the number is high enough to look like a result.",
             catch="a library default is chosen for a typical input range. When your inputs are not in that range the default is not a default, it is a mistake with a plausible value."),
-        prompt(
-            label="⏱ 40 s — ⚠ what the assistant returns",
-            input="'train a neural network to classify Fashion MNIST and print the accuracy'",
-            output="a fitted MLP and its validation accuracy",
-            constraint="feed it the RAW uint8 pixels, as the prompt implies — it imports nothing exotic, raises nothing, and prints a believable number",
-            left_open="reviewer question 5. Two defaults, and only one is visible: `max_iter=12` is ours, and `learning_rate_init=0.001` is scikit-learn's — the default for inputs of order ONE. We handed the network integers up to 255.",
-            student="reading the accuracy and moving on. Nothing in the prompt said 'scale the pixels', nothing in the output said it had not happened, and the number is high enough to look like a result.",
-            catch="a library default is chosen for a typical input range. When your inputs are not in that range the default is not a default, it is a mistake with a plausible value."),
         code('''
 from sklearn.neural_network import MLPClassifier
 
@@ -371,14 +312,6 @@ not happened, and the accuracy is high enough to look like a result.
 
 **Measure it** — do not guess.
 """),
-        prompt(
-            label="measure it, do not guess",
-            input="the same architecture, same epochs, same seed, scaled pixels",
-            output="both accuracies and both final training losses",
-            constraint="change ONE thing — only the input scale differs, so the difference is attributable",
-            left_open="the loss column. The raw model's training loss is far higher, which says the optimiser never got going rather than that the problem is hard.",
-            student="asserting that scaling matters, or quoting a figure from a textbook. The cost is measurable in forty seconds on your own data and it is different for every dataset.",
-            catch="report the cost in the units the stakeholder uses. 'The missing division by 255 costs N accuracy points' is a sentence; 'scaling is important' is not."),
         prompt(
             label="measure it, do not guess",
             input="the same architecture, same epochs, same seed, scaled pixels",
@@ -433,15 +366,6 @@ lecture.
             left_open="that this is as close to the inside of the training loop as scikit-learn will let you get. Remember that; it is the point of the next lecture.",
             student="omitting `classes=` on `partial_fit`, which works on the first call and raises on the second, or worse, silently fits a model that has never seen a class absent from the first batch.",
             catch="record training AND validation accuracy each epoch. The gap between them is Lecture 2's train-versus-cross-validation table drawn as two lines, and nothing about neural networks makes it go away."),
-        prompt(
-            label="⏱ 60 s — one epoch at a time",
-            input="12,000 images, 20 epochs",
-            output="the loss and both accuracies after every epoch, plus the parameter count and the wall clock",
-            constraint="`partial_fit` with the full `classes=` list on every call — one pass, control handed back. `fit()` gives you one number at the end and nothing in between",
-            check="assert twenty epochs were recorded",
-            left_open="that this is as close to the inside of the training loop as scikit-learn will let you get. Remember that; it is the point of the next lecture.",
-            student="omitting `classes=` on `partial_fit`, which works on the first call and raises on the second, or worse, silently fits a model that has never seen a class absent from the first batch.",
-            catch="record training AND validation accuracy each epoch. The gap between them is Lecture 2's train-versus-cross-validation table drawn as two lines, and nothing about neural networks makes it go away."),
         code('''
 def train_curve(X, y, hidden=(300, 100), lr=1e-3, epochs=20, batch=128):
     clf = MLPClassifier(hidden_layer_sizes=hidden, activation="relu",
@@ -468,14 +392,6 @@ print(f"{hist['seconds']:.0f} s for 20 epochs "
       f"({hist['seconds'] / 20:.1f} s per epoch)")
 print(f"validation accuracy {hist['val_acc'][-1]:.4f}")
 '''),
-        prompt(
-            label="the two curves",
-            input="the recorded history",
-            output="loss against epoch, and both accuracies against epoch",
-            constraint="both accuracy curves on the SAME axis — the gap is the quantity being shown",
-            left_open="that the gap is the overfitting and you have seen it before. It is not a new phenomenon and it does not have a neural-network-specific cure.",
-            student="plotting only the loss, which falls smoothly and forever and says nothing about generalisation.",
-            catch="print the gap as a number under the plot. A reader should not have to measure a distance on a chart with their eye."),
         prompt(
             label="the two curves",
             input="the recorded history",
@@ -519,14 +435,6 @@ exactly what it feels like — and exactly why the next lecture automates it.
             left_open="that this is grid search done with your hands, which is exactly what it feels like — and exactly why the next lecture automates it.",
             student="running each architecture on the full 12,000 and spending twenty minutes. 6,000 images and 8 epochs is a stated compromise that makes ten fits affordable, and the comparison is still fair because it is the same for every row.",
             catch="depth buys less than you expected. One hidden layer to two is worth a point or so; a third is worth roughly nothing here."),
-        prompt(
-            label="⏱ 2 min — five architectures, by hand",
-            input="one hidden layer of 30, 100, 300; then two layers; then three",
-            output="validation accuracy, parameter count and seconds for each",
-            constraint="report the PARAMETER COUNT beside the accuracy — a third layer that buys nothing while costing parameters is a different finding from one that buys nothing while costing nothing",
-            left_open="that this is grid search done with your hands, which is exactly what it feels like — and exactly why the next lecture automates it.",
-            student="running each architecture on the full 12,000 and spending twenty minutes. 6,000 images and 8 epochs is a stated compromise that makes ten fits affordable, and the comparison is still fair because it is the same for every row.",
-            catch="depth buys less than you expected. One hidden layer to two is worth a point or so; a third is worth roughly nothing here."),
         code('''
 SMALL = 6_000
 archs = [(30,), (100,), (300,), (300, 100), (300, 200, 100)]
@@ -542,14 +450,6 @@ for h in archs:
 best_arch = max(arch_rows, key=lambda t: t[1])
 print(f"\\nbest: {best_arch[0]} at {best_arch[1]:.4f}")
 '''),
-        prompt(
-            label="five learning rates",
-            input="1e-4 to 1e-2, same architecture",
-            output="validation accuracy at each, and the spread between best and worst",
-            constraint="report the WORST as well as the best — the spread is the finding",
-            left_open="the reading to write down: the learning rate matters more than the architecture. One badly chosen scalar loses more accuracy than any of the structural choices gains.",
-            student="tuning the architecture carefully and leaving the learning rate at its default. The default is fine here and this cell is what tells you how much luck that was.",
-            catch="log-spaced, not linear. Learning rates live on a multiplicative scale, and a linear grid from 1e-4 to 1e-2 spends most of its points in a region where nothing changes."),
         prompt(
             label="five learning rates",
             input="1e-4 to 1e-2, same architecture",
@@ -584,14 +484,6 @@ Two readings, and the second is the one to write down.
 
 An accuracy is one number over ten classes. Split it.
 """),
-        prompt(
-            label="where does it go wrong",
-            input="the test predictions",
-            output="per-class recall, sorted, and where the worst class goes",
-            constraint="sort by recall and show the DESTINATIONS of the worst class — a confusion matrix printed whole is 100 numbers nobody reads",
-            left_open="that the confusions are not random. The classes that get mixed up are the ones that are hard for a PERSON looking at a 28×28 thumbnail — which is a useful thing to tell the operator and is invisible in the headline.",
-            student="reporting the accuracy and stopping. An accuracy is one number over ten classes, and the operator is going to ask which queue is unreliable.",
-            catch="normalise the row before reading it. Raw counts and shares tell different stories, and only one of them answers 'when this class is wrong, where does it go'."),
         prompt(
             label="where does it go wrong",
             input="the test predictions",
@@ -653,14 +545,6 @@ print("\\npartial_fit's signature:",
 print("one call = one full pass over everything you hand it. There is no")
 print("smaller unit of control, and no hook between forward and backward.")
 '''),
-        prompt(
-            label="what the full run would cost",
-            input="the measured seconds per epoch",
-            output="the extrapolation to the deck's 55,000-image run",
-            constraint="extrapolate from a MEASURED number and say it is linear scaling on this CPU — not a figure quoted from anywhere",
-            left_open="that there is no `device=` argument to move any of it to a GPU. Scikit-learn is CPU-only by design and says so in its own FAQ.",
-            student="assuming the gap between this notebook and the deck is a mistake. The notebook trains on 12,000 of 55,000 so it finishes in the hour, every cell says so, and the difference is itself worth a sentence in your notes.",
-            catch="when you subsample for time, state the factor and extrapolate out loud. A reader comparing your number with a published one needs to know which they are holding."),
         prompt(
             label="what the full run would cost",
             input="the measured seconds per epoch",

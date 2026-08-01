@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from make_notebooks import code, header, md, SETUP        # noqa: E402
+from make_notebooks import code, header, md, SETUP, SETUP_PROMPT        # noqa: E402
 from _prompt import prompt                                # noqa: E402
 
 
@@ -27,7 +27,7 @@ def build() -> list:
         thread="imbalance, and the non-monotonicity of precision")
 
     cells += [
-        md("## 1 · Setup and where we left off"), SETUP,
+        md("## 1 · Setup and where we left off"), SETUP_PROMPT, SETUP,
         prompt(
             label="setup",
             input="nothing",

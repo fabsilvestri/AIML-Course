@@ -25,6 +25,12 @@ import sys
 from pathlib import Path
 
 import nbformat as nbf
+# _prompt lives in tools/notebooks/, beside the per-lecture modules. That
+# directory goes on sys.path in _discover() so those modules can import their
+# siblings — but this import runs at module load, long before _discover() is
+# called, so it needs the path itself.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "notebooks"))
+from _prompt import prompt                                # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "notebooks"
@@ -73,10 +79,10 @@ Run the cells in order. Anything that takes more than a few seconds says so.
 # quietly ships without the note, and the note is the thing that keeps the
 # prompt boxes honest.
 PROMPT_NOTE = """
-**About the prompt boxes.** Where a code cell is preceded by a quoted prompt,
-three lines follow it: what the prompt leaves open, the version a student
-typically writes instead, and how you would catch a wrong answer. Those three
-lines are the part worth reading twice.
+**About the prompt boxes.** Every code cell in this notebook is preceded by a
+quoted prompt, and three lines follow it: what the prompt leaves open, the
+version a student typically writes instead, and how you would catch a wrong
+answer. Those three lines are the part worth reading twice.
 
 The prompts here are **specifications, not transcripts** — this is what you
 would have to ask for in order to get this cell, not a recording of somebody
@@ -105,9 +111,20 @@ def _ensure_prompt_note(nb: nbf.NotebookNode, n: int) -> None:
     """
     if n in NOTE_EXEMPT or not nb.cells:
         return
-    if not any(c.cell_type == "markdown" and c.source.lstrip().startswith("> **Prompt")
-               for c in nb.cells):
-        return
+    # The note now claims EVERY code cell has a box, so verify that before
+    # writing it. The first version of this claimed boxes existed when none
+    # did; the fix was to gate on their existing at all, and this is the same
+    # fix again one step stronger, because the claim itself got stronger.
+    for i, c in enumerate(nb.cells):
+        if c.cell_type != "code":
+            continue
+        prev = nb.cells[i - 1] if i else None
+        if not (prev is not None and prev.cell_type == "markdown"
+                and prev.source.lstrip().startswith("> **Prompt")):
+            raise RuntimeError(
+                f"lecture {n}: the code cell at index {i} has no prompt box, "
+                f"but the header note about to be added says every cell does. "
+                f"Add the box or weaken the note — do not ship the claim.")
     first = nb.cells[0]
     if first.cell_type != "markdown":
         raise RuntimeError(f"lecture {n}: first cell is {first.cell_type}, "
@@ -162,6 +179,41 @@ housing_full.head()
 ''')
 
 
+SETUP_PROMPT = prompt(
+    label="setup",
+    input="nothing",
+    output="the version of every library this notebook depends on, and one "
+           "seed",
+    constraint="ASSERT the scikit-learn version rather than printing it — "
+               "`root_mean_squared_error` arrived in 1.4, and on an older "
+               "Colab image the failure is an ImportError twenty cells from "
+               "here",
+    left_open="that RANDOM_STATE is defined once and used for every split, "
+              "every model and every shuffle. A notebook with three different "
+              "seeds in it cannot be reproduced by reading it.",
+    student="printing the versions and not checking them, so the notebook "
+            "reports its own incompatibility as information rather than as an "
+            "error.",
+    catch="not examinable, and it is here because a version mismatch produces "
+          "a confusing error in a cell that has nothing to do with versions.")
+
+LOADER_PROMPT = prompt(
+    label="the data",
+    input="the California housing tarball",
+    output="20,640 districts and 10 columns",
+    constraint="a FUNCTION that downloads if absent and reads if present — the "
+               "data will change, and you will need this on another machine",
+    check="assert the shape, rather than trusting the download",
+    left_open="what to do if the download is truncated. A short read gives a "
+              "smaller frame and the assert catches it; anything subtler it "
+              "will not.",
+    student="downloading by hand and reading a path under ~/Downloads. It "
+            "works on your machine and nowhere else, which you discover at the "
+            "demo.",
+    catch="delete `datasets/` and re-run. If the cell cannot rebuild its own "
+          "input from nothing, it is not reproducible, it is cached.")
+
+
 # ------------------------------------------------------------------ lecture 1
 
 def lecture_01() -> nbf.NotebookNode:
@@ -169,8 +221,8 @@ def lecture_01() -> nbf.NotebookNode:
         1, "Welcome, and a price you can't trust", "build", "Chapters 1–2")
 
     cells += [
-        md("## 1 · Setup"), SETUP,
-        md("## 2 · The data"), LOADER,
+        md("## 1 · Setup"), SETUP_PROMPT, SETUP,
+        md("## 2 · The data"), LOADER_PROMPT, LOADER,
 
         md("""
 ### What is in it
@@ -178,9 +230,25 @@ def lecture_01() -> nbf.NotebookNode:
 Ten attributes per district. One of them is not numeric, and one column has
 holes in it. Find both before reading on.
 """),
+prompt(
+       label="what is in it",
+       input="the loaded frame",
+       output="every column, its type and its non-null count",
+       constraint="`.info()`, not `.head()` — the two things worth finding here are a non-numeric column and a column with holes in it, and neither is visible in five rows",
+       left_open="which column is which. Find both before reading on; the next cell names them.",
+       student="`.head()` and an impression. A column that is 99% present looks complete in the first five rows, and the dtype of a mostly-numeric-looking column is not visible at all.",
+       catch="non-null counts against the row count. That subtraction is the missing-value audit, and it is free."),
         code('''
 housing_full.info()
 '''),
+prompt(
+       label="count the holes, and the categories",
+       input="the frame",
+       output="how many districts are missing total_bedrooms, and the counts of every category level",
+       constraint="print the missing count as a PERCENTAGE as well as a count — 207 sounds like a lot and 1% does not",
+       left_open="that ISLAND has five districts in the whole of California. Remember it: it comes back in the next lecture and it does not announce itself when it breaks.",
+       student="dropping the rows with missing bedrooms, which throws away 207 districts to avoid writing one imputer.",
+       catch="`value_counts()` on every categorical, always. A level with n=5 is a level that will be absent from some cross-validation folds."),
         code('''
 n_missing = housing_full["total_bedrooms"].isna().sum()
 print(f"total_bedrooms is missing in {n_missing} districts "
@@ -204,6 +272,15 @@ We stratify on income because the experts told us income predicts price. A
 random split gets the income mix wrong by up to 6.4%; stratifying gets it wrong
 by 0.36%.
 """),
+prompt(
+       label="split before you look",
+       input="the whole frame",
+       output="a stratified 80/20 split",
+       constraint="stratify on the INCOME BAND, because the experts said income predicts price — a random split gets the income mix wrong by up to 6.4% and stratifying gets it wrong by 0.36%",
+       check="assert the two halves sum to the whole and that their indices are disjoint",
+       left_open="why this is the first rule and the easiest to break. Everything you learn from the data BEFORE the split leaks into the choices you make afterwards — through you, not through the code. There is no library that prevents this.",
+       student="exploring first and splitting later, because exploring is the interesting part. By then you have chosen which features to engineer using the test rows.",
+       catch="the comment on the last line — from here to the final cell, `test_set` is not touched again. Write it down, in the code, where it will be read."),
         code('''
 from sklearn.model_selection import train_test_split
 
@@ -229,6 +306,14 @@ housing = train_set.copy()
 Two things should jump out of the histograms. Take thirty seconds before you
 scroll.
 """),
+prompt(
+       label="look — at the TRAINING set only",
+       input="the training half",
+       output="a histogram of every numeric column",
+       constraint="`housing`, the training copy, not `housing_full` — the whole point of the previous cell was to make this cell safe",
+       left_open="two things that should jump out. Take thirty seconds before scrolling: the income is not in dollars, and the TARGET is capped.",
+       student="plotting the full frame out of habit. It is one word different and it undoes the split.",
+       catch="50 bins, not the default 10. A cap at the top of a distribution is one bar, and at 10 bins it is inside a bar with everything else."),
         code('''
 import matplotlib.pyplot as plt
 
@@ -241,6 +326,14 @@ plt.tight_layout(); plt.show()
 **The target is capped too**, and the target is our label. Count it rather than
 squinting at it:
 """),
+prompt(
+       label="count the cap rather than squinting at it",
+       input="the target column",
+       output="how many districts sit at the cap, and the commonest values below it",
+       constraint="count it — a histogram shows you a spike and a count tells you whether it is 5% of your labels or 0.5%",
+       left_open="what the commonest values have in common. Every one of them is a multiple of $12,500 — artefacts of how the survey recorded prices, not facts about California.",
+       student="noticing the cap and moving on. The target is the LABEL, so a cap on it means 5% of your training rows have a label that is not the answer, and no model can be right about them.",
+       catch="`value_counts()` on a continuous target should be almost flat. Where it is not, the recording process is visible, and that is a fact about the survey rather than the world."),
         code('''
 capped = (housing["median_house_value"] >= 500_000).sum()
 print(f"{capped} districts sit at the cap "
@@ -261,6 +354,14 @@ A well-known description of this dataset names fainter lines at \\$450,000,
 believe it — one of the three is real, one is marginal, and one is
 indistinguishable from the background.
 """),
+prompt(
+       label="check the famous claim",
+       input="three values named in a well-known description of this dataset",
+       output="how many districts sit at each",
+       constraint="check the claim against the counts you just computed rather than repeating it",
+       left_open="the answer: one of the three is real, one is marginal, and one is indistinguishable from the background. The cell does not say which.",
+       student="repeating 'there are also lines at 450,000, 350,000 and 280,000' because it is in the book. Two of the three do not survive a count.",
+       catch="when a source names specific numbers about your data, the numbers are checkable. Three lines, and you either confirm it or you have found something."),
         code('''
 for value in (450_000, 350_000, 280_000):
     print(f"${value:>9,}  {counts.get(value, 0):>4d} districts")
@@ -275,6 +376,14 @@ So before building anything, measure the dumbest possible model — predict the
 same number for every district. Everything you build today has to beat this, and
 by how much is the only thing that will make your RMSE mean anything.
 """),
+prompt(
+       label="a number to compare against",
+       input="the training mean",
+       output="the RMSE of predicting it for every district, and what the human experts cost",
+       constraint="compute the dumbest possible model BEFORE building anything — everything today has to beat it, and by how much is the only thing that will make your RMSE mean anything",
+       left_open="that the expert figure is quoted, not measured. About 30% off on a typical $200,000 district, which the notebook converts to dollars so the two numbers are on one scale.",
+       student="reporting an RMSE of $68,000 with nothing beside it. Is that good? The question is unanswerable without this cell.",
+       catch="rule 2 of this course: a metric with nothing to compare it to is decoration. This is the cheapest possible comparison and it takes four lines."),
         code('''
 from sklearn.metrics import root_mean_squared_error
 
@@ -311,6 +420,14 @@ runs, it imports nothing exotic, and it prints a believable number.
 > *"Load the housing data, scale the features and split it into training and
 > test sets."*
 """),
+prompt(
+       label="⚠ what the assistant returns",
+       input="'load the housing data, scale the features and split it into training and test sets'",
+       output="a fitted linear model and its RMSE",
+       constraint="run it exactly as returned — it imports nothing exotic and prints a believable number",
+       left_open="reviewer question 1. `fit_transform` ran on ALL the rows: the median that fills the missing values, and the mean and standard deviation that scale every column, were computed from a set that includes the rows we then call the test set.",
+       student="this exact code. The prompt asked for scaling and splitting and did not say in which order, and one order is a leak.",
+       catch="the model is evaluated on rows whose own values helped define the transformation applied to them. That sentence is the bug, and no part of the output says it."),
         code('''
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import make_pipeline
@@ -342,6 +459,14 @@ transformation applied to them.
 
 **Now measure the damage** — do not guess:
 """),
+prompt(
+       label="measure the damage, do not guess",
+       input="the same data, split first and preprocessed second",
+       output="both RMSEs and the difference between them",
+       constraint="change ONE thing — the order of the split and the fit — so the difference is attributable",
+       left_open="that the answer is about a dollar. That is the finding, and the markdown below it is why it is still a bug.",
+       student="assuming the leak must be large because it is called a leak, or assuming it must be small because the number came out small. Neither was knowable before this cell.",
+       catch="three reasons it is small here, all nameable: centring and scaling is an invertible affine map, ordinary least squares is equivariant under one, and with 20,640 rows the training and test statistics nearly coincide. Remove any one and the leak has teeth."),
         code('''
 # the same thing, done correctly: split first, fit the preprocessing on train
 Xc_tr, Xc_te, yc_tr, yc_te = train_test_split(
@@ -380,6 +505,15 @@ You will meet the same error worth far more than a dollar in about an hour.
 One `Pipeline`, so that cross-validation refits *all* of it on each fold and the
 leak becomes structurally impossible rather than merely avoided.
 """),
+prompt(
+       label="build it properly",
+       input="the training features",
+       output="one ColumnTransformer handling numeric and categorical columns",
+       constraint="one Pipeline, so cross-validation refits ALL of it on each fold and the leak becomes structurally impossible rather than merely avoided",
+       check="assert the numeric and categorical column lists together account for every column — a column silently dropped here is a feature you never notice you are not using",
+       left_open="`handle_unknown='ignore'` on the encoder. It is the right choice and it is also how ISLAND becomes an all-zero row with no warning, two sections into the next lecture.",
+       student="listing the numeric columns by hand and forgetting one. The set assert is what catches it.",
+       catch="the difference between avoided and impossible. A pipeline does not make you more careful; it removes the option."),
         code('''
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
@@ -400,6 +534,14 @@ preprocessing = ColumnTransformer([
 assert set(num_cols) | set(cat_cols) == set(X_train.columns), "a column was dropped"
 print(f"{len(num_cols)} numeric + {len(cat_cols)} categorical")
 '''),
+prompt(
+       label="⏱ 20 s — three models, scored on their own training data",
+       input="the three model families",
+       output="each one's RMSE on the rows it was fitted to",
+       constraint="score on the TRAINING data, deliberately — this is the setup for the next lecture and not a result",
+       left_open="that one of the three numbers is zero, and that two of the three are meaningless. The notebook does not say which.",
+       student="reporting these. A tree with no depth limit puts every training row in its own leaf, and its zero is not a model that is perfect, it is a model that has memorised.",
+       catch="write your best RMSE on paper next to what you predicted, and do not fix anything. Being wrong is the point and the diagnosis is the next ninety minutes."),
         code('''
 # ~20 s: the forest is 100 trees on 16,512 rows.
 models = {
@@ -439,7 +581,17 @@ def lecture_02() -> nbf.NotebookNode:
         thread="least squares and the normal equation")
 
     cells += [
-        md("## 1 · Setup and where we left off"), SETUP, LOADER,
+        md("## 1 · Setup and where we left off"),
+        SETUP_PROMPT, SETUP, LOADER_PROMPT, LOADER,
+prompt(
+       label="every import, and the same split",
+       input="the same data and the same seed",
+       output="the identical 16,512 / 4,128 split as the previous lecture",
+       constraint="every import this notebook needs in ONE place, and the split rebuilt from the seed rather than inherited",
+       check="assert the two sizes exactly — if they differ, every comparison against the previous lecture is void",
+       left_open="that the stratification bins are repeated here verbatim. Change them and you get a different split from the same seed.",
+       student="continuing in the previous notebook's kernel, where all of this already exists. It works in the room and nowhere else.",
+       catch="a notebook that only runs because a previous one is still in memory is not reproducible. Restart-and-run-all is the only test of that."),
         code('''
 # Every import this notebook needs, in one place — a notebook that only runs
 # because a previous one is still in memory is not reproducible.
@@ -481,6 +633,15 @@ Read row by row, that says the residual is orthogonal to **every column of X**.
 Least squares is not an algebraic trick — it is a projection onto the column
 space of $X$. Verify it rather than believing it:
 """),
+prompt(
+       label="what LinearRegression().fit() actually computed",
+       input="the numeric features with an intercept column added",
+       output="the normal-equation solution, and the residual's inner product with every column of X",
+       constraint="add the intercept column with `add_dummy_feature` BEFORE solving — without it the residual is not orthogonal to the constant and the assert fails for the wrong reason",
+       check="assert the largest |Xᵀ(Xθ̂ − y)| is negligible RELATIVE to the scale of y — an absolute tolerance on dollars is meaningless",
+       left_open="what the orthogonality means. Read row by row, Xᵀ(Xθ̂ − y) = 0 says the residual is orthogonal to EVERY COLUMN of X: least squares is not an algebraic trick, it is a projection onto the column space.",
+       student="taking the normal equation on faith. It is four lines to verify and the verification is the thread.",
+       catch="`np.linalg.inv` is not what scikit-learn uses. It computes the pseudoinverse via SVD, which still returns an answer when XᵀX is singular — more features than instances, or two collinear columns. That is the whole failure condition."),
         code('''
 num = X_train.select_dtypes(include=[np.number])
 X = make_pipeline(SimpleImputer(strategy="median"), StandardScaler()).fit_transform(num)
@@ -510,6 +671,14 @@ feature as a weighted sum of existing ones.
 
 Not because it is perfect. Because we asked it to grade its own homework.
 """),
+prompt(
+       label="why the tree scored zero",
+       input="the same pipeline and the same training rows",
+       output="its RMSE on the data it was fitted to",
+       constraint="score it on the training rows again, and say in the output what that means",
+       left_open="that it is not zero because the tree is perfect. It is zero because we asked it to grade its own homework, and an unconstrained tree can put every training row in its own leaf.",
+       student="concluding the tree is the best model, or concluding it is broken. Neither: it is a correct answer to a question nobody should have asked.",
+       catch="any model flexible enough to memorise will score perfectly on its own training rows. A zero training error is a statement about capacity, not about accuracy."),
         code('''
 num_cols = X_train.select_dtypes(include=[np.number]).columns.tolist()
 preprocessing = ColumnTransformer([
@@ -534,6 +703,14 @@ and cannot work out why their numbers disagree.
 
 ⏱ **about 90 seconds** — thirty fits in total, ten of them forests.
 """),
+prompt(
+       label="⏱ 90 s — measure it honestly",
+       input="the three models, ten folds each",
+       output="mean, standard deviation and range of the fold RMSEs",
+       constraint="`shuffle=True` is NOT decoration — the default KFold does not shuffle, so two students whose dataframes are in different row orders get different folds and cannot work out why their numbers disagree",
+       left_open="how to read the spread. The folds span several thousand dollars, so any comparison that turns on less than a couple of thousand is not a comparison.",
+       student="reporting only the mean. A mean of $50,000 built from folds spanning $8,000 supports very different claims from one built from folds spanning $500.",
+       catch="print the fold minimum and maximum beside the mean, every time. It is one f-string and it decides which differences you are allowed to talk about."),
         code('''
 cv = KFold(n_splits=10, shuffle=True, random_state=RANDOM_STATE)
 
@@ -561,6 +738,14 @@ comparison.**
 Compare the models on the *same* folds rather than comparing two averages —
 paired differences remove the fold-to-fold variation that both models share:
 """),
+prompt(
+       label="compare on the SAME folds",
+       input="the two arrays of per-fold scores",
+       output="the paired difference, and how many folds each model wins",
+       constraint="subtract PER FOLD rather than comparing two averages — paired differences remove the fold-to-fold variation that both models share",
+       left_open="why the paired standard deviation is so much smaller than either model's own. The folds differ in difficulty and both models feel it identically, so the difference cancels it.",
+       student="comparing two means with their own standard deviations, concluding the intervals overlap, and declaring the comparison inconclusive. The paired version usually is not.",
+       catch="report the win count. '10 of 10 folds' is an argument that a mean difference with a large standard deviation is not."),
         code('''
 diff = results["Random forest"] - results["Linear regression"]
 print(f"forest − linear, per fold:  mean ${diff.mean():,.0f}  sd ${diff.std():,.0f}")
@@ -573,6 +758,15 @@ print(f"folds where the forest wins: {(diff < 0).sum()}/10")
 ⏱ **2–4 minutes.** Fifteen combinations × five folds = 75 forest fits. The
 lecture's figure uses `cv=10`, which takes twice as long; five is enough here.
 """),
+prompt(
+       label="⏱ 2-4 min — tune on validation folds, never on the test set",
+       input="fifteen combinations, five folds each",
+       output="the best parameters and the best cross-validated RMSE",
+       constraint="the grid searches the WHOLE PIPELINE, so the preprocessing is refitted inside every fold — `model__` prefixes because the parameters belong to a step",
+       check="detect whether the winner sits on the EDGE of the grid and say so — an optimum at the boundary means the optimum may lie outside it",
+       left_open="that `cv=5` here where the deck uses 10. Five is enough to choose between these fifteen and it halves the wall clock; the choice is stated rather than silent.",
+       student="reading `best_score_` as the model's accuracy. It is the score of the winner of a fifteen-way selection, measured on the folds that selected it, and it is optimistic by construction.",
+       catch="the edge-of-grid check is four lines and it is the difference between a search and a shrug. If the largest value wins, the search was too small."),
         code('''
 grid = {"model__max_features": [4, 6, 8, 10, 12],
         "model__n_estimators": [30, 100, 200]}
@@ -597,6 +791,14 @@ if best_n == max(grid["model__n_estimators"]):
 
 Two things the previous lecture promised and never did. Both take one cell.
 """),
+prompt(
+       label="look at what it gets wrong",
+       input="the tuned model's training predictions",
+       output="RMSE broken down by ocean proximity and by income band",
+       constraint="break the error down by GROUP — a single RMSE is an average over districts that are not alike",
+       left_open="which group is about to matter. ISLAND — five districts in the whole state — is the category the first lecture warned you about.",
+       student="reporting the headline RMSE and stopping. The stakeholder will ask 'is it worse anywhere in particular', and this is the cell that answers it.",
+       catch="`observed=True` on the groupby. Without it pandas produces a row for every unobserved combination of categories, full of NaN, and the table becomes unreadable."),
         code('''
 best = search.best_estimator_
 pred_train_cv = best.predict(X_train)
@@ -626,6 +828,14 @@ warned you about. With ten folds, some folds contain no ISLAND training row at
 all, and `handle_unknown="ignore"` then encodes it as an all-zero column and
 says nothing.
 """),
+prompt(
+       label="what an unseen category actually encodes to",
+       input="an encoder fitted without ISLAND, asked to transform ISLAND",
+       output="the resulting row, and its sum",
+       constraint="DEMONSTRATE it rather than describing it — fit without the category and transform with it",
+       left_open="the consequence for cross-validation. With ten folds, some folds contain no ISLAND training row at all, and `handle_unknown='ignore'` then encodes it as an all-zero column and says nothing.",
+       student="setting `handle_unknown='ignore'` because the alternative raises, and never finding out what it does instead. It is the right choice and it is silent.",
+       catch="the sum of the encoded row is zero. Every other district's row sums to one, so the model sees ISLAND as 'none of the above' — which is a prediction, and nobody made it deliberately."),
         code('''
 enc = OneHotEncoder(handle_unknown="ignore").fit(
     housing[["ocean_proximity"]].query("ocean_proximity != 'ISLAND'"))
@@ -639,6 +849,14 @@ print("sum:", enc.transform([["ISLAND"]]).toarray().sum(), "— and no warning")
 Everything so far used only training data. This is the first and last time the
 test set is touched.
 """),
+prompt(
+       label="the test set, once",
+       input="the 4,128 held-out districts",
+       output="the test RMSE with a 95% bootstrap interval, beside the cross-validated estimate",
+       constraint="`method='percentile'` is NOT optional — scipy defaults to BCa, and we are claiming the percentile bootstrap. Name the estimator you mean",
+       left_open="how to read the two numbers together. They agree within the interval, and a gap smaller than the interval is not evidence of anything.",
+       student="tuning after seeing this number. If you adjust hyperparameters to improve it you are fitting the test set, and the improvement will not generalise.",
+       catch="bootstrap the SQUARED ERRORS and take the square root of the interval, rather than bootstrapping the RMSE directly. The mean is what the bootstrap is good at; the square root comes after."),
         code('''
 from scipy import stats
 

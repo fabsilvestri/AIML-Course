@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from make_notebooks import code, header, md, SETUP        # noqa: E402
+from make_notebooks import code, header, md, SETUP, SETUP_PROMPT        # noqa: E402
 from _prompt import prompt                                # noqa: E402
 
 
@@ -60,7 +60,7 @@ def build() -> list:
         thread="impurity, and why averaging reduces variance")
 
     cells += [
-        md("## 1 · Setup and where we left off"), SETUP, prompt(
+        md("## 1 · Setup and where we left off"), SETUP_PROMPT, SETUP, prompt(
                                                                 label="rebuild the previous lecture's state",
                                                                 input="the same dataset, the same seed",
                                                                 output="the identical 48,000 / 12,000 split, the depth-8 tree, and the constant baseline",

@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from make_notebooks import code, header, md, SETUP        # noqa: E402
+from make_notebooks import code, header, md, SETUP, SETUP_PROMPT        # noqa: E402
 from _prompt import prompt                                # noqa: E402
 
 
@@ -40,7 +40,7 @@ def build() -> list:
     cells = header(3, "Finding the rare event", "build", "Chapter 3")
 
     cells += [
-        md("## 1 · Setup"), SETUP,
+        md("## 1 · Setup"), SETUP_PROMPT, SETUP,
         md("""
 ## 2 · The brief
 

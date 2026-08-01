@@ -34,7 +34,16 @@ FIELDS = ("label", "input", "output", "constraint", "check",
 
 
 def module_path(n: int) -> Path:
-    return ROOT / "tools" / "notebooks" / f"lecture_{n:02d}.py"
+    """Where lecture `n`'s cells live.
+
+    Lectures 3 and up have a file each. Lectures 1 and 2 predate that layout
+    and are still functions inside make_notebooks.py, so scanning that file
+    finds BOTH lectures' cells at once — which is fine, because every cell gets
+    a key that is unique within the file it was found in, and the specs file
+    for one lecture simply has no key matching the other's cells.
+    """
+    per_lecture = ROOT / "tools" / "notebooks" / f"lecture_{n:02d}.py"
+    return per_lecture if per_lecture.is_file() else ROOT / "tools" / "make_notebooks.py"
 
 
 def cells_of(src: str) -> list[tuple[int, str, str]]:
@@ -157,7 +166,15 @@ def main() -> int:
             continue
         line_start = src.rfind("\n", 0, start) + 1
         prefix = src[line_start:start]
-        if "prompt(" in src[max(0, line_start - 400):line_start]:
+        # Is there already a box between the PREVIOUS code cell and this one?
+        # The old version searched a fixed 400-character window backwards,
+        # which lands in the MIDDLE of the preceding box — one with eight prose
+        # fields runs to several thousand characters — so it found no
+        # `prompt(`, concluded the cell was unspecified, and inserted a second
+        # box. Lectures 7 and 11 shipped every box twice, and the duplication
+        # is invisible in a cell count.
+        since_prev_cell = src[:line_start].rsplit("code(", 1)[-1]
+        if re.search(r"(?m)^\s*prompt\($", since_prev_cell):
             continue                              # already done
         # `code(` is not always at the start of its line — the setup cell often
         # sits inline in a list literal, `[md(HEADER), md("..."), code(SETUP)]`.

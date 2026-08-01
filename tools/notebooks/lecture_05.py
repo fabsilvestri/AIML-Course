@@ -26,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from make_notebooks import code, header, md, SETUP        # noqa: E402
+from make_notebooks import code, header, md, SETUP, SETUP_PROMPT        # noqa: E402
 from _prompt import prompt                                # noqa: E402
 
 
@@ -44,7 +44,7 @@ probability** of survival and a **defensible cut-off** for assigning a limited
 number of escorts — not a bare label. That one sentence chooses the model
 family before we have looked at a single row.
 """),
-        SETUP,
+        SETUP_PROMPT, SETUP,
         prompt(
             label="the imports, all of them, here",
             input="nothing",
