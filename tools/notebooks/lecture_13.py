@@ -15,6 +15,7 @@ instruments it. Nothing here is repaired — that is the next lecture.
 from __future__ import annotations
 
 import nbformat as nbf
+from _prompt import prompt                                # noqa: E402
 
 
 def md(text: str) -> nbf.NotebookNode:
@@ -53,6 +54,14 @@ def build() -> list:
         md(HEADER),
 
         md("## 1 · Setup"),
+        prompt(
+            label="setup",
+            input="nothing",
+            output="versions, seeds, and the device",
+            constraint="pick the device by asking, and say what to do if the answer is cpu",
+            left_open="that a device mismatch produces a confusing error twenty cells later, in a cell that has nothing to do with devices.",
+            student="hard-coding a device from a tutorial. It raises on the wrong hardware, or silently leaves an accelerator idle for the whole lecture.",
+            catch="everything below still runs on cpu; it is slower. Say so, or a student with no GPU will read the wall clocks as a bug."),
         code('''
 # --- setup -------------------------------------------------------------------
 # Not examinable: engineering hygiene, not machine learning. It is here because
@@ -94,6 +103,15 @@ same number of images — remember that, it decides the metric in section 4.
 ⏱ **1–3 minutes the first time** — about 170 MB over the network. Instant
 afterwards, because `download=True` checks before it fetches.
 """),
+        prompt(
+            label="⏱ 1-3 min first time — the data",
+            input="CIFAR-10",
+            output="50,000 train and 10,000 test images as uint8, and the class names",
+            constraint="assert the class counts are EXACTLY balanced in both splits — that fact decides the metric two sections down",
+            check="assert both shapes and both balance conditions",
+            left_open="that one image is 32×32×3 = 3,072 numbers. That count is the reason the first weight matrix dwarfs the other twenty.",
+            student="assuming CIFAR-10 is shaped like MNIST. It is (N, 32, 32, 3), channels LAST, and a reshape that assumes channels-first produces 3,072 numbers in the wrong order — which trains, badly, and never raises.",
+            catch="`download=True` checks before it fetches, so re-running is instant. A cell that re-downloads 170 MB every run is a cell people stop running."),
         code('''
 train_ds = torchvision.datasets.CIFAR10("datasets", train=True,  download=True)
 test_ds  = torchvision.datasets.CIFAR10("datasets", train=False, download=True)
@@ -122,6 +140,14 @@ Four examples of each class. Two things to notice: the objects are not centred
 or aligned the way the garments in Fashion MNIST were, and the backgrounds vary
 enormously. A pixel at a fixed position means much less here.
 """),
+        prompt(
+            label="look at it",
+            input="four examples of each class",
+            output="a 4 by 10 grid titled by class",
+            constraint="no `cmap` — these are colour images, and forcing a greyscale colormap on a three-channel array either errors or silently shows you one channel",
+            left_open="two things to notice: the objects are not centred or aligned the way the garments in the previous application were, and the backgrounds vary enormously. A pixel at a fixed position means much less here.",
+            student="skipping the picture. This is the cell that tells you why flattening hurts more on CIFAR than on Fashion MNIST, before any model runs.",
+            catch="look at the data with the model's assumptions in mind. We are about to flatten to 3,072 numbers, and the grid shows exactly what that throws away."),
         code('''
 chosen = np.concatenate([np.where(ytr == c)[0][:4] for c in range(10)])
 fig, axes = plt.subplots(4, 10, figsize=(13, 5.6))
@@ -144,6 +170,15 @@ We flatten each image to a vector of 3,072 numbers. That throws away the fact
 that neighbouring pixels are neighbours — which is the whole subject of Lecture
 15. Today it is deliberate: we are studying depth, not vision.
 """),
+        prompt(
+            label="split, THEN scale",
+            input="the training images",
+            output="standardised fit, validation and test matrices",
+            constraint="compute mu and sd on the FIT subset only, then apply them to all three — the rule from Lecture 2 has not been repealed by anything in Part II",
+            check="assert the fit subset is standardised, and print the validation mean and sd, which will NOT be exactly 0 and 1",
+            left_open="why the validation mean should not be exactly zero. Those statistics came from a different set of images — a pipeline in which every split has mean exactly zero is a pipeline that fitted the scaler on everything.",
+            student="standardising before splitting, which makes all three means exactly zero and looks tidier. That tidiness is the leak.",
+            catch="the `+ 1e-7` on the standard deviation. CIFAR has no constant pixels, but a dataset with one gives a divide-by-zero that propagates NaN through every layer and shows up as a loss of nan five cells later."),
         code('''
 N_FIT, N_VAL = 10_000, 5_000
 
@@ -189,6 +224,14 @@ defensible. Lecture 4 was about what happens when they do not hold.
 
 So compute the trivial baseline **before** committing to anything.
 """),
+        prompt(
+            label="the metric, and the number to beat",
+            input="the test labels",
+            output="the majority-class accuracy and the loss of a model that has learned nothing",
+            constraint="print BOTH anchors — the accuracy baseline and ln(10), because the loss curve is what you will actually be staring at",
+            left_open="the three conditions under which plain accuracy is defensible: balanced classes, ten of them, and no class more expensive to get wrong than another. All three hold here and the previous application was about what happens when they do not.",
+            student="not computing ln(10) = 2.3026. The training loss in this notebook sits at that value for twenty epochs, formatted to four decimal places, and without the anchor it reads as a number that is going down.",
+            catch="a loss anchor is as important as an accuracy anchor and almost nobody prints one. ln(k) for k balanced classes, one line, before anything trains."),
         code('''
 counts = np.bincount(y_test, minlength=10)
 baseline = counts.max() / counts.sum()
@@ -221,6 +264,15 @@ head. Note what the specification does **not** say: nothing about how the
 weights start out. That is not an omission we are hiding — it is the ordinary
 case, and it is the subject of the next lecture.
 """),
+        prompt(
+            label="build the stack",
+            input="twenty hidden layers of a hundred units, logistic activation",
+            output="the network, its parameter count, and where the parameters are",
+            constraint="break the parameter count down by layer — the first matrix is 3,072 × 100 and the other nineteen are 100 × 100, so most of the parameters are in one place",
+            check="assert there are DEPTH+1 weight matrices, one per layer plus the head",
+            left_open="what the specification does NOT say: anything about how the weights start out. That is not an omission being hidden — it is the ordinary case, and it is the subject of the next lecture.",
+            student="assuming twenty layers means twenty times the capacity. The parameter count says otherwise, and the accuracy says otherwise again.",
+            catch="count the weight matrices with an assert rather than trusting the loop. An off-by-one in a layer-building loop gives a network that trains and is not the one you described."),
         code('''
 DEPTH, WIDTH, N_IN, N_OUT = 20, 100, 3072, 10
 
@@ -248,6 +300,15 @@ print(f"  head   {WIDTH} x {N_OUT} + {N_OUT} = {WIDTH*N_OUT + N_OUT:,}")
 
 Nobody said. Look.
 """),
+        prompt(
+            label="what did nn.Linear put in there",
+            input="one hidden weight matrix",
+            output="its min, max, mean and standard deviation, against the documented default",
+            constraint="check the sd against b/√3, the standard deviation of a uniform on (−b, b) — that identity is what turns 'it looks uniform' into a verified claim",
+            check="assert the measured sd matches to within 0.002",
+            left_open="that nobody chose this. It is U(−1/√fan_in, +1/√fan_in), scikit-learn's PyTorch equivalent of a default nobody asked for, and it is the direct cause of everything that follows.",
+            student="never looking. The initialisation is the single most important unstated choice in this notebook and it takes four lines to read it off.",
+            catch="reviewer question 5 applied to weights. Any tensor you did not fill yourself was filled by someone, according to a rule you can look up and check."),
         code('''
 w = lins[1].weight.detach()
 bound = 1 / math.sqrt(WIDTH)
@@ -271,6 +332,14 @@ batches.
 
 ⏱ **about 40–90 seconds** for 20 epochs, depending on the runtime.
 """),
+        prompt(
+            label="⏱ 40-90 s — train it",
+            input="the twenty-layer stack",
+            output="the loss curve, validation and test accuracy, against the baseline",
+            constraint="the loop is the previous lecture's with all three defences — zero_grad inside the batch loop, eval() before every measurement, accuracy counted over the set",
+            left_open="`track_grads=True`, which records the per-layer gradient norm every epoch. Nothing uses it until section 10, and it costs one line to collect and cannot be collected retroactively.",
+            student="not instrumenting the first run, then having to retrain to diagnose. Log the cheap thing while you have the chance.",
+            catch="print the loss at epoch 1 and at epoch 20 beside ln(10). Three numbers, and they say the whole thing before any plot."),
         code('''
 EPOCHS, BATCH, LR = 20, 128, 1e-3
 
@@ -327,6 +396,14 @@ print(f"validation accuracy {hist['val_acc'][-1]:.4f}")
 print(f"TEST accuracy       {accuracy(deep, Xt, yt):.4f}")
 print(f"baseline            {baseline:.4f}")
 '''),
+        prompt(
+            label="the curves that show nothing happening",
+            input="the recorded history",
+            output="training loss with ln(10) marked, and validation accuracy with 10% marked",
+            constraint="draw BOTH anchor lines, and cap the accuracy axis at 30% — autoscaling a flat line at 10% produces a dramatic-looking chart of noise",
+            left_open="that a flat loss at ln(10) is the network telling you it has learned nothing, and it looks identical to a network that is learning slowly.",
+            student="letting matplotlib autoscale. A y-axis from 0.0998 to 0.1013 turns pure noise into a trend, and it is the most common way a true plot lies.",
+            catch="fix the axis limits when you are showing that something did NOT happen. Autoscale is for exploring; a fixed axis is for claiming."),
         code('''
 fig, ax = plt.subplots(1, 2, figsize=(12, 3.6))
 ax[0].plot(range(1, EPOCHS+1), hist["loss"], marker="o")
@@ -346,6 +423,14 @@ Lecture 12 ended with a checklist of failures that run, produce a plausible
 number and never raise. All of them would look exactly like this. Check them
 rather than assuming.
 """),
+        prompt(
+            label="rule out the bugs before blaming the architecture",
+            input="the checklist from the previous lecture",
+            output="a label-image alignment check, and a deliberate overfit of 200 images",
+            constraint="check that the SAME loop can memorise 200 images with 2 layers — if it cannot, the loop is the bug and the depth is irrelevant",
+            left_open="that all four of the previous lecture's silent failures would look exactly like this result. Checking them rather than assuming is what separates a diagnosis from a guess.",
+            student="concluding 'deep networks are hard' and moving on. Every failure mode on that checklist produces a plausible number and never raises, and three of them are one line each to rule out.",
+            catch="the overfit test is the strongest single diagnostic in deep learning. A loop that cannot memorise a tiny sample is broken; a loop that can is not the reason your model does not learn."),
         code('''
 # 1. is zero_grad inside the batch loop?  Read `train` above: yes, line 1.
 # 2. is eval() used for every measurement? `accuracy` calls it: yes.
@@ -374,6 +459,15 @@ One variable changes.
 
 ⏱ **about 2 minutes** for the whole sweep.
 """),
+        prompt(
+            label="⏱ 2 min — the control",
+            input="the same code at depths 1, 2, 5, 10 and 20",
+            output="final loss and test accuracy at each depth",
+            constraint="re-seed before every fit so the only variable is depth",
+            check="assert depth 2 beats depth 20 — if it does not, depth is not the variable and the rest of the lecture is about the wrong thing",
+            left_open="that adding layers made it WORSE. That is not what capacity is supposed to do, and the rest of the notebook is about why.",
+            student="testing only the failing configuration. One number is a result; two numbers that differ in one variable is a finding.",
+            catch="an assert that encodes the premise of the lecture. If it fires, stop and re-diagnose rather than continuing to instrument the wrong thing."),
         code('''
 sweep = {}
 for k in (1, 2, 5, 10, 20):
@@ -405,6 +499,14 @@ error. It reports a number.
 
 **Read before running.**
 """),
+        prompt(
+            label="⚠ what the assistant returns",
+            input="'write me a deep PyTorch classifier for CIFAR-10 with 20 hidden layers and train it for a few epochs'",
+            output="a trained model and its test accuracy",
+            constraint="run it exactly as returned — the zero_grad, the eval() and the whole-set metric are ALL there, and a review looking for the previous lecture's failures finds nothing",
+            left_open="the review question that does catch it, and it is not 'does it run'. It is: what would this number be if the model had learned nothing at all?",
+            student="accepting it, because it is correct code. Every line is defensible and the result is indistinguishable from guessing — the defect is an absence, not a mistake.",
+            catch="'Epoch 5, Loss: 2.3026' is five decimal places of nothing, formatted to look like progress. Anchor every loss you print."),
         code('''
 # --- what the assistant returned ---------------------------------------------
 class DeepClassifier(nn.Module):
@@ -457,6 +559,14 @@ The question is the one this course asks of every number:
 
 Ten balanced classes: 10%. Compare that with what it printed.
 """),
+        prompt(
+            label="the comparison the assistant did not make",
+            input="its accuracy and the baseline",
+            output="the difference, in accuracy points",
+            constraint="print the difference explicitly rather than leaving the reader to subtract",
+            left_open="that the loss never left ln(10) either, epoch after epoch. Two independent signals, both available, neither compared to anything.",
+            student="reading '10.24%' as a low but real score. Against a baseline of 10.00% it is not a low score, it is no score.",
+            catch="the corrected specification has three additions and each is something the assistant cannot know unless you say it: what a defensible default is, what the number must be compared against, and what evidence to produce when the answer is 'it did not work'."),
         code('''
 print(f"the assistant's model:  {acc:.4f}")
 print(f"a model with no weights at all: {baseline:.4f}")
@@ -490,6 +600,15 @@ what each layer **outputs** on the way forward, and what each weight matrix
 
 Start with the forward pass.
 """),
+        prompt(
+            label="instrument the forward pass",
+            input="512 training images through the trained network",
+            output="mean, sd over the whole tensor, sd down the batch, and a saturation fraction, per layer",
+            constraint="report TWO standard deviations — over the whole tensor and down the BATCH — because they say opposite things and only one is about the signal",
+            check="assert one row per hidden layer before reading anything off it",
+            left_open="that the whole-tensor sd is dominated by the spread of that layer's random BIASES across units, which does not change with depth. It stays near 0.07 at layer 20 and the network looks alive.",
+            student="reading `h.std()` and concluding the forward pass is healthy. What carries information is how much a unit's output moves when the INPUT changes — sd down the batch, averaged over units — and that collapses by sixteen orders of magnitude.",
+            catch="the saturated column is worse than useless here, and the notebook says so. It asks whether |h − 0.5| > 0.45 while the activations sit in a band of sd 0.071 — 6.3 standard deviations away, unreachable, and 0.000 at every depth reads as reassurance."),
         code('''
 @torch.no_grad()
 def activation_stats(net, X, n=512):
@@ -528,6 +647,14 @@ ratio = stats[19]["sd"] / stats[0]["sd"]
 print(f"\\nsignal at layer 20, relative to layer 1: {ratio:.2e}")
 print(f"per layer that is a factor of {ratio ** (1/19):.3f}")
 '''),
+        prompt(
+            label="the same layers, on the axis that matters",
+            input="the activation statistics",
+            output="two plots — the misleading one on a linear axis, then the signal on a log axis",
+            constraint="draw BOTH, in that order. The first is what you would have plotted; the second is what is true",
+            left_open="that sixteen orders of magnitude cannot be shown on a linear axis. A quantity that spans that range and is plotted linearly is a flat line at zero.",
+            student="plotting only the first. It is the natural choice, it is not wrong as a plot, and it supports exactly the wrong conclusion.",
+            catch="when a quantity might span orders of magnitude, try a log axis before concluding it is constant. Flat on linear and flat on log are very different findings."),
         code('''
 plt.figure(figsize=(7, 3.2))
 plt.plot(range(1, DEPTH+1), [s["mean"] for s in stats], marker="o", label="mean")
@@ -588,6 +715,15 @@ and if the smallest gradients were near 1e-20 then squaring them would underflow
 to exactly zero in float32 and the plot would be a lie. We check that it does
 not, rather than assuming.
 """),
+        prompt(
+            label="the backward pass, in float64",
+            input="eight batches through a freshly initialised network",
+            output="the mean gradient norm per weight matrix, in both precisions",
+            constraint="average over EIGHT batches — one batch of 128 is a noisy estimate of anything, and a course that says so should not then quote one",
+            check="assert no float32 gradient underflowed to exactly zero, and report the largest disagreement between the two precisions",
+            left_open="why float64 is not superstition here. A norm is a sum of squares, so gradients near 1e-20 would square to exactly zero in float32 and the plot would be a lie. The cell CHECKS that they do not rather than assuming.",
+            student="measuring in float32 and plotting a floor that is the dtype rather than the network. The assert is what distinguishes the two.",
+            catch="when you plot something tiny on a log axis, check it did not underflow. A log plot of zeros is blank, and a log plot of denormals is noise."),
         code('''
 def grad_profile(net_factory, X, y, n_batches=8, dtype=torch.float64):
     torch.manual_seed(RANDOM_STATE)
@@ -617,6 +753,14 @@ for i in (0, 4, 9, 14, 19, 20):
     name = "head" if i == DEPTH else f"layer {i+1}"
     print(f"{name:>8s}   ||dL/dW|| = {g64[i]:.4e}")
 '''),
+        prompt(
+            label="a straight line on a log axis",
+            input="the gradient profile",
+            output="the norm per layer, and the per-layer attenuation factor",
+            constraint="compute the per-layer factor as a GEOMETRIC mean of the consecutive ratios, and verify it by raising it to the 19th power",
+            left_open="what a straight line on a log axis means: the attenuation is not an accident of one layer, it is the SAME factor applied nineteen times.",
+            student="taking an arithmetic mean of the ratios, which is dominated by whichever layer happens to be largest and does not reproduce the end-to-end number.",
+            catch="the self-check in the last print. If the per-layer factor to the 19th does not reproduce the measured end-to-end ratio, one of the two is wrong and you have found out in one line."),
         code('''
 plt.figure(figsize=(8, 3.4))
 plt.semilogy(range(1, len(g64)+1), g64, marker="o")
@@ -648,6 +792,14 @@ They are what the next lecture derives from first principles.
 We logged the per-layer gradient norms at every epoch. If the first layers were
 merely slow to start, the profile would flatten as the network learns.
 """),
+        prompt(
+            label="does training rescue it",
+            input="the per-layer gradient norms recorded at every epoch",
+            output="the profile at epochs 1, 5, 10 and 20",
+            constraint="plot several epochs on ONE axis — the question is whether the shape changes, and one epoch per panel cannot answer it",
+            left_open="what it would look like if the first layers were merely slow to start: the profile would flatten as the network learns. It does not.",
+            student="assuming more epochs will fix it. Twenty epochs of Adam did not move the first layer's gradient into a range where a learning rate of 1e-3 could do anything with it.",
+            catch="this is why the instrumentation had to go in before the first training run. The question 'did it change over time' cannot be asked retroactively."),
         code('''
 G = np.array(hist["grad"])            # (epochs, layers)
 plt.figure(figsize=(8, 3.4))
@@ -672,6 +824,14 @@ by a signal that is fifteen orders of magnitude below the last ones, and it is
 almost entirely noise from the eight-batch spread. Check what the weights
 actually did over twenty epochs.
 """),
+        prompt(
+            label="what the weights actually did",
+            input="the initial weights, reproduced, against the trained ones",
+            output="the relative change in each layer's weights over twenty epochs",
+            constraint="reproduce the initial weights by RE-SEEDING — `train` does not re-initialise the network it is handed, so the same seed gives exactly the tensors `deep` started from",
+            left_open="why this is not simply 'small gradient, small step'. Adam divides by a running estimate of the gradient's own magnitude, so the step size is not proportional to the gradient — but the first layers are driven by a signal fifteen orders of magnitude below the last ones, and it is almost entirely noise.",
+            student="keeping a reference to the network before training and being surprised it changed. PyTorch trains in place; the only clean copy is one you clone or one you reconstruct from the seed.",
+            catch="relative change, not absolute. A weight matrix with small entries and one with large entries cannot be compared by the norm of their differences."),
         code('''
 # Re-seeding reproduces exactly the weights `deep` started from, because
 # `train` does not re-initialise the network it is handed.
@@ -705,6 +865,14 @@ Per-layer attenuation factor:              ____________
 Do not repair anything. The next lecture derives that per-layer factor from
 the shape of the weight matrices — and then removes it.
 """),
+        prompt(
+            label="record the number, and stop",
+            input="everything measured",
+            output="baseline, both depths, both gradient norms, and the attenuation factor",
+            constraint="the baseline goes in the table, at the top",
+            left_open="that nothing is repaired. You have a network that runs, a loop that is provably correct, and a result indistinguishable from guessing — and that is the deliverable.",
+            student="fixing it. The next lecture derives the per-layer factor from the shape of the weight matrices and then removes it, and it needs the measurement to derive it against.",
+            catch="photograph this table. The per-layer attenuation is the number the next lecture predicts from first principles, and predicting a number you have already seen is not the same exercise."),
         code('''
 print("=" * 62)
 print(f"{'baseline (majority class)':38s} {baseline:.4f}")
