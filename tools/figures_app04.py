@@ -531,7 +531,13 @@ def fig_confusion(D, tree):
     # Authored at the height it is shown at. Taller than the .fig cap and
     # the slide shrinks the whole image, TEXT INCLUDED, so the same
     # fontsize arrives on screen smaller here than on the plot beside it.
-    fig, ax = plt.subplots(figsize=(6.4, 5.1))
+    #
+    # 5.1in was still too tall: bbox_inches="tight" grows the saved figure past
+    # the requested size to fit the rotated tick labels, so the SVG came out
+    # 442pt = 589 CSS px against a 528 cap and was scaled to 0.90 — its labels
+    # landing 10% smaller than the plot beside them. 4.5in leaves room for that
+    # growth. The cells are a little flatter; nothing else changes.
+    fig, ax = plt.subplots(figsize=(6.4, 4.5))
     im = ax.imshow(cm * 100, cmap="Blues", vmin=0, vmax=100)
     ax.set_xticks(range(7), COVER_TYPES, rotation=40, ha="right")
     ax.set_yticks(range(7), COVER_TYPES)

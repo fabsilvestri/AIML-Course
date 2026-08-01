@@ -1480,11 +1480,28 @@ def check_text_floor() -> list[str]:
         ratio = px_per_pt * scale
         if ratio < FIG_RATIO_WARN:
             down = 100 * (1 - ratio / FIG_RATIO_NOMINAL)
+            # How short would it have to be? A figure is unclamped when its
+            # rendered height fits the cap, i.e. aspect <= cap / CANVAS_W. Say
+            # so, because "author it shorter" is useless advice for a 7x7
+            # confusion matrix — a near-square figure would have to lose half
+            # its height, and a check that gives impossible advice is one
+            # people learn to scroll past.
+            need = cap / CANVAS_W
+            have = nh / CANVAS_W
             line = (f"{name}: text is {ratio:.2f} on-slide px per authored "
                     f"point, {down:.0f}% under the {FIG_RATIO_NOMINAL:.2f} of an "
                     f"unclamped figure — clamped by height ({nh:.0f}px natural, "
-                    f"cap {cap}). Author it shorter, or move its explanatory "
-                    f"panel into the slide's HTML.")
+                    f"cap {cap}).")
+            if have <= need * 1.35:
+                line += (f" Lose {nh - cap:.0f}px of height and it is unclamped: "
+                         f"move an explanatory panel into the slide's HTML "
+                         f"(tools/trim_diagram.py), or tighten the layout.")
+            else:
+                line += (f" It is {have:.2f} tall per unit width against the "
+                         f"{need:.2f} an unclamped figure gets, so shortening "
+                         f"is not the fix — this shape cannot fit. Author its "
+                         f"type {FIG_RATIO_NOMINAL / ratio:.2f}x larger so it "
+                         f"lands beside its neighbours at the right size.")
             (problems if ratio < FIG_RATIO_FAIL else warnings_).append(line)
     if warnings_:
         print(f"\n{len(warnings_)} figure(s) a little smaller than their "
