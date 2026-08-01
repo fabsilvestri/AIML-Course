@@ -17,6 +17,7 @@ is about 20 GB and is never downloaded; only the official annotation file and
 from __future__ import annotations
 
 import nbformat as nbf
+from _prompt import prompt                                # noqa: E402
 
 
 def md(text: str) -> nbf.NotebookNode:
@@ -156,8 +157,25 @@ def build() -> list:
     return [
         md(HEADER),
 
-        md("## 1 · Setup"), code(SETUP),
-        md("## 2 · The corpus, and exactly how big it is"), code(DOWNLOAD),
+        md("## 1 · Setup"),prompt(
+                                  label="setup",
+                                  input="nothing",
+                                  output="versions, one seed, the device, and the corpus size as a named constant",
+                                  constraint="`N_IMAGES = 128` as a NAMED constant with a comment saying to say it out loud — every number this notebook prints is a measurement on 128 images",
+                                  left_open="that COCO's val2017 split is 5,000 images and the full release is about 20 GB. Neither is downloaded here, and the notebook says so in three places.",
+                                  student="quoting a number from this notebook as 'the COCO result'. It is a 128-image result, and the difference is a factor of forty in sample size.",
+                                  catch="when a notebook works on a subset, put the subset size in a constant with a name, not a literal in a slice. It then appears in every printout that uses it."),
+                            code(SETUP),
+        md("## 2 · The corpus, and exactly how big it is"),prompt(
+                                                                  label="⏱ 60-90 s — the corpus, and exactly how big it is",
+                                                                  input="COCO's annotation file and 128 JPEGs",
+                                                                  output="the annotation blob, the 128 chosen images, and the files on disk",
+                                                                  constraint="choose the images by a RULE — the 128 numerically lowest image ids — so that nobody chose which images make the detector look good",
+                                                                  check="assert exactly N_IMAGES were selected",
+                                                                  left_open="that the annotation file is 241 MB and is the larger of the two downloads. It is the only way to have real ground-truth boxes at all.",
+                                                                  student="picking images that look interesting, or the first 128 in file order, which on COCO is not the same as id order and is not reproducible across mirrors.",
+                                                                  catch="a selection rule you can state in one sentence is a selection rule somebody can check. 'The lowest 128 ids' is; 'a representative sample' is not."),
+                                                            code(DOWNLOAD),
         md("""
 ### 2.1 · Ground truth
 
@@ -170,6 +188,15 @@ the first time:
    rather than boxing them separately. Dropping those is a *choice*, it changes
    every count below, and this is where it is recorded.
 """),
+        prompt(
+            label="ground truth, converted once at the edge",
+            input="COCO's annotations for the 128 images",
+            output="corner-form boxes and labels per image, with the crowd regions counted and dropped",
+            constraint="COCO stores [x, y, w, h] and torchvision emits [x1, y1, x2, y2]. Convert HERE and nowhere else — from this cell on, every box in memory is corners",
+            check="assert x2 ≥ x1 and y2 ≥ y1 on every box, which is exactly the assertion that fires if w was read as x2",
+            left_open="that dropping `iscrowd=1` is a CHOICE. One polygon drawn around many instances is not one object and not n objects — it is a refusal to decide — and it changes every count below.",
+            student="mixing the two conventions, which is the commonest bug in this material. A [x,y,w,h] box read as corners has x2 = width, so it is a box in the top-left corner and the IoU against it is near zero for everything.",
+            catch="convert at the boundary of your program, assert the invariant immediately, and never carry two conventions in the same variable name."),
         code(GROUND_TRUTH),
 
         md("""
@@ -179,6 +206,14 @@ the first time:
 categories, and a mean over categories does not care that one of them is 39% of
 the corpus.
 """),
+        prompt(
+            label="what is in it",
+            input="the ground-truth labels",
+            output="how many categories appear, and the eight commonest",
+            constraint="print `person` as a SHARE of every annotated object, not just as a count",
+            left_open="why that share matters later. The next lecture starts averaging over categories, and a mean over categories does not care that one of them is 39% of the corpus.",
+            student="not looking at the class distribution, then being surprised when a per-category mean and an overall figure disagree wildly.",
+            catch="only some of the 80 categories appear in 128 images. Any per-category metric will have empty categories in it, and what you do about those changes the mean."),
         code('''
 import collections
 
@@ -204,6 +239,15 @@ Before adopting any metric, this course computes what the stupidest possible
 system scores under it. For detection, the stupidest possible system is
 **one box per image, covering the whole image**.
 """),
+        prompt(
+            label="the baseline that kills the obvious metric",
+            input="one box per image, covering the whole image",
+            output="how many true objects it overlaps",
+            constraint="test the OBVIOUS metric — a detection is correct when its box overlaps the true box — against the stupidest possible system before adopting it",
+            check="assert it hits every object, which also verifies no annotated box lies outside its own image",
+            left_open="that the metric is dead once this prints 100%. It rewards a box for being enormous and nothing in it punishes size.",
+            student="adopting overlap-based matching because it is computable, unambiguous and parameter-free. All three are true and it is still worthless.",
+            catch="compute what the stupidest possible system scores under any metric BEFORE adopting it. Here that takes six lines and rules out the obvious choice."),
         code('''
 def overlaps(a, b):
     """Do two corner-form boxes share any area at all?"""
@@ -231,6 +275,14 @@ and nothing in it punishes size.
 So today's metric is the one thing left that the whole-image box loses at:
 **counting**.
 """),
+        prompt(
+            label="the metric we can defend",
+            input="predicted and true object counts",
+            output="the mean absolute error, and two trivial baselines",
+            constraint="assert the two arrays have the same shape — a count vector of the wrong length broadcasts silently and gives a plausible number",
+            left_open="that counting is the one thing left that the whole-image box loses at. It is not a good metric; it is the one that survives the baseline test.",
+            student="comparing per-image counts against a scalar mean and getting a number that means nothing, because numpy broadcast it.",
+            catch="a system that never opens the image scores 6.02. Every number below has to be read against that."),
         code('''
 def count_mae(pred_counts, true_counts):
     pred_counts = np.asarray(pred_counts)
@@ -270,6 +322,15 @@ them rather than fitting them.
 
 ⏱ the weights are about 167 MB; the download happens once.
 """),
+        prompt(
+            label="the detector — nothing is trained here",
+            input="torchvision's COCO-trained weights",
+            output="the model in eval mode, its preprocessing, and its category names",
+            constraint="assert that the model's label integers ARE COCO's category_ids — the comparison further down is only legitimate if they agree",
+            check="the name-agreement assert, plus `names[1] == 'person'`",
+            left_open="that there are 91 label slots for 80 categories. COCO's ids are not contiguous, and the gaps are why the assert is worth writing rather than assuming.",
+            student="building a mapping from the model's index order to COCO ids by hand. It is unnecessary here and it is wrong in a way that shifts every category by a few positions.",
+            catch="print the weights' own reported metrics on the full 5,000 images. Your 128-image number should be read next to it, not instead of it."),
         code('''
 from torchvision.models.detection import (
     fasterrcnn_resnet50_fpn, FasterRCNN_ResNet50_FPN_Weights)
@@ -299,6 +360,15 @@ minutes on a CPU-only runtime. It varies with what else the machine is doing:
 the same loop took 39 s on an idle laptop and 102 s on a busy one. No output
 does not mean it has hung.
 """),
+        prompt(
+            label="⏱ 1-2 min on GPU, longer on CPU — run it",
+            input="the 128 images",
+            output="predictions per image, and the wall clock per image",
+            constraint="`torch.inference_mode()` — no graph and no gradients, which matters here because a detector's intermediate tensors are large",
+            check="assert one prediction per image",
+            left_open="that the timing varies with what else the machine is doing. The same loop took 39 s on an idle laptop and 102 s on a busy one, and no output does not mean it has hung.",
+            student="using `no_grad()` and wondering about the memory. `inference_mode` is stronger — it also skips version counting — and for a pure evaluation loop there is no reason not to.",
+            catch="move the predictions to CPU numpy inside the loop. Keeping 128 sets of GPU tensors alive is how the next cell fails for a reason that has nothing to do with the next cell."),
         code('''
 t0 = time.time()
 preds = {}
@@ -316,6 +386,14 @@ print(f"{N_IMAGES} images in {elapsed:.1f} s "
         md("""
 ### 5.2 · Read the shape before you read the answer
 """),
+        prompt(
+            label="read the shape before the answer",
+            input="one image's predictions",
+            output="the shape and dtype of every returned array",
+            constraint="assert the three arrays are the same length AND that scores come back sorted descending — everything below relies on both",
+            left_open="the number itself: this image has far more boxes than it has annotated objects. That is reviewer question 3 answering reviewer question 5 before it is asked.",
+            student="going straight to the counting. A shape of 88 for a photograph with twenty annotated objects should stop you, and it is visible one cell before the bug.",
+            catch="assert the sort order rather than assuming it. Several detection APIs return unsorted boxes, and code that slices the 'top k' silently takes an arbitrary k."),
         code('''
 p = preds[images[0]["id"]]
 for k, v in p.items():
@@ -337,6 +415,14 @@ print(f"\\nthis image has {len(p['boxes'])} boxes and "
 **⚠ Read before running.** Everything in that request is true and none of it is
 wrong. One constraint is missing. Find it before you scroll.
 """),
+        prompt(
+            label="⚠ what the assistant returns",
+            input="'count how many objects are in each image and print the MAE against the COCO annotations'",
+            output="the mean count and the MAE",
+            constraint="run it exactly as written — everything in that request is true and none of it is wrong. ONE constraint is missing",
+            left_open="reviewer question 5. `len(pred['boxes'])` is the number of rows the model CHOSE to return: everything above `box_score_thresh`, which defaults to 0.05, capped at `box_detections_per_img`, which defaults to 100. It is not a count of objects, it is a count of CANDIDATES.",
+            student="this exact line. It runs, it prints a plausible number, and the number is wrong by a factor of nine.",
+            catch="whenever a library hands you a variable-length result, ask what decided the length. Two defaults decided this one and neither was mentioned in the prompt or the output."),
         code('''
 # the code the request returns — it runs, and it prints a plausible number
 counts_naive = np.array([len(preds[im["id"]]["boxes"]) for im in images])
@@ -357,6 +443,14 @@ for a photograph with twenty annotated objects in it should stop you.
 
 **Now measure the damage.** Do not estimate it.
 """),
+        prompt(
+            label="measure the damage, do not estimate it",
+            input="every score the model returned",
+            output="how many are below 0.10, how many at or above 0.50, the median, and whether the per-image cap was hit",
+            constraint="show that the CAP was reached — 100 boxes for one image is the default `box_detections_per_img`, not a property of the photograph",
+            left_open="that the median score is low enough to make the point on its own. Half the returned boxes are things the model barely believes in.",
+            student="guessing that the threshold 'probably doesn't matter much'. The distribution is in memory and takes four lines to summarise.",
+            catch="a count that hits a round number like exactly 100 is almost always a cap rather than a measurement. Look it up before interpreting it."),
         code('''
 scores = np.concatenate([preds[im["id"]]["scores"] for im in images])
 print(f"boxes returned in total: {len(scores):,}")
@@ -381,6 +475,15 @@ print(f"\\nmost boxes returned for one image: {counts_naive.max()} "
 Three additions: name the parameter, demand the baseline, assert the
 relationship. The third is the one that fails loudly.
 """),
+        prompt(
+            label="the corrected version",
+            input="the predictions and an explicit threshold",
+            output="the count MAE, the signed bias, and the baseline",
+            constraint="NO DEFAULT on the threshold — a count of objects is meaningless without saying which detections were counted",
+            check="assert the kept count never exceeds the returned count, and assert the MAE beats the one-box-per-image baseline",
+            left_open="that THRESH = 0.5 was chosen BEFORE looking at the error curve. The comment says so, and the next section is about what happens if it is not.",
+            student="giving the function a default of 0.5 to make it convenient. The convenience is exactly what let the bug through one cell earlier.",
+            catch="the signed bias beside the absolute one. A MAE of 3.00 that is entirely over-counting is a different system from one that is balanced, and only the signed figure distinguishes them."),
         code('''
 def count_objects(pred, thresh):
     """Objects detected at or above `thresh`.
@@ -416,6 +519,14 @@ Nothing raised. Nothing warned. The number just looked plausible.
 Sweep it and watch the answer to the stakeholder's question move by a factor of
 ten.
 """),
+        prompt(
+            label="the threshold is a knob, and nobody chose it",
+            input="nineteen thresholds",
+            output="mean count and MAE at each, with the reported one marked",
+            constraint="mark the value we report, and find the BEST one — then refuse to report the best",
+            left_open="why we refuse. The best threshold was found on the same 128 images we then report on, which is choosing a hyperparameter on the test set — the failure from application 3, wearing a detection costume.",
+            student="reporting the minimum of the sweep. It is lower, it is honestly computed, and it is selection on the evaluation set.",
+            catch="the answer to the stakeholder's question moves by a factor of ten across this sweep. A single count with no threshold stated is not an answer."),
         code('''
 ts = np.round(np.arange(0.05, 0.96, 0.05), 2)
 rows = []
@@ -441,6 +552,14 @@ Three images with their predicted boxes. Labels are drawn only for confident
 detections, because a crowded image stacks fourteen captions on top of each
 other and an illegible figure teaches nothing.
 """),
+        prompt(
+            label="look at the pictures, not only at the number",
+            input="three images with their detections",
+            output="boxes drawn, with labels only on confident detections",
+            constraint="label only above a high score — a crowded image stacks fourteen captions on top of each other and an illegible figure teaches nothing",
+            left_open="what you will see: two boxes on one object, one a little too large, one confident about nothing at all. Some of them are visibly wrong.",
+            student="drawing every label, producing a figure that is unreadable, and concluding the visual check is not worth doing.",
+            catch="try to write down a number for 'how wrong is that box'. You cannot, and neither can the metric you committed to."),
         code('''
 def show(iid, thresh=THRESH, label_above=0.90, ax=None):
     im = next(i for i in images if i["id"] == iid)
@@ -473,6 +592,14 @@ large, one confident about nothing at all.
 **You have no way to say how wrong.** Try it: write down a number for "how
 wrong is that box". You cannot, and neither can the metric you committed to.
 """),
+        prompt(
+            label="two systems the metric cannot tell apart",
+            input="nine true boxes, and the same nine shifted 400 pixels",
+            output="the count error of each",
+            constraint="construct the counterexample rather than describing it — both systems emit nine boxes for an image with nine objects, and one puts them on the objects",
+            left_open="that this is a proof, not an illustration. The committed metric scores both perfect, so no amount of tuning it can distinguish them.",
+            student="accepting 'counting is a weak metric' as a general remark. Two arrays and three prints turn it into something you cannot argue with.",
+            catch="when you suspect a metric is blind to something, build the pair it cannot separate. If you can, the metric is dead for that purpose."),
         code('''
 # Two systems your metric cannot tell apart. Both emit nine boxes for an
 # image with nine objects; one puts them on the objects and one does not.
@@ -503,6 +630,14 @@ Whatever repairs this has to:
 Write yours as a function of two corner-form boxes, and test it on two
 identical boxes and on two that do not touch.
 """),
+        prompt(
+            label="propose the missing number",
+            input="two corner-form boxes",
+            output="your own overlap score, tested on an identical pair and a disjoint pair",
+            constraint="four requirements: 1 for identical boxes, 0 for disjoint ones, punishes too-large AND too-small, and dimensionless so a 40-pixel cup and a 400-pixel sofa are on one scale",
+            left_open="deliberately everything. The body raises NotImplementedError and it is yours to write before the next lecture.",
+            student="satisfying three of the four. Dropping requirement 2 lets the whole-image box win again; dropping 3 lets a one-pixel box in the right place win.",
+            catch="if your formula does something odd for the DISJOINT pair, do not fix it. That is the interesting case, and the next lecture is largely about it."),
         code('''
 def my_box_score(a, b):
     """Your formula. Replace the body.
