@@ -15,6 +15,7 @@ The deck fine-tunes on 20,000 reviews; this notebook uses 2,000 and scores on
 from __future__ import annotations
 
 import nbformat as nbf
+from _prompt import prompt                                # noqa: E402
 
 
 def md(text: str) -> nbf.NotebookNode:
@@ -51,6 +52,14 @@ def build() -> list:
         md(HEADER),
 
         md("## 1 · Setup and the same corpus"),
+        prompt(
+            label="setup, and one line that has to be first",
+            input="nothing",
+            output="thread settings, then versions, seeds and the device",
+            constraint="set the OpenMP variables BEFORE torch is imported — they are read at import time, and after that they do nothing",
+            left_open="why they are there at all. On macOS, PyTorch and scikit-learn each ship their own OpenMP runtime, and with both loaded the KMeans cell near the end of this notebook deadlocks.",
+            student="moving the imports to the top for tidiness, which restores the deadlock — and a deadlock is not an error message, it is a cell that never finishes.",
+            catch="when an environment variable must precede an import, say so in a comment beside it. The next person to tidy the file has no other way to know."),
         code('''
 # Not examinable, and only needed on macOS: PyTorch and scikit-learn each ship
 # their own OpenMP runtime, and with both loaded the KMeans cell near the end of
@@ -85,6 +94,15 @@ else:
     device = "cpu"
 print(f"device  {device}")
 '''),
+        prompt(
+            label="the same corpus, the same split",
+            input="the IMDb tarball",
+            output="the identical fit / validation split as the previous lecture",
+            constraint="rebuild from the same seed — a notebook that only runs because a previous one is still in memory is not reproducible",
+            check="assert both halves are 25,000 and that the two index sets are disjoint",
+            left_open="that the seed is what guarantees the comparison. Nothing else in this notebook checks that the two lectures share a split.",
+            student="importing the variables from the other notebook, or trusting that the kernel still holds them.",
+            catch="reproduce, do not inherit. It costs thirty seconds of download and it is the difference between a comparison and a coincidence."),
         code('''
 # Reloaded here rather than inherited. A notebook that only runs because a
 # previous one is still in memory is not reproducible.
@@ -138,6 +156,14 @@ $$\\sigma(\\mathbf{z} + c\\mathbf{1}) = \\sigma(\\mathbf{z}).$$
 
 The **function** ignores the shift. `float32` does not.
 """),
+        prompt(
+            label="softmax, and the shift that changes nothing",
+            input="three logits near 1000",
+            output="the naive softmax, and the same thing with the max subtracted",
+            constraint="suppress the overflow warnings deliberately with `np.errstate` — the overflow is the demonstration, not an accident, and an unsuppressed warning reads as a bug in the notebook",
+            left_open="the algebra: adding a constant to every logit multiplies numerator and denominator by the same e^c, so the FUNCTION ignores the shift. float32 does not.",
+            student="assuming softmax is safe because it is a library function. It is, because the library subtracts the max — this cell is what that subtraction is for.",
+            catch="print where exp overflows float32. It is about 88.7, which is a much smaller number than people expect."),
         code('''
 z = np.array([1000., 1001., 1002.], dtype=np.float32)
 
@@ -149,6 +175,15 @@ m = z.max()
 print("with the max subtracted", np.exp(z - m) / np.exp(z - m).sum())
 print(f"\\nexp overflows float32 past x = {np.log(np.finfo(np.float32).max):.2f}")
 '''),
+        prompt(
+            label="the invariance itself",
+            input="three small logits, shifted by 50",
+            output="both softmaxes",
+            constraint="use values that do NOT overflow, so the invariance is demonstrated separately from the numerical failure",
+            check="assert the two agree to 1e-6",
+            left_open="that these are two different claims. One is about mathematics and one is about float32, and mixing them in a single example lets you conclude the wrong thing from the right output.",
+            student="testing the invariance on the overflowing example and concluding softmax is not shift-invariant.",
+            catch="when a property holds mathematically and fails numerically, demonstrate each on its own inputs."),
         code('''
 # and the invariance itself, on values that do not overflow
 a = np.array([1., 2., 3.], dtype=np.float32)
@@ -175,6 +210,15 @@ $$\\frac{\\partial L}{\\partial \\mathbf{z}} = \\mathbf{p} - \\mathbf{y}.$$
 Three lines, no chain rule through the softmax. Verify it rather than believing
 it.
 """),
+        prompt(
+            label="the gradient, derived and verified",
+            input="random logits and targets",
+            output="autograd's gradient beside the analytic p − y",
+            constraint="`reduction='sum'` — the mean would divide every gradient by the batch size, and the assertion would then fail for a reason that has nothing to do with the mathematics",
+            check="assert agreement to 1e-10, that each row of the gradient sums to zero, and that every component is in [−1, 1]",
+            left_open="why the derivation is three lines. The exponential of the true class CANCELS: L = −z_c + logsumexp(z), so differentiating needs no chain rule through the softmax at all.",
+            student="taking `p − y` on faith. It is the most-quoted gradient in machine learning and it is four lines to check against the library.",
+            catch="the row-sum assert is the interesting one. The gradient has no component along the all-ones direction, which is the derivative form of the shift invariance above."),
         code('''
 torch.manual_seed(RANDOM_STATE)
 z = torch.randn(7, 5, dtype=torch.float64, requires_grad=True)
@@ -209,6 +253,15 @@ to represent $e^{-\\text{loss}}$ as a `float32`, so the loss is the quantity the
 failure depends on. Sweeping the standard deviation instead buries the effect,
 because most rows then have a loss near zero where both forms agree trivially.
 """),
+        prompt(
+            label="why the loss consumes logits",
+            input="2,000 rows at each of ten loss levels",
+            output="the non-finite rate and median relative error of the naive form against the combined one",
+            constraint="sweep HOW WRONG THE ROW IS, not the scale of the logits — the naive form has to represent e^(−loss) as a float32, so the loss is the quantity the failure depends on",
+            check="assert the stable form never fails, at either end of the sweep",
+            left_open="why sweeping the logit standard deviation instead buries the effect: most rows then have a loss near zero, where both forms agree trivially.",
+            student="sweeping the logit scale, seeing no difference, and concluding the numerical argument is folklore. The experiment has to vary the thing the failure depends on.",
+            catch="score against float64 rather than against each other. Two float32 computations agreeing tells you nothing about either."),
         code('''
 K, N = 10, 2_000
 idx = np.arange(N)
@@ -243,6 +296,14 @@ for gap in (1, 5, 10, 20, 40, 60, 80, 90, 100, 110):
 
 assert rows[0][3] == 0.0 and rows[-1][3] == 0.0, "the stable form should never fail"
 '''),
+        prompt(
+            label="the two failure modes, drawn",
+            input="the sweep",
+            output="median relative error on a log axis, and the non-finite rate as a percentage",
+            constraint="two panels, because the two failures are different kinds — silent inaccuracy and outright inf/nan — and one axis cannot show both",
+            left_open="that the loud failure is the harmless one. A nan propagates and someone notices; a finite answer that is wrong in the fourth decimal place ships.",
+            student="plotting only the non-finite rate, which is zero across most of the range and suggests the naive form is fine there.",
+            catch="clamp the log-axis values away from zero before plotting. A median error of exactly 0.0 is not plottable on a log scale and matplotlib's response is to drop the point silently."),
         code('''
 g = np.array([r[0] for r in rows], dtype=float)
 fig, ax = plt.subplots(1, 2, figsize=(10, 3))
@@ -261,6 +322,15 @@ plt.tight_layout(); plt.show()
 
 The first failure is loud. The second is the one that ships.
 """),
+        prompt(
+            label="two rows small enough to check by hand",
+            input="[100, 0, −100] and [0, 0, −100], target class 2",
+            output="the naive, combined, float64 and PyTorch values for each",
+            constraint="show the LOUD failure and the QUIET one, in that order — the first overflows and the second returns a finite, plausible, wrong number",
+            check="assert the first is non-finite and the second is off by more than 1e-3, so both failures are pinned",
+            left_open="which of the two is dangerous. The first stops your run. The second is the one that ships.",
+            student="testing numerical stability only on the case that produces inf, concluding the library handles it, and never seeing the precision loss.",
+            catch="print PyTorch's answer beside your own. It agrees with the combined form, which is evidence that the combined form is what the library does."),
         code('''
 lse1 = lambda v: v.max() + np.log(np.exp(v - v.max()).sum())
 
@@ -305,6 +375,15 @@ Add and subtract $\\sum_k y_k \\log y_k$; that is the whole proof. For a
 **one-hot** target $H(\\mathbf{y}) = 0$, so minimising cross-entropy *is*
 minimising the KL divergence to the label.
 """),
+        prompt(
+            label="cross-entropy and KL divergence",
+            input="a random distribution, against a one-hot and a label-smoothed target",
+            output="entropy, KL, their sum, and the cross-entropy",
+            constraint="test with BOTH targets — for a one-hot target the entropy is zero and the identity is invisible",
+            check="assert H + KL equals CE to 1e-12 for both, and that the one-hot entropy is exactly zero",
+            left_open="the proof, which is one line: add and subtract Σ y log y. And the consequence: for a one-hot target, minimising cross-entropy IS minimising the KL divergence to the label.",
+            student="reading 'cross-entropy is KL divergence' as an identity. It is an identity up to the entropy of the target, and that term is zero only for hard labels.",
+            catch="guard the logs against zeros with a mask on p > 0. 0·log 0 is 0 by convention and nan in floating point."),
         code('''
 rngk = np.random.default_rng(RANDOM_STATE)
 q      = rngk.dirichlet(np.ones(5))
@@ -336,6 +415,15 @@ $-\\log 0.731 \\approx 0.313$.
 
 Nothing raises. The loss still goes down.
 """),
+        prompt(
+            label="the previous lecture's model, rebuilt",
+            input="the fit and validation reviews",
+            output="the vocabulary, the encoders, the classifier, and the padded batches",
+            constraint="everything rebuilt here — vocabulary from the fit split only, packing rather than last-of-padding",
+            check="assert the batch shape",
+            left_open="that this is a straight copy of the previous lecture's working version, defects removed. The defect this lecture is about is added in the NEXT cell, as an argument.",
+            student="skimming this because it is familiar. The `padding_idx=0` and the packing are both here, and both were lessons.",
+            catch="when you carry an architecture forward, carry the fixes with it. The last-of-padding bug is not in this version and that is deliberate."),
         code('''
 MAXLEN, EMB_DIM, HIDDEN = 192, 128, 64
 VOCAB, BATCH, EPOCHS, LR = 20_000, 64, 2, 1e-3
@@ -377,6 +465,14 @@ Xv, Lv = encode_words(val_x)
 assert Xf.shape == (N_FIT, MAXLEN)
 print(f"fit batch {tuple(Xf.shape)}")
 '''),
+        prompt(
+            label="⏱ 1-3 min — ⚠ two runs, one extra softmax",
+            input="'add a softmax to the output so it returns probabilities, and keep the training loop working'",
+            output="both models trained, with their loss curves",
+            constraint="identical seeds and identical everything else — the only difference is one `torch.softmax` before the loss",
+            left_open="reviewer question 5. `nn.CrossEntropyLoss` applies its OWN log_softmax, so applying one yourself gives a softmax of a softmax, whose input lives in [0,1] — on two classes the output can never exceed e/(e+1) ≈ 0.731.",
+            student="exactly this request, which is reasonable on its face. Nothing raises, and the loss still goes down.",
+            catch="the loss is FLOORED near −log(0.731) ≈ 0.313. That is the tell, and it is visible in the training output long before the accuracy comparison."),
         code('''
 # ⏱ about 1-3 minutes for the two runs together, on a GPU.
 @torch.no_grad()
@@ -418,6 +514,14 @@ torch.manual_seed(RANDOM_STATE)
 bad,  loss_bad  = train(GRUClassifier(VOCAB), double_softmax=True,
                         tag="probabilities into the loss")
 '''),
+        prompt(
+            label="look at the loss column first",
+            input="both trained models",
+            output="final loss and validation accuracy for each, and the predicted floor",
+            constraint="print the ALGEBRAIC floor, −log(e/(e+1)), beside the measured loss — a predicted number matching a measured one is the argument",
+            left_open="that the accuracy difference is the smaller signal. The loss stopping exactly where the algebra said it would is what identifies the cause.",
+            student="diagnosing from the accuracy, which is a few points down and could be anything. The floored loss could only be one thing.",
+            catch="when a loss plateaus at a value you can compute in closed form, compute it. It names the bug rather than merely detecting it."),
         code('''
 acc_good = accuracy(good, Xv, Lv, val_y)
 acc_bad  = accuracy(bad,  Xv, Lv, val_y)
@@ -435,6 +539,14 @@ The corrected specification: keep `forward` returning logits; add a separate
 `predict_proba` used only at inference; and assert that an untrained model's
 loss on balanced classes is within 0.05 of $\\log 2$.
 """),
+        prompt(
+            label="the assertion that would have caught it",
+            input="an untrained model on a balanced batch",
+            output="its loss, against log 2",
+            constraint="assert it is within 0.05 of log 2 — an untrained two-class model on balanced data has no information and must score the entropy of a coin flip",
+            left_open="how many bugs this catches. A wrong head size, transposed targets, a double softmax, and labels that are not what you think they are all fail it.",
+            student="having no smoke test at all, so the first evidence that something is wrong is a slightly disappointing accuracy at the end of training.",
+            catch="the corrected specification is three parts: `forward` returns logits, a separate `predict_proba` is used only at inference, and this assertion runs before training starts."),
         code('''
 untrained = GRUClassifier(VOCAB).to(device)
 with torch.no_grad():
@@ -453,6 +565,15 @@ words.
 
 ⏱ **about 1–3 minutes** to fine-tune, on a GPU.
 """),
+        prompt(
+            label="⏱ 1-3 min — borrow the whole model",
+            input="DistilBERT and 2,000 fit reviews",
+            output="the model, the encoded batches, and a balanced scoring subset",
+            constraint="SHUFFLE before taking the scoring subset — the corpus ships every positive first, so `test_x[:3000]` is all positives and any 'accuracy' on it is really recall",
+            check="assert the scoring subset is within three points of balanced",
+            left_open="what was borrowed. Our GRU saw 5,000 reviews; a pretrained language model saw billions of words, and needed no labels at all to do it, because its task was predicting missing words.",
+            student="taking a prefix of the test set. On this corpus that is a 100% positive evaluation set, and a model that always answers positive scores 100%.",
+            catch="assert the class balance of any subset you score on. It is one line and it catches the most embarrassing possible result."),
         code('''
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -481,6 +602,14 @@ score_y = test_y[score_i]
 assert abs(score_y.mean() - 0.5) < 0.03, "the scoring subset is not balanced"
 print(f"scoring on {N_SCORE:,} test reviews, {score_y.mean():.1%} positive")
 '''),
+        prompt(
+            label="the floor, before any training",
+            input="the pretrained body with a random head",
+            output="its accuracy on the scoring subset",
+            constraint="measure BEFORE fine-tuning — the head is random and nothing has been trained, so this is the floor the fine-tune has to beat",
+            left_open="that a random head on a pretrained body is near chance, which is the expected result and worth seeing rather than assuming.",
+            student="reporting the fine-tuned number with no zero-shot baseline, so there is no evidence that the fine-tuning did anything.",
+            catch="a pretrained model with a fresh head is not a zero-shot classifier. The body is informative and the head is noise, and this number measures the pair."),
         code('''
 @torch.no_grad()
 def bert_accuracy(model, texts, labels, batch=32):
@@ -497,6 +626,14 @@ def bert_accuracy(model, texts, labels, batch=32):
 zero_shot = bert_accuracy(model, score_x, score_y)
 print(f"pretrained body, random head, no training: {zero_shot:.1%}")
 '''),
+        prompt(
+            label="fine-tune, at a hundredth of the learning rate",
+            input="2,000 reviews, one epoch, batch 16",
+            output="the loss every 25 steps and the wall clock",
+            constraint="`lr=2e-5`, about a hundred times smaller than the 1e-3 used for the from-scratch model — the body already encodes something and a large step destroys it in a few dozen steps",
+            left_open="that the loss goes into the loop as LOGITS, exactly as before. Nothing about a pretrained model changes that.",
+            student="reusing 1e-3 because it worked for the GRU. The pretrained weights are wiped in the first few dozen steps and the result is worse than training from scratch.",
+            catch="print the loss during training, not only at the end. A fine-tune going wrong is visible in the first twenty steps and takes minutes to confirm at the end."),
         code('''
 torch.manual_seed(RANDOM_STATE)
 opt   = torch.optim.AdamW(model.parameters(), lr=2e-5)   # ~100x smaller than 1e-3
@@ -518,6 +655,15 @@ for k, i in enumerate(range(0, len(ids), 16)):
               f"({time.perf_counter() - t0:.0f}s)")
 print(f"one epoch on {N_FT:,} reviews: {time.perf_counter() - t0:.0f}s")
 '''),
+        prompt(
+            label="the comparison",
+            input="every model, on the same balanced scoring subset",
+            output="four accuracies, and the error count removed",
+            constraint="report ERRORS REMOVED as well as points gained — going from 85% to 90% removes a third of the mistakes, and the desk cares about the mistakes",
+            check="assert the fine-tune is above 0.75, with a message naming the learning rate as the likely cause",
+            left_open="that this assert is a FLOOR and not the headline. At this scale one epoch on 2,000 reviews should still be far above the majority class; if it is not, something is broken rather than disappointing.",
+            student="quoting the accuracy gain and stopping. Percentage points compress as accuracy rises, and the error-reduction figure is what communicates.",
+            catch="score the GRU on the SAME shuffled subset, not on its own. Two accuracies on two different subsets are not a comparison."),
         code('''
 ft_acc      = bert_accuracy(model, score_x, score_y)
 Xt, Lt      = encode_words(score_x)
@@ -552,6 +698,15 @@ Note line 4 below: the mean is over the **real** tokens, using the attention
 mask. Dividing by the padded length instead is Lecture 21's padding bug in a new
 costume.
 """),
+        prompt(
+            label="⏱ 30-60 s — one vector per review",
+            input="2,000 negative reviews",
+            output="unit-norm sentence embeddings",
+            constraint="mean-pool over the REAL tokens using the attention mask — dividing by the padded length instead is the previous lecture's padding bug in a new costume",
+            check="assert every vector has norm 1",
+            left_open="that neither of the desk's other two requests is classification, and both fall out of the same representation.",
+            student="`out.last_hidden_state.mean(1)`, which averages over the padding too. Longer reviews are diluted more than short ones, and the effect is invisible in every shape check.",
+            catch="normalise, and assert the norms. On the unit sphere the dot product IS the cosine, which makes the next cell one matrix product."),
         code('''
 from transformers import AutoModel
 
@@ -583,6 +738,15 @@ print(f"{V.shape[0]:,} reviews, {V.shape[1]} dimensions, on the unit sphere")
 On the unit sphere the dot product *is* the cosine, so searching the corpus is
 one matrix product.
 """),
+        prompt(
+            label="search the corpus",
+            input="three complaint-shaped queries",
+            output="the nearest review to each, with its cosine",
+            constraint="embed the queries with the SAME function as the corpus — a different pooling or a different normalisation makes the cosines meaningless",
+            check="assert the similarity matrix has the shape you expect",
+            left_open="a failure mode worth measuring on your own queries: cosine similarity has no notion of negation, so 'the sound was perfect' and 'the sound was not perfect' sit close together.",
+            student="reading three good results and deploying. Three queries is an anecdote, and the negation failure will not appear in three hand-written examples.",
+            catch="print the cosine beside every result. A nearest neighbour at 0.31 and one at 0.78 are very different claims and the ranking hides that."),
         code('''
 queries = ["the acting was wooden and unconvincing",
            "the sound mix made the dialogue impossible to follow",
@@ -596,6 +760,14 @@ for i, q in enumerate(queries):
     print(f"\\nquery: {q}")
     print(f"  cosine {sims[i, j]:.3f}: {' '.join(neg[j].split())[:180]}")
 '''),
+        prompt(
+            label="what keyword search returns instead",
+            input="the same three queries",
+            output="how many of the top three overlap between the two methods",
+            constraint="compare the top-k SETS rather than the top-1 — a single disagreement could be a tie",
+            left_open="why they differ: keyword search can only retrieve documents that reuse the query's words, and a complaint rarely uses the desk's vocabulary.",
+            student="assuming semantic search is simply better. It is better at this, and it is worse at exact-match retrieval, which is what the desk will ask for next.",
+            catch="when you replace a method, measure the overlap with what it replaced. Zero overlap and total overlap are both worth knowing about."),
         code('''
 # What does keyword search return for the same queries?
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -622,6 +794,15 @@ it on your own queries before deploying it.
 
 Lecture 9, unchanged: k-means, with $k$ chosen by silhouette rather than by eye.
 """),
+        prompt(
+            label="grouping the complaints",
+            input="the sentence embeddings",
+            output="the silhouette at six values of k, and the best clustering",
+            constraint="choose k by silhouette rather than by eye — the same rule as application 5, unchanged by the data being text",
+            check="assert the fitted clustering really has best_k distinct labels",
+            left_open="`sample_size=1500` on the silhouette. It is an approximation for speed and it is seeded, so it is reproducible — but it is an approximation.",
+            student="picking k = 5 because the desk asked for about five themes. The silhouette is what makes it a measurement rather than a preference.",
+            catch="k-means on unit vectors is spherical k-means in all but name. That is appropriate here and it is worth knowing you have chosen it."),
         code('''
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
@@ -638,6 +819,14 @@ km = KMeans(n_clusters=best_k, n_init=10, random_state=RANDOM_STATE).fit(V)
 assert len(np.unique(km.labels_)) == best_k
 print(f"\\nbest k = {best_k}")
 '''),
+        prompt(
+            label="name each group by what makes it different",
+            input="the clusters and a tf-idf matrix",
+            output="the five most distinctive terms per cluster, with the cluster size",
+            constraint="rank by LIFT — the term's mean weight inside the cluster minus its mean outside — not by frequency inside it",
+            left_open="`max_df=0.4` and the stop words. Without them every cluster is named 'film, movie, one, like', which is true and useless.",
+            student="taking the commonest terms in each cluster. They are the commonest terms in the corpus, and every cluster gets the same name.",
+            catch="print the cluster SIZE beside its terms. A theme covering nine reviews is not a theme the desk needs to hear about."),
         code('''
 # Name each group by what makes it DIFFERENT, not by what is common everywhere.
 gvec  = TfidfVectorizer(min_df=5, max_df=0.4, stop_words="english",
@@ -668,6 +857,15 @@ document it is given.
 Measure the damage at two corpus sizes, because the answer depends on the size
 and that is the lesson.
 """),
+        prompt(
+            label="⚠ the vectoriser fitted before the split",
+            input="'build a pipeline that vectorises with tf-idf and classifies with logistic regression, and report the test accuracy'",
+            output="the leaky and honest accuracies at 400 documents, over 20 seeds",
+            constraint="measure at TWO corpus sizes, because the answer depends on the size and that is the lesson",
+            check="assert the leaky vocabulary is at least as large as the honest one, which is what makes it the leaky one",
+            left_open="reviewer question 2. `TfidfVectorizer.fit` learns which columns EXIST and the weight on every column, from every document it is given.",
+            student="fitting the vectoriser on everything and then splitting, which is the natural reading of 'vectorise the reviews and classify them'.",
+            catch="20 seeds at the small size. The effect is a fraction of a point and the seed-to-seed spread is larger, so a single split proves nothing in either direction."),
         code('''
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -707,6 +905,14 @@ small = leak_experiment(400, 20)
 print(f"400 docs, 20 seeds:  {100 * small.mean():+.2f} points "
       f"(sd {100 * small.std():.2f}), leak wins on {(small > 0).sum()}/20")
 '''),
+        prompt(
+            label="the same leak at full size",
+            input="25,000 documents, three seeds",
+            output="the gap, and both distributions as a strip plot",
+            constraint="plot the individual seeds, not just the means — with three points at one size and twenty at the other, error bars would imply a precision neither has",
+            left_open="why it shrinks. At 25,000 documents the inverse document frequencies are an average over 25,000 draws and removing a quarter of them barely moves any of them. At 400 the leaky vocabulary has columns that exist BECAUSE a test document used them.",
+            student="measuring at full size only, finding nothing, and concluding the rule is superstition.",
+            catch="the decision rule: fit the vectoriser inside the pipeline always — not because the damage is always large, but because it scales with the reciprocal of your corpus size, and the corpus is smallest exactly when the project starts."),
         code('''
 # ⏱ about a minute: five seeds at the full corpus size.
 full = leak_experiment(25_000, 3)
@@ -731,6 +937,14 @@ vocabulary has columns that exist *because* a test document used them.
 because the damage is always large, but because it scales with the reciprocal of
 your corpus size, and the corpus is smallest exactly when the project starts.
 """),
+        prompt(
+            label="the leak no pipeline protects you from",
+            input="the training and test texts, whitespace-normalised",
+            output="how many test reviews also appear in training, and how many duplicates are within training",
+            constraint="normalise whitespace and case before comparing — an exact string match finds fewer duplicates than there are",
+            left_open="that IMDb is clean because its authors deduplicated it, which also means the cost of duplication cannot be measured on it. The next cell builds a corpus that is not clean, and says so.",
+            student="never checking. Three lines, and you know rather than assume.",
+            catch="a duplicate across the split is not fixed by any pipeline, any cross-validation, or any amount of care about `fit` and `transform`. It is fixed by grouping."),
         code('''
 # And the text leak no pipeline protects you from: the same document in both
 # halves. Three lines, and you know rather than assume.
@@ -749,6 +963,15 @@ whether the split keeps both copies of an entry on the same side.
 
 ⏱ **about a minute.**
 """),
+        prompt(
+            label="⏱ 1 min — rows split wrongly, against objects fitted wrongly",
+            input="1,500 unique reviews, a third of them submitted twice, six seeds",
+            output="the random-split and grouped-split accuracies, and how many test rows had a twin in training",
+            constraint="everything else stays CORRECT — the vectoriser is fitted inside each split both times. The only difference is whether both copies of an entry land on the same side",
+            check="assert no group straddles the grouped split",
+            left_open="that nothing was fitted on the test set in either row. The whole difference is which rows the split happened to separate.",
+            student="assuming a correct pipeline is sufficient. The duplicate leak here is LARGER than the vectoriser leak above — the object fitted wrongly cost less than the rows split wrongly.",
+            catch="report what fraction of test rows had a copy of themselves in training. That number explains the gap and it is the one to look for in a real corpus."),
         code('''
 from sklearn.model_selection import GroupShuffleSplit
 
