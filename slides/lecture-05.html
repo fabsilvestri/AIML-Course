@@ -84,11 +84,11 @@
   <div class="panel">
     <span class="panel-title">Marine safety planning unit</span>
     &ldquo;We are building an evacuation-assistance model from historical
-    passenger manifests. During an evacuation we have a fixed number of crew
-    who can be assigned to escort individual passengers. We need to know, for
-    each passenger profile, <strong>how likely that person is to get off
-    unaided</strong> &mdash; and we need to be able to explain the assignment
-    afterwards.&rdquo;
+    passenger manifests. During an evacuation we have
+    <strong>80 crew</strong> who can be assigned to escort individual
+    passengers. We need to know, for each passenger profile, <strong>how
+    likely that person is to get off unaided</strong> &mdash; and we need to be
+    able to explain the assignment afterwards.&rdquo;
   </div>
   <p class="small muted">Historical data, modern decision. The data are from
   1912; the question is not.</p>
@@ -101,11 +101,14 @@
     <tr><th>#</th><th>What they asked for</th><th>What that forces</th></tr>
     <tr><td>1</td><td>&ldquo;how likely&rdquo;</td><td>a <strong>probability</strong>, not a label</td></tr>
     <tr><td>2</td><td>the probability is used to allocate</td><td>it must be <strong>calibrated</strong></td></tr>
-    <tr><td>3</td><td>a fixed number of crew</td><td>a <strong>cut-off</strong>, chosen from stated costs</td></tr>
+    <tr><td>3a</td><td>the escort is worth assigning or not</td><td>a <strong>cut-off</strong>, chosen from stated costs</td></tr>
+    <tr><td>3b</td><td><strong>a fixed number</strong> of crew</td><td>a <strong>capacity</strong>, which the costs cannot see</td></tr>
     <tr><td>4</td><td>&ldquo;explain the assignment&rdquo;</td><td>weights a human can <strong>read</strong></td></tr>
   </table>
-  <p class="fix">Four requirements, and requirement 1 alone rules out most of
-  the models in this book.</p>
+  <p class="fix">Requirement 1 alone rules out most of the models in this book.</p>
+  <aside class="note">3a and 3b were one row until somebody checked. They are
+  two constraints, they disagree, and section 12b is what happens when only one
+  of them reaches the code.</aside>
 </section>
 
 <!-- 7 -->
@@ -1220,6 +1223,105 @@ for t in np.linspace(0.02, 0.98, 97):
   </div>
   <p class="small muted">Every clause in that paragraph is a decision someone
   can disagree with, which is what makes it a defence rather than a claim.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- THE CONSTRAINT NOBODY USED                                           -->
+<!-- ==================================================================== -->
+
+<!-- 72a -->
+<section data-menu-title="Count the crew">
+  <h2>Read that paragraph again, and count</h2>
+  <p>&ldquo;At that cut-off we flag <strong>605</strong> of the 712 training
+  passengers.&rdquo;</p>
+  <table>
+    <tr><th>&nbsp;</th><th>escorts</th></tr>
+    <tr><td>the cost-optimal cut-off asks for</td><td class="num">605</td></tr>
+    <tr><td>the safety unit has</td><td class="num">80</td></tr>
+    <tr class="fail"><td>short by</td><td class="num">525</td></tr>
+  </table>
+  <p class="fail">We have recommended a policy that needs 525 more people than
+  exist, and reported its cost as 210 &mdash; a number nobody can pay, for a
+  plan nobody can staff.</p>
+</section>
+
+<!-- 72b -->
+<section data-menu-title="Stated, then ignored">
+  <h2>The requirement was there the whole time</h2>
+  <ul class="tight">
+    <li>It was in the stakeholder&rsquo;s first sentence: <em>80 crew</em></li>
+    <li>It got its own row in the requirements table</li>
+    <li><strong>Not one line of code has ever referred to it</strong></li>
+  </ul>
+  <p>Every cell since has optimised against the <strong>cost ratio</strong>.
+  The costs say what a mistake is worth; the capacity says how many escorts
+  there are to spend. <em>No price makes a person appear.</em></p>
+  <p class="fix">Nothing errored. The cost curve is correct. The cut-off really
+  is optimal &mdash; for a question nobody asked.</p>
+  <aside class="note">This is the most ordinary failure in applied work, and it
+  does not look like a failure. It looks like a finished analysis.</aside>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Capacity">
+  <h2>Most of that curve is a place you cannot go</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l05-capacity.svg"
+         alt="Left: the same cost curve, with everything above 80 escorts shaded out as unstaffable; the cost-optimal point sits deep in the shaded region. Right: of 80 escorts assigned by risk ranking, 72 go to passengers who did not survive and 8 to passengers who did.">
+  </figure>
+  <p class="takeaway">Only <strong>5.2%</strong> of the cut-offs on that sweep
+  can be staffed at all.</p>
+</section>
+
+<!-- 72c -->
+<section data-menu-title="99% becomes 16%">
+  <h2>The whole finding, in two numbers</h2>
+  <table>
+    <tr><th>policy</th><th>escorts</th><th>cost</th><th>at-risk reached</th></tr>
+    <tr><td>cost-optimal, 0.83</td><td class="num">605</td><td class="num">210</td><td class="num">99.1%</td></tr>
+    <tr class="fix"><td>the 80 you have</td><td class="num">80</td><td class="num">3,678</td><td class="num">16.4%</td></tr>
+  </table>
+  <p>Same model, same probabilities, same costs. The only thing added was the
+  constraint that was in the brief all along.</p>
+  <p class="fail">The difference between 99.1% and 16.4% is not a modelling
+  result. It is the distance between a <em>report</em> and a <em>plan</em>.</p>
+</section>
+
+<!-- 72d -->
+<section data-menu-title="Rank, don't threshold">
+  <h2>Three things change once capacity binds</h2>
+  <ul class="tight small">
+    <li><strong>The rule becomes a ranking.</strong> Not <em>is this passenger
+    below 0.83</em> but <em>are they in the worst 80</em>. The cut-off lands at
+    <strong>0.062</strong> and nobody chose it &mdash; it is whatever the 80th
+    smallest probability happened to be, and it moves with the passenger mix
+    while the model sits still. Lecture 8 is about exactly that.</li>
+    <li><strong>Calibration stops mattering; ordering starts.</strong> Under a
+    hard cap, any strictly increasing relabelling of the probabilities gives
+    the same 80 people and the same cost. Calibration is what you need to
+    choose a cut-off <em>from costs</em>; ranking is what you need to spend a
+    <em>fixed budget</em>.</li>
+    <li><strong>Requirement 1 and requirement 3b want different things</strong>
+    from the same model &mdash; and the brief asked for both.</li>
+  </ul>
+</section>
+
+<!-- 72e -->
+<section data-menu-title="What to report">
+  <h2>What the report should have said</h2>
+  <div class="panel">
+    <span class="panel-title">For the report, second attempt</span>
+    &ldquo;With <strong>80</strong> crew we escort the 80 passengers ranked
+    least likely to survive unaided. That reaches <strong>72</strong> of the
+    <strong>439</strong> at-risk passengers &mdash; <strong>16.4%</strong>
+    &mdash; at a cost of <strong>3,678</strong>. Eight escorts go to passengers
+    who would have survived anyway. Lifting the cap is worth up to
+    <strong>3,468</strong> in avoided cost, which is a budget question and we
+    have priced it.&rdquo;
+  </div>
+  <p class="fix">A cost curve with the infeasible region shaded beats a cost
+  curve with a circle on its minimum, because it tells the stakeholder what to
+  go and change.</p>
 </section>
 
 <!-- 73 -->

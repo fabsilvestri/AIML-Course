@@ -73,10 +73,10 @@ Run the cells in order. Anything that takes more than a few seconds says so.
 # quietly ships without the note, and the note is the thing that keeps the
 # prompt boxes honest.
 PROMPT_NOTE = """
-**About the prompt boxes.** Each code cell is preceded by a quoted prompt and
-three lines: what the prompt leaves open, the version a student typically writes
-instead, and how you would catch a wrong answer. Those three lines are the part
-worth reading twice.
+**About the prompt boxes.** Where a code cell is preceded by a quoted prompt,
+three lines follow it: what the prompt leaves open, the version a student
+typically writes instead, and how you would catch a wrong answer. Those three
+lines are the part worth reading twice.
 
 The prompts here are **specifications, not transcripts** — this is what you
 would have to ask for in order to get this cell, not a recording of somebody
@@ -93,8 +93,20 @@ NOTE_EXEMPT = {19}
 
 
 def _ensure_prompt_note(nb: nbf.NotebookNode, n: int) -> None:
-    """Append the honesty note to the opening markdown cell, once."""
+    """Append the honesty note to the opening markdown cell, once.
+
+    Only where there is something to be honest ABOUT. The first version of this
+    added the note unconditionally, so twenty-two notebooks with no prompt boxes
+    at all shipped a header announcing prompt boxes — a claim in the one place a
+    student reads before anything else, and false. That is the failure this
+    course spends twenty-four lectures on, committed by its own build script, so
+    the note is now gated on the boxes actually existing and worded to stay true
+    at partial coverage.
+    """
     if n in NOTE_EXEMPT or not nb.cells:
+        return
+    if not any(c.cell_type == "markdown" and c.source.lstrip().startswith("> **Prompt")
+               for c in nb.cells):
         return
     first = nb.cells[0]
     if first.cell_type != "markdown":

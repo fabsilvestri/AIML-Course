@@ -27,6 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from make_notebooks import code, header, md, SETUP        # noqa: E402
+from _prompt import prompt                                # noqa: E402
 
 
 def build() -> list:
@@ -715,6 +716,120 @@ ax.set_xlabel("cut-off"); ax.set_ylabel("total cost, 10·FN + 1·FP")
 ax.set_title("The cut-off is a decision, and it has a cost curve")
 plt.show()
 '''),
+
+        # --------------------------------------- the constraint nobody used
+        md("""
+## 12b · The constraint the costs cannot see
+
+Read the last two lines of that output again.
+
+The cost-optimal cut-off assigns an escort to **605 of 712 passengers**. The
+safety unit has **80 crew**. We have just recommended a policy that needs 525
+more people than exist, and reported its cost as 210 — a number nobody can ever
+pay, for a plan nobody can ever staff.
+
+Requirement 3 has been on the board since the first fifteen minutes. It got its
+own row in the table: *a fixed number of crew*. Every cell since has optimised
+against the **cost ratio** and not one has referred to the **capacity**. They
+are different constraints. The costs say what a mistake is worth; the capacity
+says how many escorts there are to spend, and no price makes a person appear.
+
+This is the most ordinary failure in applied work, and it does not look like a
+failure. Nothing errored. The cost curve is correct. The cut-off really is
+optimal — for a question the stakeholder did not ask.
+"""),
+        prompt(
+            label="the policy you can actually staff",
+            input="the same out-of-fold probabilities, and CREW = 80",
+            output="the cost and composition of escorting the 80 passengers "
+                   "least likely to survive, beside the unconstrained optimum",
+            constraint="the rule must be a RANKING, not a cut-off — take the "
+                       "80 lowest probabilities, whatever value the 80th "
+                       "happens to have",
+            check="exactly 80 escorts are assigned, and the unconstrained rule "
+                  "asks for more than 80, so the constraint is shown to bind "
+                  "rather than assumed to",
+            left_open="what to do if the ranking ties at the boundary. With 712 "
+                      "continuous probabilities it will not, but on a coarser "
+                      "model it would, and 'take the lowest 80' silently becomes "
+                      "'take whichever 80 numpy happened to sort first'.",
+            student="applying the cost-optimal cut-off and then truncating the "
+                    "list at 80 — which gives the same 80 people here, and gives "
+                    "the WRONG 80 the moment the cut-off is not monotone in risk. "
+                    "The truncation also hides the fact that a constraint bound "
+                    "at all.",
+            catch="assert the escort count equals CREW exactly. A rule that "
+                  "produces 74 escorts because that is where a grid point fell "
+                  "is not a capacity rule, it is a threshold rule that got "
+                  "lucky — and it wastes six crew.",
+        ),
+        code('''
+CREW = 80          # requirement 3, stated in the brief and unused until now
+
+order = np.argsort(p_oof, kind="stable")   # least likely to survive first
+take  = np.zeros(len(p_oof), dtype=bool)
+take[order[:CREW]] = True
+
+died = (yv == 0)
+cap_tp = int((died & take).sum())           # escorted, would have died
+cap_fp = int((~died & take).sum())          # escorted, would have lived
+cap_cost = COST_FN * int((died & ~take).sum()) + COST_FP * cap_fp
+
+unc = best                                   # from the cell above
+print(f"{'':22s}{'escorts':>9}{'cost':>9}{'reached':>9}")
+print(f"{'cost-optimal 0.83':22s}{unc['flagged']:>9}{unc['cost']:>9.0f}"
+      f"{(p_oof < unc['t'])[died].sum() / died.sum():>8.1%}")
+print(f"{'the 80 you have':22s}{int(take.sum()):>9}{cap_cost:>9.0f}"
+      f"{cap_tp / died.sum():>8.1%}")
+print(f"\\n{died.sum()} of {len(yv)} passengers did not survive.")
+print(f"the 80 escorts reach {cap_tp} of them; {cap_fp} go to people "
+      f"who would have lived anyway")
+print(f"implied cut-off: {np.sort(p_oof)[CREW - 1]:.3f}  "
+      f"(a consequence of the ranking, not a choice)")
+
+assert int(take.sum()) == CREW, "a capacity rule assigns exactly CREW escorts"
+assert unc["flagged"] > CREW, \\
+    "if the cost-optimal rule fits within capacity there is nothing to teach here"
+'''),
+        md("""
+### 99.1% becomes 16.4%
+
+That is the whole finding, in two numbers.
+
+The unconstrained analysis reported **99.1%** of at-risk passengers reached. The
+policy you can actually staff reaches **16.4%**. Same model, same probabilities,
+same costs — the only thing added was the constraint that was in the brief all
+along. The difference between those two numbers is not a modelling result. It is
+the distance between a report and a plan.
+
+**Three things change once capacity binds.**
+
+**The rule stops being a threshold and becomes a ranking.** You are not asking
+*is this passenger below 0.83*, you are asking *are they in the worst 80*. Note
+what that does to the cut-off: it lands at **0.062**, and nobody chose it — it is
+whatever the 80th smallest probability happened to be. Change the passenger mix
+and it moves on its own, with the model untouched. Lecture 8 is about exactly
+that.
+
+**Calibration stops mattering and ordering starts.** Section 11 worked hard to
+check that a probability of 0.3 means 30%. Under a hard cap, any strictly
+increasing relabelling of the probabilities gives you the same 80 people and the
+same cost. Calibration is what you need to choose a cut-off from costs; ranking
+is what you need to spend a fixed budget. **Requirement 1 and requirement 3 want
+different things from the same model**, and the brief asked for both.
+
+**Most of the cost curve is scenery.** Only **5.2%** of the cut-offs on that
+sweep can be staffed at all. Plotting the full curve and circling its minimum
+draws the eye to the one region of it that is unreachable.
+
+### What to report
+
+Not 210. Report **3,678**, say that 80 crew is what makes it 3,678, and put the
+unconstrained number beside it as the answer to *what would more crew buy* —
+which is a budget question and a good one. A cost curve with the infeasible
+region greyed out is a better slide than a cost curve with a circle on its
+minimum, because it tells the stakeholder what to go and change.
+"""),
 
         # ------------------------------------------------- push the capacity
         md("""

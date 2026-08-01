@@ -49,6 +49,14 @@ SOFT = "#f4f7f9"
 COST_FN = 10.0      # a passenger who did not survive and was never flagged
 COST_FP = 1.0       # an escort assigned to a passenger who survived anyway
 
+# Requirement 3 of the brief: "a fixed number of crew". The costs above say what
+# a mistake is worth; this says how many escorts there are to spend, and it is a
+# HARD limit rather than a price. The two constraints do not agree — minimising
+# 10·FN + 1·FP on this data wants 605 escorts out of 712 passengers — and the
+# gap between them is section 12b of the lecture. Stated here once so the deck,
+# the notebook and figures.json cannot drift apart on it.
+CREW = 80
+
 DEGREES = [1, 2, 3, 4, 5, 6]
 N_SPLITS = 10
 N_BOOT = 200        # training sets drawn for the bias/variance measurement
@@ -538,6 +546,124 @@ def threshold_sweep(p, y) -> dict:
     return {"rows": rows, "best": best, "at_half": half,
             "cost_saved": half["cost"] - best["cost"],
             "cost_ratio": COST_FN / COST_FP}
+
+
+def capacity_analysis(p, y, crew: int) -> dict:
+    """What the cost-optimal cut-off asks for, against what the crew can do.
+
+    Requirement 3 of the brief is *a fixed number of crew*. `threshold_sweep`
+    above answers a different question — it minimises 10·FN + 1·FP with no limit
+    at all on how many escorts get handed out — and on this data its answer is
+    to escort 605 of 712 passengers. That is not a staffing plan, it is the
+    absence of one, and the cost it promises is unreachable.
+
+    So compute both policies and the gap between them:
+
+    * the **cost rule**  — escort everyone below the cost-optimal cut-off
+    * the **capacity rule** — escort the `crew` passengers with the lowest
+      predicted survival probability, which is the best you can do with the
+      people you actually have
+
+    The capacity rule is a **ranking**, not a threshold. Its implied cut-off is
+    whatever the crew-th smallest probability happens to be, so it moves with
+    the passenger mix even when the model has not changed at all.
+    """
+    p = np.asarray(p)
+    died = (y.values == 0)
+    n = len(p)
+
+    def score(flag):
+        fn = int((died & ~flag).sum())
+        fp = int((~died & flag).sum())
+        tp = int((died & flag).sum())
+        return {"flagged": int(flag.sum()), "fn": fn, "fp": fp, "tp": tp,
+                "cost": float(COST_FN * fn + COST_FP * fp),
+                "precision": tp / max(int(flag.sum()), 1)}
+
+    order = np.argsort(p, kind="stable")          # least likely to survive first
+    take = np.zeros(n, dtype=bool)
+    take[order[:crew]] = True
+    cap = score(take)
+    # the cut-off the ranking implies, purely as a consequence
+    cap["implied_t"] = float(np.sort(p)[min(crew, n) - 1])
+    # the number the stakeholder actually wants: of everyone who did not
+    # survive, what fraction does this policy reach?
+    cap["reached"] = cap["tp"] / max(int(died.sum()), 1)
+
+    rows = [dict(r) for r in threshold_sweep(p, y)["rows"]]
+    unconstrained = min(rows, key=lambda r: r["cost"])
+    feasible = [r for r in rows if r["flagged"] <= crew]
+    best_feasible = min(feasible, key=lambda r: r["cost"]) if feasible else None
+    at_half = min(rows, key=lambda r: abs(r["t"] - 0.5))
+
+    return {
+        "crew": int(crew),
+        "n": int(n),
+        "at_risk": int(died.sum()),
+        "capacity_rule": cap,
+        "unconstrained": unconstrained,
+        "best_feasible": best_feasible,
+        "at_half": at_half,
+        # the saving the unconstrained analysis advertises and cannot deliver
+        "phantom_saving": float(cap["cost"] - unconstrained["cost"]),
+        "over_by": int(unconstrained["flagged"] - crew),
+        "reachable_fraction": float(len(feasible) / len(rows)),
+        "cost_ratio": COST_FN / COST_FP,
+    }
+
+
+def fig_capacity(ca, rows):
+    """The cost curve with the unreachable part greyed out, and where the
+    escorts actually go once there are only `crew` of them."""
+    sw = rows
+    ts = [r["t"] for r in sw]
+    cost = [r["cost"] for r in sw]
+    crew = ca["crew"]
+
+    fig, (ax, ax2) = plt.subplots(1, 2, figsize=(11.4, 4.2))
+
+    reach = [t for t, r in zip(ts, sw) if r["flagged"] <= crew]
+    split = max(reach) if reach else ts[0]
+    ax.axvspan(split, ts[-1], color="#b9c2cb", alpha=0.35, zorder=0)
+    ax.plot(ts, cost, color=PRIMARY, lw=3, zorder=3)
+
+    u, f = ca["unconstrained"], ca["best_feasible"]
+    ax.plot([u["t"]], [u["cost"]], "o", color=ACCENT, ms=11, zorder=5)
+    ax.annotate(f"cost-optimal {u['t']:.2f}\n{u['flagged']} escorts — "
+                f"{ca['over_by']} more than exist",
+                xy=(u["t"], u["cost"]),
+                xytext=(0.30, max(cost) * 0.62), fontsize=SMALL,
+                color=ACCENT, fontweight="bold",
+                bbox=dict(fc="white", ec=ACCENT, lw=1.2,
+                          boxstyle="round,pad=0.5"),
+                arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
+    ax.plot([f["t"]], [f["cost"]], "o", color=SUCCESS, ms=11, zorder=5)
+    ax.annotate(f"best you can staff\n{f['flagged']} escorts",
+                xy=(f["t"], f["cost"]),
+                xytext=(0.02, max(cost) * 0.24), fontsize=SMALL,
+                color=SUCCESS, fontweight="bold",
+                bbox=dict(fc="white", ec=SUCCESS, lw=1.2,
+                          boxstyle="round,pad=0.5"),
+                arrowprops=dict(arrowstyle="->", color=SUCCESS, lw=1.8))
+    ax.text(split + (ts[-1] - split) / 2, max(cost) * 0.93,
+            f"cannot be staffed\n({crew} crew)", ha="center",
+            fontsize=SMALL, color="#4b5563", fontweight="bold")
+    ax.set_xlabel("cut-off on P(survived)")
+    ax.set_ylabel(f"expected cost   ({COST_FN:.0f} : {COST_FP:.0f})")
+    ax.set_title("Most of this curve is a place you cannot go")
+
+    cap = ca["capacity_rule"]
+    bars = [cap["tp"], cap["fp"]]
+    ax2.bar(["escorted,\nwould have died", "escorted,\nwould have lived"],
+            bars, color=[SUCCESS, "#b9c2cb"], width=0.58)
+    for i, v in enumerate(bars):
+        ax2.text(i, v + max(bars) * 0.03, str(v), ha="center",
+                 fontsize=SMALL, fontweight="bold")
+    ax2.set_ylim(0, max(bars) * 1.22)
+    ax2.set_ylabel(f"passengers, of {crew} escorts")
+    ax2.set_title(f"Where {crew} escorts go when you rank by risk")
+    fig.tight_layout()
+    return save(fig, "l05-capacity")
 
 
 def fig_threshold(sw):
@@ -1361,6 +1487,10 @@ def main():
 
     facts["l05_threshold"] = threshold_sweep(p_out, y_tr)
     fig_threshold(facts["l05_threshold"])
+
+    print("Lecture 5 — the constraint the costs cannot see:")
+    facts["l05_capacity"] = capacity_analysis(p_out, y_tr, CREW)
+    fig_capacity(facts["l05_capacity"], facts["l05_threshold"]["rows"])
 
     fitted_v2 = quiet(lambda: model(degree=1).fit(X_tr, y_tr))()
     cal_in = calibration(fitted_v2, X_tr, y_tr)
