@@ -164,8 +164,29 @@ def main() -> int:
         # `MNIST_LOADER =prompt(...), code(...)` — which is not even valid
         # Python. The box belongs where that constant is USED, in the cells
         # list, so refuse here and say so rather than corrupting the module.
-        if re.search(r"\b\w+\s*=\s*$", prefix):
-            assigned.append((key, prefix.strip().rstrip("=").strip()))
+        m_const = re.search(r"\b(\w+)\s*=\s*$", prefix)
+        if m_const:
+            # A module-level cell constant. The box belongs where the constant
+            # is USED, in the cells list — so find that use and insert there.
+            # If the constant is used more than once, or not at all in a cells
+            # list, refuse and say so: guessing which use to annotate would
+            # put the box on the wrong cell.
+            name = m_const.group(1)
+            uses = [u.start() for u in re.finditer(rf"(?<![\w.]){name}\s*,", src)
+                    if u.start() > start]
+            if len(uses) != 1:
+                assigned.append((key, name, len(uses)))
+                continue
+            at = uses[0]
+            line_start = src.rfind("\n", 0, at) + 1
+            prefix = src[line_start:at]
+            if "prompt(" in src[max(0, line_start - 900):at]:
+                continue
+            pad = " " * (len(prefix) + 7)
+            body = ",\n".join(f'{pad}{k}="{spec[k]}"' for k in FIELDS if k in spec)
+            box = f"prompt(\n{body}),\n" + " " * len(prefix)
+            src = src[:at] + box + src[at:]
+            inserted += 1
             continue
         inline = bool(prefix.strip())
         at = start if inline else line_start
@@ -194,10 +215,13 @@ def main() -> int:
     print(f"lecture {args.lecture}: {inserted} specification(s) inserted")
     for k in missed:
         print(f"  no spec for: {k[:70]}")
-    for k, name in assigned:
+    for k, name, n_uses in assigned:
+        where = ("is never used in a cells list" if n_uses == 0
+                 else f"is used {n_uses} times")
         print(f"  SKIPPED {k[:46]!r}: it is the body of `{name} = code(...)`, "
-              f"a module-level constant. Put its prompt() beside the place that "
-              f"constant is used in the cells list.")
+              f"a module-level constant, and it {where} — so there is no "
+              f"single place the box belongs. Put its prompt() beside the "
+              f"right use by hand.")
     return 0
 
 
