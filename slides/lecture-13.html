@@ -839,23 +839,22 @@ def activation_stats(net, X, n=512):
 <!-- 44a -->
 <section data-menu-title="The probe was wrong">
   <h2>The probe measured the wrong thing</h2>
-  <p class="small"><code>h.std()</code> takes the spread over the
-  <em>whole tensor</em> &mdash; and that is dominated by the spread of the
-  layer&rsquo;s random <strong>biases across units</strong>, which does not
-  change with depth. It would sit near 0.07 in a network that had stopped
-  computing anything at all.</p>
-  <p class="small">What carries information is the spread <strong>down the
-  batch</strong>, averaged over units &mdash; how much a unit moves when the
-  <em>input</em> does.</p>
+  <p class="small"><code>h.std()</code> spans the <em>whole tensor</em>, so it is dominated by the spread of the layer&rsquo;s random <strong>biases across units</strong> &mdash; which does not change with depth. It would read 0.07 in a network that had stopped computing entirely.</p>
+  <p class="small">What carries information is the spread <strong>down the batch</strong> &mdash; how much a unit moves when the <em>input</em> does.</p>
   <table class="smaller">
-    <tr><th>Hidden layer</th><th class="num">1</th><th class="num">2</th><th class="num">5</th><th class="num">10</th><th class="num">20</th></tr>
-    <tr><td><code>h.std()</code> &mdash; what we plotted</td><td class="num">0.131</td><td class="num">0.077</td><td class="num">0.071</td><td class="num">0.071</td><td class="num">0.071</td></tr>
-    <tr class="fail"><td><code>h.std(dim=0).mean()</code> &mdash; the signal</td><td class="num">1.3e&minus;01</td><td class="num">1.9e&minus;02</td><td class="num">5.9e&minus;05</td><td class="num">3.0e&minus;09</td><td class="num">2.4e&minus;17</td></tr>
+    <tr><th>Hidden layer</th><th class="num">1</th><th class="num">5</th><th class="num">10</th><th class="num">20</th></tr>
+    <tr><td><code>h.std()</code> &mdash; what we plotted</td><td class="num">0.131</td><td class="num">0.071</td><td class="num">0.071</td><td class="num">0.071</td></tr>
+    <tr class="fail"><td><code>h.std(dim=0).mean()</code> &mdash; the signal</td><td class="num">1.3e&minus;01</td><td class="num">5.9e&minus;05</td><td class="num">3.0e&minus;09</td><td class="num">2.4e&minus;17</td></tr>
   </table>
   <p class="fail">Sixteen orders of magnitude. <strong>The forward signal does
   die</strong> &mdash; by a factor of <strong>0.149</strong> per layer, which is
   the number Thread 7 predicts from the fan-in and the same rate the gradient
   vanishes at. By layer 20 the network is no longer a function of its input.</p>
+  <p class="small fail">And the saturation column was no better. It asks whether
+  $|h - \tfrac12| > 0.45$, in a band whose sd is <strong>0.071</strong>
+  &mdash; a threshold <strong>6.3 standard deviations</strong> away, and 3.4
+  even at layer 1. <em>Nothing could ever have exceeded it.</em> &ldquo;0.000 at
+  every depth&rdquo; was arithmetic, not evidence.</p>
   <aside class="notes">One flat line and one cliff, from the same activations. A
   probe that cannot fail is not instrumentation, and this one was promoted to
   standing instrumentation in Lecture 14 before anyone checked which axis it

@@ -563,8 +563,15 @@ column, and it collapses by a factor of **0.149 per layer** — from
 By layer 20 every input produces essentially the same activation, which is
 another way of saying the network has stopped being a function of its input.
 
-**So the forward signal does die.** It dies quietly, and the obvious probe says
-otherwise. 0.14 is not a coincidence either — it is exactly the per-layer factor
+**And the saturated column is worse than useless.** It asks whether
+$|h - 0.5| > 0.45$ — but the activations sit in a band whose sd is about
+**0.071**, so that threshold is **6.3 standard deviations** away, and 3.4 even
+at layer 1. Nothing could ever have crossed it. `0.000 at every depth` is a
+statement about the width of the band, not about saturation, and it read as
+reassurance.
+
+**So the forward signal does die.** It dies quietly, and both obvious probes say
+otherwise. 0.149 is not a coincidence either — it is exactly the per-layer factor
 the mathematical thread predicts from the fan-in, and exactly the rate at which
 the gradient vanishes on the way back.
 """),
