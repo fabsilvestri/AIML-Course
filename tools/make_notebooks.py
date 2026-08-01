@@ -666,6 +666,23 @@ def _discover() -> None:
 _discover()
 
 
+# Notebooks that are NOT generated from a module, and must not be overwritten.
+#
+# Lecture 19 was rebuilt cell by cell in Colab: each code cell was produced by
+# prompting Colab's Gemini 3.1 Pro and keeping what came back, and each is
+# preceded by the prompt that produced it plus three lines on what the prompt
+# leaves open, what a student typically writes instead, and how you would catch
+# a wrong answer. The shipped .ipynb therefore carries real generated code and
+# real outputs from a real session — including the planted `shuffle=True`, which
+# emerged from an under-specified prompt rather than being written in by hand.
+#
+# `tools/notebooks/lecture_19.py` is kept because it still documents the arc,
+# but regenerating from it would silently replace all of the above with the
+# hand-written version. So this script refuses, loudly, rather than quietly
+# undoing a day's work the way `figures_app08.py` once undid the diagram fonts.
+COLAB_AUTHORED = {19}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true",
@@ -681,6 +698,10 @@ def main() -> int:
     written = []
     for n, fn in sorted(LECTURES.items()):
         if wanted and n not in wanted:
+            continue
+        if n in COLAB_AUTHORED:
+            print(f"  lecture-{n:02d}  SKIPPED — authored in Colab, not generated. "
+                  f"See COLAB_AUTHORED in this file.")
             continue
         path = OUT / f"lecture-{n:02d}.ipynb"
         nbf.write(fn(), path)
