@@ -65,6 +65,46 @@ Run the cells in order. Anything that takes more than a few seconds says so.
 """)]
 
 
+# The honesty note that every notebook's opening cell must carry. It is applied
+# at BUILD time rather than written into each header, because the headers are
+# produced three different ways — `header()` above, a `HEADER` constant in
+# lectures 11-18 and 20-24, and an inline `md(...)` first cell in lectures 9 and
+# 10. Patching three mechanisms means the fourth one somebody adds next month
+# quietly ships without the note, and the note is the thing that keeps the
+# prompt boxes honest.
+PROMPT_NOTE = """
+**About the prompt boxes.** Each code cell is preceded by a quoted prompt and
+three lines: what the prompt leaves open, the version a student typically writes
+instead, and how you would catch a wrong answer. Those three lines are the part
+worth reading twice.
+
+The prompts here are **specifications, not transcripts** — this is what you
+would have to ask for in order to get this cell, not a recording of somebody
+asking for it. If your own prompt is vaguer than the box, expect worse code than
+the cell below it.
+
+*Lecture 19 is the one exception in this course.* It was built cell by cell
+against Colab's Gemini 3.1 Pro, and its prompts are verbatim. It says so itself.
+"""
+
+# Lecture 19 makes the stronger claim in its own words and must not be given the
+# weaker one as well.
+NOTE_EXEMPT = {19}
+
+
+def _ensure_prompt_note(nb: nbf.NotebookNode, n: int) -> None:
+    """Append the honesty note to the opening markdown cell, once."""
+    if n in NOTE_EXEMPT or not nb.cells:
+        return
+    first = nb.cells[0]
+    if first.cell_type != "markdown":
+        raise RuntimeError(f"lecture {n}: first cell is {first.cell_type}, "
+                           f"expected the markdown header")
+    if "specifications, not transcripts" in first.source:
+        return
+    first.source = first.source.rstrip() + "\n" + PROMPT_NOTE.rstrip() + "\n"
+
+
 SETUP = code('''
 # --- setup -------------------------------------------------------------------
 # Not examinable: this is engineering hygiene, not machine learning. It is here
@@ -704,7 +744,9 @@ def main() -> int:
                   f"See COLAB_AUTHORED in this file.")
             continue
         path = OUT / f"lecture-{n:02d}.ipynb"
-        nbf.write(fn(), path)
+        nb = fn()
+        _ensure_prompt_note(nb, n)
+        nbf.write(nb, path)
         cells = nbf.read(path, as_version=4).cells
         n_code = sum(c.cell_type == "code" for c in cells)
         # Compile every code cell before claiming the notebook was written. The
