@@ -94,7 +94,7 @@ def main() -> int:
     specs: dict = ns["SPECS"]
 
     # insert from the END so earlier offsets stay valid
-    inserted, missed = 0, []
+    inserted, missed, assigned = 0, [], []
     for start, key, _ in reversed(cells_of(src)):
         spec = specs.get(key)
         if spec is None:
@@ -109,6 +109,14 @@ def main() -> int:
         # Inserting at the line start there splices the box into the middle of
         # an expression. Insert immediately before the `code(` token instead,
         # and indent the box to match whatever column it lands in.
+        # `NAME = code('''...''')` is a module-level constant, not a cell in a
+        # list, and a prompt spliced between the `=` and the `code(` produces
+        # `MNIST_LOADER =prompt(...), code(...)` — which is not even valid
+        # Python. The box belongs where that constant is USED, in the cells
+        # list, so refuse here and say so rather than corrupting the module.
+        if re.search(r"\b\w+\s*=\s*$", prefix):
+            assigned.append((key, prefix.strip().rstrip("=").strip()))
+            continue
         inline = bool(prefix.strip())
         at = start if inline else line_start
         indent = " " * len(prefix) if not inline else ""
@@ -125,6 +133,10 @@ def main() -> int:
     print(f"lecture {args.lecture}: {inserted} specification(s) inserted")
     for k in missed:
         print(f"  no spec for: {k[:70]}")
+    for k, name in assigned:
+        print(f"  SKIPPED {k[:46]!r}: it is the body of `{name} = code(...)`, "
+              f"a module-level constant. Put its prompt() beside the place that "
+              f"constant is used in the cells list.")
     return 0
 
 
