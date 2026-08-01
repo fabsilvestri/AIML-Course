@@ -13,6 +13,7 @@ Structure mirrors the lecture — brief, data, metric, commitment, build.
 from __future__ import annotations
 
 import nbformat as nbf
+from _prompt import prompt                                # noqa: E402
 
 
 def md(text: str) -> nbf.NotebookNode:
@@ -43,6 +44,14 @@ Run the cells in order. Anything that takes more than a few seconds says so.
 """),
 
         md("## 1 · Setup"),
+        prompt(
+            label="setup, and one line that is not hygiene",
+            input="nothing",
+            output="versions, a fixed seed, and a thread cap",
+            constraint="cap the BLAS threads before importing numpy — the environment variables are read at import time, and setting them afterwards does nothing at all",
+            left_open="why a thread cap belongs in a clustering notebook. This lecture ends by quoting a wall clock, and the default is 'all cores', which on a shared machine means 'whatever is left' — a timing you cannot repeat.",
+            student="setting `OMP_NUM_THREADS` in a later cell and wondering why the timings still vary by a factor of three between runs.",
+            catch="if a notebook reports a duration, it has to control what the duration depends on. Otherwise the number is about the machine's mood."),
         code('''
 # --- setup -------------------------------------------------------------------
 # Not examinable: this is engineering hygiene, not machine learning. The thread
@@ -80,6 +89,15 @@ allowed to pay an annotator for forty labels. That is 10% of the corpus.
 The stand-in corpus is Olivetti — small, in the textbook, and downloadable in
 seconds.
 """),
+        prompt(
+            label="the corpus",
+            input="Olivetti faces",
+            output="400 photographs as 4,096-dimensional vectors, plus the 64×64 images",
+            constraint="`shuffle=False` — the ten photographs of each person stay adjacent, which every montage below relies on",
+            check="assert the shape, the pixel range, forty people, and exactly ten photographs each",
+            left_open="that `y` exists only because Olivetti is a benchmark. In the brief it does not exist: the only labels this project may use are the forty it pays for, and every other use of `y` below is marked AUDIT.",
+            student="using `y` to evaluate, tune, or choose k, on the grounds that it is right there. The entire application is about what you can do without it.",
+            catch="assert the pixel range. Olivetti arrives in [0,1] and many face datasets arrive in [0,255]; every distance in this notebook is a factor of 255 different if you assume wrong."),
         code('''
 from sklearn.datasets import fetch_olivetti_faces
 
@@ -107,6 +125,14 @@ could not afford.
 """),
 
         md("## 3 · Look at the data. It is a face dataset — look at faces"),
+        prompt(
+            label="look at the data — it is faces, so look at faces",
+            input="one photograph of each of the forty people",
+            output="a single tiled image, ten to a row",
+            constraint="tile into ONE array rather than making forty subplots — forty axes at this size is slow and each one carries its own margins",
+            left_open="what you are looking for. Not 'do these look like faces' but 'what varies within a person', which the next cell answers.",
+            student="skipping the picture because the shape assert passed. This is a face dataset and the single cheapest check available is whether it contains faces.",
+            catch="`vmin=0, vmax=1` on the imshow. Without it matplotlib rescales each montage to its own range, and two montages become incomparable in brightness for no stated reason."),
         code('''
 def montage(ax, ims, ncol, gap=2):
     """Tile square images into one array, so the figure holds one image."""
@@ -127,6 +153,14 @@ montage(ax, np.array([images[y == p][0] for p in range(40)]), ncol=10)
 ax.set_title("one photograph of each of the 40 people")
 plt.show()
 '''),
+        prompt(
+            label="ten photographs of one person",
+            input="all ten images of two different people",
+            output="two rows of ten",
+            constraint="show two people, not one — a single row shows variation but not whether that variation is smaller than the between-person variation",
+            left_open="what the method is up against: glasses on and off, lighting from either side, eyes shut, head turned. Any method that groups these ten has to be insensitive to all of it while still separating them from the other 390.",
+            student="looking at the grid of forty, seeing forty distinct faces, and concluding the task is easy. The difficulty is entirely within-person, and the forty-face montage cannot show it.",
+            catch="when you look at data, look at the variation you need the model to ignore, not only at the variation you need it to see."),
         code('''
 fig, ax = plt.subplots(figsize=(11, 2.6))
 montage(ax, np.concatenate([images[y == 0], images[y == 22]]), ncol=10)
@@ -147,6 +181,15 @@ are close in Euclidean distance. So the question is whether two photographs of
 the same person are closer than two photographs of different people — in raw
 pixels, which is the only representation we have.
 """),
+        prompt(
+            label="AUDIT — is this hard? measure before assuming",
+            input="all 79,800 pairs of photographs",
+            output="the distance distribution within a person against between people",
+            constraint="this uses the hidden labels and is marked AUDIT — the stakeholder could not afford it, and it is here to tell US whether the representation can work at all",
+            check="assert 1,800 within-person pairs and that the two counts sum to 400·399/2",
+            left_open="the ceiling. The overlap fraction is the limit on what any distance-based method can do in this representation, and no amount of tuning k moves it.",
+            student="going straight to k-means. If same-person pairs are routinely further apart than different-person pairs, the clustering result was decided before k-means ran.",
+            catch="a histogram of within against between distances, before any model. It costs one cell and tells you whether you are tuning or hoping."),
         code('''
 from sklearn.metrics import pairwise_distances
 
@@ -182,6 +225,15 @@ any distance-based method can do in this representation.
 The annotator is given forty photographs, chosen at random, and asked which of
 them show the same person. That is all the supervision the project has.
 """),
+        prompt(
+            label="the forty labels, and all the supervision there is",
+            input="the corpus",
+            output="forty randomly chosen indices and the annotator's answers for them",
+            constraint="choose WITHOUT replacement and sort — a repeated index means paying twice for one answer",
+            check="assert forty indices and forty distinct ones",
+            left_open="how few pairs that is. Forty photographs give 780 pairs, and only a handful are the same person — every ARI in this notebook is computed from that handful.",
+            student="drawing the forty stratified by person, which is a much better sample and requires knowing the answer in advance. The annotator is handed random photographs because nobody knows who is in them.",
+            catch="print how many distinct people the forty happen to cover. If the sample misses a person entirely, no clustering can be rewarded for finding them."),
         code('''
 audit = np.sort(rng.choice(400, size=40, replace=False))
 y_audit = y[audit]                               # the annotator's answers
@@ -222,6 +274,14 @@ every face into a uniformly random cluster.
 ⏱ **about 1 minute** — twenty seeds, and each silhouette needs the full
 400 × 400 distance matrix in 4,096 dimensions.
 """),
+        prompt(
+            label="⏱ 1 min — what nothing scores",
+            input="uniformly random cluster assignments, twenty seeds",
+            output="silhouette and ARI for random assignment, with their spread",
+            constraint="twenty seeds, and report the STANDARD DEVIATION — the anchor is not a point, it is a range, and the range is what tells you whether 0.02 is a discovery",
+            left_open="that ARI is corrected for chance by construction, so its zero is structural, while the silhouette's zero here is measured. Both land at zero and only one of them had to.",
+            student="assuming a silhouette of 0.15 must be meaningful because it is positive. Positive against what — this cell is the 'what'.",
+            catch="every unsupervised metric needs an empirical null. They have no natural scale, and a number with no null is a number with no units."),
         code('''
 from sklearn.metrics import adjusted_rand_score, silhouette_score
 
@@ -270,6 +330,15 @@ from each point to its centroid — against $k$, and look for the bend.
 ⏱ **3–6 minutes.** Every $k$ is `n_init` independent runs of Lloyd's algorithm
 on 400 × 4,096 floats. This is the cost the next lecture removes.
 """),
+        prompt(
+            label="⏱ 3-6 min — the sweep",
+            input="nine values of k",
+            output="inertia, silhouette and ARI at each, and the wall clock",
+            constraint="record the elapsed time — this notebook ends by quoting it, and it is the reason the next lecture exists",
+            check="assert inertia is non-increasing in k — a finer partition cannot have larger inertia, so if it does, `n_init` is too small and Lloyd's algorithm landed in a bad local minimum",
+            left_open="that `n_init=5` is a compromise. Each k is five independent runs on 400×4,096 floats, and the monotonicity assert is what tells you whether five was enough.",
+            student="`n_init=1` for speed, getting a jagged inertia curve, and looking for an elbow in what is mostly optimiser noise.",
+            catch="the monotonicity assert is a property of the OBJECTIVE, not of the algorithm. When it fails, the algorithm failed to optimise, and that is worth knowing before you read the curve."),
         code('''
 from sklearn.cluster import KMeans
 
@@ -292,6 +361,14 @@ assert len(inertia) == len(ks)
 assert all(inertia[i] >= inertia[i + 1] for i in range(len(ks) - 1)), \\
     "inertia must be non-increasing in k — if it is not, n_init is too small"
 '''),
+        prompt(
+            label="find the elbow",
+            input="inertia against k",
+            output="the curve",
+            constraint="plot it and say nothing — the next cells are about what you cannot read off it",
+            left_open="where the elbow is. Ask three people and get three answers, and that is a statement about the curve rather than about people.",
+            student="picking the bend by eye, confidently. Inertia is monotonically decreasing by construction, reaches exactly zero at k = n, and nothing in it knows how many people are in the archive.",
+            catch="a criterion with no interior optimum cannot select a model. If your selection rule is 'look for the bend', you are the selection rule."),
         code('''
 fig, ax = plt.subplots(figsize=(8, 3))
 ax.plot(ks, inertia, "o-", color="#0b3d62", lw=2)
@@ -310,6 +387,14 @@ in the archive.
 
 Quantify the disagreement rather than asserting it:
 """),
+        prompt(
+            label="quantify the disagreement",
+            input="the inertia curve",
+            output="the k that the kneedle rule picks, beside the truth",
+            constraint="rescale BOTH axes to [0,1] first — the rule is about the furthest point below the chord, and that is meaningless while one axis runs to 60 and the other to thousands",
+            left_open="that the truth is k = 40 and we are not supposed to know it. The cell prints it as a scoreboard, not as an input.",
+            student="implementing kneedle on raw axes, where the answer is decided entirely by the units of inertia.",
+            catch="when a heuristic disagrees with the truth by this much, the lesson is not to find a better heuristic. It is that inertia does not contain the answer."),
         code('''
 # the "kneedle" rule: rescale both axes to [0, 1], then take the point furthest
 # below the straight line joining the two ends
@@ -326,6 +411,14 @@ print(f"the truth, which we are not supposed to know, is k = 40")
 Inertia has no interior optimum. The silhouette does: it is penalised both for
 splitting a group and for merging two.
 """),
+        prompt(
+            label="silhouette, which has a maximum",
+            input="the silhouette at each k",
+            output="the curve, with the random-assignment level and the true k marked",
+            constraint="draw the zero line — it is the anchor from section 7, and without it the curve has no scale",
+            left_open="why it has an interior optimum at all. The silhouette is penalised both for splitting a group and for merging two; inertia is only penalised for one of those.",
+            student="reading the peak as the answer. It is a better criterion than inertia and it still peaks some distance from 40, which is the honest result.",
+            catch="mark the truth on the plot when you have it, even though the method may not use it. A criterion that peaks in the wrong place is a finding worth seeing."),
         code('''
 fig, ax = plt.subplots(figsize=(8, 3))
 ax.plot(ks, silhouette, "o-", color="#0b3d62", lw=2, label="k-means")
@@ -346,6 +439,14 @@ The mean hides the shape. Draw every point's coefficient, sorted, grouped by
 cluster: one knife per cluster. A healthy clustering has knives of similar
 length, all of them reaching past the dashed mean.
 """),
+        prompt(
+            label="the diagram, because the mean hides the shape",
+            input="the per-point silhouette at three values of k",
+            output="one knife per cluster, sorted, with the mean drawn across",
+            constraint="sort the clusters by their own mean and sort the points inside each — an unsorted diagram is noise with a colour map",
+            left_open="what healthy looks like: knives of similar length, all of them reaching past the dashed mean. A cluster entirely to the left of the mean is a cluster that should not exist.",
+            student="reading only the mean silhouette. Two clusterings with the same mean can be one good partition and one that merged half the corpus into a single blob.",
+            catch="`sharex=True` across the panels. Three silhouette diagrams on independent x-axes cannot be compared, which is the only reason to draw three."),
         code('''
 from sklearn.metrics import silhouette_samples
 
@@ -371,6 +472,14 @@ plt.tight_layout(); plt.show()
 A silhouette of 0.15 means nothing until you see what it grouped. This is the
 whole advantage of a face dataset, and it is the step that gets skipped.
 """),
+        prompt(
+            label="AUDIT — now look at the faces",
+            input="the k=40 clustering and the hidden labels",
+            output="cluster sizes, purity, and montages of the cleanest and worst clusters",
+            constraint="show the WORST cluster, not only the best — a montage of the cleanest cluster is a marketing image",
+            left_open="what the worst cluster is made of. The faces in it are not similar PEOPLE — they are similar PHOTOGRAPHS: same lighting, same head angle. In 4,096 raw pixels a lamp on the left is a bigger vector than a different nose.",
+            student="reporting the silhouette and stopping. A silhouette of 0.15 means nothing until you see what it grouped, and this is the step that gets skipped.",
+            catch="restrict the best/worst search to clusters with at least a few members. A cluster of one has purity 1.00 and tells you nothing."),
         code('''
 lab = labels[40]
 sizes = np.bincount(lab, minlength=40)
@@ -407,6 +516,14 @@ runs, it uses no exotic import, and it prints a believable number.
 > *"Cluster the faces with k-means, pick the best number of clusters using the
 > silhouette score, and report the score."*
 """),
+        prompt(
+            label="⚠ what the assistant returns",
+            input="'cluster the faces, pick the best k by silhouette, and report the score'",
+            output="the winning k and its silhouette",
+            constraint="run it exactly as written — no test set is touched, because there is no test set, and the defect is subtler than that",
+            left_open="that the score reported is a MAXIMUM over a noisy criterion, evaluated on the same data that chose it. Five candidate values of k, five noisy estimates, and we print the largest.",
+            student="reporting that number. It is an optimistically biased estimate of the silhouette the chosen model would obtain on new photographs — for exactly the reason the previous application's grid search could not report its own best score.",
+            catch="the rule from application 1 in a new costume: the number that chose the model cannot also be the number that reports it. It applies without any labels anywhere in sight."),
         code('''
 best_score, best_k_reported, best_model = -2, None, None
 for k in [5, 10, 20, 40, 60]:
@@ -434,6 +551,14 @@ the other half, which had no vote.
 
 ⏱ **about 2 minutes.**
 """),
+        prompt(
+            label="⏱ 2 min — measure the optimism",
+            input="five random halves of the corpus",
+            output="the selection silhouette and the held-out silhouette, per seed",
+            constraint="choose k on one half and score the CHOSEN model on the other, which had no vote — and use `predict`, not a refit, so it is the same model being scored",
+            left_open="that both halves are the same corpus, so this measures selection optimism and not generalisation to a new archive.",
+            student="refitting on the held-out half, which measures something else entirely and usually shows no gap at all.",
+            catch="five seeds and the individual numbers printed, not just the mean. The optimism is small, and a single seed cannot distinguish it from noise."),
         code('''
 gaps = []
 for seed in range(5):
@@ -471,6 +596,14 @@ number that chose the model cannot also be the number that reports it.**
 
 Write it down. It is the reason the next lecture exists.
 """),
+        prompt(
+            label="how long did all this take",
+            input="the recorded wall clock",
+            output="the measured sweep time, and an extrapolation to a full sweep",
+            constraint="extrapolate honestly — state that it is an estimate for THIS machine, scaled from a measured number rather than guessed",
+            left_open="what to do about it. Nothing, today. This number is the reason the next lecture exists, and it is meant to be uncomfortable.",
+            student="not timing anything, then being surprised when the same sweep at finer resolution runs overnight.",
+            catch="every second of it was spent on 4,096 numbers per face, most of which are describing a lamp. That sentence is the whole setup for dimensionality reduction."),
         code('''
 print(f"the coarse sweep over {len(ks)} values of k took "
       f"{sweep_seconds:.0f} seconds")

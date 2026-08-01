@@ -40,7 +40,12 @@ def module_path(n: int) -> Path:
 def cells_of(src: str) -> list[tuple[int, str, str]]:
     """(start offset, key, excerpt) for every code cell in the module."""
     out = []
-    for m in re.finditer(r"[ \t]*code\(", src):
+    # `(?<!def )` and `(?<![\w.])` matter: lecture 9 defines its own
+    # `def code(text: str)` helper, and without the first guard that
+    # definition is matched as a code cell — the tool would then splice a
+    # prompt box into the middle of the function that BUILDS cells. The second
+    # keeps `nbf.new_code(` and similar from matching too.
+    for m in re.finditer(r"[ \t]*(?<!def )(?<![\w.])code\(", src):
         start = m.start()
         # the cell body: either a ''' literal or a NAME reference
         # 2000, not 400: lecture 6 has a cell whose opening comment block runs
@@ -202,7 +207,12 @@ def main() -> int:
         # the old anchor here matched nothing, so the import was never added
         # and every freshly specified module failed to build with a bare
         # NameError. Anchor on the import that these files actually have.
-        m = re.search(r"^from make_notebooks import .*$", src, re.M)
+        # Most lecture modules import their cell constructors from
+        # make_notebooks; a few (lecture 9 among them) define md/code
+        # themselves and import nbformat directly. Anchor on whichever is
+        # present rather than assuming the common case.
+        m = (re.search(r"^from make_notebooks import .*$", src, re.M)
+             or re.search(r"^import nbformat as nbf$", src, re.M))
         if not m:
             print("refusing: cannot find the make_notebooks import to anchor "
                   "`from _prompt import prompt` after. Add it by hand.")
