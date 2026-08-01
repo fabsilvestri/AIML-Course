@@ -646,8 +646,10 @@ final_pred = best.predict(X_test)
 final_rmse = root_mean_squared_error(y_test, final_pred)
 
 squared = (final_pred - y_test.values) ** 2
+# method= is not optional: scipy defaults to BCa, and we are claiming the
+# PERCENTILE bootstrap. Name the estimator you mean.
 lo, hi = np.sqrt(stats.bootstrap([squared], np.mean,
-                                 confidence_level=0.95,
+                                 confidence_level=0.95, method="percentile",
                                  random_state=RANDOM_STATE).confidence_interval)
 
 print(f"test RMSE  ${final_rmse:,.0f}")

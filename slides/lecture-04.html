@@ -785,7 +785,9 @@ precisions, recalls, thresholds = precision_recall_curve(y_train_5, y_scores)
   <pre><code class="language-python" data-trim>
 import numpy as np
 
-idx = (precisions &gt;= 0.90).argmax()        # first index reaching 90%
+flagged = recalls[:-1] * n_pos / precisions[:-1]   # tp / precision = tp + fp
+ok  = (precisions[:-1] &gt;= 0.90) &amp; (flagged &gt;= 500)
+idx = int(np.argmax(ok))                   # first crossing WITH support
 threshold_90 = thresholds[idx]             # 20.09
 
 y_pred_90 = (y_scores &gt;= threshold_90)
@@ -797,6 +799,30 @@ print(recall_score(y_train_5, y_pred_90))      # 0.7333
   and remember it.</p>
   <p class="fail">Ninety per cent precision costs us 3.86 points of recall,
   from 77.18% down to 73.33%.</p>
+</section>
+
+<!-- 49a -->
+<section data-menu-title="Why the support test">
+  <h2>Why <code>&amp; (flagged &gt;= 500)</code> is in that line</h2>
+  <p>Thread 2 just spent twenty minutes proving this curve is
+  <strong>not monotone</strong>. So &ldquo;the first index reaching 90%&rdquo;
+  could be a single lucky step, held up by a handful of flagged digits, that
+  the very next threshold falls back below.</p>
+  <p>Requiring support turns the crossing into a claim you can defend. And on
+  this data it <strong>passes</strong>:</p>
+  <table>
+    <tr><th>&nbsp;</th><th>threshold</th><th>digits flagged</th></tr>
+    <tr><td>first crossing, unguarded</td><td class="num">20.09</td><td class="num">4,416</td></tr>
+    <tr><td>first crossing with support &ge; 500</td><td class="num">20.09</td><td class="num">4,416</td></tr>
+  </table>
+  <p class="fix">Same point. The guard changed nothing here &mdash; and that is
+  the result, not a reason to delete it. You now <em>know</em> the operating
+  point rests on 4,416 digits instead of assuming it.</p>
+  <aside class="note">Note the asymmetry with the recall constraint two slides
+  on, which correctly uses <code>np.where(...)[0][-1]</code> — the
+  <em>last</em> index. For a floor on recall you want the highest threshold
+  that still clears it; for a floor on precision, the lowest. Getting these the
+  same way round is a common and silent error.</aside>
 </section>
 
 <!-- 50 -->
@@ -815,6 +841,16 @@ print(recall_score(y_train_5, y_pred_90))      # 0.7333
   and is almost never wrong when it does.</p>
   <p class="small muted">&ldquo;99% precision&rdquo; is a sentence that should
   always be followed by &ldquo;at what recall?&rdquo;</p>
+  <p class="fail small">&mdash; and then by &ldquo;on how many
+  instances?&rdquo; Apply the support test from the previous slide and this
+  point <strong>fails it</strong>: 99% precision is reached on only
+  <strong>116</strong> flagged digits, across a plateau
+  <strong>21</strong> thresholds wide. Compare the 90% point:
+  <strong>4,416</strong> digits and <strong>4,411</strong> thresholds.</p>
+  <aside class="note">Which is why 2.12% is quoted here as an
+  <em>illustration</em> of what high precision costs, and never proposed as an
+  operating point. The right response to a target you cannot meet with support
+  is to say so — not to lower the support test until it passes.</aside>
 </section>
 
 <!-- 51 -->

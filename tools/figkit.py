@@ -132,7 +132,14 @@ def export(**values) -> None:
         # machine legitimately change between runs. An UNPREFIXED key is the
         # dangerous case: it is the one two scripts can both claim, and the
         # collision is silent.
-        if re.match(r"l\d\d_", k):
+        # `app02` / `app10` are the same thing one level up: a whole
+        # application's block, written by exactly one script that is named
+        # after it. Those owners were not exempt, so the first time
+        # figures_app02.py legitimately CHANGED one of its own numbers the
+        # guard refused the export and told it to rename a key 438 other
+        # entries already depend on. Ownership is what earns the exemption,
+        # and a key named after its only writer has it.
+        if re.match(r"l\d\d_|app\d\d$", k):
             continue
         # Compare like with like. JSON has no integer keys, so a dict keyed by
         # ints comes back keyed by strings, and a straight != then reports a

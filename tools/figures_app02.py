@@ -230,11 +230,50 @@ def measure_test(Xtr, y5, Xte, y5te, thresholds):
     return out
 
 
-def at_precision(prec, rec, thr, target):
-    """The lowest threshold whose precision reaches `target`."""
-    i = int((prec >= target).argmax())
+def at_precision(prec, rec, thr, target, n_pos, min_support=None):
+    """The lowest threshold whose precision reaches `target`, with its support.
+
+    The precision-recall curve is not monotone — Lecture 4 spends twenty
+    minutes establishing that — so the first index at which precision touches
+    `target` can be one lucky step held up by a handful of flagged instances,
+    with the next threshold falling straight back below it.
+
+    `flagged` is therefore always reported: it is how many instances the
+    operating point actually rests on, and it is the difference between a
+    number you can defend and a number you happened to land on. On this data
+    the 0.90 crossing rests on 4,416 digits and the 0.99 crossing on 116.
+
+    `min_support` is optional and, when given, is a REQUIREMENT — the first
+    crossing that also clears it, or an error. It is deliberately not a knob to
+    be lowered until the call succeeds: if a target cannot be met with support,
+    that is the finding, and the caller should report the thin number as an
+    illustration rather than promote it to an operating point.
+    """
+    hit = prec[:-1] >= target
+    if not hit.any():
+        raise ValueError(f"precision never reaches {target}")
+    naive = int(hit.argmax())
+    # flagged = tp + fp, and tp = recall * n_pos, so tp / precision
+    with np.errstate(divide="ignore", invalid="ignore"):
+        fl = np.where(prec[:-1] > 0, rec[:-1] * n_pos / prec[:-1], 0.0)
+
+    if min_support is None:
+        i, moved = naive, False
+    else:
+        ok = hit & (fl >= min_support)
+        if not ok.any():
+            raise ValueError(
+                f"precision {target} is reached, but never with {min_support} "
+                f"flagged instances behind it — the widest such crossing rests "
+                f"on {fl[hit].max():.0f}. Report it as an illustration or lower "
+                f"the target; do not lower the guard to make this pass.")
+        i, moved = int(ok.argmax()), int(ok.argmax()) != naive
     return {"threshold": float(thr[min(i, len(thr) - 1)]),
-            "precision": float(prec[i]), "recall": float(rec[i])}
+            "precision": float(prec[i]), "recall": float(rec[i]),
+            "flagged": float(fl[i]),
+            "n_thresholds_reaching_target": int(hit.sum()),
+            "min_support": None if min_support is None else int(min_support),
+            "guard_moved": bool(moved)}
 
 
 def at_recall(prec, rec, thr, target):
@@ -736,8 +775,11 @@ def main():
     facts["average_precision"] = float(average_precision_score(y5, scores))
     facts["roc_auc"] = float(roc_auc_score(y5, scores))
     facts["operating_points_cv"] = {
-        "precision_90": at_precision(prec, rec, thr, 0.90),
-        "precision_99": at_precision(prec, rec, thr, 0.99),
+        "precision_90": at_precision(prec, rec, thr, 0.90, int(y5.sum()),
+                                     min_support=500),
+        # No min_support: 0.99 cannot meet one. That is the finding, and the
+        # deck reports the thin support rather than pretending otherwise.
+        "precision_99": at_precision(prec, rec, thr, 0.99, int(y5.sum())),
         "recall_90": at_recall(prec, rec, thr, 0.90),
         "recall_99": at_recall(prec, rec, thr, 0.99),
     }
@@ -766,7 +808,8 @@ def main():
         "recall_at_90_precision": float(rf_rec[int((rf_prec >= 0.90).argmax())]),
         "operating_points_cv": {
             "recall_90": at_recall(rf_prec, rf_rec, rf_thr, 0.90),
-            "precision_99": at_precision(rf_prec, rf_rec, rf_thr, 0.99),
+            "precision_99": at_precision(rf_prec, rf_rec, rf_thr, 0.99,
+                                         int(y5.sum())),
         },
     }
     print(f"    forest AUC {facts['forest']['roc_auc']:.4f}  "

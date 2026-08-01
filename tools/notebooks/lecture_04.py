@@ -257,8 +257,25 @@ plt.tight_layout(); plt.show()
 not obvious; read it once and remember it.
 """),
         code('''
-idx = (precisions >= 0.90).argmax()
+# Thread 2 spent twenty minutes proving this curve is NOT monotone. So "the
+# first index reaching 90%" can in principle be one lucky step held up by a
+# handful of flagged digits — a real operating point needs support behind it.
+MIN_SUPPORT = 500
+
+n_pos   = int(y_train_5.sum())
+flagged = recalls[:-1] * n_pos / precisions[:-1]     # tp / precision = tp + fp
+ok      = (precisions[:-1] >= 0.90) & (flagged >= MIN_SUPPORT)
+assert ok.any(), "no threshold reaches 90% precision with enough support"
+
+idx = int(np.argmax(ok))
 threshold_90 = thresholds[idx]
+
+# Did the guard actually change anything? Say so either way.
+naive = int((precisions[:-1] >= 0.90).argmax())
+print(f"first crossing        idx {naive}")
+print(f"first with support    idx {idx}   "
+      f"({'same point — the check held' if naive == idx else 'DIFFERENT point'})")
+print(f"digits flagged there  {flagged[idx]:,.0f}")
 
 y_pred_90 = (y_scores >= threshold_90)
 print(f"threshold {threshold_90:.2f}")
@@ -267,9 +284,15 @@ print(f"recall    {recall_score(y_train_5, y_pred_90):.4f}")
 print(f"\\n90% precision costs "
       f"{100 * (recall - recall_score(y_train_5, y_pred_90)):.2f} points of recall")
 
-# and the other end of the dial, to show what "high precision" really buys
-idx99 = (precisions >= 0.99).argmax()
+# and the other end of the dial, to show what "high precision" really buys.
+# Apply the same support test — and watch it fail.
+idx99 = int((precisions[:-1] >= 0.99).argmax())
 print(f"\\nat 99% precision, recall is {recalls[idx99]:.4f} — one 5 in fifty")
+print(f"   but only {flagged[idx99]:,.0f} digits are flagged there, on a "
+      f"plateau {int((precisions[:-1] >= 0.99).sum())} thresholds wide")
+print(f"   (the 90% point rests on {flagged[idx]:,.0f} digits over "
+      f"{int((precisions[:-1] >= 0.90).sum())})")
+print("   -> quote 2.12% as an illustration, not as an operating point")
 '''),
         md("""
 **A threshold is a hyperparameter.** Choosing it by looking at test performance

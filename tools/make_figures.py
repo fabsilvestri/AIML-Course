@@ -1027,8 +1027,11 @@ def fig_test_ci(gs, sp):
 
     squared_errors = (pred - y_te) ** 2
     point = float(rmse(squared_errors))
+    # method= is NOT optional here. scipy's default is "BCa", and the deck says
+    # "the percentile bootstrap" — so leaving it off meant the slide named one
+    # estimator and the code ran another. Name the one you mean.
     boot = stats.bootstrap([squared_errors], rmse, confidence_level=0.95,
-                           random_state=SEED)
+                           method="percentile", random_state=SEED)
     lo, hi = (float(v) for v in boot.confidence_interval)
 
     fig, ax = plt.subplots(figsize=(10.4, 2.6))

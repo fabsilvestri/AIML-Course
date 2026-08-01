@@ -644,6 +644,12 @@ opt = torch.optim.Adam([
     {"params": ft.fc.parameters(),     "lr": 1e-3},   # random
 ])
 gen = torch.Generator().manual_seed(RANDOM_STATE)
+# A SECOND generator, for the diagnostic only. Sharing one would mean the
+# augmented-validation line below consumed draws from the same stream that
+# shuffles the training batches — so the training data order would depend on
+# whether the diagnostic ran at all. Harmless with a fixed seed and one
+# configuration; it is also exactly the coupling this course asks you to find.
+gen_val = torch.Generator().manual_seed(RANDOM_STATE + 1)
 
 clean_curve, aug_curve = [], []
 t0 = time.perf_counter()
@@ -659,7 +665,7 @@ for ep in range(FT_EPOCHS):
         lossf(ft(xb), ytr[idx]).backward()
         opt.step()
     clean_curve.append(accuracy(ft, T_val, y_val, inorm))
-    aug_curve.append(accuracy(ft, augment(T_val, gen), y_val, inorm))
+    aug_curve.append(accuracy(ft, augment(T_val, gen_val), y_val, inorm))
     print(f"epoch {ep+1}  val {clean_curve[-1]:.3f}  "
           f"({time.perf_counter()-t0:.0f} s)")
 

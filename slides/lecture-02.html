@@ -1033,16 +1033,26 @@ def rmse(squared_errors):
 
 squared_errors = (final_predictions - y_test) ** 2
 boot_result = stats.bootstrap([squared_errors], rmse,
-                              confidence_level=0.95, random_state=42)
+                              confidence_level=0.95,
+                              method="percentile",   # scipy defaults to BCa
+                              random_state=42)
 rmse_lower, rmse_upper = boot_result.confidence_interval
   </code></pre>
-  <p>95% interval: <strong><span class="usd">$46,877</span> &ndash;
-  <span class="usd">$51,550</span></strong>.</p>
+  <p>95% interval: <strong><span class="usd">$46,752</span> &ndash;
+  <span class="usd">$51,379</span></strong>.</p>
   <div class="panel">
     <span class="panel-title">Why bootstrap and not a $t$-interval</span>
-    A $t$-interval assumes the squared errors are roughly normal. Ours have a
-    skewness of <strong>8.9</strong>. The percentile bootstrap assumes nothing.
+    Not because the squared errors are skewed &mdash; they are, at
+    <strong>8.9</strong>, but with $n = 4{,}128$ the central limit theorem
+    covers their <em>mean</em> regardless. The reason is that we do not report
+    that mean: we report its <strong>square root</strong>. A $t$-interval gives
+    you an interval for the mean squared error, and converting one to the other
+    needs the delta method &mdash; an approximation the bootstrap lets us skip.
   </div>
+  <aside class="note">Note <code>method=</code> in the code above. scipy's
+  default is <code>BCa</code>, not the percentile bootstrap, so a deck that says
+  &ldquo;percentile&rdquo; and omits the argument is describing an estimator it
+  did not run. Name the one you mean.</aside>
   <p class="small muted">A point estimate alone may not justify a launch, if the
   improvement over the incumbent is small.</p>
 </section>
@@ -1052,13 +1062,13 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   <h2>The number you should actually report</h2>
   <figure class="fig fig-wide">
     <img src="../assets/figures/l2-test-ci.svg"
-         alt="The test RMSE of $49,037 shown as a point with a 95% bootstrap confidence interval from $46,877 to $51,550.">
+         alt="The test RMSE of $49,037 shown as a point with a 95% bootstrap confidence interval from $46,752 to $51,379.">
   </figure>
   <div class="panel">
     <span class="panel-title">Now use it on the obvious temptation</span>
     Tuned CV RMSE <span class="usd">$48,180</span>, test RMSE
     <span class="usd">$49,037</span>: <span class="usd">$858</span> apart,
-    against an interval of <span class="usd">&plusmn;$2,336</span>.
+    against an interval of <span class="usd">&plusmn;$2,313</span>.
     <strong>They agree. There is nothing here to explain.</strong>
   </div>
   <aside class="notes">Reading that $858 as overfitted folds, bad luck or a bug
