@@ -43,7 +43,11 @@ def cells_of(src: str) -> list[tuple[int, str, str]]:
     for m in re.finditer(r"[ \t]*code\(", src):
         start = m.start()
         # the cell body: either a ''' literal or a NAME reference
-        after = src[m.end():m.end() + 400]
+        # 2000, not 400: lecture 6 has a cell whose opening comment block runs
+        # to 700 characters, and with a short window every line in the window
+        # was a comment, so the cell yielded no key and was skipped in silence
+        # — no box, no warning, no way to notice except by counting.
+        after = src[m.end():m.end() + 2000]
         if after.startswith("'''"):
             body = after[3:]
         elif after.lstrip().startswith(("SETUP", "LOADER")) or re.match(r"\w+\)", after):
@@ -53,10 +57,41 @@ def cells_of(src: str) -> list[tuple[int, str, str]]:
         lines = [l for l in body.split("\n")
                  if l.strip() and not l.strip().startswith("#")]
         if not lines:
-            continue
-        key = lines[0].strip()
+            # Every code cell must be keyable. Silently skipping one is how a
+            # cell ends up with no specification and nobody finds out.
+            raise SystemExit(
+                f"cannot key the code cell at offset {start}: no line in the "
+                f"first 2000 characters is anything but a comment. Widen the "
+                f"window in cells_of() or shorten the comment.")
         excerpt = " / ".join(l.strip()[:60] for l in lines[:2])
-        out.append((start, key, excerpt))
+        out.append((start, [l.strip() for l in lines[:4]], excerpt))
+    return _disambiguate(out)
+
+
+def _disambiguate(raw: list) -> list[tuple[int, str, str]]:
+    """Give every cell a key that identifies it UNIQUELY within the module.
+
+    The key is the first meaningful line, which is enough almost always. It is
+    not enough for `with warnings.catch_warnings():`, which opens three
+    different cells of lecture 5 — and a dict cannot hold the same key three
+    times, so two of the three specifications would be silently discarded by
+    Python and the surviving one applied to all three cells. Wrong boxes on
+    the wrong cells is worse than no boxes.
+
+    So: where the first line collides, extend the key with the next line,
+    joined by ` // `, until the colliding cells are told apart.
+    """
+    out = [(start, lines[0], excerpt) for start, lines, excerpt in raw]
+    for depth in range(1, 4):
+        counts: dict[str, int] = {}
+        for _, key, _ in out:
+            counts[key] = counts.get(key, 0) + 1
+        if all(n == 1 for n in counts.values()):
+            break
+        out = [(start,
+                " // ".join(lines[:depth + 1]) if counts[key] > 1 else key,
+                excerpt)
+               for (start, key, excerpt), (_, lines, _) in zip(out, raw)]
     return out
 
 
@@ -89,9 +124,24 @@ def main() -> int:
     if not args.apply:
         ap.error("give --list or --apply")
 
+    spec_src = Path(args.apply).read_text()
     ns: dict = {}
-    exec(Path(args.apply).read_text(), ns)
+    exec(spec_src, ns)
     specs: dict = ns["SPECS"]
+
+    # A duplicated key in the SPECS literal is discarded by Python before this
+    # code ever runs: `{"a": 1, "a": 2}` is `{"a": 2}`, silently. The specs
+    # file is written by hand against `--list`, so a repeated key means one
+    # cell's specification was lost. Count the top-level keys in the SOURCE
+    # and compare with the dict that survived.
+    literal_keys = re.findall(r'^(["\']).*?\1(?=\s*:)', spec_src, re.M | re.S)
+    n_literal = len(re.findall(r"^[\"'].*?[\"']\s*:\s*dict\(", spec_src, re.M | re.S))
+    if n_literal and n_literal != len(specs):
+        print(f"refusing: {args.apply} defines {n_literal} entries but only "
+              f"{len(specs)} survived — a key is repeated, and Python kept "
+              f"the last one. Give the colliding cells their longer ` // ` "
+              f"keys from --list.")
+        return 1
 
     # insert from the END so earlier offsets stay valid
     inserted, missed, assigned = 0, [], []
@@ -127,8 +177,19 @@ def main() -> int:
         inserted += 1
 
     if "from _prompt import prompt" not in src:
-        src = src.replace("import nbformat as nbf\n",
-                          "import nbformat as nbf\n\nfrom _prompt import prompt\n", 1)
+        # The lecture modules import from make_notebooks, not from nbformat —
+        # the old anchor here matched nothing, so the import was never added
+        # and every freshly specified module failed to build with a bare
+        # NameError. Anchor on the import that these files actually have.
+        m = re.search(r"^from make_notebooks import .*$", src, re.M)
+        if not m:
+            print("refusing: cannot find the make_notebooks import to anchor "
+                  "`from _prompt import prompt` after. Add it by hand.")
+            return 1
+        src = (src[:m.end()]
+               + "\nfrom _prompt import prompt                                "
+                 "# noqa: E402"
+               + src[m.end():])
     path.write_text(src)
     print(f"lecture {args.lecture}: {inserted} specification(s) inserted")
     for k in missed:
