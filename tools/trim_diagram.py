@@ -63,11 +63,31 @@ def elements(svg: str):
         yield m.start(), end, tag, m.group(2)
 
 
+def _shift_path(d: str, dy: float) -> str:
+    """Move a path up by dy, treating M/L/C/S/Q/T arguments as x,y pairs."""
+    out, cmd, coords = [], None, []
+    for t in re.findall(r"[A-Za-z]|-?[\d.]+", d):
+        if re.match(r"[A-Za-z]", t):
+            cmd, coords = t, []
+            out.append(t)
+            continue
+        coords.append(t)
+        out.append(f"{float(t) - dy:g}"
+                   if cmd in set("MLCSQT") and len(coords) % 2 == 0 else t)
+    return " ".join(out)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("name")
     ap.add_argument("--at", type=float, required=True,
                     help="y in viewBox units; everything wholly below goes")
+    ap.add_argument("--above", action="store_true",
+                    help="cut the TOP band instead: remove everything wholly "
+                         "ABOVE --at and shift the rest up by that much. Some "
+                         "diagrams carry their explanatory panel at the top, "
+                         "and an equation in particular belongs on the slide as "
+                         "KaTeX rather than as SVG text.")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
 
@@ -88,14 +108,17 @@ def main() -> int:
             opaque.append((tag, svg[start:end][:70]))
             continue
         top, bottom = EXTENT[tag](attrs)
-        if top >= args.at:
+        wholly_gone = bottom <= args.at if args.above else top >= args.at
+        crosses = (top < args.at < bottom)
+        if wholly_gone:
             doomed.append((start, end, tag, svg[start:end]))
-        elif bottom > args.at:
+        elif crosses:
             straddling.append((tag, round(top, 1), round(bottom, 1),
                                svg[start:end][:70]))
 
-    print(f"{path.name}  viewBox {vw:g}x{vh:g}  cut at y={args.at:g}")
-    print(f"  {len(doomed)} element(s) wholly below the cut")
+    side = "above" if args.above else "below"
+    print(f"{path.name}  viewBox {vw:g}x{vh:g}  cut at y={args.at:g} ({side})")
+    print(f"  {len(doomed)} element(s) wholly {side} the cut")
     for _, _, tag, raw in doomed:
         flat = " ".join(re.sub(r"<[^>]+>", " ", raw).split())
         print(f"    {tag:8s} {flat[:70]}")
@@ -122,7 +145,26 @@ def main() -> int:
     out = svg
     for start, end, _, _ in sorted(doomed, reverse=True):
         out = out[:start] + out[end:]
-    new_h = args.at
+    if args.above:
+        # everything that survives moves up by the height of the band removed
+        for attr in ("y", "y1", "y2", "cy"):
+            out = re.sub(
+                rf'(<(?:rect|text|line|circle|ellipse|tspan)[^>]*?\b{attr}=")'
+                rf'(-?[\d.]+)"',
+                lambda m: f'{m.group(1)}{float(m.group(2)) - args.at:g}"', out)
+        out = re.sub(
+            r'\bd="([^"]+)"',
+            lambda m: 'd="' + _shift_path(m.group(1), args.at) + '"', out)
+        # polygon/polyline carry their geometry in points="x,y x,y ..." and
+        # would otherwise stay where they were while everything else moved.
+        def _shift_points(m):
+            pts = []
+            for pair in m.group(1).split():
+                x, y = pair.split(",")
+                pts.append(f"{x},{float(y) - args.at:g}")
+            return 'points="' + " ".join(pts) + '"'
+        out = re.sub(r'\bpoints="([^"]+)"', _shift_points, out)
+    new_h = (vh - args.at) if args.above else args.at
     out = out.replace(f'viewBox="0 0 {vb.group(1)} {vb.group(2)}"',
                       f'viewBox="0 0 {vb.group(1)} {new_h:g}"', 1)
     out = re.sub(r'(<svg\b[^>]*?)\sheight="[\d.]+"',
