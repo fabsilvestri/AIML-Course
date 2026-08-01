@@ -139,7 +139,7 @@ def export(**values) -> None:
         # guard refused the export and told it to rename a key 438 other
         # entries already depend on. Ownership is what earns the exemption,
         # and a key named after its only writer has it.
-        if re.match(r"l\d\d_|app\d\d$", k):
+        if re.match(r"l\d\d_|app\d\d", k):
             continue
         # Compare like with like. JSON has no integer keys, so a dict keyed by
         # ints comes back keyed by strings, and a straight != then reports a

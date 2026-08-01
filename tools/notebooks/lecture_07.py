@@ -337,10 +337,25 @@ grid shows that; two separate 1-D sweeps would not have.
 """),
 
         md("""
-## 12 · The model we are going to ship
+## 12 · The model we are going to ship — overruling the grid
+
+The grid's answer under the cap is `min_samples_leaf=1`. **We are not going to
+ship it.**
+
+The model states its justification as *"90% of the 481 training patches in this
+leaf"*. With a minimum leaf of 1 that sentence can become *"100% of the 1"* — a
+single surveyed patch wearing the grammar of evidence. The brief asks for a
+justification a regulator can audit, and that is not one.
+
+So we overrule the grid, for exactly the reason we overruled it on depth: **when
+the brief constrains the model, the grid does not get a vote.** It costs 0.40
+points of cross-validated accuracy, and that number goes to the agency with
+everything else.
 """),
         code('''
-tree = DecisionTreeClassifier(max_depth=8, min_samples_leaf=1,
+AUDITABLE_LEAF = 20        # the brief, not the grid — see the note above
+
+tree = DecisionTreeClassifier(max_depth=8, min_samples_leaf=AUDITABLE_LEAF,
                               random_state=RANDOM_STATE).fit(X_train, y_train)
 
 used = {int(f) for f in tree.tree_.feature if f >= 0}

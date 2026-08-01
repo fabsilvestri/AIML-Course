@@ -876,42 +876,59 @@ search = GridSearchCV(DecisionTreeClassifier(random_state=42), grid,
     Two hyperparameters that both restrict the tree do not act independently. The
     2-D grid shows that; two separate 1-D sweeps would not have.
   </div>
-  <p class="small muted">So our tuned model is <code>max_depth=8</code>,
-  <code>min_samples_leaf=1</code> &mdash; and the second of those is a
-  measurement, not a default we forgot to change.</p>
+  <p>So the grid&rsquo;s answer under the cap is
+  <code>min_samples_leaf=1</code>. <strong>We are not going to ship it.</strong></p>
+  <p class="small">Our model states its justification as &ldquo;90% of the 481
+  training patches in this leaf&rdquo;. At <code>min_samples_leaf=1</code> that
+  sentence can become <em>&ldquo;100% of the 1&rdquo;</em> &mdash; a single
+  surveyed patch wearing the grammar of evidence. The brief requires a
+  justification a regulator can audit, and that is not one.</p>
+  <p class="fix">So we overrule the grid, for exactly the reason we overruled it
+  on depth two slides ago: <strong>when the brief constrains the model, the
+  grid does not get a vote.</strong> We ship
+  <code>min_samples_leaf=20</code>.</p>
+  <table class="smaller">
+    <tr><th></th><th class="num">leaf</th><th class="num">CV accuracy</th></tr>
+    <tr><td>what cross-validation prefers</td><td class="num">1</td><td class="num">73.75%</td></tr>
+    <tr><td>what the brief requires</td><td class="num hit">20</td><td class="num">73.35%</td></tr>
+    <tr class="fix"><td>price of auditability</td><td class="num">&mdash;</td><td class="num">0.40 points</td></tr>
+  </table>
+  <p class="small muted">And that number goes to the agency. A constraint that
+  overrules a measurement has to show the measurement it overruled.</p>
 </section>
 
 <!-- 47 -->
 <section data-menu-title="The tuned tree">
   <h2>The model we are going to ship</h2>
   <pre><code class="language-python" data-trim>
-tree = DecisionTreeClassifier(max_depth=8, min_samples_leaf=1,
+tree = DecisionTreeClassifier(max_depth=8, min_samples_leaf=20,
                               random_state=42).fit(X_train, y_train)
 
-print(f"leaves          {tree.get_n_leaves()}")     # 206
+print(f"leaves          {tree.get_n_leaves()}")     # 163
 print(f"columns used    {tree.tree_.feature[tree.tree_.feature >= 0].size}")
-print(f"train accuracy  {tree.score(X_train, y_train):.1%}")   # 74.8%
+print(f"train accuracy  {tree.score(X_train, y_train):.1%}")   # 74.4%
   </code></pre>
   <table class="smaller">
     <tr><th></th><th class="num">Unconstrained</th><th class="num">Depth 8</th></tr>
-    <tr><td>Leaves</td><td class="num">5,699</td><td class="num hit">206</td></tr>
-    <tr><td>Mean conditions per justification</td><td class="num fail">17.88</td><td class="num hit">7.99</td></tr>
-    <tr><td>Training accuracy</td><td class="num">100.0%</td><td class="num">74.8%</td></tr>
-    <tr><td>Cross-validated accuracy</td><td class="num">82.1%</td><td class="num">73.8%</td></tr>
+    <tr><td>Leaves</td><td class="num">5,699</td><td class="num hit">163</td></tr>
+    <tr><td>Mean conditions per justification</td><td class="num fail">17.88</td><td class="num hit">7.97</td></tr>
+    <tr><td>Smallest leaf</td><td class="num fail">1</td><td class="num hit">20</td></tr>
+    <tr><td>Training accuracy</td><td class="num">100.0%</td><td class="num">74.4%</td></tr>
+    <tr><td>Cross-validated accuracy</td><td class="num">82.1%</td><td class="num">73.4%</td></tr>
   </table>
 </section>
 
 <!-- 48 -->
 <section data-menu-title="Train vs CV, again">
   <h2>Notice what the two accuracy rows now do</h2>
-  <p class="lead">74.8% on the training set, 73.8% cross-validated. A gap of
+  <p class="lead">74.4% on the training set, 73.4% cross-validated. A gap of
   <strong>one point</strong>.</p>
   <p>The unconstrained tree&rsquo;s gap was <strong>17.9 points</strong>. The
   depth limit did not only shorten the justification; it removed almost all of
   the overfitting as a side effect.</p>
   <p class="small muted">Which raises a question we are not going to answer
-  today: if the constrained tree barely overfits, why is it still 8 points worse
-  than the unconstrained one? Hold that thought.</p>
+  today: if the constrained tree barely overfits, why is it still nearly nine
+  points worse than the unconstrained one? Hold that thought.</p>
   <aside class="notes">Someone usually asks this unprompted. If they do, praise
   it and refuse to answer — it is the whole of the next lecture.</aside>
 </section>
@@ -1089,9 +1106,11 @@ print(f"leaves {len(sizes)}   smallest {sizes.min()}   median "
   <p class="small">A leaf built on four patches and a leaf built on four thousand
   produce the same kind of sentence and deserve very different amounts of trust.
   The count belongs in the justification, which is why it is in ours.</p>
-  <p class="small muted">With <code>min_samples_leaf=1</code> the smallest leaf
-  can hold a single patch. That is the honest cost of the tuning result two
-  slides back.</p>
+  <p class="small fix">Which is why the shipped tree carries
+  <code>min_samples_leaf=20</code>. Every justification it produces now rests
+  on at least twenty surveyed patches, so &ldquo;100% of the 1&rdquo; cannot be
+  written &mdash; and the smallest leaf here holds
+  <strong>20</strong>, not one.</p>
 </section>
 
 <!-- ==================================================================== -->

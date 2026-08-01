@@ -981,6 +981,35 @@ print(f"test accuracy {acc:.4f}")
   for exceptions rather than for behaviour.</p>
 </section>
 
+<!-- 52a -->
+<section data-menu-title="Seeds on a GPU">
+  <h2>&ldquo;Running it twice&rdquo; needs one caveat</h2>
+  <p class="small muted">Not examinable. It is here because the previous slide
+  just told you to run it twice, and from this lecture to the end of the course
+  everything runs on a GPU.</p>
+  <p><strong>A fixed seed does not make a GPU run bit-reproducible.</strong>
+  cuDNN picks convolution algorithms by benchmarking them, and reductions that
+  accumulate with atomics add their terms in whatever order the blocks finish.
+  Neither is seeded. Two runs of identical code on identical data differ in
+  about the third decimal.</p>
+  <pre><code class="language-python" data-trim>
+torch.use_deterministic_algorithms(True)
+torch.backends.cudnn.deterministic = True   # and benchmark = False
+  </code></pre>
+  <p class="small">That buys the determinism back, and costs speed &mdash;
+  sometimes a lot, because the fastest algorithm is often the
+  non-deterministic one.</p>
+  <p class="fix">So calibrate what counts as evidence. If you have not set
+  those flags, a difference in the <strong>third decimal</strong> between two
+  runs of the same code is expected and means nothing. Only differences larger
+  than that are evidence of anything &mdash; and the two bugs on the previous
+  slide cost 76.7 and 0.51 points, both far outside it.</p>
+  <aside class="note">Said here rather than in Lecture 2 because up to now
+  everything has been on a CPU, where a fixed seed really does give you the
+  same number twice. Students trained on that for eleven lectures will
+  otherwise read GPU jitter as a bug and go looking for it.</aside>
+</section>
+
 <!-- ============================ DATALOADER ============================= -->
 
 <!-- 53 -->

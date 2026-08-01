@@ -32,6 +32,8 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+import re
+
 import numpy as np
 
 import figkit as fk
@@ -804,7 +806,18 @@ def fig_tradeoff(rows):
 
 # ---------------------------------------------------------------------- main
 
-BEST_LEAF = 1          # overwritten by the grid before path_lengths() runs
+# The brief requires every prediction to carry a justification a regulator can
+# audit, and the model states one as "90% of the 481 training patches in this
+# leaf". With min_samples_leaf=1 that sentence degrades to "100% of the 1",
+# which is not a justification — it is a single surveyed patch wearing the
+# grammar of one.
+#
+# Cross-validation prefers 1. We overrule it, for exactly the reason the deck
+# already overrules it on depth: when the brief constrains the model, the grid
+# does not get a vote. Measured cost at the legible depth: 0.40 points.
+AUDITABLE_LEAF = 20
+
+BEST_LEAF = AUDITABLE_LEAF   # confirmed against the grid before it is used
 
 
 def main():
@@ -866,16 +879,26 @@ def main():
     gd, gl, grid = cached("l07-grid", lambda: grid_2d(D))
     best = fig_grid(gd, gl, grid)
     row = gd.index(LEGIBLE_DEPTH)
-    BEST_LEAF = gl[int(grid[row].argmax())]
+    cv_preferred_leaf = int(gl[int(grid[row].argmax())])
+    BEST_LEAF = AUDITABLE_LEAF
+    leaf_cost_pp = round(100 * float(grid[row].max()
+                                     - grid[row][gl.index(AUDITABLE_LEAF)]), 2)
     facts.update(
         grid_best_depth="None" if gd[best[0]] is None else int(gd[best[0]]),
         grid_best_leaf=int(gl[best[1]]),
         grid_best_cv=round(float(grid.max()), 4),
+        # What cross-validation wanted, what we ship, and the price of the gap.
+        # All three, because a constraint that overrules a measurement has to
+        # show the measurement it overruled.
+        legible_cv_preferred_leaf=cv_preferred_leaf,
         legible_best_leaf=int(BEST_LEAF),
-        legible_best_cv=round(float(grid[row].max()), 4),
+        legible_best_cv=round(float(grid[row][gl.index(AUDITABLE_LEAF)]), 4),
+        legible_cv_preferred_cv=round(float(grid[row].max()), 4),
+        legible_leaf_cost_pp=leaf_cost_pp,
         grid_worst_cv=round(float(grid.min()), 4),
     )
-    print(f"    best under the cap: min_samples_leaf={BEST_LEAF}")
+    print(f"    grid prefers min_samples_leaf={cv_preferred_leaf}; "
+          f"shipping {BEST_LEAF} for auditability, costing {leaf_cost_pp} pts")
 
     print("\nLecture 7 — the two trees, and their decision paths")
     pl = cached(f"l07-paths-{BEST_LEAF}", lambda: path_lengths(D))
@@ -1111,7 +1134,14 @@ def main():
     print(f"its permutation importance on held-out data: "
           f"{ic['decoy_perm']:+.5f} ± {ic['perm_std'][-1]:.5f}")
 
-    export(**facts)
+    # Every bare key here belongs to this script; figures.json is shared and
+    # `own_values` in check_provenance.py hands unprefixed keys to Lectures 1-4
+    # only, so Lecture 7's own measurements were not even in its pool. Namespace
+    # them on the way out — which also tells figkit's collision guard who owns
+    # them, so updating a number no longer looks like another script clobbering
+    # one.
+    export(**{k if re.match(r"l\d\d_|app\d\d", k) else f"app04_{k}": v
+              for k, v in facts.items()})
 
     if (problems := check_text_floor()):
         print("\nfigures whose text lands under the on-slide floor:")
