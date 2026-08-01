@@ -161,12 +161,42 @@ def check_site_index() -> list[str]:
     return out
 
 
+def check_type_scale() -> list[str]:
+    """No bare font-size in the stylesheet.
+
+    The deck declared a seven-step type scale and then set size with a bare
+    number in thirteen more rules, so "what sizes does this deck use?" had no
+    answer you could read anywhere — you had to grep, and grep found 0.86em
+    next to 0.88em next to 0.9em with nothing to say whether that was three
+    decisions or one accident.
+
+    Every size is a named token now. The two absolute pixel values are the
+    30px root that every em is relative to, and the footer, which is chrome
+    outside .reveal and must not scale with the slide. Both say so where they
+    are declared.
+    """
+    import re
+    css = (ROOT / "assets" / "css" / "custom.css").read_text()
+    bad = []
+    for m in re.finditer(r"font-size:\s*([^;\n]+)", css):
+        v = m.group(1).strip()
+        if v.startswith("var(--t-") or v == "inherit":
+            continue
+        if v in ("30px", "15px"):          # documented absolutes; see the CSS
+            continue
+        line = css[:m.start()].count("\n") + 1
+        bad.append(f"assets/css/custom.css:{line}: bare font-size {v} — "
+                   f"use a --t-* token, or declare one with its reason")
+    return bad
+
+
 def main() -> int:
     problems: list[str] = []
     for page in PAGES:
         if page.exists():
             problems += check(page)
     problems += check_site_index()
+    problems += check_type_scale()
 
     if problems:
         print(f"{len(problems)} problem(s):\n")
