@@ -26,7 +26,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FIELDS = ("input", "output", "constraint", "check")
+# Order matters: this is the order they are written into the call, and
+# _prompt.py renders the four specification fields as the quoted prompt
+# and the last three as the "Watch this prompt" lines beneath it.
+FIELDS = ("label", "input", "output", "constraint", "check",
+          "left_open", "student", "catch")
 
 
 def module_path(n: int) -> Path:
