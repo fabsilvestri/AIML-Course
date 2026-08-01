@@ -583,11 +583,12 @@ for label, kw in ladder:
     delta = "" if prev is None else f"{100*(h['test_acc'] - prev):+5.1f}"
     print(f"{label:28s} {100*h['test_acc']:6.2f}%  {delta:>6s}   "
           f"{h['seconds']:.0f} s")
-    rows.append((label, h["test_acc"]))
+    rows.append((label, h["test_acc"], kw))
     curves[label] = h["loss"]
     prev = h["test_acc"]
 
 best = max(rows, key=lambda r: r[1])
+BEST_LABEL, BEST_ACC, BEST_KW = best     # the closing summary uses these
 print(f"\\nbest row: {best[0]} at {best[1]:.4f}")
 print(f"last row: {rows[-1][0]} at {rows[-1][1]:.4f}")
 assert best[1] > 3 * rows[0][1], "the repaired network should not be at chance"
@@ -838,15 +839,22 @@ changed.
 """),
         code('''
 _, base = train(act="sigmoid", init="torch")
-_, best = train(act="relu", init="he", norm="batch", clip=1.0,
-                schedule="onecycle", dropout=0.1)
+# The BEST rung, not the last one. Hard-coding the last rung's settings here
+# would report 33.4% while the slide two pages on says, in as many words, "the
+# number we report is 43.9%, not 33.4%" — the notebook demonstrating the very
+# mistake the deck forbids.
+_, repaired = train(**BEST_KW)
 
 print("=" * 60)
 print(f"{'baseline (majority class)':34s} {baseline:.4f}")
 print(f"{'Lecture 13, 20 layers':34s} {base['test_acc']:.4f}")
-print(f"{'the same 20 layers, repaired':34s} {best['test_acc']:.4f}")
+print(f"{'the same 20 layers, repaired':34s} {repaired['test_acc']:.4f}")
+print(f"{'  (best rung: ' + BEST_LABEL + ')':34s}")
 print(f"{'improvement, accuracy points':34s} "
-      f"{100*(best['test_acc'] - base['test_acc']):+.2f}")
+      f"{100*(repaired['test_acc'] - base['test_acc']):+.2f}")
+if BEST_KW is not ladder[-1][1]:
+    print(f"{'rungs dropped':34s} "
+          f"{len(ladder) - 1 - [k for _, k in ladder].index(BEST_KW)}")
 print("=" * 60)
 print("\\nAnd it is still an MLP on flattened pixels. Lecture 15 changes that,")
 print("and the ceiling this network is running into is the subject there.")

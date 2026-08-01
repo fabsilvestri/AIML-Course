@@ -1226,7 +1226,10 @@ def main() -> int:
     }
 
     print("Lecture 13 — the build:")
-    l13 = cached("app07_l13", lambda: run_l13(d))
+    # Key bumped when activation_stats gained sd_signal: the old entry
+    # predates it, so figures.json kept shipping mean/sd/saturated only
+    # and the corrected probe never reached a slide.
+    l13 = cached("app07_l13_v2", lambda: run_l13(d))
     hists = cached("app07_hists",
                    lambda: layer_hist(d["X_fit"], act="sigmoid", init="torch"))
 

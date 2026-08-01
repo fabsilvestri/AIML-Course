@@ -803,13 +803,13 @@ def activation_stats(net, X, n=512):
 
 <!-- FIG -->
 <section class="figslide" data-menu-title="◆ Activations">
-  <h2>The forward signal does not die</h2>
+  <h2>The probe says the forward signal is fine</h2>
   <figure class="fig fig-wide">
     <img src="../assets/figures/l13-act-by-depth.svg"
          alt="Two panels: activation mean and standard deviation against hidden layer, both flat after the first layer; and standard deviation relative to layer one, settling at a constant.">
   </figure>
-  <p class="takeaway">Whatever is wrong, it is not that the signal fades on the
-  way in. Rule that out before going further.</p>
+  <p class="takeaway">Mean near a half, spread near 0.071, flat for twenty
+  layers. <strong>Hold that conclusion for two slides.</strong></p>
 </section>
 
 <!-- FIG -->
@@ -825,17 +825,41 @@ def activation_stats(net, X, n=512):
 </section>
 
 <!-- 44 -->
-<section data-menu-title="Forward is fine">
-  <h2>So the forward pass is healthy</h2>
-  <p>Every layer produces a mean near a half and a spread of about
-  0.071, and it does that for
-  20 layers running. <strong>Not one unit</strong> at any of the
-  20 layers is saturated &mdash; the measured fraction is
-  0.000 at every depth.</p>
-  <p class="lead">The network is not silent. It is <em>saying the same thing at
-  every depth</em> &mdash; which is a different problem, and not the one that
-  is stopping it from learning.</p>
-  <p class="fail lead">Look at the other direction.</p>
+<section data-menu-title="Forward looks fine">
+  <h2>Every layer looks alive</h2>
+  <p>Mean near a half, spread about 0.071, for
+  20 layers running. <strong>Not one unit</strong> at any of
+  the 20 layers is saturated &mdash; the measured fraction
+  is 0.000 at every depth.</p>
+  <p class="lead">So the forward pass is healthy, the textbook&rsquo;s first
+  explanation does not apply, and we should go and look at the backward pass.</p>
+  <p class="fail lead">Every word of that paragraph is wrong.</p>
+</section>
+
+<!-- 44a -->
+<section data-menu-title="The probe was wrong">
+  <h2>The probe measured the wrong thing</h2>
+  <p class="small"><code>h.std()</code> takes the spread over the
+  <em>whole tensor</em> &mdash; and that is dominated by the spread of the
+  layer&rsquo;s random <strong>biases across units</strong>, which does not
+  change with depth. It would sit near 0.07 in a network that had stopped
+  computing anything at all.</p>
+  <p class="small">What carries information is the spread <strong>down the
+  batch</strong>, averaged over units &mdash; how much a unit moves when the
+  <em>input</em> does.</p>
+  <table class="smaller">
+    <tr><th>Hidden layer</th><th class="num">1</th><th class="num">2</th><th class="num">5</th><th class="num">10</th><th class="num">20</th></tr>
+    <tr><td><code>h.std()</code> &mdash; what we plotted</td><td class="num">0.131</td><td class="num">0.077</td><td class="num">0.071</td><td class="num">0.071</td><td class="num">0.071</td></tr>
+    <tr class="fail"><td><code>h.std(dim=0).mean()</code> &mdash; the signal</td><td class="num">1.3e&minus;01</td><td class="num">1.9e&minus;02</td><td class="num">5.9e&minus;05</td><td class="num">3.0e&minus;09</td><td class="num">2.4e&minus;17</td></tr>
+  </table>
+  <p class="fail">Sixteen orders of magnitude. <strong>The forward signal does
+  die</strong> &mdash; by a factor of <strong>0.149</strong> per layer, which is
+  the number Thread 7 predicts from the fan-in and the same rate the gradient
+  vanishes at. By layer 20 the network is no longer a function of its input.</p>
+  <aside class="notes">One flat line and one cliff, from the same activations. A
+  probe that cannot fail is not instrumentation, and this one was promoted to
+  standing instrumentation in Lecture 14 before anyone checked which axis it
+  reduced over.</aside>
 </section>
 
 <!-- 45 -->

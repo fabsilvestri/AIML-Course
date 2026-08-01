@@ -500,7 +500,16 @@ def activation_stats(net, X, n=512):
     for m in net:
         h = m(h)
         if isinstance(m, nn.Sigmoid):
-            rows.append({"mean": float(h.mean()), "sd": float(h.std()),
+            rows.append({"mean": float(h.mean()),
+                         # sd over the WHOLE tensor is dominated by the spread
+                         # of this layer's random biases across units, which
+                         # does not change with depth — so it stays near 0.07
+                         # for twenty layers and the network looks alive.
+                         "sd_all": float(h.std()),
+                         # What actually carries information: how much a unit's
+                         # output moves when the INPUT changes. sd down the
+                         # batch, averaged over units.
+                         "sd": float(h.std(dim=0).mean()),
                          "saturated": float(((h - 0.5).abs() > 0.45)
                                             .float().mean())})
     net.train()
@@ -508,26 +517,56 @@ def activation_stats(net, X, n=512):
 
 stats = activation_stats(deep, Xf)
 assert len(stats) == DEPTH
+print(f"{'layer':>6}{'mean':>9}{'sd (all)':>11}{'sd (signal)':>14}"
+      f"{'saturated':>11}")
 for i in (0, 1, 4, 9, 14, 19):
     s = stats[i]
-    print(f"layer {i+1:2d}   mean {s['mean']:.4f}   sd {s['sd']:.4f}   "
-          f"saturated {s['saturated']:.3f}")
+    print(f"{i+1:>6}{s['mean']:>9.4f}{s['sd_all']:>11.4f}"
+          f"{s['sd']:>14.2e}{s['saturated']:>11.3f}")
+
+ratio = stats[19]["sd"] / stats[0]["sd"]
+print(f"\\nsignal at layer 20, relative to layer 1: {ratio:.2e}")
+print(f"per layer that is a factor of {ratio ** (1/19):.3f}")
 '''),
         code('''
 plt.figure(figsize=(7, 3.2))
 plt.plot(range(1, DEPTH+1), [s["mean"] for s in stats], marker="o", label="mean")
-plt.plot(range(1, DEPTH+1), [s["sd"] for s in stats], marker="s", label="sd")
+plt.plot(range(1, DEPTH+1), [s["sd_all"] for s in stats], marker="s",
+         label="sd over the whole tensor")
 plt.xlabel("hidden layer"); plt.ylabel("activation"); plt.ylim(0, 0.62)
+plt.legend(); plt.tight_layout(); plt.show()
+
+# The same layers, on the axis that matters. Note the log scale.
+plt.figure(figsize=(7, 3.2))
+plt.semilogy(range(1, DEPTH+1), [s["sd"] for s in stats], marker="s",
+             color="#c0392b", label="sd down the batch (the signal)")
+plt.xlabel("hidden layer"); plt.ylabel("input-dependent spread")
 plt.legend(); plt.tight_layout(); plt.show()
 '''),
         md("""
 Read that carefully before going on, because it rules out the answer most
 people reach for first.
 
-**The forward signal does not die.** The activations settle at a mean near 0.5
-with a small but non-zero spread, and they stay there for twenty layers. Almost
-nothing is saturated. Whatever is wrong, the network is not "silent" going
-forwards.
+**Read the two sd columns against each other.** The first is flat and the
+second falls off a cliff, and only one of them is about the signal.
+
+`h.std()` over the whole tensor barely moves with depth — it stays near 0.07 at
+layer 20 — because it is dominated by the spread of that layer's random
+**biases** across units, and that spread does not care how deep the layer is.
+Reading it, you would conclude the forward pass is healthy and go looking
+elsewhere. **That conclusion would be wrong.**
+
+What carries information is how much a unit's output moves when the *input*
+changes: the sd **down the batch**, averaged over units. That is the second
+column, and it collapses by a factor of **0.149 per layer** — from
+1.29e-01 at layer 1 to **2.42e-17** at layer 20. Sixteen orders of magnitude.
+By layer 20 every input produces essentially the same activation, which is
+another way of saying the network has stopped being a function of its input.
+
+**So the forward signal does die.** It dies quietly, and the obvious probe says
+otherwise. 0.14 is not a coincidence either — it is exactly the per-layer factor
+the mathematical thread predicts from the fan-in, and exactly the rate at which
+the gradient vanishes on the way back.
 """),
 
         md("""
