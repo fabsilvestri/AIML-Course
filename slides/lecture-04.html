@@ -1113,6 +1113,36 @@ confusion_matrix(y_test_5, shift_scores &gt;= t)
   Lecture 2 told you to refuse.</p>
 </section>
 
+<!-- 66a -->
+<section data-menu-title="Not all of it is noise">
+  <h2>&mdash; but on the SGD, part of it is not noise</h2>
+  <p class="small">That verdict holds for the forest, whose threshold is a
+  <em>probability</em>. It does not fully hold for the SGD, whose threshold is
+  a <strong>margin</strong>, and a margin has no fixed scale.</p>
+  <p class="small">Chosen on out-of-fold scores from 40,000-row fits; applied
+  to a model refit on all 60,000, whose scores come out <strong>narrower</strong>
+  &mdash; so the same absolute cut sits elsewhere in the distribution. On the
+  training rows, before any test sampling:</p>
+  <table class="smaller">
+    <tr><th>SGD margin, cut at &minus;102.46</th><th class="num">sd of scores</th><th class="num">Flagged</th><th class="num">Recall</th></tr>
+    <tr><td>Out-of-fold (3 &times; 40,000-row fits)</td><td class="num">343.8</td><td class="num">13.33%</td><td class="num">90.00%</td></tr>
+    <tr><td>Refit on all 60,000</td><td class="num">315.5</td><td class="num">14.19%</td><td class="num">92.25%</td></tr>
+  </table>
+  <p class="small">Scores <strong>8%</strong> narrower, and the flagged rate up
+  <strong>6.5%</strong> in relative terms &mdash; on the very same rows. None
+  of that is sampling.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">So choose the operating point differently</span>
+    Pick a <strong>flagged rate</strong> &mdash; a quantile of the scores
+    &mdash; rather than an absolute score, or use
+    <code>predict_proba</code> from a calibrated model. A quantile is invariant
+    to the rescaling; an absolute margin is not.
+  </div>
+  <aside class="notes">Which is the unglamorous reason the forest transfers so
+  much better here: its threshold is already on a scale that means the same
+  thing after a refit.</aside>
+</section>
+
 <!-- ==================================================================== -->
 <!-- THE WORKED ASSISTANT FAILURE                                         -->
 <!-- ==================================================================== -->

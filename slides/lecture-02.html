@@ -945,13 +945,12 @@ rnd_search = RandomizedSearchCV(full_pipeline, n_iter=10, cv=cv, n_jobs=-1,
   almost nothing. Importance is a reason to <em>try</em> dropping a feature, and
   then to measure &mdash; never a reason to drop it outright. We measure at the
   end of this lecture.</p>
-  <aside class="note">And treat the ranking itself with suspicion. This is
-  <em>impurity</em> importance: computed on the training rows, and structurally
-  biased towards columns offering many candidate split points. A continuous
-  feature outranks a five-row binary indicator almost by construction, so
-  <code>ISLAND</code> sitting last is partly a fact about the measure rather
-  than about the feature. Lecture 8 measures how badly, with a decoy column
-  planted at rank 10 of 55.</aside>
+  <aside class="notes">And treat the ranking itself with suspicion. This is
+  impurity importance: computed on the training rows, and structurally biased
+  towards columns offering many candidate split points. A continuous feature
+  outranks a five-row binary indicator almost by construction, so ISLAND
+  sitting last is partly a fact about the measure rather than about the
+  feature. Lecture 8 measures how badly, with a decoy at rank 10 of 55.</aside>
 </section>
 
 
@@ -1040,9 +1039,8 @@ def rmse(squared_errors):
     return np.sqrt(np.mean(squared_errors))
 
 squared_errors = (final_predictions - y_test) ** 2
-boot_result = stats.bootstrap([squared_errors], rmse,
-                              confidence_level=0.95,
-                              method="percentile",   # scipy defaults to BCa
+boot_result = stats.bootstrap([squared_errors], rmse, confidence_level=0.95,
+                              method="percentile",  # scipy defaults to BCa
                               random_state=42)
 rmse_lower, rmse_upper = boot_result.confidence_interval
   </code></pre>
@@ -1050,19 +1048,16 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   <span class="usd">$51,379</span></strong>.</p>
   <div class="panel">
     <span class="panel-title">Why bootstrap and not a $t$-interval</span>
-    Not because the squared errors are skewed &mdash; they are, at
-    <strong>8.9</strong>, but with $n = 4{,}128$ the central limit theorem
-    covers their <em>mean</em> regardless. The reason is that we do not report
-    that mean: we report its <strong>square root</strong>. A $t$-interval gives
-    you an interval for the mean squared error, and converting one to the other
-    needs the delta method &mdash; an approximation the bootstrap lets us skip.
+    Not the skew &mdash; it is 8.9, but with $n = 4{,}128$ the CLT covers the
+    <em>mean</em> anyway. It is that we report the mean&rsquo;s
+    <strong>square root</strong>, and converting an interval for one into an
+    interval for the other needs the delta method. The bootstrap skips it.
   </div>
-  <aside class="note">Note <code>method=</code> in the code above. scipy's
-  default is <code>BCa</code>, not the percentile bootstrap, so a deck that says
-  &ldquo;percentile&rdquo; and omits the argument is describing an estimator it
-  did not run. Name the one you mean.</aside>
-  <p class="small muted">A point estimate alone may not justify a launch, if the
-  improvement over the incumbent is small.</p>
+  <aside class="notes">Note method= in the code. scipy defaults to BCa, not the
+  percentile bootstrap, so a deck that says "percentile" and omits the argument
+  is describing an estimator it did not run. Name the one you mean.</aside>
+  <aside class="notes">A point estimate alone may not justify a launch, if the
+  improvement over the incumbent is small.</aside>
 </section>
 
 <!-- FIG -->
@@ -1201,17 +1196,28 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
 <section data-menu-title="Absolute vs relative, measured">
   <h2>The criterion we never measured</h2>
   <p class="small">The brief said the experts are off by more than <strong>30% of
-  the price</strong>. We optimised dollars. Here is what that cost, on the same
-  4,128 test districts:</p>
+  the price</strong>. We optimised dollars. Here is what that cost &mdash;
+  measured on the <strong>training folds</strong>, because comparing two
+  differently-trained models is a <em>choice</em>, and choices are not made on
+  the test set:</p>
   <table class="smaller">
     <tr><th>Trained on</th><th class="num">RMSE</th><th class="num">Median error, as % of price</th><th class="num">Within 30%</th></tr>
-    <tr><td>the price (what we did)</td><td class="num hit"><span class="usd">$49,037</span></td><td class="num">11.3%</td><td class="num">85.1%</td></tr>
-    <tr><td>$\log$ of the price</td><td class="num"><span class="usd">$49,955</span></td><td class="num hit">11.0%</td><td class="num hit">87.2%</td></tr>
+    <tr><td>the price (what we did)</td><td class="num hit"><span class="usd">$48,629</span></td><td class="num">12.0%</td><td class="num">85.0%</td></tr>
+    <tr><td>$\log$ of the price</td><td class="num"><span class="usd">$49,646</span></td><td class="num hit">11.5%</td><td class="num hit">86.5%</td></tr>
   </table>
   <p class="small">Exactly the trade the metric slide predicted: regressing the
-  log target is <span class="usd">$918</span> worse in dollars and better on the
-  criterion the stakeholder actually stated. Neither is <em>the</em> right answer
-  &mdash; but choosing without measuring is not a choice.</p>
+  log target is <span class="usd">$1,017</span> worse in dollars and
+  <strong>1.5 points</strong> better on the criterion the stakeholder actually
+  stated. Neither is <em>the</em> right answer &mdash; but choosing without
+  measuring is not a choice.</p>
+  <div class="panel">
+    <span class="panel-title">Where this comparison is allowed to happen</span>
+    Five-fold, on the training rows &mdash; doing it on the test set is the
+    procedure this deck&rsquo;s own specimen exam answer marks
+    <strong>wrong</strong>. The test pair reads
+    <span class="usd">$49,037</span> / <span class="usd">$49,955</span> and
+    chose nothing.
+  </div>
   <p class="small fail">Also worth carrying to the client: the cheapest tenth of
   districts is predicted with an RMSE of <span class="usd">$38,441</span>, the
   dearest tenth with <span class="usd">$97,519</span>. In dollars the model is

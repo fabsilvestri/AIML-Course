@@ -1219,6 +1219,58 @@ def fig_error_slices(ea, overall):
     return save(fig, "l2-error-slices")
 
 
+def target_choice_on_folds(gs, sp, n_splits=5):
+    """Raw target against log target, measured where a CHOICE may be made.
+
+    The deck used to compare these two on the test set and conclude that
+    "choosing without measuring is not a choice" — three slides after stating
+    that the test set is used once, and by the same procedure its own specimen
+    exam answer marks wrong. Comparing two differently-trained models on held-out
+    data *is* model selection, whatever it is called in the prose.
+
+    So the comparison happens on the training folds. The test numbers stay on
+    the slide, but only as a report of something already decided.
+    """
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.metrics import root_mean_squared_error
+    from sklearn.model_selection import KFold
+    from sklearn.pipeline import Pipeline
+
+    X_tr, y_tr = sp["X_train"], sp["y_train"]
+    best = {k.split("__", 1)[1]: v for k, v in gs.best_params_.items()}
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=SEED)
+
+    out = {"n_splits": n_splits, "n_rows": int(len(X_tr))}
+    for tag, on_log in (("price", False), ("log_price", True)):
+        rmses, apes = [], []
+        for tr, va in kf.split(X_tr):
+            Xa, Xb = X_tr.iloc[tr], X_tr.iloc[va]
+            ya, yb = y_tr.iloc[tr], y_tr.iloc[va]
+            # A fresh preprocessor per fit: a Pipeline fits the object it holds,
+            # so reusing one would leak the previous fold's fitted statistics.
+            prep, *_ = preprocessing(Xa)
+            m = Pipeline([("prep", prep),
+                          ("model", RandomForestRegressor(
+                              random_state=SEED, n_jobs=-1, **best))])
+            m.fit(Xa, np.log(ya) if on_log else ya)
+            p = m.predict(Xb)
+            if on_log:
+                p = np.exp(p)
+            rmses.append(root_mean_squared_error(yb, p))
+            apes.append(np.abs(p - yb.values) / yb.values)
+        ape = np.concatenate(apes)
+        out[tag] = {"rmse": float(np.mean(rmses)),
+                    "rmse_sd": float(np.std(rmses, ddof=1)),
+                    "median_ape_pct": float(100 * np.median(ape)),
+                    "within_30pct": float(100 * np.mean(ape <= 0.30))}
+    out["rmse_penalty"] = out["log_price"]["rmse"] - out["price"]["rmse"]
+    out["within30_gain_pp"] = (out["log_price"]["within_30pct"]
+                               - out["price"]["within_30pct"])
+    out["median_ape_gain_pp"] = (out["price"]["median_ape_pct"]
+                                 - out["log_price"]["median_ape_pct"])
+    return out
+
+
 def absolute_vs_relative(gs, sp, base):
     """The brief states a relative criterion; RMSE is absolute. Measure both."""
     from sklearn.ensemble import RandomForestRegressor
@@ -1527,6 +1579,17 @@ def main():
     facts["relative"] = cached(
         "absolute_vs_relative",
         lambda: absolute_vs_relative(gs, sp, facts["baseline"]))
+
+    print("The same choice, made on the training folds where it is allowed:")
+    facts["target_choice_folds"] = cached(
+        "target_choice_on_folds_v1", lambda: target_choice_on_folds(gs, sp))
+    _t = facts["target_choice_folds"]
+    print(f"    price      RMSE ${_t['price']['rmse']:,.0f}  "
+          f"median APE {_t['price']['median_ape_pct']:.1f}%  "
+          f"within 30% {_t['price']['within_30pct']:.1f}%")
+    print(f"    log price  RMSE ${_t['log_price']['rmse']:,.0f}  "
+          f"median APE {_t['log_price']['median_ape_pct']:.1f}%  "
+          f"within 30% {_t['log_price']['within_30pct']:.1f}%")
 
     print("The ISLAND category:")
     facts["island"] = cached("island", lambda: island_check(h, sp))

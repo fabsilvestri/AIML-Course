@@ -230,6 +230,43 @@ def measure_test(Xtr, y5, Xte, y5te, thresholds):
     return out
 
 
+def margin_scale_shift(Xtr, y5, scores, threshold):
+    """Does a threshold chosen on out-of-fold margins survive the refit?
+
+    The deck picks an operating point on cross-validated SGD scores and then
+    applies it to a model refit on all 60,000 rows, and calls the resulting
+    move noise. Part of it is not.
+
+    An SGD decision function has NO FIXED SCALE — it is a signed distance in
+    whatever units the fitted weights happen to have. A model refit on 60,000
+    rows sees more data than the 40,000-row fold models that chose the
+    threshold, fits slightly larger margins, and its scores come out narrower.
+    The same absolute cut therefore sits at a different place in the
+    distribution, and the flagged rate moves before any test-set sampling is
+    involved at all.
+
+    This is why an operating point should be chosen as a QUANTILE of the scores
+    — a flagged rate — or from a calibrated probability, and it is why the
+    forest transfers so much better in the next section.
+    """
+    m = pipeline().fit(Xtr, y5)
+    refit = m.decision_function(Xtr)
+    flag_oof, flag_refit = (scores >= threshold), (refit >= threshold)
+    return {
+        "threshold": float(threshold),
+        "oof_sd": float(scores.std()),
+        "refit_sd": float(refit.std()),
+        "sd_ratio": float(refit.std() / scores.std()),
+        "oof_flagged_pct": float(100 * flag_oof.mean()),
+        "refit_flagged_pct": float(100 * flag_refit.mean()),
+        "flagged_shift_pp": float(100 * (flag_refit.mean() - flag_oof.mean())),
+        "flagged_shift_rel_pct": float(
+            100 * (flag_refit.mean() / flag_oof.mean() - 1)),
+        "oof_recall": float(flag_oof[y5].mean()),
+        "refit_recall": float(flag_refit[y5].mean()),
+    }
+
+
 def at_precision(prec, rec, thr, target, n_pos, min_support=None):
     """The lowest threshold whose precision reaches `target`, with its support.
 
@@ -911,6 +948,16 @@ def main():
         for p_ in problems:
             print("  " + p_)
         raise SystemExit(1)
+
+    print("\nLecture 4 — does the chosen threshold survive the refit?")
+    facts["margin_scale_shift"] = cached(
+        "l04_margin_scale_shift",
+        lambda: margin_scale_shift(Xtr, y5, scores,
+                                   facts["operating_points_cv"]["recall_90"]["threshold"]))
+    _m = facts["margin_scale_shift"]
+    print(f"    sd {_m['oof_sd']:.1f} -> {_m['refit_sd']:.1f} "
+          f"({_m['sd_ratio']:.3f}x); flagged {_m['oof_flagged_pct']:.2f}% -> "
+          f"{_m['refit_flagged_pct']:.2f}%")
 
     # Everything under one key. figures.json is shared and figkit.export()
     # merges at the top level only, so a bare "n_train" here silently replaces

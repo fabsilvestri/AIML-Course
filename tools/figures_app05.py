@@ -794,6 +794,57 @@ def sweep_speed(X, y, audit, ds, k_max=K_MAX):
     return out
 
 
+def lighting_repair(X, y, audit, d, k_max=K_MAX):
+    """Lecture 9 diagnosed lighting; this measures the two one-line repairs.
+
+    L9 concludes that Euclidean distance on raw pixels groups by illumination
+    rather than by identity, and L10 then lists "discard the first few
+    components" under *what we did not do* — a crisp diagnosis with no measured
+    remedy, which is the least useful place to leave a student. Both candidate
+    fixes are one line and take seconds on 400 x 4,096:
+
+      * drop the leading principal components, which is where a global
+        lighting direction lands
+      * scale each image to unit norm first, which removes overall brightness
+        but not its direction
+
+    Identical protocol to `sweep_speed`: choose k by silhouette, then report
+    ARI. Choosing k by ARI instead would be selecting on the labels we are
+    pretending not to have, and would flatter every row equally.
+    """
+    from sklearn.cluster import KMeans
+    from sklearn.decomposition import PCA
+    from sklearn.metrics import adjusted_rand_score, silhouette_score
+
+    def run(Z, tag):
+        t0 = time.perf_counter()
+        best = (-2.0, None, None)
+        for k in range(2, k_max + 1):
+            km = KMeans(n_clusters=k, n_init=N_INIT, random_state=SEED).fit(Z)
+            sc = silhouette_score(Z, km.labels_)
+            if sc > best[0]:
+                best = (float(sc), k, km.labels_.copy())
+        r = {"tag": tag, "dims": int(Z.shape[1]), "best_k": int(best[1]),
+             "best_sil": best[0],
+             "ari_full": float(adjusted_rand_score(y, best[2])),
+             "ari_audit": float(adjusted_rand_score(y[audit], best[2][audit])),
+             "seconds": float(time.perf_counter() - t0)}
+        print(f"      {tag:34s} k={r['best_k']:3d}  sil={r['best_sil']:.3f}  "
+              f"ARI={r['ari_full']:.3f}  ({r['seconds']:.0f}s)", flush=True)
+        return r
+
+    P = PCA(n_components=d, random_state=SEED).fit_transform(X)
+    Xn = X / np.linalg.norm(X, axis=1, keepdims=True)
+    Pn = PCA(n_components=d, random_state=SEED).fit_transform(Xn)
+    rows = [run(P, f"PCA {d} (what the deck did)"),
+            run(P[:, 3:], f"PCA {d}, first 3 discarded"),
+            run(Pn, f"unit-norm images, then PCA {d}")]
+    out = {"rows": rows, "d": int(d)}
+    out["ari_gain_drop3"] = rows[1]["ari_full"] - rows[0]["ari_full"]
+    out["ari_gain_unitnorm"] = rows[2]["ari_full"] - rows[0]["ari_full"]
+    return out
+
+
 def all_sweeps(X, y, audit, ds, k_max=K_MAX):
     """The 4,096-dimensional sweep and every reduced one, in a single run.
 
@@ -1284,6 +1335,9 @@ def main():
         "l10_sweep_seconds_at_95": ss["time"][i95],
         "l10_speedup": float(sweep["t_total"] / ss["time"][i95]),
         "l10_ari_at_95": ss["ari_full"][i95],
+        "l10_lighting_repair": cached(
+            "l10_lighting_repair_v1",
+            lambda: lighting_repair(X, y, audit, pc["d95"])),
         "l10_best_k_at_95": ss["best_k"][i95],
         "l10_dbscan": db,
         "l10_gmm": gm,

@@ -1088,14 +1088,55 @@ Pipeline([("pca", PCA(n_components=0.95, random_state=42)),
   usable classifier.</p>
 </section>
 
+<!-- 67a -->
+<section data-menu-title="The lighting repair, measured">
+  <h2>Lecture 9 diagnosed lighting. Does removing it help?</h2>
+  <p class="small">A diagnosis with no measured remedy is the least useful
+  place to leave a student, so here are the two one-line repairs, on the same
+  400 faces, choosing $k$ by silhouette and reporting ARI exactly as before:</p>
+  <table class="smaller">
+    <tr><th>Representation</th><th class="num">best $k$</th><th class="num">Silhouette</th><th class="num">ARI</th><th class="num">&Delta; ARI</th></tr>
+    <tr><td>PCA to 123 dims &mdash; what we did</td><td class="num">60</td><td class="num">0.205</td><td class="num hit">0.524</td><td class="num">&mdash;</td></tr>
+    <tr><td>PCA 123, first 3 components discarded</td><td class="num">60</td><td class="num">0.184</td><td class="num">0.508</td><td class="num fail">&minus;0.016</td></tr>
+    <tr><td>Unit-norm each image, then PCA 123</td><td class="num">58</td><td class="num">0.189</td><td class="num">0.464</td><td class="num fail">&minus;0.060</td></tr>
+  </table>
+  <p class="fail">Neither helps. The diagnosis was right &mdash; lighting
+  <em>does</em> dominate the distance &mdash; and the obvious repair still does
+  not recover identity, because those leading components carry pose and face
+  shape as well as illumination. Removing them throws away signal with the
+  nuisance.</p>
+  <aside class="note">This is the honest shape of a first project: a correct
+  diagnosis, a plausible fix, and a measurement that refuses it. The remedy that
+  does work is a face-specific representation, which is Lecture 23.</aside>
+</section>
+
+<!-- 67b -->
+<section data-menu-title="How this nearly went wrong">
+  <h2>The version of that table that said the opposite</h2>
+  <p class="small">Measured first by sweeping $k$ and keeping whichever gave
+  the <strong>best ARI</strong>, the same repair appeared to <em>help</em>, by
+  about <strong>+0.015</strong>. That table would have gone on the slide.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Why it was wrong</span>
+    ARI is computed <strong>from the labels</strong> &mdash; the labels this
+    whole application is pretending not to have. Choosing $k$ by ARI is
+    selecting a hyperparameter on the answer key, and it flatters whichever
+    variant happens to have a lucky $k$ somewhere in the sweep.
+  </div>
+  <p class="small">Silhouette uses only the geometry, so it is a choice you
+  could actually make without labels &mdash; which is why $k$ is chosen by
+  silhouette and ARI is only ever <em>reported</em>.</p>
+  <p class="small fix">Same data, same code, two protocols, opposite
+  conclusions. The protocol was the finding.</p>
+</section>
+
 <!-- 68 -->
 <section data-menu-title="What we did not do">
   <h2>What we did not do, and why</h2>
   <ul class="tight small">
-    <li><strong>Removed the lighting direction.</strong> Discarding the first few
-        components would plausibly help identity clustering. It is a defensible
-        move and it is <em>not in Chapter 7</em>, so it is not examinable and we
-        did not spend the minutes on it</li>
+    <li><strong>Removed the lighting direction.</strong> We <em>did</em> spend
+        the minutes on this one &mdash; see the next slide. Both one-line
+        repairs made the clustering <strong>worse</strong></li>
     <li><strong>Kernel PCA, LLE, t-SNE, UMAP.</strong> Chapter 7 covers the first
         two; there was no time. Nothing in this deck depends on them</li>
     <li><strong>A face-specific representation.</strong> A pretrained embedding
