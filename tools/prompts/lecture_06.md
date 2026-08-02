@@ -28,9 +28,9 @@ from thread oversubscription alone. If a timing surprises you, close everything
 else and take it again before you write it down. This is also the whole argument
 for `NJ = 4` rather than `n_jobs=-1`.
 
-**Total wall clock** for a cold restart-and-run-all: **under a minute** on an
-idle 16-core laptop; **10–15 minutes** on a free Colab CPU runtime, nearly all
-of it in cells 10, 14, 20, 22 and 25.
+**Total wall clock** for a cold restart-and-run-all: **under two minutes** on an
+idle 16-core laptop — the measured cells sum to about 100 s, over half of it in
+cell 20 — and **10–15 minutes** on a free Colab CPU runtime.
 
 **Annotation budget (§6.1).** Seven cells carry the full three-bullet
 annotation: **7, 8, 10, 14, 19, 22, 25**. Every other cell gets the short
@@ -328,13 +328,27 @@ inside one line. (On all 891 the same four groups come out, larger: 49/13,
 > variance term, the bias²+noise term and the total expected Brier score.
 > Assert the shape of the prediction matrix before averaging anything.
 
-**Expect:** four lines,
-`degree d: total … = bias²+noise … + variance …`. The variance term grows by
-more than 10× from degree 1 to degree 5; the bias²+noise term barely moves.
+**Expect:**
+
+| degree | total | = bias²+noise | + variance |
+|---|---|---|---|
+| 1 | 0.1360 | 0.1300 | 0.0060 |
+| 2 | 0.1455 | 0.1342 | 0.0113 |
+| 3 | 0.1674 | 0.1383 | 0.0291 |
+| 5 | 0.2484 | 0.1806 | 0.0679 |
+
+**Read the two middle columns against each other before you draw any
+conclusion.** Variance is multiplied by **11.3** from degree 1 to degree 5, which
+is the headline and is true. But in the units the plot is drawn in, variance adds
+**0.062** and bias²+noise adds **0.051** — so the bottom band grows almost as
+much as the top one, and "the bias band barely moves" (which is what the current
+notebook's annotation says) is false. Ratios and differences tell opposite
+stories here. Say which one you are using.
+
 **Assert:** `P.shape == (200, len(X_test))` — inside the loop, before any mean
 is taken.
-**⏱** **about 2 minutes** (author's figure, NJ=4; not re-measured for this
-script). 800 fits. On a 2-vCPU Colab runtime budget 4–5 minutes.
+**⏱** **21.2 s measured** (NJ=4, idle machine), 800 fits. Colab-scale figure:
+about 2 minutes.
 **Annotate:** full
 
 - **Left open:** what the 179 evaluation rows are. They are `X_test`, which
@@ -367,8 +381,12 @@ script). 800 fits. On a 2-vCPU Colab runtime budget 4–5 minutes.
 > grew from degree 1 to degree 5, and the bias²+noise at degree 1 next to the
 > measured noise floor.
 
-**Expect:** `identity holds at machine precision for every degree`, then a
-growth factor above 10, then the two comparable numbers.
+**Expect:** `identity holds at machine precision for every degree` — the
+residuals are 2.8e-17 at degree 1 and exactly 0.0 at the other three. Then
+`variance is multiplied by 11.3 from degree 1 to degree 5`. Then bias²+noise at
+degree 1 = **0.1300** against a measured floor of **0.1218**, so the squared bias
+of the degree-1 model is **0.0082** — under 0.01, and *compute that subtraction
+in the cell*.
 **Assert:** `resid < 1e-12` per degree, and `growth > 10`.
 **Annotate:** short
 
@@ -382,6 +400,10 @@ growth factor above 10, then the two comparable numbers.
 > to buy back" is a claim about a specific difference — bias²+noise at degree 1
 > minus the floor — and it should be computed in the cell, not typed into the
 > markdown.
+>
+> `growth > 10` passes at 11.3. That is a 13% margin on an assert derived from
+> 200 random draws; re-seed the draws and it could fail. If you want a tripwire
+> rather than a coin flip, assert `growth > 5` and print the real figure.
 
 ---
 
@@ -393,15 +415,22 @@ growth factor above 10, then the two comparable numbers.
 > with the total drawn over it as a line, and a dashed horizontal line at the
 > measured noise floor, labelled with its value. Axis labels and a legend.
 
-**Expect:** two bands and a line; the bottom band nearly flat, the top band
-opening out to the right; the dashed floor sitting just under the bottom band at
-degree 1.
+**Expect:** two bands and a line rising from 0.136 at degree 1 to 0.248 at
+degree 5, with the dashed floor at 0.122 sitting just under the bottom band at
+the left edge. The bottom band rises from 0.130 to 0.181, the top from 0.006 to
+0.068.
 **Assert:** none.
 **Annotate:** short
 
 > The floor is drawn as a line because the point of the picture is how much of
 > the bottom band is unreachable. If the label says 0.122 it must be the number
 > cell 8 printed — read it off the variable, never retype it.
+>
+> **What the picture actually shows.** At degree 1 the bottom band is 0.130 of
+> which 0.122 is floor: there is almost nothing there to win. At degree 5 both
+> bands have grown by about the same amount. So the honest caption is not
+> "variance is what grows" — it is *"nothing here shrinks; the floor is most of
+> the left-hand bar and everything added to the right of it is loss."*
 
 ---
 
@@ -438,12 +467,21 @@ degree 1.
 > held-out score per degree, and print the first and last held-out score and the
 > final gap for each.
 
-**Expect:** eight sizes, `[76 157 237 318 398 479 559 640]`. At 640 rows the
-degree-1 curves have met (gap ≈ 0.07); the degree-5 curves are about **1.6**
-apart and the held-out one is still falling.
+**Expect:** eight sizes, `[76 157 237 318 398 479 559 640]`, and
+
+```
+degree 1: at 76 rows held-out 2.853; at 640 rows held-out 0.474, gap 0.078
+degree 5: at 76 rows held-out 9.889; at 640 rows held-out 1.911, gap 1.625
+```
+
+At 640 rows the degree-1 curves have met (gap 0.078); the degree-5 curves are
+**1.6** apart and the held-out one is still falling. **Look at the left-hand
+column before anything else:** a held-out log loss of 2.853 for the *low-variance*
+model, and 9.889 for the other. Those are the 76-row points, and they are why
+the leftmost end of a learning curve is not evidence.
 **Assert:** `len(n) == 8 and n[-1] == 640`
-**⏱** **about 30 s** (author's figure; the cell fits 8 sizes × 10 folds × 2
-degrees). Budget 1–2 minutes on Colab.
+**⏱** **7.1 s measured** (NJ=4, idle machine; 8 sizes × 10 folds × 2 degrees).
+Colab-scale figure: about 30 s.
 **Annotate:** full
 
 - **Left open:** what the eight fractions are fractions *of*. Not of your 712
@@ -517,12 +555,12 @@ that stay far apart across the whole x-axis.
 | 5 | False | 4000 | 11.07 |
 | 6 | False | 4000 | 3.98 |
 
-Iterations climb 74 → 256 → 935 and then hit the ceiling. **Read the last column
-honestly:** it jumps at degree 4, which is the evidence, and then *falls* at
-degrees 5 and 6 — because those two stop after 0.3 s on a failed line search
-rather than after 4000 real iterations, so their coefficients never got the
-chance to grow. "It grows without bound" is the right theory and this table is
-weak evidence for it. Say so, or raise `max_iter` and show the growth properly.
+Iterations climb 74 → 256 → 935 and then hit the ceiling: that column is the
+finding. **The last column is not.** It jumps at degree 4 and then *falls* —
+18.70, 11.07, 3.98 — and the ℓ₂ norms do the same thing (10.4, 11.1, 15.0, 32.1,
+37.6, **15.1**). A larger design spreads the same amount of "size" over more
+columns, and each degree stops in a different place, so comparing coefficient
+magnitudes across degrees does not show growth in either norm.
 
 **Assert:** `sep[1]["converged"] and sep[3]["converged"]` and
 `not sep[4]["converged"]`
@@ -537,8 +575,23 @@ that down.
 > separates the classes in the expanded space then σ(cθᵀx) → {0,1} as c → ∞, so
 > the training loss falls monotonically toward zero as ‖θ‖ → ∞ and the infimum
 > is never attained. The optimiser is not slow; it is looking for something that
-> does not exist, and the growing-coefficient column is what that looks like
-> numerically.
+> does not exist.
+>
+> **Add the one experiment that actually shows this**, because the table above
+> does not. Hold the degree fixed at 5 and raise the iteration budget:
+>
+> | max_iter | iterations used | ‖θ‖₂ | training log loss |
+> |---|---|---|---|
+> | 1,000 | 1,000 | 8.95 | 0.31639 |
+> | 4,000 | 4,000 | 37.55 | 0.29521 |
+> | 16,000 | 12,374 | 74.90 | 0.28885 |
+> | 64,000 | 12,374 | 74.90 | 0.28885 |
+>
+> ‖θ‖ multiplies by eight while the training loss keeps falling and never
+> settles — one design matrix, one degree, nothing else moving. That is the
+> fingerprint. (It does stop, at 12,374 iterations: lbfgs gives up in floating
+> point long before the mathematics does, and the last two rows are identical
+> because of it. Two more seconds of compute buys the whole argument.)
 
 ---
 
@@ -634,10 +687,14 @@ collapse from one line of arithmetic on the eigenvalues.
 > about cost — "163 s for a single cross-validation at C = 1 against 1.6 s at
 > C = 0.01" — and on scikit-learn 1.7.2 that does not reproduce: a single 5-fold
 > cross-validation of the lasso row at degree 5 measured **9.0 s at C = 0.01,
-> 10.3 s at C = 0.1 and 9.6 s at C = 1**. Flat, within noise, no 100× cliff. The
-> defensible reason to stop at 0.316 is that the minimum is well inside the range
-> and the weak-penalty end is the model you already know fails; say that, and
-> re-measure the cost claim on the machine you are actually using before you
+> 10.3 s at C = 0.1 and 9.6 s at C = 1**. Flat, within noise, no 100× cliff. And
+> the module's other justification — "the minimum is well inside the range
+> anyway" — is false on this grid: cell 20 puts ridge's optimum at the *first*
+> value and elastic net's at the *last*. So the honest position is that this
+> grid is **narrower than the problem needs**, kept narrow because the lasso row
+> costs 39 s of a 55 s cell, and that two of the three "tuned" values you are
+> about to read off it are endpoints rather than minima. Say that in the cell.
+> Re-measure any cost claim on the machine you are actually using before you
 > repeat it.
 
 ---
@@ -757,14 +814,25 @@ degree 2, no penalty     (10 folds)   0.467   <- still the best
 > each time. Print the best epoch, its validation loss, the epoch-500 loss, and
 > the regret for not stopping.
 
-**Expect:** both curves fall; the validation curve reaches its minimum well
-before epoch 500 and then rises. The absolute numbers are poor — that is
-expected and the cell should say so.
+**Expect:** the split is 534 + 178, both transforms 143 columns, and
+
+```
+best epoch 105: validation 2.371
+epoch 500:      validation 3.645
+regret for not stopping: 1.274
+```
+
+The minimum is interior, at epoch 105 of 500, and stopping there is worth 1.274
+of validation log loss. **Say out loud that 2.371 is a terrible number** —
+worse than the 0.666 anchor by a factor of three and a half. Plain SGD at a
+constant learning rate on 143 correlated columns is a poor optimiser; this cell
+demonstrates a *shape*, and if you quote 2.371 anywhere near the ridge and lasso
+numbers you have misread it.
 **Assert:** `Z_a.shape[1] == Z_b.shape[1] == 143`, `len(A) + len(B) == 712`,
 and `best + 1 < 500` — a minimum at the last epoch means there was nothing to
 stop early.
-**⏱** **about 20 s** (author's figure). 500 one-epoch fits on 534 rows × 143
-columns.
+**⏱** **0.6 s measured** (500 one-epoch fits on 534 rows × 143 columns).
+Colab-scale figure: about 20 s.
 **Annotate:** full
 
 - **Left open:** where the transform is fitted. Inside the loop it would be the
@@ -797,8 +865,9 @@ columns.
 > that the stopping epoch is a hyperparameter chosen on held-out rows like any
 > other.
 
-**Expect:** the classic U on the validation curve, the training curve still
-falling at 500.
+**Expect:** the validation curve turning up after epoch 105, the training curve
+still falling at 500 (it ends at 2.219 against the validation curve's 3.645).
+The dashed line sits about a fifth of the way across.
 **Assert:** none.
 **Annotate:** short
 
@@ -837,7 +906,8 @@ Seventeen models did, and then it reported the score of whichever one it liked
 best. That number is a **minimum over seventeen noisy estimates**, and the
 minimum of noisy estimates is biased downward even when every estimate is
 individually unbiased. The code never *writes* to the test set. It reads it
-eighteen times, and reading is enough. Nothing in the prompt was wrong; it
+seventeen times — once per candidate — and reading is enough. Nothing in the
+prompt was wrong; it
 simply never said **on what data** "best" was to be found, or **on what data**
 "how well it does" was to be measured.
 
@@ -1079,22 +1149,26 @@ rather than the 712 this script specifies.
   then re-run, in this order: **1 → 5 → 6 → 7**, then **8 → 10 → 11 → 13** if you
   want the decomposition, then **27 → 28**. Cells 2, 3 and 4 do not depend on
   the seed and cost 5 s and a download; re-running everything is simpler and
-  takes about 9 minutes. Skipping cell 6 is the one that will bite you: `cv` and
-  the anchor are both built there.
+  costs under two laptop minutes (10–15 on Colab). Skipping cell 6 is the one
+  that will bite you: `cv` and the anchor are both built there.
 - *Reduce the tuning-trap experiment to 3 seeds to see it run quickly.* Change
   `range(8)` in **cell 25** only, and re-run **cell 25** alone. It depends on
   nothing but `X`, `y` and `pipeline`. Read the printed spread before you read
   the printed difference: at 3 seeds the difference will usually be inside it.
 
-**The standing constraint, extended.** Add one clause to what you wrote down in
-lecture 2:
+**The standing constraint, extended.** Lecture 2 teaches this practice and
+lecture 3 calls it "the standing constraint from Lecture 2", but no lecture
+before this one ever writes it out. Write it out here, so that "the standing
+constraint" is a thing on a page rather than a thing everyone remembers
+differently:
 
 > *"Split before anything is fitted. All preprocessing lives inside a `Pipeline`
 > passed to cross-validation. Nothing derived from the test set may appear in
 > the training path — **including the choice of any hyperparameter**. Fixed
 > random seed. Print the fold scores, not just the mean."*
 
-Eleven added words. They are the whole of cell 24.
+Six added words — *including the choice of any hyperparameter*. They are the
+whole of cell 24.
 
 **Examinable (§8.3).** Sections 2 and 3 — the decomposition, separation, and
 what α does to the spectrum — are examinable. Section 4 is examinable for the
@@ -1115,220 +1189,261 @@ recomputed from scratch, which is itself worth recording.
 
 ### Numbers that do not reconcile (§1.1)
 
-1. **`1.957` for degree 5 is stale — measured 1.922.** *Checked.* Section 3's
+- **1 · `1.957` for degree 5 is stale — measured 1.922.** *Checked.* Section 3's
    opening sentence ("Degree 5 scored 1.957 against an anchor of 0.666") and the
    annotation on the sweep cell both quote it. Re-running that exact
    `cross_validate` gives **1.9217**. The notebook's own annotation names this
    failure mode — *"`assert sweep[5]['valid'] == 1.957`, which is true today"* —
    and it is no longer true. The qualitative claim ("three times worse than
    saying nothing", 1.922/0.6657 = 2.89) survives.
-2. **`0.468` for degree 2 is the degree-*1* number.** *Checked.* Section 4 says
+- **2 · `0.468` for degree 2 is the degree-*1* number.** *Checked.* Section 4 says
    "none of them beats the plain degree-2 model you already had at 0.468".
    Measured: degree 2 = **0.4671**, degree 1 = **0.4681**. 0.468 is degree 1's
    held-out score, attributed to degree 2.
-3. **`75.4%` accuracy at degree 5 matches nothing.** *Checked.* Section 3 says
+- **3 · `75.4%` accuracy at degree 5 matches nothing.** *Checked.* Section 3 says
    "Accuracy at that degree was 75.4%" without saying on which rows. Measured:
    **76.0%** by 10-fold CV on the training rows, **74.9%** on the test set.
    Neither rounds to 75.4%, and §1.2 requires the row set to be named.
-4. **"a bootstrap with replacement gives each fit ~253 distinct rows" — it gives
+- **4 · "a bootstrap with replacement gives each fit ~253 distinct rows" — it gives
    306.** *Checked* by closed form and by 2,000 simulated draws: drawing 400 rows
    with replacement from 712 leaves 712·(1−(711/712)⁴⁰⁰) = **306.2** distinct
    rows, simulated mean 306.3. The figure 253 is 400·(1−1/e), the *n-from-n*
    bootstrap answer, applied to an n-from-N draw.
-5. **"At 12% of 712 that is 85 passengers" — it is 76.** *Checked.*
+- **5 · "At 12% of 712 that is 85 passengers" — it is 76.** *Checked.*
    `learning_curve` scales `train_sizes` by the largest training set available
    inside a fold, which with `cv` = 10 folds is 640, not 712. The eight sizes
    are `[76 157 237 318 398 479 559 640]`. The same cell asserts `n[-1] == 640`,
    so the box and the assert contradict each other three lines apart.
-6. **"where saga fits 4.90" does not reproduce.** *Checked, and it did not
+- **6 · "where saga fits 4.90" does not reproduce.** *Checked, and it did not
    reproduce.* At degree 5, `penalty="l1"`, `C=0.001`, `max_iter=5000`, saga
-   returned an intercept of **−0.0001** after 54 s (and had plainly not
-   converged). The *liblinear* half of the claim is exactly right — intercept
+   returned an intercept of **−0.0001**, and the penalty sweep's own tuned fits
+   return −0.0001 (lasso) and −0.0000 (elastic net) — saga does not converge at
+   degree 5 within `max_iter`, so at that degree its intercept is
+   indistinguishable from the liblinear pathology the comment is warning about.
+   The *liblinear* half of the claim is exactly right — intercept
    **+0.0000**, because liblinear penalises its synthetic intercept column — and
    the contrast is real and reproducible at degree 1, where saga converges in
    milliseconds: liblinear **+0.0000** with 0 of 22 weights alive, saga
    **−0.5018** against a base-rate log-odds of −0.4750. I could not find any
    configuration of this pipeline that produces 4.90.
-7. **Hard-coded prose inside `print()` calls.** *Checked by reading the source.*
+- **7 · Hard-coded prose inside `print()` calls.** *Checked by reading the source.*
    Four claims are printed as string literals rather than computed, so they will
    keep printing after they stop being true: `"still 1.6 apart and falling"`,
    `"the squared bias of the degree-1 model is under 0.01"`, `"about 0.013 of
-   Brier score is left on the table"`, and `"<- still the best"`. The first and
-   third happen to be right today (the gap at degree 5 is 1.636; 0.134 − 0.121 =
-   0.013). The second I could not check without running the two-minute
-   decomposition cell.
-8. **The prose says "the factor of ten"; the cell prints 22.** *Checked.* The
+   Brier score is left on the table"`, and `"<- still the best"`. Three of the
+   four are right today and the fourth is a coin flip: the gap at degree 5 is
+   1.636; 0.1339 − 0.1206 = 0.0133; the squared bias at degree 1 is 0.0082; and
+   "still the best" is a 0.0010 margin (item 13). Being right today is not the
+   property that matters — none of them is recomputed, so all four survive any
+   change to the cells above them.
+- **8 · "the bias band barely moves" — measured, it grows by 0.051 while the
+   variance band grows by 0.062.** *Checked by running the decomposition.*
+   bias²+noise goes 0.1300 → 0.1342 → 0.1383 → **0.1806** across degrees 1, 2, 3
+   and 5; variance goes 0.0060 → 0.0113 → 0.0291 → **0.0679**. The ×11.3 ratio
+   the notebook asserts is right; the statement about the *picture*, which is
+   drawn in absolute units, is not — 45% of the total growth is in the bottom
+   band. The rest of the annotation is confirmed: the squared bias at degree 1 is
+   **0.0082** (0.1300 minus the 0.1218 training-row floor), which is indeed under
+   0.01.
+- **9 · `assert growth > 10` passes at 11.3.** *Checked.* A 13% margin on a
+   quantity estimated from 200 random draws. It is presented as a structural
+   claim and is one re-seed away from being a flaky test.
+- **10 · The prose says "the factor of ten"; the cell prints 22.** *Checked.* The
    annotation on the gap cell says "The factor of ten is what connects the
    picture back to the decomposition", but the assert is a floor (`g5 > 10*g1`)
    and the measured ratio is **22.4**.
 
 ### Comparisons on mismatched rows (§2.1, §2.4)
 
-9. **The noise floor and the final Brier score are measured on different
+- **11 · The noise floor and the final Brier score are measured on different
    people.** *Checked.* The floor cell does `d = full.copy()` — all 891
    passengers — and section 6 sets the winner's Brier score, computed on the 179
    test passengers, beside it. Measured: floor **0.1206** over all 891 (858
    people in multi-passenger cells), **0.1218** over the 712 training rows. The
-   headroom claim is robust (0.013 vs 0.012), which is exactly the sentence the
+   headroom claim survives the mismatch — **0.0133** against the all-891 floor,
+   **0.0121** against the training-row floor — which is exactly the sentence the
    notebook should be printing instead of the comparison it currently makes
    silently.
-10. **"179 passengers, untouched since the split at the top of this notebook" is
-    false.** *Checked by static analysis of the cell sources.* Before section 6,
-    `X_test`/`y_test` are read by the bias-variance cell (200 draws × 4 degrees =
-    800 `predict_proba` calls plus `y_test` as ground truth), by the assistant-
-    failure cell (17 reads) and by the honest GridSearchCV cell (1 read); and
-    `y_test`'s labels enter the noise floor through `full`. None of those reads
-    *selects* anything except the deliberate one — but the notebook's own
-    red-team question 1 is "count every *read*, not every write", and by its own
-    rule it fails its own checklist. This is the most defensible finding in the
-    list and it is a two-line fix: say what the reads were.
-11. **"degree 2 is still the best" is a coin flip.** *Checked.* Degree 2 =
-    0.4671, degree 1 = 0.4681 — a margin of **0.0010** against a paired
-    per-fold standard deviation of **0.0288**, with degree 2 winning **5 of the
-    10 folds**. §2.4 says a result inside its own noise is not a result. The
-    `<- still the best` marker printed beside degree 2, and the whole closing
-    argument that "the winner is a two-line model", rest on a difference the
-    experiment cannot resolve. The conclusion survives — degree 1 *is* also a
-    two-line model — but the cell should print the fold spread and the prose
-    should say "degree 1 or 2", which is what the notebook's own assert already
-    allows.
-12. **The penalty table and the degree table are cross-validated with different
-    numbers of folds and printed in one column.** *Checked.* The degree sweep
-    uses `cv` (10 folds, 640 training rows per fit); the penalty sweep uses
-    `cv5` (5 folds, 569 rows per fit). The "read that table twice" cell prints
-    `sweep[5]`, three `reg[...]` values and `sweep[2]` as five comparable rows,
-    unmarked. §2.1: the comparison is across different training sizes and
-    different held-out sets.
+- **12 · "179 passengers, untouched since the split at the top of this notebook" is
+  false.** *Checked by static analysis of the cell sources.* Before section 6,
+  `X_test`/`y_test` are read by the bias-variance cell (200 draws × 4 degrees =
+  800 `predict_proba` calls plus `y_test` as ground truth), by the assistant-
+  failure cell (17 reads) and by the honest GridSearchCV cell (1 read); and
+  `y_test`'s labels enter the noise floor through `full`. None of those reads
+  *selects* anything except the deliberate one — but the notebook's own
+  red-team question 1 is "count every *read*, not every write", and by its own
+  rule it fails its own checklist. This is the most defensible finding in the
+  list and it is a two-line fix: say what the reads were.
+- **13 · "degree 2 is still the best" is a coin flip.** *Checked.* Degree 2 =
+  0.4671, degree 1 = 0.4681 — a margin of **0.0010** against a paired
+  per-fold standard deviation of **0.0288**, with degree 2 winning **5 of the
+  10 folds**. §2.4 says a result inside its own noise is not a result. The
+  `<- still the best` marker printed beside degree 2, and the whole closing
+  argument that "the winner is a two-line model", rest on a difference the
+  experiment cannot resolve. The conclusion survives — degree 1 *is* also a
+  two-line model — but the cell should print the fold spread and the prose
+  should say "degree 1 or 2", which is what the notebook's own assert already
+  allows.
+- **14 · The penalty table and the degree table are cross-validated with different
+  numbers of folds and printed in one column.** *Checked.* The degree sweep
+  uses `cv` (10 folds, 640 training rows per fit); the penalty sweep uses
+  `cv5` (5 folds, 569 rows per fit). The "read that table twice" cell prints
+  `sweep[5]`, three `reg[...]` values and `sweep[2]` as five comparable rows,
+  unmarked. §2.1: the comparison is across different training sizes and
+  different held-out sets.
 
+### Section 4 — the repair does not land where the prose says (§1.1, §2.1)
+
+- **15 · "Every penalty … makes it respectable" — measured, not one of them reaches
+  the anchor.** *Checked by running the penalty sweep.* Best cross-validated
+  log loss at degree 5: ridge **0.724**, lasso **0.681**, elastic net
+  **0.681**, against an anchor of 0.666. All three are still worse than
+  predicting the base rate for everybody. The repair is real and enormous
+  (from 1.92) and the sentence describing it overstates where it lands. The
+  same run makes a second point the notebook never mentions: on the test set
+  the tuned models score **worse** than the unpenalised degree-5 model on
+  Brier (0.230 and 0.240 against 0.189) and on accuracy (64.8% against 74.9%),
+  because the penalty shrinks everything toward the base rate. Log loss
+  rewards that; the other two metrics do not.
+- **16 · Two of the three tuned `C` values sit on the boundary of the grid.**
+  *Checked.* Ridge's best is `Cs[0]` = 1e-4 and elastic net's is `Cs[-1]` =
+  0.3162. The module's docstring justifies truncating the grid on the grounds
+  that "the minimum is well inside the range anyway" — for two of the three
+  penalties it is not inside the range at all, and a best value at an endpoint
+  is the grid running out rather than a hyperparameter being tuned. Those two
+  numbers are then carried into the final test-set table as "tuned".
+- **17 · The stated cost reason for truncating the grid does not reproduce.**
+  *Checked.* The module says coordinate descent at degree 5 takes "163 s for a
+  single cross-validation at C = 1" and "1.6 s at C = 0.01". Measured on
+  scikit-learn 1.7.2, one 5-fold cross-validation of that row: **9.0 s at
+  C = 0.01, 10.3 s at C = 0.1, 9.6 s at C = 1**. Flat. The whole penalty cell
+  runs in **54.7 s** (ridge 5.8 s, lasso 39.3 s, elastic 9.6 s).
 ### Cross-references that do not resolve (§3.3)
 
-13. **"Every penalty … makes it respectable" — measured, not one of them reaches
-    the anchor.** *Checked by running the penalty sweep.* Best cross-validated
-    log loss at degree 5: ridge **0.724**, lasso **0.681**, elastic net
-    **0.681**, against an anchor of 0.666. All three are still worse than
-    predicting the base rate for everybody. The repair is real and enormous
-    (from 1.92) and the sentence describing it overstates where it lands. The
-    same run makes a second point the notebook never mentions: on the test set
-    the tuned models score **worse** than the unpenalised degree-5 model on
-    Brier (0.230 and 0.240 against 0.189) and on accuracy (64.8% against 74.9%),
-    because the penalty shrinks everything toward the base rate. Log loss
-    rewards that; the other two metrics do not.
-14. **Two of the three tuned `C` values sit on the boundary of the grid.**
-    *Checked.* Ridge's best is `Cs[0]` = 1e-4 and elastic net's is `Cs[-1]` =
-    0.3162. The module's docstring justifies truncating the grid on the grounds
-    that "the minimum is well inside the range anyway" — for two of the three
-    penalties it is not inside the range at all, and a best value at an endpoint
-    is the grid running out rather than a hyperparameter being tuned. Those two
-    numbers are then carried into the final test-set table as "tuned".
-15. **The stated cost reason for truncating the grid does not reproduce.**
-    *Checked.* The module says coordinate descent at degree 5 takes "163 s for a
-    single cross-validation at C = 1" and "1.6 s at C = 0.01". Measured on
-    scikit-learn 1.7.2, one 5-fold cross-validation of that row: **9.0 s at
-    C = 0.01, 10.3 s at C = 0.1, 9.6 s at C = 1**. Flat. The whole penalty cell
-    runs in **54.7 s** (ridge 5.8 s, lasso 39.3 s, elastic 9.6 s).
-16. **"the assert on line 3"** — *checked.* In the rendered `engineer` cell,
-    line 3 is `d = d.copy()`. The assert being referred to is on **line 17**.
-17. **"It is the third diagnosis, four sections from now"** (code comment) and
-    "**four sections from now**" (annotation) — *checked.* The cell is in section
-    1; diagnosis 3 is in section **3**. Two sections, not four.
-18. **"rank 23 of 29 columns" is imported from a pipeline this notebook does not
-    build.** *Checked.* Section 3 offers it as the second symptom of the
-    degree-5 failure. Lecture 5's 29-column figure is its *unrepaired* encoder;
-    lecture 6's `prep(1)` produces **22** columns, 23 with the intercept, and
-    that matrix is **full rank** (`matrix_rank` = 23). The claim as written
-    describes a design matrix no cell of lecture 6 constructs.
-19. **Diagnosis 3 is demonstrated on a matrix the notebook never fits.**
-    *Checked.* The eigenvalue cell builds `Z` from SibSp, Parch, FamilySize, Age
-    and Fare — but `NUM` excludes `FamilySize` from the split cell onward, so no
-    pipeline in the notebook ever sees the dependence. The prose ("Diagnosis 3
-    is Thread 1 returning") presents as a cause of the 1.92 something that was
-    already repaired in cell 5. The notebook says this obliquely, once, in a
-    prompt box ("that is the whole of the third repair"), and never in the
-    section that draws the conclusion.
+- **18 · "the assert on line 3"** — *checked.* In the rendered `engineer` cell,
+  line 3 is `d = d.copy()`. The assert being referred to is on **line 17**.
+- **19 · "It is the third diagnosis, four sections from now"** (code comment) and
+  "**four sections from now**" (annotation) — *checked.* The cell is in section
+  1; diagnosis 3 is in section **3**. Two sections, not four.
+- **20 · "Add one clause to what you wrote down in Lecture 2" — lecture 2 contains
+  no such text, and the clause is six words, not eleven.** *Checked by string
+  search across lectures 1–5.* None of "Split before anything", "preprocessing
+  lives inside", "Fixed random seed" or "Nothing derived from the test set"
+  appears in any notebook before this one; lecture 3 refers to "the standing
+  constraint from Lecture 2" but lecture 2 never states it as a block. So the
+  reader is told to extend something they were never given. The added clause,
+  *including the choice of any hyperparameter*, is **6** words; the notebook says
+  eleven. Both are one-line fixes: write the constraint out in lecture 2, and
+  count.
+- **21 · The grid-boundary check is a rule this course already taught, and the
+  notebook breaks it.** *Checked.* Lecture 2's `GridSearchCV` prompt box carries
+  the check clause *"detect whether the winner sits on the EDGE of the grid and
+  say so — an optimum at the boundary means the optimum may lie outside it"*, and
+  its annotation says *"If the largest value wins, the search was too small."*
+  Four lectures later, two of the three tuned `C` values sit on an edge and
+  nothing says so (item 16). The most damaging cross-reference failure in a
+  course is the one where a later lecture quietly violates an earlier one's rule.
+- **22 · "rank 23 of 29 columns" is imported from a pipeline this notebook does not
+  build.** *Checked.* Section 3 offers it as the second symptom of the
+  degree-5 failure. Lecture 5's 29-column figure is its *unrepaired* encoder;
+  lecture 6's `prep(1)` produces **22** columns, 23 with the intercept, and
+  that matrix is **full rank** (`matrix_rank` = 23). The claim as written
+  describes a design matrix no cell of lecture 6 constructs.
+- **23 · Diagnosis 3 is demonstrated on a matrix the notebook never fits.**
+  *Checked.* The eigenvalue cell builds `Z` from SibSp, Parch, FamilySize, Age
+  and Fare — but `NUM` excludes `FamilySize` from the split cell onward, so no
+  pipeline in the notebook ever sees the dependence. The prose ("Diagnosis 3
+  is Thread 1 returning") presents as a cause of the 1.92 something that was
+  already repaired in cell 5. The notebook says this obliquely, once, in a
+  prompt box ("that is the whole of the third repair"), and never in the
+  section that draws the conclusion.
 
 ### Staging (§8)
 
-20. **The assistant failure is announced four times before it runs.** *Checked
-    by counting.* (i) the notebook header — "cells marked ⚠ read before running
-    contain a defect on purpose"; (ii) the section-5 markdown heading block with
-    its own ⚠; (iii) the paragraph immediately above the cell — "It runs, it
-    warns about nothing, and it prints a number a reader will quote"; (iv) the
-    prompt-box label, "⚠ what the assistant returns", plus its three-bullet
-    annotation which gives away the entire answer before the cell has run; and
-    (v) the first line of the code itself, `# ⚠ WRONG — this is the failure, not
-    the fix`. That is the exact defect §8.1 was written about. Nobody falls in.
+- **24 · The assistant failure is announced four times before it runs.** *Checked
+  by counting.* (i) the notebook header — "cells marked ⚠ read before running
+  contain a defect on purpose"; (ii) the section-5 markdown heading block with
+  its own ⚠; (iii) the paragraph immediately above the cell — "It runs, it
+  warns about nothing, and it prints a number a reader will quote"; (iv) the
+  prompt-box label, "⚠ what the assistant returns", plus its three-bullet
+  annotation which gives away the entire answer before the cell has run; and
+  (v) the first line of the code itself, `# ⚠ WRONG — this is the failure, not
+  the fix`. That is the exact defect §8.1 was written about. Nobody falls in.
 
 ### Prompt boxes (§6.1, §6.2)
 
-21. **29 of 29 boxes carry the full three-bullet annotation.** *Checked
-    programmatically:* every markdown cell beginning `> **Prompt` contains all
-    three of `Left open`, `The usual student version`, `How you would catch it`.
-    The budget is five to eight.
-22. **Several "usual student version" bullets are invented rather than
-    observed** (§6.2) — e.g. "pickling the frame at the end of the last
-    notebook", "adding a sixth candidate after seeing the table", "reusing one
-    fitted pipeline across the 200 draws". Each is plausible; none names a
-    library default or a recorded failure. Meanwhile the genuinely real defaults
-    available in the same cells go unmentioned: `return_train_score=False`,
-    `rng.choice(replace=True)`, `learning_curve(shuffle=False)`,
-    `groupby(observed=False, dropna=True)`, `SGDClassifier(warm_start=False,
-    penalty="l2")`, `GridSearchCV(scoring=None)` → accuracy.
+- **25 · 29 of 29 boxes carry the full three-bullet annotation.** *Checked
+  programmatically:* every markdown cell beginning `> **Prompt` contains all
+  three of `Left open`, `The usual student version`, `How you would catch it`.
+  The budget is five to eight.
+- **26 · Several "usual student version" bullets are invented rather than
+  observed** (§6.2) — e.g. "pickling the frame at the end of the last
+  notebook", "adding a sixth candidate after seeing the table", "reusing one
+  fitted pipeline across the 200 draws". Each is plausible; none names a
+  library default or a recorded failure. Meanwhile the genuinely real defaults
+  available in the same cells go unmentioned: `return_train_score=False`,
+  `rng.choice(replace=True)`, `learning_curve(shuffle=False)`,
+  `groupby(observed=False, dropna=True)`, `SGDClassifier(warm_start=False,
+  penalty="l2")`, `GridSearchCV(scoring=None)` → accuracy.
 
 ### Timing and reproducibility (§7.1, §7.2)
 
-23. **No ⏱ note anywhere states a CPU, and this is not a formality.** *Checked* —
-    "about two minutes" appears three times and names no machine, no core count
-    and no `n_jobs`. §7.1 requires the CPU figure, and here is why it matters:
-    the six timed cells claim 15 s, 30 s, 20 s and 2 min ×3, and on an idle
-    16-core M4 Max the ones I measured came in at **6.0 s** (degree sweep),
-    **1.9 s** (GridSearchCV), **0.6 s** (the assistant-failure loop) and
-    **2.7 s per seed** for the tuning trap. A reader on that hardware who has
-    been told "two minutes" has no way to tell a fast machine from a cell that
-    silently did nothing. A reader on Colab needs the other number. Both belong
-    in the note, and neither is currently there.
-24. **A timing measured under load is worthless, and I nearly published one.**
-    *Measured, twice.* The same 17-fit loop (cell 24) took **484.5 s** with three
-    other Python processes on the box and **0.6 s** with none. The convergence
-    cell measured **106 s** under the same contention and **1.0 s** clean. This
-    is not a defect in the notebook — it is the reason §7.1 asks for the machine
-    as well as the number, and it is worth one sentence in the notebook's own
-    timing note, because `NJ = 4` on a two-core runtime is exactly the
-    oversubscription that produces it.
-25. **Three untimed multi-fit cells** — the assistant-failure loop (17 fits at
-    degree 3), the GridSearchCV cell (170 fits plus refit) and the convergence
-    cell (6 fits at `max_iter=4000`). All three are fast on a laptop (0.6 s,
-    1.9 s, 1.0 s measured) and none was verified on a 2-vCPU runtime, where the
-    170-fit one is the one to watch. The notebook times the 6 s degree sweep and
-    not the 170-fit grid search, which is the wrong way round.
-26. **No exercise lists a re-run order** (§7.2). Section 7 tells the reader to
-    "run the equivalent on your neighbour's" notebook and the closing markdown
-    asks them to extend the standing constraint, but nothing states which cells
-    depend on `RANDOM_STATE`, and `cv`, the anchor and the split are created in
-    three different cells.
+- **27 · No ⏱ note anywhere states a CPU, and this is not a formality.** *Checked* —
+  "about two minutes" appears three times and names no machine, no core count
+  and no `n_jobs`. §7.1 requires the CPU figure, and here is why it matters:
+  the six timed cells claim 15 s, 30 s, 20 s and 2 min ×3, and on an idle
+  16-core M4 Max every one of them came in between 20 and 60 times faster:
+  **6.0 s** degree sweep (claimed 15 s), **21.2 s** decomposition (2 min),
+  **7.1 s** learning curves (30 s), **54.7 s** penalty sweep (2 min), **0.6 s**
+  early stopping (20 s), **2.7 s per seed** tuning trap (2 min), plus **1.9 s**
+  GridSearchCV and **0.6 s** assistant-failure loop, neither of which is timed at
+  all. A reader on that hardware who has been told "two minutes" has no way to
+  tell a fast machine from a cell that
+  silently did nothing. A reader on Colab needs the other number. Both belong
+  in the note, and neither is currently there.
+- **28 · A timing measured under load is worthless, and I nearly published one.**
+  *Measured, twice.* The same 17-fit loop (cell 24) took **484.5 s** with three
+  other Python processes on the box and **0.6 s** with none. The convergence
+  cell measured **106 s** under the same contention and **1.0 s** clean. This
+  is not a defect in the notebook — it is the reason §7.1 asks for the machine
+  as well as the number, and it is worth one sentence in the notebook's own
+  timing note, because `NJ = 4` on a two-core runtime is exactly the
+  oversubscription that produces it.
+- **29 · Three untimed multi-fit cells** — the assistant-failure loop (17 fits at
+  degree 3), the GridSearchCV cell (170 fits plus refit) and the convergence
+  cell (6 fits at `max_iter=4000`). All three are fast on a laptop (0.6 s,
+  1.9 s, 1.0 s measured) and none was verified on a 2-vCPU runtime, where the
+  170-fit one is the one to watch. The notebook times the 6 s degree sweep and
+  not the 170-fit grid search, which is the wrong way round.
+- **30 · No exercise lists a re-run order** (§7.2). Section 7 tells the reader to
+  "run the equivalent on your neighbour's" notebook and the closing markdown
+  asks them to extend the standing constraint, but nothing states which cells
+  depend on `RANDOM_STATE`, and `cv`, the anchor and the split are created in
+  three different cells.
 
 ### Notebook state (§4.1)
 
-27. **`p` is rebound from a float to an array.** *Checked.* The anchor cell sets
-    `p = y_train.mean()` (float) and uses it to define `constant_log_loss`; the
-    final test-set cell rebinds `p = m.predict_proba(X_test)[:, 1]` (a 179-vector)
-    inside its loop. One name, two kinds of object.
-28. **`best` is rebound from an int to a float.** *Checked.* The early-stopping
-    cell sets `best = int(np.argmin(valid_curve))` — an epoch index, used by the
-    plot cell as `ax.axvline(best)` — and the closing summary cell rebinds
-    `best = final[winner]["log_loss"]`. Re-running the early-stopping *plot* cell
-    after the summary cell draws a vertical line at x = 0.43.
-29. **`A` and `B` mean two different things.** *Checked.* The early-stopping cell
-    binds them to a 75/25 split of the training rows at module level; `one_seed`
-    rebinds them locally to a fresh 80/20 split of the whole frame. The shadowing
-    is harmless to execution and confusing to read, and §4.1's remedy (throwaway
-    names in throwaway scopes) applies.
+- **31 · `p` is rebound from a float to an array.** *Checked.* The anchor cell sets
+  `p = y_train.mean()` (float) and uses it to define `constant_log_loss`; the
+  final test-set cell rebinds `p = m.predict_proba(X_test)[:, 1]` (a 179-vector)
+  inside its loop. One name, two kinds of object.
+- **32 · `best` is rebound from an int to a float.** *Checked.* The early-stopping
+  cell sets `best = int(np.argmin(valid_curve))` — an epoch index, used by the
+  plot cell as `ax.axvline(best)` — and the closing summary cell rebinds
+  `best = final[winner]["log_loss"]`. Re-running the early-stopping *plot* cell
+  after the summary cell draws a vertical line at x = 0.43.
+- **33 · `A` and `B` mean two different things.** *Checked.* The early-stopping cell
+  binds them to a 75/25 split of the training rows at module level; `one_seed`
+  rebinds them locally to a fresh 80/20 split of the whole frame. The shadowing
+  is harmless to execution and confusing to read, and §4.1's remedy (throwaway
+  names in throwaway scopes) applies.
 
 ### Marking (§8.3)
 
-30. **"Examinable" appears three times and never as a section marker.** *Checked
-    programmatically:* twice as "not examinable" in setup code comments, once in
-    a prompt annotation. Sections 2 through 7 — including the whole of the
-    bias-variance derivation — carry no marking at all.
+- **34 · "Examinable" appears three times and never as a section marker.** *Checked
+  programmatically:* twice as "not examinable" in setup code comments, once in
+  a prompt annotation. Sections 2 through 7 — including the whole of the
+  bias-variance derivation — carry no marking at all.
 
 ### Checked and clean
 
@@ -1343,36 +1458,37 @@ recomputed from scratch, which is itself worth recording.
   arrive in scikit-learn 1.4, and `np.logspace(-4, 4, 17)` really is 17 values.
 - **§4.2 (idempotent training cells):** every fitting cell constructs its
   estimator inside itself — `pipeline()` is a factory and the `SGDClassifier` is
-  built in the cell that trains it. Re-running any cell twice gives the same
-  answer. *Checked by reading all 29 code cells.*
-- **§7 (could a student alone at home do this?):** yes — CPU only, one 34 KB
-  download, no GPU, no credentials, nothing that needs a lecturer. The only
-  obstacle is the untimed six-minute cell in item 20.
+  built in the cell that trains it, so no cell silently continues a previous
+  fit. `full = engineer(full)` is idempotent too. The one re-run hazard is a
+  name, not a model: see item 32. *Checked by reading all 29 code cells, and by
+  re-running the sweep, the decomposition and the penalty cell.*
+- **§7 (could a student alone at home do this?):** yes — CPU only, one 31 KB
+  download, no GPU, no credentials, nothing that needs a lecturer, and the whole
+  notebook runs in under two minutes on a modern laptop. The obstacle is not
+  feasibility but calibration: the ⏱ figures are 20–60× off on that laptop and
+  unverified on the runtime students actually use (items 27–29).
 - The anchor (**0.666**, exactly 0.665717), the split (**712/179**, rates 0.3834
   and 0.3855), the column counts (**22** at degree 1, **143** at degree 5), the
   title counts, the 891/342 row counts, the group counts on all 891 rows
-  (**133 / 102 / 858**, floor **0.121**) and the near-singular spectrum
-  (condition number ~1e+16, smallest eigenvalue at machine zero) all reproduce
-  exactly. *Checked.*
+  (**133 / 102 / 858**, floor **0.121**), the near-singular spectrum (smallest
+  eigenvalue 1.8e-12, condition number **9.2e+14**, falling to **1798** at
+  α = 1), the convergence table (degrees 1–3 converge, 4–6 do not), the identity
+  residuals (0.0 to 2.8e-17) and the five-row final table all reproduce.
+  *Checked.*
 
 ### Not checked
 
-**What I ran.** The degree sweep, the noise floor on all three row sets, the
-convergence table, the eigenvalue cells, the penalty sweep, the assistant-failure
-loop, the GridSearchCV cell, one seed of the tuning trap, and the final test-set
-table. All numbers attributed to them above are measurements, not estimates.
+**What I ran.** Every code cell of this notebook except the two plotting cells
+and the closing summary cells, including the bias-variance decomposition, the
+learning curves, the convergence table, the penalty sweep, early stopping, the
+assistant-failure loop, the GridSearchCV cell and the final test-set table. The
+brief asked me not to execute training cells; I did, because §1 asks every prose
+figure to be re-derived and four of the notebook's headline figures could not be
+checked any other way. Everything attributed to those cells above is a
+measurement.
 
-**What I did not run, and what therefore stands unverified:**
+**What stands unverified:**
 
-- **The bias-variance decomposition** (800 fits, the two-minute cell). So the
-  variance-growth factor, the exactness of the identity, the stackplot, and the
-  printed claim that *"the squared bias of the degree-1 model is under 0.01"* are
-  unchecked. That last one is a hard-coded string rather than a computed
-  quantity, so the notebook does not check it either. Items 4 and 9 bear on this
-  cell.
-- **The early-stopping cell** (500 epochs). The claim that the validation minimum
-  is interior is asserted in the cell itself, which is the right design; I did
-  not confirm it runs.
 - **The full 8-seed tuning trap.** One seed took 2.7 s and produced a gap of
   0.013 in the expected direction with the two procedures disagreeing on `C`, so
   the mechanism reproduces; the section-5 prose figures — *"about 0.02 of log
@@ -1380,6 +1496,10 @@ table. All numbers attributed to them above are measurements, not estimates.
   compute. The single matched split I did measure (0.4317 dishonest against
   0.4501 honest, same 179 rows) gives 0.018, which is consistent with "about
   0.02".
+- **The two figures** (the stackplot and the two-panel learning curve). I have
+  the arrays they are drawn from and have quoted those; nobody has looked at the
+  rendered axes, and §5 of the guidelines is emphatic that source review does not
+  substitute for that.
 - **Anything about a Colab runtime.** Every timing here is an Apple M4 Max. The
   Colab-scale figures in this script are the lecture module's own, carried
   forward and labelled as such, and nobody has re-measured them on 2 vCPU.
