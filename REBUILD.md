@@ -95,6 +95,16 @@ Settled with the lecturer; do not relitigate them without asking.
   rather than the assistant. *Confirmed by the lecturer.*
 - **Derivations: one step per slide**, with the reason beside the step. Slow and
   unmissable; the normal equation is ~8 slides. *Confirmed by the lecturer.*
+- **Every notebook must run on CPU.** L11-L24 were written for a GPU, which
+  means they cannot be executed — and therefore cannot be number-diffed — by
+  whoever is building them. Cut epochs, subsample, use smaller backbones until
+  each runs on Colab's free CPU in a few minutes. *Confirmed by the lecturer.*
+  Consequences, all of which are part of the job and not optional:
+  its figures must be regenerated at the smaller scale (`tools/figures_app06`,
+  `07`, `08`, `09`, `10`, `11`, `12` import torch), the slide numbers change to
+  match, and `figures.json` is rewritten. A lecture is not done until the
+  notebook has been executed and every figure it prints traces to
+  `figures.json`.
 - **Order of work: teaching order, each lecture finished properly** before the
   next is started. The tail may still be moving when term begins; nothing that
   is taught is half-built. *Confirmed by the lecturer.*
@@ -189,3 +199,12 @@ Things noticed during the rebuild that are not yet fixed.
   `_prompt.py` to reject them once the last one goes.
 - **Lecture 2 took ~70 s to execute** (150 grid fits at 10 folds). On Colab's
   two cores expect several minutes; the cell says 3-6 min.
+- **No notebook ships with stored outputs** (`execution_count: null`
+  throughout), so GUIDELINES rule §1.2 — prose figures must appear in a stored
+  output — cannot fire. The number-diff against `figures.json` is doing that
+  job instead; keep doing it.
+- **The measured cost of a lecture**, for planning: L2 = 1 unit. L1 was ~1.5
+  (it carried the theme, the site and the tooling). Estimated remaining:
+  tier A (L4,5,6,7,9,10) ~7 units, tier B merges (L3, L8) ~4, tier C
+  (L11-18, 23, 24, now including the CPU shrink) ~13, tier D (L19-22, from
+  nothing) ~12.
