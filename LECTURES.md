@@ -2,228 +2,418 @@
 
 **Programme:** BSc Mathematics of Artificial Intelligence, third year
 **Load:** 48 academic hours = 24 lectures × 2 academic hours (90 minutes each)
-**Textbook:** A. Géron, *Hands-On Machine Learning with Scikit-Learn and PyTorch*, O'Reilly, 2025 — Chapters 1–16
-**Mode:** AI-assisted development. Students specify, review, debug and verify; they do not type from scratch.
+**Primary text:** A. Géron, *Hands-On Machine Learning with Scikit-Learn and PyTorch*, O'Reilly, 2025 — Chapters 1–16
+**Beyond the text:** Lectures 19–22 (information retrieval and recommender systems) are taught from the lecture notes and are examinable.
 
 ---
 
 ## Organising principle
 
-Chapters never introduce themselves. **Every method enters the course at the moment an application breaks without it.**
+One topic per lecture, in the order of the primary text, each lecture
+self-contained: the mathematics that the method rests on, the method itself, a
+worked example, and a complete notebook that implements it.
 
-Applications are covered in pairs of consecutive lectures:
+A student who misses a lecture can read that lecture's deck and notebook and
+catch up without reconstructing anything from the lecture before it.
 
-| | Lecture type | Shape (90 min) |
-|---|---|---|
-| **A** | **Build** | 15 min problem, data and stakeholder · 15 min choose a metric and commit to a target number *in writing* · 60 min build the simplest thing that runs |
-| **B** | **Break → Fix** | 20 min mathematical thread · 20 min diagnose why the number was wrong · 35 min the method that fixes it · 15 min re-measure and red-team a peer's notebook |
+### Shape of a lecture (90 minutes)
 
-The number committed at the end of every A lecture is what makes the following B lecture land: students predicted, they were wrong, and now they want to know why.
+| min | block |
+|---|---|
+| 0–10 | where we are, what today's method is for, and the problem it solves |
+| 10–30 | **the mathematics** — the one object the method rests on, derived |
+| 30–70 | **the method** — how it works, its hyperparameters, its failure conditions, and a worked example with real numbers |
+| 70–85 | further ground: variants, when to prefer each, what practitioners actually use |
+| 85–90 | the notebook — what is in it, what to run, what to change |
 
-The **mathematical thread** at the top of each B lecture develops exactly one object, chosen because the application just built depends on it. The twelve threads reference one another and are intended to be taken in order.
+The mathematics is not a separate device with its own numbering. It is the first
+half of the topic, because the topic does not make sense without it.
 
-All datasets are ones used or named in the textbook.
+### The notebooks
 
----
+One per lecture, `notebooks/lecture-NN.ipynb`, complete and correct. Every
+notebook:
 
-## Working method — AI-assisted development
+- runs top to bottom from a cold Colab kernel with no manual steps;
+- is heavily commented — the comments explain *why*, not what the line does;
+- precedes every code cell with the **prompt that would generate it**: input,
+  output, constraint, check. The prompts are specifications, so a reader who
+  works through the notebook has also seen how to ask an assistant for each
+  piece of it;
+- states the wall-clock cost of any cell that takes more than about 20 seconds,
+  and whether it needs a GPU;
+- contains nothing that is wrong on purpose.
 
-The book supplies the syllabus. **It does not supply the notebooks.** No notebook
-from the author, or from any other third party, is used in this course. Every
-notebook is written during the lecture, from a specification, with AI assistance
-— and every lecture shows that process rather than describing it.
+Notebooks are for self-study. The last five minutes of the lecture tour the
+notebook's structure and say what to do with it; the running happens at home.
 
-The loop, run explicitly in each lecture:
+### AI-assisted development
 
-| # | Step | Who |
-|---|---|---|
-| 1 | **Specify** — input, output, constraint, check | student |
-| 2 | **Generate** — and then stop, before running | assistant |
-| 3 | **Read** — the five reviewer questions | student |
-| 4 | **Test** — against a case whose answer is known | student |
-| 5 | **Verify** — that the number means what it appears to | student |
+Students will use an assistant to write code — in this course and after it. The
+course treats that as a working method to be taught explicitly rather than
+assumed: Lecture 1 devotes a block to it (specify, read, test, verify), and the
+prompt preceding every notebook cell is a worked specification. No lecture is
+built around an assistant failing.
 
-Each lecture carries at least one **worked assistant failure**: a prompt that is
-under-specified in one place, the plausible code it returns, the review question
-that catches it, and the corrected specification. The failures are chosen to be
-the ones that lecture is about, so the demonstration is never decorative.
+### Standing practice
 
-Standing constraint, extended application by application, and repeated in every
-deck from Lecture 2 onward: split before anything is fitted; all preprocessing
-inside a `Pipeline` passed to cross-validation; nothing derived from the test set
-in the training path; fixed seeds; report per-fold scores, not only the mean.
+Introduced in Lectures 1–2 and observed by every notebook thereafter: split
+before anything is fitted; all preprocessing inside a `Pipeline` passed to
+cross-validation; nothing derived from the test set in the training path; fixed
+seeds; per-fold scores reported, not only the mean.
 
 **Presentation convention:** slides and notebooks never name a weekday. Lectures
-refer to one another relatively — *in the next lecture*, *in the previous
-lecture*, *in two lectures* — so the material is independent of the timetable.
+refer to one another relatively — *in the next lecture*, *in Lecture 8* — so the
+material is independent of the timetable.
 
 ---
 
 # Part I — Tabular data and classical models
-*Lectures 1–10 · Chapters 1–8 · CPU only*
+*Lectures 1–8 · Chapters 1–8 · CPU only*
 
-## Lecture 1 — Welcome, and a price you can't trust
-**Build · California housing · Ch 1–2**
+## Lecture 1 — What machine learning is, and how we will work
+**Ch 1–2 · California housing**
 
-Opens with 20 minutes of course welcome: what the course is and is not, the AI-assisted working method and its rules, how assessment works, and an explicit statement of scope — this is a course on applied machine learning as covered in Chapters 1–16, not a survey of the field.
+What a learning system is and when one is the right tool; supervised,
+unsupervised and self-supervised; instance-based against model-based learning;
+the standard failure modes stated up front — insufficient data, unrepresentative
+data, overfitting, underfitting. Training, validation and test sets, and why the
+test set is spent once.
 
-Then straight into the first application. Students are handed a real estate valuation brief, look at the data structure, plot histograms, and notice the capped target and the skewed features. They pick RMSE, commit to a target, and build an end-to-end regression by the end of the session. Everyone leaves with a number they are pleased with.
+Then the course's working method: how to specify a piece of code, how to read
+what an assistant returns, how to test it against a case whose answer is known.
+Assessment and scope.
 
-## Lecture 2 — Your RMSE was a lie
-**Fix · Ch 2**
+The application starts: the valuation brief, the shape of the data, the
+histograms, the capped target, and the stratified split.
 
-*Mathematical thread: least squares and the normal equation.* The closed-form solution θ̂ = (XᵀX)⁻¹Xᵀy, the condition for XᵀX to be invertible, and what to do when it is not — the SVD-based pseudoinverse. This explains the textbook's warning against engineering features as weighted sums of existing ones.
+## Lecture 2 — The end-to-end project
+**Ch 2 · California housing**
 
-The diagnosis: scaling was fitted before the split, the test set was consulted more than once, and the split was not stratified on the strongest predictor. Repair with pipelines, `ColumnTransformer`, stratified sampling, cross-validation and grid search. The honest number is worse than the one they committed to, and that is the lesson.
+*Mathematics: least squares and the normal equation.* θ̂ = (XᵀX)⁻¹Xᵀy as the
+solution of a projection problem, the condition for XᵀX to be invertible, and
+the SVD-based pseudoinverse when it is not.
 
-## Lecture 3 — Finding the rare event
-**Build · MNIST binary detector · Ch 3**
+The full pipeline: imputation, scaling, categorical encoding, `ColumnTransformer`
+and `Pipeline`; cross-validation; grid and randomised search; the final
+evaluation on the test set with a confidence interval. RMSE and MAE, and which
+one the brief actually asks for.
 
-A rare-event detection brief. Students build a binary classifier and evaluate it with accuracy using cross-validation. It reaches well above 90%. They commit to that number as their headline result and go home satisfied.
+## Lecture 3 — Classification and its metrics
+**Ch 3 · MNIST**
 
-## Lecture 4 — It never fires
-**Fix · Ch 3**
+Binary classification, then multiclass. The confusion matrix. Precision, recall
+and F1, and what each is blind to.
 
-*Mathematical thread: why accuracy fails under imbalance, and why precision is not monotone in the threshold.* A classifier that always predicts the negative class attains the base rate. Then: as the decision threshold rises, recall is monotone because the denominator is fixed, while precision has both numerator and denominator moving — with the textbook's own counterexample, 4/5 falling to 3/4.
+*Mathematics: why accuracy fails under imbalance, and why precision is not
+monotone in the threshold.* The always-negative classifier attains the base
+rate. As the threshold rises recall is monotone — the denominator is fixed —
+while precision has both numerator and denominator moving.
 
-Repair with the confusion matrix, precision, recall, F1, the precision/recall trade-off, PR and ROC curves, and when to prefer each. Students tune a threshold to a stated operating point and defend the choice.
+The precision/recall trade-off, PR and ROC curves, when to prefer each, choosing
+an operating point and defending it. Multiclass, multilabel and multioutput.
 
-## Lecture 5 — Who survives, and how sure are we?
-**Build · Titanic · Ch 4**
+## Lecture 4 — Training models
+**Ch 4 · Titanic**
 
-The brief demands calibrated probabilities and a defensible cut-off, not bare labels — so logistic regression. Students engineer features, fit the model, read off coefficients, and plot decision boundaries. They then push model complexity up with polynomial features until validation performance starts to fall, and record both curves.
+*Mathematics: gradient descent.* The gradient of the mean squared error; batch,
+mini-batch and stochastic descent; the learning rate and what too large and too
+small each look like; convergence on a convex surface.
 
-## Lecture 6 — Reading a learning curve
-**Fix · Ch 4**
+Linear regression by descent rather than by the normal equation, and when each
+is preferable. Polynomial features. Logistic regression: the logistic function,
+the log-loss, and reading coefficients as log-odds. Softmax regression for more
+than two classes. Decision boundaries, and calibrated probabilities against bare
+labels.
 
-*Mathematical thread: the bias–variance decomposition.* Derive the three terms — squared bias, variance, irreducible error — and map them onto the two curves the students plotted in the build session: both plateauing high and close together means bias; a persistent gap means variance.
+## Lecture 5 — Regularisation and the bias–variance trade-off
+**Ch 4 · Titanic**
 
-Repair with ridge, lasso and elastic net, plus early stopping. Ridge is also the callback to Lecture 2: adding αA makes the matrix invertible for every α > 0.
+*Mathematics: the bias–variance decomposition.* The three terms — squared bias,
+variance, irreducible error — and how each maps onto a learning curve: both
+curves high and close together is bias; a persistent gap is variance.
 
-## Lecture 7 — A model the regulator will accept
-**Build · CoverType · Ch 5**
+Learning curves and validation curves, read properly. Ridge, lasso and elastic
+net; what the ℓ₁ and ℓ₂ penalties each do to the coefficients and why lasso
+selects; early stopping. Ridge closes Lecture 2: adding αI makes the matrix
+invertible for every α > 0.
 
-Land-classification brief with an interpretability requirement: every prediction must come with a human-readable justification. Students train a decision tree, export and read it, trace individual predictions down the tree, and tune the regularisation hyperparameters. Accuracy is modest but the rules are legible.
+## Lecture 6 — Decision trees
+**Ch 5 · CoverType**
 
-## Lecture 8 — Retrain it and watch it change
-**Fix · Ch 5–6**
+*Mathematics: impurity.* Gini and entropy, what each measures, why they usually
+select the same split, and the greedy CART objective.
 
-*Mathematical thread: impurity, and why averaging reduces variance.* Gini and entropy as impurity measures and why they usually agree. Then the variance of an average of correlated predictors — generalising the textbook's two-regressor calculation — showing that averaging destroys the independent component of the variance and leaves the correlated part untouched.
+Growing a tree, reading one, tracing a single prediction to a human-readable
+justification. The regularisation hyperparameters and what each controls.
+Sensitivity to rotation and to small changes in the data — the property that
+motivates the next lecture. Trees for regression.
 
-That single result explains bagging, random forests' feature subsampling, and extra-trees' random thresholds: all three attack the correlation term. Students rebuild with ensembles, recover the accuracy, lose the interpretability, and get part of it back through feature importance.
+## Lecture 7 — Ensembles and random forests
+**Ch 6 · CoverType**
 
-## Lecture 9 — Forty labels for four hundred faces
-**Build · Olivetti faces · Ch 8**
+*Mathematics: the variance of an average of correlated predictors.* Averaging
+destroys the independent component of the variance and leaves the correlated
+part untouched — one result that explains bagging, the feature subsampling in
+random forests, and the random thresholds in extra-trees.
 
-An identity-grouping brief where labelling is expensive: the corpus is unlabelled apart from a handful of examples. Students cluster with k-means, choose k using inertia and the elbow, then properly with silhouette scores and silhouette diagrams, and inspect the clusters visually. The pipeline is correct and unbearably slow.
+Voting classifiers, bagging and pasting, out-of-bag evaluation, random forests,
+feature importance. Boosting: AdaBoost, gradient boosting, and the
+histogram-based implementations used in practice. Stacking.
 
-## Lecture 10 — Four thousand dimensions is too many
-**Fix · Ch 7–8**
+## Lecture 8 — Dimensionality reduction and unsupervised learning
+**Ch 7–8 · Olivetti faces**
 
-*Mathematical thread: SVD, PCA, and Johnson–Lindenstrauss.* PCA via SVD, the sense in which it minimises reconstruction error, and the explained variance ratio. Then the Johnson–Lindenstrauss bound as the textbook states it — with the point students must notice: the required dimensionality depends on the number of points and the tolerance, **not** on the original dimensionality.
+*Mathematics: PCA via the SVD.* The sense in which the principal subspace
+minimises reconstruction error, the explained variance ratio, and the
+Johnson–Lindenstrauss bound — whose required dimensionality depends on the
+number of points and the tolerance, not on the original dimensionality.
 
-Repair by compressing first: PCA, randomised and incremental PCA, and random projection, with the speed/quality trade-off measured rather than asserted. Then the pipeline extends — DBSCAN and Gaussian mixtures for non-spherical structure, anomaly detection by density and by reconstruction error, and label propagation from the forty labels.
+PCA, randomised and incremental PCA, random projection, and the speed/quality
+trade-off measured rather than asserted. Then clustering: k-means, choosing k
+by inertia and properly by silhouette, DBSCAN and Gaussian mixtures for
+non-spherical structure. Anomaly detection by density and by reconstruction
+error. Semi-supervised learning by label propagation.
 
 ---
 
 # Part II — Neural networks
-*Lectures 11–14 · Chapters 9–11 · GPU from Lecture 11 onward*
+*Lectures 9–11 · Chapters 9–11 · GPU from Lecture 10*
 
-## Lecture 11 — The first neural network
-**Build · Fashion MNIST · Ch 9**
+## Lecture 9 — Neural networks, from the perceptron up
+**Ch 9 · Fashion-MNIST**
 
-A document-sorting brief. Students build a multilayer perceptron with Scikit-Learn, tune the hidden layers and learning rate by hand, and get it working. Along the way they meet the perceptron, the multilayer perceptron, and the architecture tables for regression and classification networks. It works — and it is slow, CPU-bound, and impossible to modify.
+The biological analogy and where it stops. The perceptron, what it can and
+cannot separate, and the multilayer perceptron. Activation functions and why a
+network of linear layers is a linear model.
 
-## Lecture 12 — Rebuilding it in PyTorch
-**Fix · Ch 9–10**
+*Mathematics: what a layer computes.* The affine map plus non-linearity, in
+matrix form, with the shapes tracked explicitly.
 
-*Mathematical thread: backpropagation as reverse-mode automatic differentiation.* Why the chain rule can be applied in two directions; why the cost of forward mode scales with the number of inputs and reverse mode with the number of outputs; and why training — with millions of parameters and a single scalar loss — makes reverse mode the only viable choice.
+The architecture tables for regression and for classification — output units,
+output activation, loss — as a reference to return to. A first network with
+Scikit-Learn's MLP, tuned by hand, and an honest account of why that is not how
+this is done in practice.
 
-Rebuild in PyTorch: tensors, hardware acceleration, autograd, the training loop, `DataLoader`, custom modules, evaluation. Students see why `requires_grad` builds a graph and why forgetting `zero_grad()` produces a silent, uncrashing bug. Close with Optuna for hyperparameter search and saving the model.
+## Lecture 10 — PyTorch
+**Ch 10 · Fashion-MNIST**
 
-## Lecture 13 — Twenty layers, no learning
-**Build · CIFAR-10 · Ch 11**
+*Mathematics: backpropagation as reverse-mode automatic differentiation.* Why
+the chain rule can be applied in two directions; why forward mode costs one pass
+per input and reverse mode one pass per output; and why a scalar loss over
+millions of parameters makes reverse mode the only viable choice.
 
-A harder recognition brief with colour images and more classes. Students deliberately build a deep stack — twenty hidden layers — and train it. Loss barely moves. They instrument the network, log per-layer activation and gradient statistics, and observe the signal disappearing as it descends. They leave with a diagnosis they cannot yet explain.
+Tensors, devices and hardware acceleration; autograd and what `requires_grad`
+builds; the training loop written out in full, then `DataLoader`, `Dataset` and
+custom `Module`s. Evaluation, checkpointing and saving. Hyperparameter search
+with Optuna. The two silent bugs everyone writes once — a missing `zero_grad()`
+and a missing `model.eval()` — named, so they are recognised when met.
 
-## Lecture 14 — Making it train
-**Fix · Ch 11**
+## Lecture 11 — Training deep networks
+**Ch 11 · CIFAR-10**
 
-*Mathematical thread: variance propagation through layers.* How the variance of a layer's output relates to fan-in and the weight variance; why preserving the forward signal and the backward gradient impose conflicting requirements; Glorot's compromise and He's adjustment for ReLU. Then the consequence: a scale error compounds geometrically with depth, which is precisely the attenuation they measured in the build session.
+*Mathematics: variance propagation through layers.* How the variance of a
+layer's output depends on fan-in and weight variance; why preserving the forward
+signal and the backward gradient impose conflicting requirements; Glorot's
+compromise and He's adjustment for ReLU; and why a scale error compounds
+geometrically with depth.
 
-Repair with initialisation, better activation functions, batch normalisation and layer normalisation, gradient clipping, faster optimisers, learning-rate schedules, and regularisation by dropout. The network trains.
+Vanishing and exploding gradients, instrumented and measured rather than
+asserted. Initialisation, activation functions, batch and layer normalisation,
+gradient clipping. Faster optimisers — momentum, RMSProp, Adam, AdamW — and
+learning-rate schedules. Regularisation: ℓ₂, dropout, and max-norm.
 
 ---
 
 # Part III — Computer vision
-*Lectures 15–18 · Chapter 12*
+*Lectures 12–14 · Chapter 12 · GPU*
 
-## Lecture 15 — Visual inspection
-**Build · Flowers102 · Ch 12**
+## Lecture 12 — Convolutional networks
+**Ch 12 · Flowers102**
 
-A visual quality-control brief. Students build a convolutional network from scratch — convolutional layers, filters, feature maps, pooling — and train it on a small labelled set. It reaches middling accuracy after a long wait. They commit to that number.
+*Mathematics: weight sharing, equivariance and memory.* The parameter count of
+a dense layer against a convolutional layer on the same image; translation
+equivariance as a property of convolution; equivariance against invariance, and
+why pooling's invariance helps classification and hurts segmentation. Then the
+RAM calculation showing that activations, not parameters, exhaust the GPU.
 
-## Lecture 16 — Don't train from scratch
-**Fix · Ch 12**
+Convolutional layers, filters, feature maps, stride and padding; pooling; the
+classic architectures and what each contributed. A network built and trained
+from scratch, with its cost stated.
 
-*Mathematical thread: weight sharing, equivariance, and where the memory goes.* The parameter count of a dense layer against a convolutional layer on the same image; translation equivariance as a property of convolution; the distinction between equivariance and invariance, and why pooling's invariance is desirable for classification and harmful for segmentation. Then the RAM calculation showing that activations, not parameters, exhaust the GPU.
+## Lecture 13 — Transfer learning
+**Ch 12 · Flowers102**
 
-Repair with transfer learning from a pretrained backbone, layer freezing, differential learning rates, and data augmentation. Accuracy jumps in a fraction of the training time.
+Why features learned on one corpus transfer to another, and how far down the
+stack that holds. Pretrained backbones, layer freezing and progressive
+unfreezing, differential learning rates. Data augmentation: what to apply, what
+it implicitly asserts about the task, and what it costs. The same accuracy as
+Lecture 12 in a fraction of the training time, measured side by side.
 
-## Lecture 17 — Where is it, exactly?
-**Build · COCO · Ch 12**
+## Lecture 14 — Detection and segmentation
+**Ch 12 · COCO**
 
-The brief now requires locating objects, not just naming them. Students run a pretrained detector over a corpus, visualise the predicted boxes, and count objects per image. Some boxes are visibly wrong, and students have no principled way to say *how* wrong. They propose a metric and commit to it.
+*Mathematics: IoU and mAP.* Intersection over union, and why it provides no
+gradient when boxes are disjoint regardless of how far apart they are; GIoU and
+CIoU as repairs. Then average precision, defined by the maximum precision at or
+above each recall level — a definition that exists precisely to repair the
+non-monotonicity established in Lecture 3 — and mAP averaged over classes and
+IoU thresholds.
 
-## Lecture 18 — Scoring a box, scoring a detector
-**Fix · Ch 12**
-
-*Mathematical thread: IoU's vanishing gradient, and mAP as a mean of a mean.* Intersection over union, and why it provides no gradient when boxes are disjoint regardless of separation; how GIoU and CIoU repair this. Then average precision — defined using the maximum precision at or above each recall level, which exists precisely to repair the non-monotonicity proved in Lecture 4 — and mAP averaged over classes and over IoU thresholds.
-
-Repair the evaluation, then extend to non-maximum suppression, object tracking, and per-pixel prediction: semantic versus instance segmentation.
+Localisation, detection, and the pretrained detectors worth knowing.
+Non-maximum suppression. Semantic against instance segmentation. Object
+tracking, briefly.
 
 ---
 
-# Part IV — Sequences, language and multimodality
-*Lectures 19–24 · Chapters 13–16*
+# Part IV — Sequences and language
+*Lectures 15–18 · Chapters 13–15 · GPU*
 
-## Lecture 19 — Forecasting demand
-**Build · Chicago transit ridership · Ch 13**
+## Lecture 15 — Time series
+**Ch 13 · Chicago transit ridership**
 
-A capacity-planning brief. Students plot the series, spot weekly and yearly seasonality, and build a naive forecast that turns out to be hard to beat. They then fit a linear model and a first recurrent network, evaluate with a random cross-validation split, and record an excellent score.
+*Mathematics: stationarity, differencing and autocorrelation.* What
+stationarity requires and which models depend on it; how differencing removes a
+polynomial trend and seasonal differencing a periodic one; the autocorrelation
+function.
 
-## Lecture 20 — You forecast the past
-**Fix · Ch 13**
+Naive and seasonal-naive forecasts as the baselines to beat, and why they are
+strong. Linear models on lagged features. **Backtesting** — why a random split
+is invalid on autocorrelated data, and how to evaluate on a rolling origin
+instead. ARMA and its relatives, for context.
 
-*Mathematical thread: stationarity, differencing and autocorrelation.* What stationarity requires and why models depend on it; how differencing removes polynomial trends and seasonal differencing removes periodic structure; autocorrelation as the reason the naive forecast was strong. Then the leakage argument: with positive autocorrelation, a random split places a point's own near-future in the training set, so the reported score is optimistically biased.
+## Lecture 16 — Recurrent networks
+**Ch 13 · Chicago transit ridership**
 
-Repair the evaluation with proper time-based backtesting, then improve the model: deep RNNs, multivariate inputs, forecasting several steps ahead, sequence-to-sequence, LSTM and GRU cells, and a convolutional alternative.
+Recurrent cells and unrolling through time; training by backpropagation through
+time and why it is unstable. Deep RNNs. Multivariate inputs. Forecasting several
+steps ahead: recursive against direct, and sequence-to-sequence. LSTM and GRU
+cells, gate by gate, and what each gate is for. Dilated convolutions as a
+non-recurrent alternative.
 
-## Lecture 21 — Reading the customers
-**Build · IMDb · Ch 14**
+## Lecture 17 — Text
+**Ch 14 · IMDb**
 
-A feedback-analytics brief on free text. Students meet subword tokenisation and trainable embeddings, build a recurrent classifier from scratch, and get a workable but unremarkable result. They then swap in a pretrained tokenizer and pretrained embeddings and watch the number move without touching the architecture.
+*Mathematics: softmax, cross-entropy and logits.* Softmax and its invariance
+under a constant shift; cross-entropy against a one-hot target; the gradient
+with respect to the logits, which reduces to prediction minus target. Why the
+loss consumes logits rather than probabilities — the cancellation, and the
+numerical stability of the combined form. Cross-entropy and KL divergence.
 
-## Lecture 22 — Reusing what someone else learned
-**Fix · Ch 14–15**
+Subword tokenisation; trainable embeddings and what the embedding space
+encodes; a recurrent text classifier; then pretrained embeddings, and the same
+architecture with a better starting point.
 
-*Mathematical thread: cross-entropy, softmax and logits.* Softmax and its invariance under a constant shift; cross-entropy against a one-hot target; the gradient with respect to the logits, which reduces to prediction minus target. Then why the loss consumes logits rather than probabilities — the cancellation and the numerical stability of the combined form — and the relationship between cross-entropy and KL divergence.
+## Lecture 18 — Attention and transformers
+**Ch 14–15 · IMDb**
 
-Fine-tune a pretrained transformer for the task and beat the from-scratch model decisively. Then extend beyond classification: sentence embeddings for semantic search over the feedback corpus, and clustering to group recurring complaints.
+*Mathematics: scaled dot-product attention.* Queries, keys and values; why the
+scores are divided by √d_k; multi-head attention as several projections of the
+same sequence; positional encoding, and why a permutation-invariant model needs
+it.
 
-## Lecture 23 — One catalogue, two modalities
-**Build · COCO · Ch 15–16**
+The encoder–decoder architecture; encoder-only, decoder-only and
+encoder–decoder families and what each is for. Fine-tuning a pretrained
+transformer for the task, against the from-scratch model of Lecture 17. Hugging
+Face as the working interface.
 
-A product-catalogue brief where the entries are images and the queries are text. Students encode images with a vision transformer, encode text with a sentence encoder, discover the two spaces are unrelated, and then bring in a jointly trained dual encoder. Zero-shot classification and text-to-image retrieval work immediately. They commit to a retrieval metric and measure it.
+---
 
-## Lecture 24 — Closing the loop, and closing the course
-**Fix + course summary · Ch 15–16**
+# Part V — Information retrieval and recommender systems
+*Lectures 19–22 · Lecture notes · Examinable*
 
-*Mathematical thread: the contrastive objective and its temperature.* Why embeddings are normalised onto the unit sphere; why unrelated pairs should target zero rather than −1, which is the concentration result from Lecture 10 returning in a new guise; the role of the learned temperature in rescaling similarities into usable logits; and why the number of negatives — and therefore the batch size — governs the difficulty of the task.
+These four lectures sit outside the primary text. They are here because they are
+where the embedding machinery of Part IV earns its living, and because search
+and recommendation are the two applications of machine learning most students
+will actually meet.
 
-Repair the weak spots: entries with no usable description get automatic captions from a multimodal model, and ambiguous queries are handled by retrieval-augmented generation over the catalogue.
+## Lecture 19 — Information retrieval: the lexical foundation
+**Lecture notes · SciFact (BEIR)**
 
-The final 25 minutes sum up the course as a single argument: every method met over twelve applications was introduced because something measurable broke without it. Review of the thread of failures — leakage, imbalance, variance, vanishing signal, wrong metric, temporal leakage — and where each recurs outside the applications used here. Explicit statement of what the course did not cover and where in the field those gaps sit.
+The retrieval problem: a query, a corpus, a ranking. Why it is not
+classification. The inverted index and why retrieval is cheap. Term weighting:
+term frequency, inverse document frequency, length normalisation, and BM25
+derived from what each of its parameters is for.
+
+*Mathematics: evaluating a ranking.* Precision@k and recall@k and why neither
+suffices; reciprocal rank; average precision again, now over a ranked list;
+discounted cumulative gain and its normalisation. Why graded relevance changes
+the answer, and how relevance judgements are actually produced — pooling, and
+what pooling misses.
+
+## Lecture 20 — Information retrieval: dense retrieval
+**Lecture notes · SciFact (BEIR)**
+
+The vocabulary mismatch problem, and why a lexical index cannot solve it.
+Bi-encoders: encode the corpus once, encode the query at request time, retrieve
+by inner product. Training a bi-encoder with in-batch negatives, and why the
+choice of negatives is most of the work. Approximate nearest-neighbour search
+and the recall/latency trade-off.
+
+Cross-encoders and re-ranking: why the accurate model cannot be the first stage.
+Hybrid lexical–dense retrieval. All three evaluated against the BM25 baseline of
+Lecture 19 on the same judgements.
+
+## Lecture 21 — Recommender systems: from ratings to factors
+**Lecture notes · MovieLens**
+
+The recommendation problem and how it differs from retrieval: no query, and the
+feedback is a by-product of use. Explicit ratings against implicit feedback, and
+why implicit data has no negatives. Neighbourhood methods, user-based and
+item-based.
+
+*Mathematics: matrix factorisation.* The low-rank model, its objective, and its
+relationship to the SVD of Lecture 8 — including why the missing entries mean
+the SVD cannot simply be taken. Alternating least squares and SGD. Bias terms,
+and why they carry more of the signal than anyone expects. BPR and pairwise
+ranking losses for implicit feedback.
+
+## Lecture 22 — Recommender systems: neural and evaluated honestly
+**Lecture notes · MovieLens**
+
+Two-tower models — the same architecture as Lecture 20's bi-encoder, with users
+in place of queries — and why retrieval and recommendation converge here.
+Negative sampling and the sampled-softmax correction. Sequential
+recommendation, briefly.
+
+Then evaluation, which is where recommender systems are usually wrong: leave-one-out
+against temporal splits, sampled metrics and their bias, popularity bias, the
+cold-start problem, and why an offline gain need not survive contact with users.
+
+---
+
+# Part VI — Multimodal models, and closing the course
+*Lectures 23–24 · Chapters 15–16 · GPU*
+
+## Lecture 23 — Vision transformers and multimodal retrieval
+**Ch 15–16 · COCO**
+
+The vision transformer: an image as a sequence of patches, and what it gives up
+relative to a convolutional network. Encoding images and text separately, and
+the discovery that the two spaces are unrelated.
+
+*Mathematics: the contrastive objective and its temperature.* Why embeddings are
+normalised onto the unit sphere; why unrelated pairs should target zero rather
+than −1 — the concentration result of Lecture 8 in a new guise; the learned
+temperature as a rescaling of similarities into usable logits; and why the number
+of negatives, and therefore the batch size, sets the difficulty of the task.
+
+Jointly trained dual encoders. Zero-shot classification and text-to-image
+retrieval, evaluated with the ranking metrics of Lecture 19.
+
+## Lecture 24 — Generation, retrieval-augmented systems, and where this leaves you
+**Ch 15–16 · COCO + the Part V corpora**
+
+Captioning with a multimodal model, for catalogue entries with no usable
+description. Then retrieval-augmented generation: the retriever of Lecture 20,
+the generator of Lecture 18, and the failure modes that belong to the join
+rather than to either half.
+
+The closing 25 minutes: the course as one argument, from the normal equation to
+the contrastive objective; an explicit statement of what was not covered —
+reinforcement learning, generative image models, causality, fairness and model
+governance — and where each sits in the field; how to keep learning; and what
+the examination will ask.
 
 ---
 
@@ -233,34 +423,67 @@ The final 25 minutes sum up the course as a single argument: every method met ov
 |---|---|
 | 1 · The ML landscape | 1 |
 | 2 · End-to-end project | 1, 2 |
-| 3 · Classification | 3, 4 |
-| 4 · Training models | 5, 6 |
-| 5 · Decision trees | 7, 8 |
-| 6 · Ensembles and random forests | 8 |
-| 7 · Dimensionality reduction | 10 |
-| 8 · Unsupervised learning | 9, 10 |
-| 9 · Introduction to ANNs | 11, 12 |
-| 10 · Building networks with PyTorch | 12 |
-| 11 · Training deep networks | 13, 14 |
-| 12 · Deep computer vision | 15, 16, 17, 18 |
-| 13 · Sequences | 19, 20 |
-| 14 · NLP with RNNs and attention | 21, 22 |
-| 15 · Transformers | 22, 23, 24 |
+| 3 · Classification | 3 |
+| 4 · Training models | 4, 5 |
+| 5 · Decision trees | 6 |
+| 6 · Ensembles and random forests | 7 |
+| 7 · Dimensionality reduction | 8 |
+| 8 · Unsupervised learning | 8 |
+| 9 · Introduction to ANNs | 9 |
+| 10 · Building networks with PyTorch | 10 |
+| 11 · Training deep networks | 11 |
+| 12 · Deep computer vision | 12, 13, 14 |
+| 13 · Sequences | 15, 16 |
+| 14 · NLP with RNNs and attention | 17, 18 |
+| 15 · Transformers | 18, 23, 24 |
 | 16 · Vision and multimodal transformers | 23, 24 |
+| *(lecture notes)* · Information retrieval | 19, 20 |
+| *(lecture notes)* · Recommender systems | 21, 22 |
 
-## The twelve mathematical threads, in order
+## Datasets
 
-1. Least squares and the normal equation *(L2)*
-2. Imbalance, and the non-monotonicity of precision *(L4)*
-3. The bias–variance decomposition *(L6)*
-4. Impurity, and variance reduction by averaging *(L8)*
-5. SVD, PCA and Johnson–Lindenstrauss *(L10)*
-6. Backpropagation as reverse-mode autodiff *(L12)*
-7. Variance propagation and weight initialisation *(L14)*
-8. Weight sharing, equivariance and memory *(L16)*
-9. IoU's vanishing gradient; mAP *(L18)*
-10. Stationarity, differencing and temporal leakage *(L20)*
-11. Cross-entropy, softmax and logits *(L22)*
-12. The contrastive objective and its temperature *(L24)*
+| Dataset | Lectures | Task |
+|---|---|---|
+| California housing | 1, 2 | regression |
+| MNIST | 3 | classification, metrics |
+| Titanic | 4, 5 | classification, regularisation |
+| CoverType | 6, 7 | trees, ensembles |
+| Olivetti faces | 8 | dimensionality reduction, clustering |
+| Fashion-MNIST | 9, 10 | first networks, PyTorch |
+| CIFAR-10 | 11 | deep training |
+| Flowers102 | 12, 13 | convolution, transfer learning |
+| COCO | 14, 23, 24 | detection, multimodal |
+| Chicago transit ridership | 15, 16 | forecasting |
+| IMDb | 17, 18 | text |
+| SciFact (BEIR) | 19, 20 | retrieval |
+| MovieLens | 21, 22 | recommendation |
 
-The threads are cross-referential and should not be reordered. Thread 2 is used by thread 9; thread 1 is completed by thread 3; thread 5 returns in thread 12; thread 4 explains the ensemble variants used from Lecture 8 onward.
+## Where the mathematics is
+
+Eighteen derivations, each in the lecture whose method rests on it. They are
+cross-referential and the order matters.
+
+| Lecture | Object |
+|---|---|
+| 2 | least squares and the normal equation |
+| 3 | imbalance, and the non-monotonicity of precision |
+| 4 | gradient descent |
+| 5 | the bias–variance decomposition |
+| 6 | impurity: Gini and entropy |
+| 7 | the variance of an average of correlated predictors |
+| 8 | PCA via the SVD; Johnson–Lindenstrauss |
+| 9 | what a layer computes |
+| 10 | backpropagation as reverse-mode autodiff |
+| 11 | variance propagation and weight initialisation |
+| 12 | weight sharing, equivariance and memory |
+| 14 | IoU's vanishing gradient; mAP |
+| 15 | stationarity, differencing and autocorrelation |
+| 17 | softmax, cross-entropy and logits |
+| 18 | scaled dot-product attention |
+| 19 | evaluating a ranking: MRR, AP, NDCG |
+| 21 | matrix factorisation and its relation to the SVD |
+| 23 | the contrastive objective and its temperature |
+
+Dependencies worth preserving: Lecture 5 completes Lecture 2; Lecture 14 uses
+Lecture 3; Lecture 21 and Lecture 23 both use Lecture 8; Lecture 20 and Lecture
+22 are the same architecture; Lecture 23 uses Lecture 19's metrics.

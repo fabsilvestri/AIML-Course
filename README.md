@@ -8,34 +8,48 @@ Taught in Italian; all materials are in English.
 
 **Site:** <https://fabsilvestri.github.io/AIML-Course/>
 
-> Status: work in progress. Lectures 1–2 are complete and serve as the template
-> for the remaining decks. Not yet announced to students.
+> Status: rebuild in progress. `LECTURES.md` is the current plan; decks and
+> notebooks are being brought onto it in teaching order. Not yet announced to
+> students.
 
 ## Organising principle
 
-Chapters never introduce themselves. Every method enters the course at the
-moment an application breaks without it. Each application spans two lectures —
-**A · Build** (build the simplest thing that runs, and commit a target number in
-writing) and **B · Break → Fix** (a twenty-minute mathematical thread, the
-diagnosis of why that number was wrong, and the method that repairs it).
+One topic per lecture, in the order of the primary text, each lecture
+self-contained: the mathematics the method rests on, the method itself, a worked
+example with real numbers, and a complete notebook that implements it.
+
+A student who misses a lecture can read that lecture's deck and notebook and
+catch up without reconstructing anything from the lecture before it.
 
 `LECTURES.md` is the authoritative plan: all 24 lectures, the chapter coverage
-map, and the twelve mathematical threads in order.
+map, the datasets, and where each derivation sits. `AUTHORING.md` is the spec
+for building one.
 
 ## Scope
 
-Everything taught comes from A. Géron, *Hands-On Machine Learning with
-Scikit-Learn and PyTorch* (O'Reilly, 2025), **Chapters 1–16**. Nothing outside
-those chapters is examinable.
+Lectures 1–18 and 23–24 follow A. Géron, *Hands-On Machine Learning with
+Scikit-Learn and PyTorch* (O'Reilly, 2025), **Chapters 1–16**.
+
+Lectures 19–22 — information retrieval and recommender systems — sit outside the
+book and are taught from the lecture notes. They are examinable.
 
 The book supplies the syllabus, not the code: no notebook from the author or any
 other third party is used. See `notebooks/README.md`.
+
+## Working method
+
+Students will use an assistant to write code, in this course and after it, so
+the course teaches that explicitly rather than assuming it. Lecture 1 devotes a
+block to specifying, reading, testing and verifying generated code, and every
+code cell in every notebook is preceded by the specification that would produce
+it. Nothing in the course is wrong on purpose.
 
 ## Layout
 
 ```
 index.html          course site (GitHub Pages entry point)
 LECTURES.md         the 24-lecture plan
+AUTHORING.md        how to build a lecture that matches it
 slides/             one reveal.js deck per lecture, lecture-NN.html
 notebooks/          one Colab notebook per lecture, lecture-NN.ipynb
 assets/css/
@@ -56,10 +70,10 @@ Two kinds, both committed:
   is reproduced by re-running the script, which also writes
   `assets/figures/figures.json` with the values the slides quote. If a slide and
   the script ever disagree, **the script is right and the slide is a bug.**
-- **Diagrams** (`d-*`) are hand-authored SVG using the same palette as the slide
-  theme — the Build/Fix clock, the five-step working loop, the leakage flow, the
-  data pipeline, k-fold, the `Pipeline`/`ColumnTransformer` structure, and the
-  orthogonal-projection geometry behind the normal equation.
+- **Diagrams** (`d-*`) are hand-authored SVG in the slide-theme palette, for
+  structure a plot cannot show — the data pipeline, k-fold, the
+  `Pipeline`/`ColumnTransformer` structure, the orthogonal-projection geometry
+  behind the normal equation.
 
 ```bash
 python3 tools/make_figures.py     # needs numpy, pandas, matplotlib, scikit-learn, scipy
@@ -99,9 +113,10 @@ In a deck: `M` menu · `S` speaker notes · `C` chalkboard · `F` full screen ·
 
 ## Conventions
 
-- Slides never name a weekday. Lectures refer to one another relatively — *in the
-  next lecture*, *in two lectures* — so the material is independent of the
-  timetable.
-- Every deck is at least 70 slides.
-- Every notebook is linked from the slides that use it.
-- Each lecture contains at least one worked assistant failure.
+- Slides never name a weekday. Lectures refer to one another by number or
+  relatively, so the material is independent of the timetable.
+- A deck runs 70–90 slides, counted against the 90-minute clock.
+- Every notebook is linked from the deck that uses it.
+- Every code cell in a notebook is preceded by the specification that would
+  produce it.
+- Nothing is wrong on purpose.
