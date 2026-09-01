@@ -35,6 +35,26 @@ starting the next lecture:
 
 Steps 3 and 5 are the ones easily forgotten. They are not optional.
 
+### Three classes of stale claim, all invisible to grep
+
+Auditing Lecture 1 and the site turned up fifteen false statements. Only four
+mentioned the old structure. The other eleven were:
+
+1. **Lecture-number references broken by renumbering.** "again in Lecture 6 when
+   ridge repairs it" (ridge is L5), "Lecture 8. This single calculation explains
+   bagging" (L7), "PyTorch ... taught in Lecture 12" (L10), "taught from scratch
+   in Lecture 1" of the estimator API (L2, and L1 now fits nothing at all).
+   **Check every lecture number against LECTURES.md mechanically** — the audit
+   loop that does this is worth rewriting each time.
+2. **Counts that moved.** "each of the twelve threads is a derivation" — there
+   are eighteen.
+3. **Slide and notebook computing the same quantity on different rows.** The
+   deck counted the price stripes on the training split; the rebuilt notebook
+   counted them on all 20,640 rows. Both were internally consistent, both passed
+   check_provenance, and they disagreed: 62 against 79 districts at $350,000.
+   **Whenever a notebook and its deck report the same quantity, run the notebook
+   and diff the numbers against the slide.**
+
 ### Reading a deck for stale claims
 
 Converting a deck is **not** a grep for "Build" and "Fix". Lecture 1 shipped

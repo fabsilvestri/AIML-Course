@@ -277,10 +277,11 @@ matters from the next lecture onwards.
 """),
 
         md("""
-## 3 · Look at the whole set — once
+## 3 · A quick look at the whole set
 
-One look at everything, to find what is structurally wrong with the data. Then
-we split, and from that point on we look only at the training half.
+One look at everything, to find what is *structurally* wrong with the data —
+the kind of fact you need before you can decide anything at all. Then we split,
+and from that point on every number is computed on the training half.
 
 Two things should jump out of the histograms. Take thirty seconds before you
 scroll past them.
@@ -305,65 +306,13 @@ plt.tight_layout(); plt.show()
         md("""
 **The income is not in dollars** — it is scaled, and capped at 15.0001.
 
-**The target is capped too**, and the target is our label. Count it rather than
-squinting at it:
+**The target is capped too**, and the target is our label — so those districts
+carry a label that is not the answer, and no model can be right about them.
+
+That is enough to know before splitting. We *count* it, and look at the stripes
+under it, after the split — on the training half, like every other number in
+this notebook.
 """),
-        prompt(
-            label="count the cap",
-            input="the target column",
-            output="how many districts sit at the cap, and the commonest values "
-                   "below it",
-            constraint="count it — a histogram shows you a spike and a count "
-                       "tells you whether it is 5% of your labels or 0.5%",
-            check="the commonest values below the cap are all multiples of the "
-                  "same number; work out which before running it",
-            **{"try": "raise the threshold from 500,000 to 500,001. The count "
-                      "does not change — what does that tell you about how the "
-                      "cap was applied?"}),
-        code('''
-capped = (housing_full["median_house_value"] >= 500_000).sum()
-print(f"{capped} districts sit at the cap "
-      f"({100 * capped / len(housing_full):.1f}% of the data)")
-
-# a continuous target should have an almost flat value_counts. Where it is not,
-# the recording process is visible — a fact about the survey, not California.
-counts = housing_full["median_house_value"].value_counts()
-print(f"\\na typical price is shared by {counts.median():.0f} districts")
-print("\\nthe five commonest values below the cap:")
-print(counts.drop(counts.index.max()).head(5))
-'''),
-        md("""
-Every one of those is a multiple of **$12,500**. They are artefacts of how the
-survey recorded prices, not facts about California.
-
-The cap matters more than the rounding does: the target is the *label*, so a cap
-on it means those districts have a label that is not the answer, and no model
-can be right about them. Two options, both legitimate, and the choice belongs to
-the stakeholder rather than to us — collect proper labels for the capped
-districts, or remove them from both the training and the test set and state that
-the system does not predict above $500,000.
-
-A well-known description of this dataset also names fainter lines at \\$450,000,
-\\$350,000 and \\$280,000. When a source names specific numbers about your data,
-the numbers are checkable.
-"""),
-        prompt(
-            label="check the famous claim",
-            input="three values named in a well-known description of this dataset",
-            output="how many districts sit at each",
-            constraint="check the claim against the counts you just computed "
-                       "rather than repeating it",
-            check="compare each against the median count printed above — one of "
-                  "the three is real, one is marginal, and one is "
-                  "indistinguishable from the background",
-            **{"try": "three values nobody claimed — 460,000, 340,000 and "
-                      "270,000. If those come back comparable, the original "
-                      "claim was about the background, not about the data."}),
-        code('''
-for value in (450_000, 350_000, 280_000):
-    print(f"${value:>9,}  {counts.get(value, 0):>4d} districts")
-'''),
-
         md("""
 ## 4 · Split before you explore
 
@@ -455,6 +404,66 @@ print(f"\\nworst error — stratified {comparison['stratified error %'].abs().ma
 Everything below is computed on `housing`, the training copy. Every correlation,
 every scatter, every ratio. The 4,128 test districts play no part in any decision
 made from here on.
+"""),
+        md("""
+### First, the cap — counted, not squinted at
+"""),
+        prompt(
+            label="count the cap",
+            input="the training half's target column",
+            output="how many training districts sit at the cap, and the "
+                   "commonest values below it",
+            constraint="count it — a histogram shows you a spike, and a count "
+                       "tells you whether it is 5% of your labels or 0.5%",
+            check="the commonest values below the cap are all multiples of the "
+                  "same number; work out which before running it",
+            **{"try": "raise the threshold from 500,000 to 500,001. The count "
+                      "does not change — what does that tell you about how the "
+                      "cap was applied?"}),
+        code('''
+capped = (housing["median_house_value"] >= 500_000).sum()
+print(f"{capped} districts sit at the cap "
+      f"({100 * capped / len(housing):.1f}% of the training set)")
+
+# a continuous target should have an almost flat value_counts. Where it is not,
+# the recording process is visible — a fact about the survey, not California.
+counts = housing["median_house_value"].value_counts()
+print(f"\\na typical price is shared by {counts.median():.0f} districts")
+print("\\nthe five commonest values below the cap:")
+print(counts.drop(counts.index.max()).head(5))
+'''),
+        md("""
+Every one of those is a multiple of **$12,500** — artefacts of how the survey
+recorded prices, not facts about California.
+
+The cap is the one that matters. The target is the *label*, so a capped district
+has a label that is not the answer and no model can be right about it. Two
+responses are legitimate, and the choice belongs to the stakeholder rather than
+to us: collect proper labels for those districts, or drop them from both halves
+and state that the system does not predict above $500,000.
+
+A well-known description of this dataset also names fainter lines at \\$450,000,
+\\$350,000 and \\$280,000. When a source names specific numbers about your data,
+those numbers are checkable.
+"""),
+        prompt(
+            label="check the famous claim",
+            input="three values named in a well-known description of this dataset",
+            output="how many training districts sit at each",
+            constraint="check the claim against the counts you just computed "
+                       "rather than repeating it",
+            check="compare each against the median count printed above — one of "
+                  "the three is real, one is marginal, and one is "
+                  "indistinguishable from the background",
+            **{"try": "three values nobody claimed — 460,000, 340,000 and "
+                      "270,000. If those come back comparable, the original "
+                      "claim was about the background, not about the data."}),
+        code('''
+for value in (450_000, 350_000, 280_000):
+    print(f"${value:>9,}  {counts.get(value, 0):>4d} districts")
+'''),
+        md("""
+### Then the geography
 """),
         prompt(
             label="geography",
