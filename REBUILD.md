@@ -4,7 +4,7 @@ Resumable progress log for the redesign. **If you are picking this up cold —
 a new session, a restarted machine — read this file first, then `LECTURES.md`
 (the plan) and `AUTHORING.md` (how to build one lecture).**
 
-Last updated: 2026-09-01 · Term starts: ~2026-09-22
+Last updated: 2026-09-01 (Lecture 1 built) · Term starts: ~2026-09-22
 
 ---
 
@@ -60,9 +60,10 @@ Legend: `done` · `wip` · `todo`
 | `AUTHORING.md` — the spec | **done** | 379df6c |
 | `README.md` | **done** | 379df6c |
 | Repo cleanup (prompts toolchain, TRICKS, GUIDELINES, caches) | **done** | 379df6c |
-| `assets/css/custom.css` — theme refresh | todo | after L1 deck is drafted |
+| `assets/css/custom.css` — theme refresh | **done** | additive: `.badge-lec`, `.scope-*`, `.derivation`, `.panel-when`, `.notebook-slide`. Old `.badge-build/-fix/-fail` and `.commit` kept defined until the last deck is converted |
 | `index.html` — site rebuild | todo | after L1 sign-off |
-| `tools/check_notebooks.py` — rules retargeted to AUTHORING §4 | todo | still enforces the old prompt-box budget |
+| `tools/make_notebooks.py` / `_prompt.py` — retargeted to AUTHORING §4 | **done** | three-line annotation dropped everywhere; `COLAB_AUTHORED` emptied so L19 generates like the rest |
+| `tools/check_notebooks.py` — rules retargeted to AUTHORING §4 | todo | §6.1 box budget no longer fires; the 4 blocking rules still apply |
 | `tools/make_figures.py` — figures for reassigned lectures | todo | figure names are `l03-*` etc. by old numbering |
 | Part V figures (`figures_ir.py`, `figures_recsys.py`) | todo | nothing exists yet |
 
@@ -73,7 +74,7 @@ Deck = `slides/lecture-NN.html`, Notebook = `notebooks/lecture-NN.ipynb`.
 
 | # | Topic | Ch | Dataset | Source | Deck | Notebook |
 |---|---|---|---|---|---|---|
-| 1 | What ML is, and how we will work | 1–2 | housing | old L1 | todo | todo |
+| 1 | What ML is, and how we will work | 1–2 | housing | old L1 | **done** | **done** |
 | 2 | The end-to-end project | 2 | housing | old L1+L2 | todo | todo |
 | 3 | Classification and its metrics | 3 | MNIST | old L3+L4 | todo | todo |
 | 4 | Training models | 4 | Titanic | old L5 | todo | todo |
@@ -105,11 +106,14 @@ Things noticed during the rebuild that are not yet fixed.
 - Old decks and notebooks 2–24 still describe Build/Fix, planted defects,
   "commit a number", the twelve threads and the weak-prompt device. Every one is
   rewritten as its row above is worked.
-- `notebooks/lecture-01.ipynb` §7 still contains the weak-vs-usable prompt cost
-  comparison (commit c40bba3). It goes when L1 is rebuilt.
 - `notebooks/checkpoints/sorter.pt` — tracked 1 MB model from an old notebook.
   Delete when the notebook that produced it is rebuilt.
-- 22 notebooks carry uncommitted cell-id churn from before the redesign. It gets
-  absorbed as each is rewritten.
+- All 24 notebooks were regenerated, so the three-line prompt annotation is
+  already gone from every one of them. Their **prose** still describes Build/Fix
+  and planted defects; that goes lecture by lecture.
+- `assets/figures/d-buildfix.svg` is now unreferenced. Delete once no deck
+  cites it.
+- `tools/deckkit.py` — new: slide-level surgery on a deck, which is how a
+  lecture is converted without retyping the slides that survive.
 - `tools/figures_app02.py` … `figures_app12.py` are named by the old
   twelve-application scheme. Rename to lecture numbers as each is touched.

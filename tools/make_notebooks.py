@@ -11,11 +11,13 @@ Twenty-four notebooks have to stay consistent with each other and with the
 decks, and a diff of .ipynb JSON is unreadable, so drift would be invisible.
 
 The notebooks are **ours**. No cell is taken from the textbook's own notebooks.
-Each one follows TRICKS §10: it mirrors the lecture, carries the lecture's
-worked assistant failure with code that actually runs, asserts after every
+Each one follows AUTHORING.md §4: it mirrors the lecture, precedes every code
+cell with the specification that would produce it, asserts after every
 structural step, and states an expected wall-clock next to anything slow — for
 an audience of mathematicians rather than engineers, "no output for four
 minutes" otherwise reads as "it hung" and gets interrupted.
+
+Nothing in a notebook is wrong on purpose.
 """
 
 from __future__ import annotations
@@ -49,14 +51,14 @@ def code(text: str) -> nbf.NotebookNode:
 
 
 def header(n: int, title: str, kind: str, chapters: str, thread: str = "") -> list:
-    badge = "Build" if kind == "build" else "Fix"
-    line = f"**Lecture {n} · {badge}** · Géron, {chapters}"
-    if thread:
-        line += f" · *Mathematical thread: {thread}*"
+    """The opening cell. `kind` and `thread` are vestiges of the Build/Fix
+    design and are ignored; they stay in the signature only until the last
+    lecture module stops passing them."""
+    source = f"Géron, {chapters}" if chapters else "Lecture notes"
     return [md(f"""
 # {title}
 
-{line}
+**Lecture {n}** · {source}
 
 Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
 
@@ -64,10 +66,14 @@ Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
 
 **How to use this notebook.** You are not expected to type the code. You are
 expected to *read* it before you run it, and to be able to say what every line
-does and what would break if it changed. Cells marked **⚠ read before running**
-contain a defect on purpose.
+does and what would break if it changed.
 
-Run the cells in order. Anything that takes more than a few seconds says so.
+Every code cell is preceded by the **specification that would produce it** —
+input, output, constraint, check. Read the box, work out what the check should
+say, *then* run the cell. That order is the whole point of the box.
+
+Run the cells in order. Anything that takes more than a few seconds says so,
+and anything that needs a GPU says that too. Nothing here is wrong on purpose.
 """)]
 
 
@@ -80,22 +86,17 @@ Run the cells in order. Anything that takes more than a few seconds says so.
 # prompt boxes honest.
 PROMPT_NOTE = """
 **About the prompt boxes.** Every code cell in this notebook is preceded by a
-quoted prompt, and three lines follow it: what the prompt leaves open, the
-version a student typically writes instead, and how you would catch a wrong
-answer. Those three lines are the part worth reading twice.
+quoted prompt naming four things: the input, the output, the constraint the
+method must respect, and a check whose answer you can work out before running
+anything. Read the box, answer the check in your head, then run the cell.
 
-The prompts here are **specifications, not transcripts** — this is what you
-would have to ask for in order to get this cell, not a recording of somebody
-asking for it. If your own prompt is vaguer than the box, expect worse code than
-the cell below it.
-
-*Lecture 19 is the one exception in this course.* It was built cell by cell
-against Colab's Gemini 3.1 Pro, and its prompts are verbatim. It says so itself.
+The prompts are **specifications, not transcripts** — this is what you would
+have to ask for in order to get this cell, not a recording of somebody asking
+for it. If your own prompt is vaguer than the box, expect worse code than the
+cell below it.
 """
 
-# Lecture 19 makes the stronger claim in its own words and must not be given the
-# weaker one as well.
-NOTE_EXEMPT = {19}
+NOTE_EXEMPT: set[int] = set()
 
 
 def _ensure_prompt_note(nb: nbf.NotebookNode, n: int) -> None:
@@ -218,9 +219,19 @@ LOADER_PROMPT = prompt(
 
 def lecture_01() -> nbf.NotebookNode:
     cells = header(
-        1, "Welcome, and a price you can't trust", "build", "Chapters 1–2")
+        1, "What machine learning is, and how we will work", "", "Chapters 1–2")
 
     cells += [
+        md("""
+This notebook is the whole of Lecture 1's second half, in runnable form: the
+brief, the data, the split, and the exploration. Nothing is fitted here — the
+first model arrives in Lecture 2, on purpose. Looking properly at data before
+modelling it is not a preliminary, it is the part that decides whether the
+model can work at all.
+
+Runs on free CPU in about two minutes.
+"""),
+
         md("## 1 · Setup"), SETUP_PROMPT, SETUP,
         md("## 2 · The data"), LOADER_PROMPT, LOADER,
 
@@ -230,25 +241,27 @@ def lecture_01() -> nbf.NotebookNode:
 Ten attributes per district. One of them is not numeric, and one column has
 holes in it. Find both before reading on.
 """),
-prompt(
-       label="what is in it",
-       input="the loaded frame",
-       output="every column, its type and its non-null count",
-       constraint="`.info()`, not `.head()` — the two things worth finding here are a non-numeric column and a column with holes in it, and neither is visible in five rows",
-       left_open="which column is which. Find both before reading on; the next cell names them.",
-       student="`.head()` and an impression. A column that is 99% present looks complete in the first five rows, and the dtype of a mostly-numeric-looking column is not visible at all.",
-       catch="non-null counts against the row count. That subtraction is the missing-value audit, and it is free."),
+        prompt(
+            label="what is in it",
+            input="the loaded frame",
+            output="every column, its type and its non-null count",
+            constraint="`.info()`, not `.head()` — the two things worth finding "
+                       "here are a non-numeric column and a column with holes in "
+                       "it, and neither is visible in five rows",
+            check="the non-null count of nine columns equals the row count, and "
+                  "of one column it does not"),
         code('''
 housing_full.info()
 '''),
-prompt(
-       label="count the holes, and the categories",
-       input="the frame",
-       output="how many districts are missing total_bedrooms, and the counts of every category level",
-       constraint="print the missing count as a PERCENTAGE as well as a count — 207 sounds like a lot and 1% does not",
-       left_open="that ISLAND has five districts in the whole of California. Remember it: it comes back in the next lecture and it does not announce itself when it breaks.",
-       student="dropping the rows with missing bedrooms, which throws away 207 districts to avoid writing one imputer.",
-       catch="`value_counts()` on every categorical, always. A level with n=5 is a level that will be absent from some cross-validation folds."),
+        prompt(
+            label="count the holes, and the categories",
+            input="the frame",
+            output="how many districts are missing total_bedrooms, and the "
+                   "counts of every category level",
+            constraint="print the missing count as a PERCENTAGE as well as a "
+                       "count — 207 sounds like a lot and 1% does not",
+            check="`value_counts()` on the categorical sums to 20,640, and one "
+                  "of its levels has n < 10"),
         code('''
 n_missing = housing_full["total_bedrooms"].isna().sum()
 print(f"total_bedrooms is missing in {n_missing} districts "
@@ -257,33 +270,116 @@ print()
 print(housing_full["ocean_proximity"].value_counts())
 '''),
         md("""
-`ISLAND` has five districts in the whole of California. Remember that; it comes
-back in the next lecture and it does not announce itself when it breaks.
+`ISLAND` has five districts in the whole of California. Remember that: a level
+with n=5 is a level that will be absent from some cross-validation folds, which
+matters from the next lecture onwards.
 """),
 
         md("""
-## 3 · Split before you look
+## 3 · Look at the whole set — once
 
-This is the first rule and the easiest one to break. Everything you learn from
-the data *before* the split leaks into the choices you make afterwards — through
-you, not through the code. There is no library that prevents this.
+One look at everything, to find what is structurally wrong with the data. Then
+we split, and from that point on we look only at the training half.
 
-We stratify on income because the experts told us income predicts price. A
-random split gets the income mix wrong by up to 6.4%; stratifying gets it wrong
-by 0.36%.
+Two things should jump out of the histograms. Take thirty seconds before you
+scroll past them.
 """),
-prompt(
-       label="split before you look",
-       input="the whole frame",
-       output="a stratified 80/20 split",
-       constraint="stratify on the INCOME BAND, because the experts said income predicts price — a random split gets the income mix wrong by up to 6.4% and stratifying gets it wrong by 0.36%",
-       check="assert the two halves sum to the whole and that their indices are disjoint",
-       left_open="why this is the first rule and the easiest to break. Everything you learn from the data BEFORE the split leaks into the choices you make afterwards — through you, not through the code. There is no library that prevents this.",
-       student="exploring first and splitting later, because exploring is the interesting part. By then you have chosen which features to engineer using the test rows.",
-       catch="the comment on the last line — from here to the final cell, `test_set` is not touched again. Write it down, in the code, where it will be read."),
+        prompt(
+            label="histograms",
+            input="the full frame",
+            output="a histogram of every numeric column",
+            constraint="50 bins, not the default 10 — a cap at the top of a "
+                       "distribution is one bar, and at 10 bins it is inside a "
+                       "bar with everything else",
+            check="nine panels, one per numeric column, and two of them have a "
+                  "conspicuous spike at their right-hand edge"),
+        code('''
+import matplotlib.pyplot as plt
+
+housing_full.hist(bins=50, figsize=(12, 8))
+plt.tight_layout(); plt.show()
+'''),
+        md("""
+**The income is not in dollars** — it is scaled, and capped at 15.0001.
+
+**The target is capped too**, and the target is our label. Count it rather than
+squinting at it:
+"""),
+        prompt(
+            label="count the cap",
+            input="the target column",
+            output="how many districts sit at the cap, and the commonest values "
+                   "below it",
+            constraint="count it — a histogram shows you a spike and a count "
+                       "tells you whether it is 5% of your labels or 0.5%",
+            check="the commonest values below the cap are all multiples of the "
+                  "same number; work out which before running it"),
+        code('''
+capped = (housing_full["median_house_value"] >= 500_000).sum()
+print(f"{capped} districts sit at the cap "
+      f"({100 * capped / len(housing_full):.1f}% of the data)")
+
+# a continuous target should have an almost flat value_counts. Where it is not,
+# the recording process is visible — a fact about the survey, not California.
+counts = housing_full["median_house_value"].value_counts()
+print(f"\\na typical price is shared by {counts.median():.0f} districts")
+print("\\nthe five commonest values below the cap:")
+print(counts.drop(counts.index.max()).head(5))
+'''),
+        md("""
+Every one of those is a multiple of **$12,500**. They are artefacts of how the
+survey recorded prices, not facts about California.
+
+The cap matters more than the rounding does: the target is the *label*, so a cap
+on it means those districts have a label that is not the answer, and no model
+can be right about them. Two options, both legitimate, and the choice belongs to
+the stakeholder rather than to us — collect proper labels for the capped
+districts, or remove them from both the training and the test set and state that
+the system does not predict above $500,000.
+
+A well-known description of this dataset also names fainter lines at \\$450,000,
+\\$350,000 and \\$280,000. When a source names specific numbers about your data,
+the numbers are checkable.
+"""),
+        prompt(
+            label="check the famous claim",
+            input="three values named in a well-known description of this dataset",
+            output="how many districts sit at each",
+            constraint="check the claim against the counts you just computed "
+                       "rather than repeating it",
+            check="compare each against the median count printed above — one of "
+                  "the three is real, one is marginal, and one is "
+                  "indistinguishable from the background"),
+        code('''
+for value in (450_000, 350_000, 280_000):
+    print(f"${value:>9,}  {counts.get(value, 0):>4d} districts")
+'''),
+
+        md("""
+## 4 · Split before you explore
+
+Everything you learn from the data *before* the split leaks into the choices you
+make afterwards — through you, not through the code. There is no library that
+prevents this, which is why it is a rule about the order of your own actions.
+
+We stratify on income because the domain experts said income predicts price, and
+because `median_income` is continuous, we band it first. Five bands, chosen so
+that no band is tiny: stratification needs enough districts per stratum to be
+worth doing.
+"""),
+        prompt(
+            label="the stratified split",
+            input="the whole frame",
+            output="an 80/20 split stratified on the income band",
+            constraint="stratify on the income BAND, not on the raw income — "
+                       "`train_test_split` stratifies on a categorical, and "
+                       "20,640 distinct incomes are 20,640 strata",
+            check="the two halves sum to 20,640 and their indices are disjoint"),
         code('''
 from sklearn.model_selection import train_test_split
 
+# five bands, on the scaled income. The last is open-ended because the top of
+# the distribution is thin and a fixed upper edge would leave a near-empty band.
 income_cat = pd.cut(housing_full["median_income"],
                     bins=[0., 1.5, 3.0, 4.5, 6., np.inf],
                     labels=[1, 2, 3, 4, 5])
@@ -296,278 +392,163 @@ assert len(train_set) + len(test_set) == len(housing_full)
 assert set(train_set.index).isdisjoint(test_set.index), "the split overlaps"
 print(f"train {len(train_set):,}   test {len(test_set):,}")
 
-# From here to the very last cell, `test_set` is not touched again.
+# From here to the last cell of the NEXT lecture, `test_set` is not touched.
 housing = train_set.copy()
+'''),
+        md("""
+### Did stratifying actually buy anything?
+
+The claim is that a random split gets the income mix wrong and a stratified one
+does not. That is a measurable claim, so measure it: take the proportion of
+districts in each income band in the full dataset, and compare it with the
+proportion each kind of split produces.
+"""),
+        prompt(
+            label="sampling bias, measured",
+            input="the income bands, the full frame, and one test set of each kind",
+            output="the band proportions under each, and the percentage error "
+                   "of each against the full-data proportions",
+            constraint="the same seed for both splits, so the only difference "
+                       "between them is the stratification",
+            check="the stratified error is smaller in every band; the interesting "
+                  "question is by how much"),
+        code('''
+random_test = train_test_split(housing_full, test_size=0.2,
+                               random_state=RANDOM_STATE)[1]
+
+def band_share(frame):
+    return income_cat.loc[frame.index].value_counts(normalize=True).sort_index()
+
+overall = income_cat.value_counts(normalize=True).sort_index()
+comparison = pd.DataFrame({
+    "overall %":    100 * overall,
+    "stratified %": 100 * band_share(test_set),
+    "random %":     100 * band_share(random_test),
+})
+comparison["stratified error %"] = (
+    100 * (comparison["stratified %"] / comparison["overall %"] - 1))
+comparison["random error %"] = (
+    100 * (comparison["random %"] / comparison["overall %"] - 1))
+
+print(comparison.round(2).to_string())
+print(f"\\nworst error — stratified {comparison['stratified error %'].abs().max():.2f}%"
+      f"   random {comparison['random error %'].abs().max():.2f}%")
 '''),
 
         md("""
-## 4 · Look — at the training set only
+## 5 · Now explore — the training set, and only that
 
-Two things should jump out of the histograms. Take thirty seconds before you
-scroll.
+Everything below is computed on `housing`, the training copy. Every correlation,
+every scatter, every ratio. The 4,128 test districts play no part in any decision
+made from here on.
 """),
-prompt(
-       label="look — at the TRAINING set only",
-       input="the training half",
-       output="a histogram of every numeric column",
-       constraint="`housing`, the training copy, not `housing_full` — the whole point of the previous cell was to make this cell safe",
-       left_open="two things that should jump out. Take thirty seconds before scrolling: the income is not in dollars, and the TARGET is capped.",
-       student="plotting the full frame out of habit. It is one word different and it undoes the split.",
-       catch="50 bins, not the default 10. A cap at the top of a distribution is one bar, and at 10 bins it is inside a bar with everything else."),
+        prompt(
+            label="geography",
+            input="the training districts' longitude and latitude",
+            output="a scatter of California, with population as the marker size "
+                   "and price as the colour",
+            constraint="alpha well below 1 — at alpha=1 the dense areas saturate "
+                       "into a solid blob and the density information, which is "
+                       "the point of the plot, is destroyed",
+            check="the coastline is legible, and the expensive districts are "
+                  "visibly not uniformly distributed"),
         code('''
-import matplotlib.pyplot as plt
-
-housing.hist(bins=50, figsize=(12, 8))
+housing.plot(kind="scatter", x="longitude", y="latitude",
+             alpha=0.2,                       # density, not just position
+             s=housing["population"] / 100, label="population",
+             c="median_house_value", cmap="viridis",   # not jet: see below
+             colorbar=True, figsize=(9, 6), sharex=False)
+plt.title("training districts: size = population, colour = median price")
 plt.tight_layout(); plt.show()
 '''),
         md("""
-**The income is not in dollars** — it is scaled, and capped at 15.0001.
+The colormap is `viridis` rather than the `jet` you will see in older code.
+`jet` is not perceptually uniform: it has a bright band in the middle and dark
+ends, so equal steps in the data are not equal steps in apparent brightness, and
+it invents boundaries in smooth data that a reader then interprets as structure.
+It also collapses to an unreadable grey ramp when printed or seen by a
+colour-blind reader. `viridis` is monotone in lightness and survives both.
 
-**The target is capped too**, and the target is our label. Count it rather than
-squinting at it:
+Price is high near the ocean and near the two big cities. That is a fact you can
+use — and one we will make explicit as a feature in the next lecture.
 """),
-prompt(
-       label="count the cap rather than squinting at it",
-       input="the target column",
-       output="how many districts sit at the cap, and the commonest values below it",
-       constraint="count it — a histogram shows you a spike and a count tells you whether it is 5% of your labels or 0.5%",
-       left_open="what the commonest values have in common. Every one of them is a multiple of $12,500 — artefacts of how the survey recorded prices, not facts about California.",
-       student="noticing the cap and moving on. The target is the LABEL, so a cap on it means 5% of your training rows have a label that is not the answer, and no model can be right about them.",
-       catch="`value_counts()` on a continuous target should be almost flat. Where it is not, the recording process is visible, and that is a fact about the survey rather than the world."),
+        prompt(
+            label="correlations",
+            input="the numeric training columns",
+            output="the linear correlation of every attribute with the target, "
+                   "ranked",
+            constraint="Pearson only, and say so — it measures LINEAR "
+                       "association and nothing else",
+            check="median_income is far the strongest; every other column is "
+                  "below 0.15 in absolute value"),
         code('''
-capped = (housing["median_house_value"] >= 500_000).sum()
-print(f"{capped} districts sit at the cap "
-      f"({100 * capped / len(housing):.1f}% of the training set)")
-
-# which values do districts actually pile up on?
-counts = housing["median_house_value"].value_counts()
-print(f"\\na typical price is shared by {counts.median():.0f} districts")
-print("\\nthe five commonest values below the cap:")
-print(counts.drop(counts.index.max()).head(5))
+corr = housing.select_dtypes(include=[np.number]).corr(numeric_only=True)
+print("linear (Pearson) correlation with the target:\\n")
+print(corr["median_house_value"].sort_values(ascending=False).round(3).to_string())
 '''),
         md("""
-Every one of those is a multiple of **$12,500**. They are artefacts of how the
-survey recorded prices, not facts about California.
+`median_income` at about 0.69 is far and away the strongest single predictor,
+which is why we stratified on it. But read the weak entries carefully rather
+than dismissing them: `total_rooms` correlates with the target at about 0.14,
+and that is not because the number of rooms is irrelevant to price. It is
+because `total_rooms` is a *district* total, so it mostly measures how many
+people live in the district.
 
-A well-known description of this dataset names fainter lines at \\$450,000,
-\\$350,000 and \\$280,000. Check that claim against the counts above before you
-believe it — one of the three is real, one is marginal, and one is
-indistinguishable from the background.
+The quantity that should matter is rooms **per household**. Correlation cannot
+tell you that; only knowing what the column means can.
 """),
-prompt(
-       label="check the famous claim",
-       input="three values named in a well-known description of this dataset",
-       output="how many districts sit at each",
-       constraint="check the claim against the counts you just computed rather than repeating it",
-       left_open="the answer: one of the three is real, one is marginal, and one is indistinguishable from the background. The cell does not say which.",
-       student="repeating 'there are also lines at 450,000, 350,000 and 280,000' because it is in the book. Two of the three do not survive a count.",
-       catch="when a source names specific numbers about your data, the numbers are checkable. Three lines, and you either confirm it or you have found something."),
+        prompt(
+            label="attribute combinations",
+            input="the training frame",
+            output="three per-household and per-room ratios, and their "
+                   "correlation with the target",
+            constraint="ratios, not totals — a district total is a proxy for "
+                       "district size, and district size is not what we are "
+                       "predicting",
+            check="at least one ratio correlates more strongly than either "
+                  "column it was built from"),
         code('''
-for value in (450_000, 350_000, 280_000):
-    print(f"${value:>9,}  {counts.get(value, 0):>4d} districts")
-'''),
+housing["rooms_per_house"]   = housing["total_rooms"] / housing["households"]
+housing["bedrooms_ratio"]    = housing["total_bedrooms"] / housing["total_rooms"]
+housing["people_per_house"]  = housing["population"] / housing["households"]
 
-        md("""
-## 5 · A number to compare against
+new_corr = housing.select_dtypes(include=[np.number]).corr(
+    numeric_only=True)["median_house_value"]
 
-Rule 2 of this course: *a metric with nothing to compare it to is decoration.*
-
-So before building anything, measure the dumbest possible model — predict the
-same number for every district. Everything you build today has to beat this, and
-by how much is the only thing that will make your RMSE mean anything.
-"""),
-prompt(
-       label="a number to compare against",
-       input="the training mean",
-       output="the RMSE of predicting it for every district, and what the human experts cost",
-       constraint="compute the dumbest possible model BEFORE building anything — everything today has to beat it, and by how much is the only thing that will make your RMSE mean anything",
-       left_open="that the expert figure is quoted, not measured. About 30% off on a typical $200,000 district, which the notebook converts to dollars so the two numbers are on one scale.",
-       student="reporting an RMSE of $68,000 with nothing beside it. Is that good? The question is unanswerable without this cell.",
-       catch="rule 2 of this course: a metric with nothing to compare it to is decoration. This is the cheapest possible comparison and it takes four lines."),
-        code('''
-from sklearn.metrics import root_mean_squared_error
-
-y_train = housing["median_house_value"]
-y_test  = test_set["median_house_value"]
-
-baseline = np.full(len(y_test), y_train.mean())
-baseline_rmse = root_mean_squared_error(y_test, baseline)
-print(f"predict the training mean  ->  RMSE ${baseline_rmse:,.0f}")
-print(f"the human experts are off by about 30%, i.e. roughly  ${0.30 * 200_000:,.0f}")
-'''),
-
-        md("""
-## 6 · Commit
-
-**Stop. On paper, now.** Not in this notebook — on paper, where you cannot
-quietly revise it.
-
-```
-Metric:                                        ____________
-Target RMSE for a good system:               $ ____________
-RMSE I expect from the model I build today:  $ ____________
-```
-
-A prediction you can silently revise is not a prediction.
-"""),
-
-        md("""
-## 7 · An assistant writes the preprocessing
-
-Here is a real request and the code it returns. **⚠ Read before running.** It
-runs, it imports nothing exotic, and it prints a believable number.
-
-> *"Load the housing data, scale the features and split it into training and
-> test sets."*
-"""),
-prompt(
-       label="⚠ what the assistant returns",
-       input="'load the housing data, scale the features and split it into training and test sets'",
-       output="a fitted linear model and its RMSE",
-       constraint="run it exactly as returned — it imports nothing exotic and prints a believable number",
-       left_open="reviewer question 1. `fit_transform` ran on ALL the rows: the median that fills the missing values, and the mean and standard deviation that scale every column, were computed from a set that includes the rows we then call the test set.",
-       student="this exact code. The prompt asked for scaling and splitting and did not say in which order, and one order is a leak.",
-       catch="the model is evaluated on rows whose own values helped define the transformation applied to them. That sentence is the bug, and no part of the output says it."),
-        code('''
-from sklearn.impute import SimpleImputer
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LinearRegression
-
-X_all = housing_full.select_dtypes(include=[np.number]).drop(
-    columns=["median_house_value"])
-y_all = housing_full["median_house_value"]
-
-prep = make_pipeline(SimpleImputer(strategy="median"), StandardScaler())
-X_scaled = prep.fit_transform(X_all)          # <-- all 20,640 rows
-
-X_tr, X_te, y_tr, y_te = train_test_split(
-    X_scaled, y_all, test_size=0.2, random_state=RANDOM_STATE)
-
-leaky = LinearRegression().fit(X_tr, y_tr)
-print(f"RMSE ${root_mean_squared_error(y_te, leaky.predict(X_te)):,.0f}   looks fine")
+for name in ("rooms_per_house", "bedrooms_ratio", "people_per_house",
+             "total_rooms", "population", "households"):
+    print(f"{name:20s} {new_corr[name]:+.3f}")
 '''),
         md("""
-### Reviewer question 1: what touched the test set?
+`bedrooms_ratio` is more strongly correlated with price than any of the three
+raw columns it was derived from — a district where a small share of the rooms
+are bedrooms is a district of larger, more expensive houses. Nothing in the data
+told us to compute that. Knowing what the columns *mean* did.
 
-`fit_transform` ran on **all** the rows. The median that fills the missing
-values, and the mean and standard deviation that scale every column, were all
-computed from a set that includes the rows we then call the test set.
-
-So the model is evaluated on rows whose own values helped define the
-transformation applied to them.
-
-**Now measure the damage** — do not guess:
-"""),
-prompt(
-       label="measure the damage, do not guess",
-       input="the same data, split first and preprocessed second",
-       output="both RMSEs and the difference between them",
-       constraint="change ONE thing — the order of the split and the fit — so the difference is attributable",
-       left_open="that the answer is about a dollar. That is the finding, and the markdown below it is why it is still a bug.",
-       student="assuming the leak must be large because it is called a leak, or assuming it must be small because the number came out small. Neither was knowable before this cell.",
-       catch="three reasons it is small here, all nameable: centring and scaling is an invertible affine map, ordinary least squares is equivariant under one, and with 20,640 rows the training and test statistics nearly coincide. Remove any one and the leak has teeth."),
-        code('''
-# the same thing, done correctly: split first, fit the preprocessing on train
-Xc_tr, Xc_te, yc_tr, yc_te = train_test_split(
-    X_all, y_all, test_size=0.2, random_state=RANDOM_STATE)
-
-prep_ok = make_pipeline(SimpleImputer(strategy="median"), StandardScaler())
-honest = LinearRegression().fit(prep_ok.fit_transform(Xc_tr), yc_tr)
-honest_rmse = root_mean_squared_error(yc_te, honest.predict(prep_ok.transform(Xc_te)))
-leaky_rmse  = root_mean_squared_error(y_te, leaky.predict(X_te))
-
-print(f"leaky   ${leaky_rmse:,.2f}")
-print(f"correct ${honest_rmse:,.2f}")
-print(f"the leak is worth ${abs(honest_rmse - leaky_rmse):,.2f}")
-'''),
-        md("""
-### About a dollar. So why is it a bug?
-
-Three reasons, and the third is the one that matters:
-
-1. **You did not know it was a dollar until you measured.** Nothing in the code
-   said so, and neither did the output.
-2. **It is this small for three specific reasons** — centring and scaling is an
-   invertible affine map, ordinary least squares is equivariant under one, and
-   with 20,640 rows the training and test statistics nearly coincide. Remove any
-   one of those and the leak has teeth.
-3. **A leaked score and an honest score can be identical**, so you cannot detect
-   it from the number. That is why the rule is procedural: *split first* — not
-   because the damage is always large, but because you cannot tell whether it is.
-
-You will meet the same error worth far more than a dollar in about an hour.
+One warning to carry into the next lecture: when you build combined features,
+avoid simple weighted sums of columns you already have. A feature that is a
+linear combination of existing ones adds no information and makes the linear
+algebra worse — the next lecture derives exactly why, when it derives the normal
+equation.
 """),
 
         md("""
-## 8 · Build it properly
+## 6 · Where we are
 
-One `Pipeline`, so that cross-validation refits *all* of it on each fold and the
-leak becomes structurally impossible rather than merely avoided.
-"""),
-prompt(
-       label="build it properly",
-       input="the training features",
-       output="one ColumnTransformer handling numeric and categorical columns",
-       constraint="one Pipeline, so cross-validation refits ALL of it on each fold and the leak becomes structurally impossible rather than merely avoided",
-       check="assert the numeric and categorical column lists together account for every column — a column silently dropped here is a feature you never notice you are not using",
-       left_open="`handle_unknown='ignore'` on the encoder. It is the right choice and it is also how ISLAND becomes an all-zero row with no warning, two sections into the next lecture.",
-       student="listing the numeric columns by hand and forgetting one. The set assert is what catches it.",
-       catch="the difference between avoided and impossible. A pipeline does not make you more careful; it removes the option."),
-        code('''
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.pipeline import Pipeline
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.ensemble import RandomForestRegressor
+- The data has one categorical column, 207 missing values in `total_bedrooms`,
+  a target capped at $500,000, and per-district totals that mostly measure
+  district size.
+- The split is done, stratified on income, and the test set is sealed.
+- The strongest single predictor is `median_income`; the most useful engineered
+  feature is `bedrooms_ratio`.
 
-X_train = housing.drop(columns=["median_house_value"])
+Nothing has been fitted. **Next lecture:** the normal equation, then a
+preprocessing pipeline that handles all of the above, cross-validation, and the
+first honest number.
 
-num_cols = X_train.select_dtypes(include=[np.number]).columns.tolist()
-cat_cols = ["ocean_proximity"]
-
-preprocessing = ColumnTransformer([
-    ("num", make_pipeline(SimpleImputer(strategy="median"), StandardScaler()), num_cols),
-    ("cat", OneHotEncoder(handle_unknown="ignore"), cat_cols),
-])
-
-assert set(num_cols) | set(cat_cols) == set(X_train.columns), "a column was dropped"
-print(f"{len(num_cols)} numeric + {len(cat_cols)} categorical")
-'''),
-prompt(
-       label="⏱ 20 s — three models, scored on their own training data",
-       input="the three model families",
-       output="each one's RMSE on the rows it was fitted to",
-       constraint="score on the TRAINING data, deliberately — this is the setup for the next lecture and not a result",
-       left_open="that one of the three numbers is zero, and that two of the three are meaningless. The notebook does not say which.",
-       student="reporting these. A tree with no depth limit puts every training row in its own leaf, and its zero is not a model that is perfect, it is a model that has memorised.",
-       catch="write your best RMSE on paper next to what you predicted, and do not fix anything. Being wrong is the point and the diagnosis is the next ninety minutes."),
-        code('''
-# ~20 s: the forest is 100 trees on 16,512 rows.
-models = {
-    "Linear regression": LinearRegression(),
-    "Decision tree":     DecisionTreeRegressor(random_state=RANDOM_STATE),
-    "Random forest":     RandomForestRegressor(n_estimators=100,
-                                               random_state=RANDOM_STATE, n_jobs=-1),
-}
-
-for name, model in models.items():
-    pipe = Pipeline([("prep", preprocessing), ("model", model)]).fit(X_train, y_train)
-    rmse = root_mean_squared_error(y_train, pipe.predict(X_train))
-    print(f"{name:20s} RMSE on training data  ${rmse:>10,.0f}")
-'''),
-
-        md("""
-## 9 · Where we are
-
-Three numbers. One of them is zero.
-
-Write your **best RMSE** on the same sheet of paper, next to what you predicted.
-Bring it to the next lecture — we open by comparing them, and two of these
-numbers are meaningless.
-
-Do not fix anything yet. Being wrong is the point, and the diagnosis is the next
-ninety minutes.
+**Before then:** run this notebook top to bottom once. Then change the income
+bands in `pd.cut` — try three bands, or eight — and re-run from that cell to the
+sampling-bias table. What happens to the stratified error, and why?
 """),
     ]
     return build(cells)
@@ -940,19 +921,13 @@ _discover()
 
 # Notebooks that are NOT generated from a module, and must not be overwritten.
 #
-# Lecture 19 was rebuilt cell by cell in Colab: each code cell was produced by
-# prompting Colab's Gemini 3.1 Pro and keeping what came back, and each is
-# preceded by the prompt that produced it plus three lines on what the prompt
-# leaves open, what a student typically writes instead, and how you would catch
-# a wrong answer. The shipped .ipynb therefore carries real generated code and
-# real outputs from a real session — including the planted `shuffle=True`, which
-# emerged from an under-specified prompt rather than being written in by hand.
-#
-# `tools/notebooks/lecture_19.py` is kept because it still documents the arc,
-# but regenerating from it would silently replace all of the above with the
-# hand-written version. So this script refuses, loudly, rather than quietly
-# undoing a day's work the way `figures_app08.py` once undid the diagram fonts.
-COLAB_AUTHORED = {19}
+# Empty since the 2026-09 redesign. Lecture 19 used to be here: it had been
+# built cell by cell in Colab against Gemini, verbatim prompts and a planted
+# `shuffle=True`, as the course's one worked assistant failure. The redesign
+# dropped that device — nothing in a notebook is wrong on purpose any more —
+# so lecture 19 is generated like every other. The guard stays because the
+# failure it prevents (silently overwriting hand-authored work) is real.
+COLAB_AUTHORED: set[int] = set()
 
 
 def main() -> int:
