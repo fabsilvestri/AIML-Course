@@ -108,6 +108,13 @@ Things noticed during the rebuild that are not yet fixed.
   rewritten as its row above is worked.
 - `notebooks/checkpoints/sorter.pt` — tracked 1 MB model from an old notebook.
   Delete when the notebook that produced it is rebuilt.
+- **Check every deck for claims that describe the old delivery model**, not just
+  the old structure. Lecture 1 shipped with four: "you will not type most of the
+  code in this course", "a loop, run out loud, every lecture", "rule of the
+  room", and four rules written for submitted work when nothing is submitted.
+  None of them mentions Build or Fix, so no grep finds them — they have to be
+  read for. The question to ask of a slide is *does this describe something that
+  still happens?*
 - All 24 notebooks were regenerated, so the three-line prompt annotation is
   already gone from every one of them. Their **prose** still describes Build/Fix
   and planted defects; that goes lecture by lecture.
