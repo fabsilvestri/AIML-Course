@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lecture 2 — Your RMSE was a lie</title>
+<title>Lecture 2 — The end-to-end project</title>
 
 <link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
 <link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
@@ -18,63 +18,62 @@
 <div class="reveal">
 <div class="slides">
 
-<!-- ==================================================================== -->
-<!-- OPENING                                                              -->
-<!-- ==================================================================== -->
-
 <!-- 1 -->
 <section class="title-slide" data-menu-title="Title">
-  <h1>Your RMSE was a lie</h1>
-  <p class="subtitle">Application 1 &middot; California housing</p>
-  <p><span class="badge badge-fix">Lecture 2 &middot; Fix</span>
-     <span class="badge badge-math">Thread 1</span>
-     <span class="badge badge-ch">Géron Ch. 2 &amp; 4</span></p>
+  <h1>The end-to-end project</h1>
+  <p class="subtitle">California housing</p>
+  <p><span class="badge badge-lec">Lecture 2</span>
+     <span class="badge badge-ch">Géron Ch. 2</span></p>
   <p class="meta">
     Applications of Machine Learning<br>
     BSc Mathematics of Artificial Intelligence &middot; Third year
   </p>
-  <aside class="notes">Ask for the committed sheets before starting. Nobody
-  proceeds without one on the desk.</aside>
+  <aside class="notes">Assume some of them did not run the Lecture 1 notebook.
+  The first two slides carry everything they need from it.</aside>
 </section>
 
 <!-- 2 -->
-<section data-menu-title="Where we left off">
-  <h2>Where we left off</h2>
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Last lecture we looked at the data and split it. Everything
+  you need from that, in one table:</p>
   <table>
-    <tr><th>Model</th><th class="num">RMSE on training data</th></tr>
-    <tr><td>Predict a constant &mdash; the baseline</td><td class="num"><span class="usd">$115,311</span></td></tr>
-    <tr><td>Linear regression</td><td class="num"><span class="usd">$68,233</span></td></tr>
-    <tr><td>Decision tree</td><td class="num fail">0.0</td></tr>
-    <tr><td>Random forest</td><td class="num"><span class="usd">$18,058</span></td></tr>
+    <tr><th>What we found</th><th>Why it matters today</th></tr>
+    <tr><td>One categorical column, <code>ocean_proximity</code>, one level with n=5</td><td class="small">it has to be encoded, and that level will be absent from some folds</td></tr>
+    <tr><td>207 missing values in <code>total_bedrooms</code></td><td class="small">something must fill them, and that something is <em>learned</em> from data</td></tr>
+    <tr><td>Features on wildly different scales</td><td class="small">they have to be scaled, and scaling is also learned from data</td></tr>
+    <tr><td>A target capped at <span class="usd">$500,000</span></td><td class="small">4.8% of rows carry a label that is not the answer</td></tr>
+    <tr><td>16,512 training / 4,128 test, stratified on income</td><td class="small">the test rows are sealed until the last ten minutes of today</td></tr>
   </table>
-  <p class="fail lead">Two of these numbers are meaningless.</p>
-  <p class="small muted">The first one is not. It is the only row here that was
-  measured against something.</p>
+  <p class="small fail">Three of those five say <em>learned from data</em>. That
+  is the whole subject of the middle of this lecture.</p>
 </section>
 
 <!-- 3 -->
 <section data-menu-title="Today">
   <h2>Today</h2>
   <ol>
-    <li><span class="badge badge-math">Thread 1</span> Least squares and the
-        normal equation <span class="muted small">(20 min)</span></li>
-    <li>Diagnose &mdash; why a tree scored exactly zero
-        <span class="muted small">(15 min)</span></li>
-    <li>Fix &mdash; cross-validation, pipelines, tuning, and reading the errors
+    <li><strong>The mathematics</strong> &mdash; least squares and the normal
+        equation <span class="muted small">(20 min)</span></li>
+    <li><strong>Measuring generalisation</strong> &mdash; what a score computed
+        on the wrong rows tells you <span class="muted small">(15 min)</span></li>
+    <li><strong>The method</strong> &mdash; pipelines, cross-validation, tuning
         <span class="muted small">(40 min)</span></li>
-    <li>Re-measure and red-team <span class="muted small">(15 min)</span></li>
+    <li><strong>What the number means</strong> &mdash; the test set, once
+        <span class="muted small">(15 min)</span></li>
   </ol>
+  <p class="small muted">By the end you will have a defensible number for this
+  problem, and &mdash; more usefully &mdash; the procedure that makes any number
+  defensible.</p>
 </section>
 
-<!-- ==================================================================== -->
-<!-- MATHEMATICAL THREAD 1 (20 min)                                       -->
-<!-- ==================================================================== -->
-
 <!-- 4 -->
-<section class="divider" data-menu-title="◆ Thread 1">
-  <p class="kicker">Mathematical thread 1</p>
+<section class="divider" data-menu-title="◆ The mathematics">
+  <p class="kicker">The mathematics</p>
   <h1>Least squares and<br>the normal equation</h1>
-  <p class="clock">20 minutes</p>
+  <p class="small">Géron &sect;4.1, brought forward &mdash; today we fit a linear
+  model, so today we should know what fitting one <em>does</em></p>
+  <p class="clock">20 minutes &middot; examinable</p>
 </section>
 
 <!-- 5 -->
@@ -171,7 +170,7 @@
   <p class="small muted">A stationary point. Is it a minimum?</p>
 </section>
 
-<!-- 11b -->
+<!-- 12 -->
 <section data-menu-title="Convexity">
   <h2>Why that stationary point is <em>the</em> minimum</h2>
   <p>The Hessian of the MSE is</p>
@@ -182,11 +181,11 @@
   so the Hessian is positive semi-definite and the MSE is <strong>convex</strong>.</p>
   <p class="fix small">A convex function has no local minima — only a global one.
   Any stationary point is it.</p>
-  <p class="small muted">This is also why gradient descent, in Lecture 6, is
+  <p class="small muted">This is also why gradient descent, in Lecture 4, is
   guaranteed to find the same answer.</p>
 </section>
 
-<!-- 12 -->
+<!-- 13 -->
 <section data-menu-title="The normal equation">
   <h2>The normal equation</h2>
   <p class="derive-step">Rearranging $\mathbf{X}^{\intercal}\mathbf{X}\hat{\boldsymbol\theta} = \mathbf{X}^{\intercal}y$:</p>
@@ -218,7 +217,7 @@
   </div>
 </section>
 
-<!-- FIG -->
+<!-- 15 -->
 <section class="figslide" data-menu-title="◆ The projection">
   <h2>The whole thread, in one picture</h2>
   <div class="eqn-box compact">
@@ -234,8 +233,7 @@
   and it is the whole failure condition.</aside>
 </section>
 
-
-<!-- 15 -->
+<!-- 16 -->
 <section data-menu-title="Compute it">
   <h2>Compute it on our own data</h2>
   <pre><code class="language-python" data-trim>
@@ -255,7 +253,7 @@ theta_best = np.linalg.inv(X_b.T @ X_b) @ X_b.T @ y
   features, so $\hat{\boldsymbol\theta}$ has nine entries.</p>
 </section>
 
-<!-- 16 -->
+<!-- 17 -->
 <section data-menu-title="Compare">
   <h2>And compare with the library</h2>
   <pre><code class="language-text" data-trim>
@@ -279,7 +277,7 @@ array([206333.5, -85371.4, -90829.7])
   </div>
 </section>
 
-<!-- 14b -->
+<!-- 18 -->
 <section data-menu-title="Verify orthogonality">
   <h2>Verify the geometry, on the same data</h2>
   <p>If the geometry is right, the residual must be orthogonal to every column of
@@ -297,7 +295,7 @@ print(np.abs(X_b.T @ y).max())            # 3.4e+09 — the scale to judge it by
   you divide by something.</p>
 </section>
 
-<!-- 17 -->
+<!-- 19 -->
 <section data-menu-title="When it breaks">
   <h2>When does this break?</h2>
   <p class="lead">The equation requires
@@ -308,7 +306,7 @@ print(np.abs(X_b.T @ y).max())            # 3.4e+09 — the scale to judge it by
   <p class="fail">Two ways to lose that.</p>
 </section>
 
-<!-- 18 -->
+<!-- 20 -->
 <section data-menu-title="Failure 1">
   <h2>Failure 1 &middot; More features than instances</h2>
   <p>If $m &lt; n$, then $\operatorname{rank}(\mathbf{X}) \le m &lt; n+1$, so
@@ -320,7 +318,7 @@ print(np.abs(X_b.T @ y).max())            # 3.4e+09 — the scale to judge it by
   <p class="small muted">Common in genomics, text, and any wide-feature setting.</p>
 </section>
 
-<!-- 19 -->
+<!-- 21 -->
 <section data-menu-title="Failure 2">
   <h2>Failure 2 &middot; Collinear features</h2>
   <p>If one column is a linear combination of others, the columns are dependent
@@ -335,7 +333,7 @@ print(np.abs(X_b.T @ y).max())            # 3.4e+09 — the scale to judge it by
   <aside class="notes">This is the payoff of the callback. Pause here.</aside>
 </section>
 
-<!-- 20 -->
+<!-- 22 -->
 <section data-menu-title="Near-singular">
   <h2>Near-singular is also a problem</h2>
   <p>Exact collinearity is rare; <em>near</em> collinearity is common.</p>
@@ -344,12 +342,12 @@ print(np.abs(X_b.T @ y).max())            # 3.4e+09 — the scale to judge it by
     <li>Tiny changes in the training set produce large changes in $\hat{\boldsymbol\theta}$</li>
     <li>The model becomes <strong>numerically unstable</strong></li>
   </ul>
-  <p class="small muted">In Lecture 6 we will repair this with ridge regression,
+  <p class="small muted">In Lecture 5 we will repair this with ridge regression,
   which adds $\alpha\mathbf{A}$ and makes the matrix invertible for every
   $\alpha &gt; 0$.</p>
 </section>
 
-<!-- 21 -->
+<!-- 23 -->
 <section data-menu-title="The pseudoinverse">
   <h2>What Scikit-Learn actually does</h2>
   <p>It does not invert anything. It computes</p>
@@ -363,7 +361,7 @@ np.linalg.pinv(X_b) @ y                  # same result
   </code></pre>
 </section>
 
-<!-- 22 -->
+<!-- 24 -->
 <section data-menu-title="SVD">
   <h2>Computed by SVD</h2>
   <p>Singular value decomposition factors the training matrix as</p>
@@ -379,7 +377,7 @@ np.linalg.pinv(X_b) @ y                  # same result
   the inverse is not.</p>
 </section>
 
-<!-- 23 -->
+<!-- 25 -->
 <section data-menu-title="Complexity">
   <h2>What it costs</h2>
   <table>
@@ -397,9 +395,9 @@ np.linalg.pinv(X_b) @ y                  # same result
   features. That is what gradient descent is for.</p>
 </section>
 
-<!-- 24 -->
-<section data-menu-title="Thread 1 summary">
-  <h2>Thread 1 &middot; Summary</h2>
+<!-- 26 -->
+<section data-menu-title="What the derivation buys you">
+  <h2>What that derivation buys you</h2>
   <ul class="tight">
     <li>Fitting a linear model minimises $\lVert\mathbf{X}\boldsymbol\theta - y\rVert_2^2$</li>
     <li>The minimiser satisfies $\mathbf{X}^{\intercal}(\mathbf{X}\hat{\boldsymbol\theta}-y)=\mathbf{0}$: the residual is orthogonal to every feature</li>
@@ -407,33 +405,40 @@ np.linalg.pinv(X_b) @ y                  # same result
     <li>It fails to exist when $m &lt; n$ or when features are collinear</li>
     <li>The SVD-based pseudoinverse is always defined and cheaper</li>
   </ul>
-  <p class="small muted">Examinable: derive the normal equation; state and justify
-  the invertibility condition.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- DIAGNOSE (15 min)                                                    -->
-<!-- ==================================================================== -->
-
-<!-- 25 -->
-<section class="divider" data-menu-title="◆ Diagnose">
-  <p class="kicker">Part two</p>
-  <h1>Diagnose</h1>
-  <p class="clock">15 minutes &middot; why a tree scored zero</p>
-</section>
-
-<!-- 26 -->
-<section data-menu-title="The suspect">
-  <h2>The suspect</h2>
-  <p class="big-num bad">0.0</p>
-  <p class="lead">A decision tree made <strong>no error at all</strong>
-  on 16,512 districts.</p>
-  <p>Two hypotheses. Only one of them is flattering.</p>
+  <div class="panel">
+    <span class="panel-title">Three things you can now do</span>
+    Say why <code>LinearRegression</code> never fails on this data even though
+    the matrix could be singular; say why the collinearity warning at the end of
+    the last lecture was not pedantry; and, in Lecture&nbsp;5, see immediately
+    why adding $\alpha\mathbf{I}$ repairs the invertibility for every
+    $\alpha>0$.
+  </div>
+  <p class="small muted"><span class="scope scope-exam">examinable</span>
+  Derive the normal equation; state and justify the invertibility condition.</p>
 </section>
 
 <!-- 27 -->
-<section data-menu-title="Hypothesis 1">
-  <h2>Hypothesis 1 &middot; The model is perfect</h2>
+<section class="divider" data-menu-title="◆ Measuring generalisation">
+  <p class="kicker">Before we build anything</p>
+  <h1>Measuring<br>generalisation</h1>
+  <p class="clock">15 minutes &middot; examinable</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="A number that means nothing">
+  <h2>Start with a number that means nothing</h2>
+  <p>Fit an unconstrained decision tree on the 16,512 training districts, then
+  score it on those same 16,512 districts.</p>
+  <p class="big-num bad">0.0</p>
+  <p class="lead">No error at all.</p>
+  <p>Two explanations. Only one of them is flattering.</p>
+  <aside class="notes">Ask for both hypotheses from the room before advancing.
+  Somebody always offers "it's perfect" first, which is the point.</aside>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Explanation 1">
+  <h2>Explanation 1 &middot; The model is perfect</h2>
   <p>Housing prices would have to be an exact deterministic function of nine
   census attributes &mdash; eight numbers and a category.</p>
   <ul class="tight small">
@@ -444,9 +449,9 @@ np.linalg.pinv(X_b) @ y                  # same result
   <p class="fail lead">Reject.</p>
 </section>
 
-<!-- 28 -->
-<section data-menu-title="Hypothesis 2">
-  <h2>Hypothesis 2 &middot; The model memorised</h2>
+<!-- 30 -->
+<section data-menu-title="Explanation 2">
+  <h2>Explanation 2 &middot; The model memorised</h2>
   <p>A decision tree left unconstrained keeps splitting until every leaf is pure.</p>
   <div class="panel">
     With enough depth it can isolate <strong>every single training district into
@@ -463,68 +468,62 @@ np.linalg.pinv(X_b) @ y                  # same result
   </div>
 </section>
 
-<!-- 30 -->
-<section data-menu-title="The real error">
-  <h2>But overfitting is not the bug</h2>
-  <p class="lead">Overfitting is a property of the model.</p>
-  <p class="lead fail">The bug is that we could not
-  <em>see</em> it.</p>
-  <div class="panel panel-fail">
-    <span class="panel-title">The cardinal error</span>
-    We measured the RMSE on <strong>the same data the model was trained on</strong>.
-  </div>
-</section>
-
 <!-- 31 -->
-<section data-menu-title="Training error">
-  <h2>Training error tells you almost nothing</h2>
-  <ul class="tight">
-    <li>It measures how well the model reproduces what it has already seen</li>
-    <li>The goal is performance on <strong>new</strong> instances</li>
-    <li>Low training error with high generalisation error <em>is the definition of overfitting</em></li>
-  </ul>
-  <p class="small">Linear regression&rsquo;s <span class="usd">$68,233</span> was
-  also a training number. It happens to be honest to within
+<section data-menu-title="What the zero tells you">
+  <h2>What the zero actually tells you</h2>
+  <p class="lead">Overfitting is a property of the <em>model</em>.</p>
+  <p class="lead fail">A training score cannot <em>see</em> it.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">The condition</span>
+    Any score computed on the rows a model was fitted to measures how well it
+    reproduces what it has already seen. For a model flexible enough to
+    memorise, that is not evidence about anything else.
+  </div>
+  <p class="small">Linear regression on the same rows gives
+  <span class="usd">$68,233</span>. That one happens to be honest to within
   <span class="usd">$49</span> &mdash; but only because the model is too rigid to
-  memorise anything, and you had no way to know that in advance.</p>
+  memorise, and nothing in the number tells you which case you are in.</p>
 </section>
 
 <!-- 32 -->
 <section data-menu-title="Why not the test set">
   <h2>&ldquo;Then use the test set&rdquo;</h2>
-  <p class="fail lead">No.</p>
-  <p>We are still choosing between models and tuning them. If we consult the test
-  set now, we will select whatever suits it, and our estimate of generalisation
-  error becomes optimistic.</p>
+  <p class="fail lead">No &mdash; not yet.</p>
+  <p>We are still choosing between models and tuning them. Every time a choice is
+  made by looking at the test score, that score stops being an estimate of
+  performance on unseen data and becomes a target we are fitting to.</p>
   <div class="panel">
     The test set is used <strong>once</strong>, at the very end, to estimate the
     generalisation error of a system we have already committed to.
   </div>
+  <p class="small muted">This is the same argument as the specimen exam question
+  in the last lecture, where a loop chose $\alpha$ by scoring on
+  <code>X_test</code>. We answer the rest of that question at the end of today.</p>
 </section>
 
 <!-- 33 -->
-<section data-menu-title="A second bug">
-  <h2>A second bug, which we avoided by luck</h2>
+<section data-menu-title="Leakage">
+  <h2>The same error, one step earlier</h2>
+  <p class="small">A score can also be corrupted before any model is fitted:</p>
   <pre><code class="language-python" data-trim>
-# WRONG — do not do this
 scaler = StandardScaler()
-housing_scaled = scaler.fit_transform(housing_full)      # all the data
+housing_scaled = scaler.fit_transform(housing_full)      # all 20,640 rows
 train_set, test_set = train_test_split(housing_scaled)   # then split
   </code></pre>
-  <div class="panel panel-fail">
-    <span class="panel-title">Data leakage</span>
-    Information from outside the training set influences the model. The reported
-    score improves. The deployed system does not. It never raises an exception,
-    and it is the single most common way a machine learning result becomes
-    fiction.
+  <div class="panel panel-when">
+    <span class="panel-title">Data leakage &mdash; the condition</span>
+    A quantity computed from rows outside the training set enters the training
+    path. Here the mean and standard deviation were computed from a set that
+    includes the test rows, so the model is evaluated on rows whose own values
+    helped define the transformation applied to them.
   </div>
-  <p class="small muted">We escaped it in the previous lecture &mdash; not because
-  we were careful, but because we happened to put the scaler inside a pipeline.
-  And we measured the cost of not escaping it: on this dataset, and only on this
-  dataset, zero. Let us make the escape deliberate rather than lucky.</p>
+  <p class="small">It raises no exception and the reported score improves. How
+  <em>much</em> it improves is not knowable from the code &mdash; sometimes
+  nothing, sometimes everything &mdash; which is why the rule is procedural
+  rather than a matter of judging each case.</p>
 </section>
 
-<!-- 35 -->
+<!-- 34 -->
 <section data-menu-title="The rule">
   <h2>The rule, stated once</h2>
   <div class="panel">
@@ -535,33 +534,31 @@ train_set, test_set = train_test_split(housing_scaled)   # then split
   </div>
   <p class="small">This applies to imputers, scalers, encoders, dimensionality
   reduction &mdash; everything that learns anything from data.</p>
+  <p class="small fail">We will not rely on remembering it. The rest of this
+  lecture builds an object that makes violating it structurally impossible.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="What we need">
+  <h2>What we need, then</h2>
+  <table>
+    <tr><th>Requirement</th><th>Because</th></tr>
+    <tr><td>An estimate of error on rows the model has not seen</td><td class="small">a training score cannot see overfitting</td></tr>
+    <tr><td>&hellip; without touching the test set</td><td class="small">it is spent the first time it influences a choice</td></tr>
+    <tr><td>&hellip; with a <em>spread</em>, not one number</td><td class="small">two estimates are only different if the spread says so</td></tr>
+    <tr><td>&hellip; and all preprocessing refitted inside it</td><td class="small">otherwise the estimate leaks and is optimistic</td></tr>
+  </table>
+  <p class="lead">All four are satisfied by one procedure.</p>
 </section>
 
 <!-- 36 -->
-<section data-menu-title="Diagnosis">
-  <h2>Diagnosis</h2>
-  <table>
-    <tr><th>Number</th><th>Verdict</th></tr>
-    <tr><td>Linear regression &mdash; $68,233</td><td>roughly honest; the model underfits</td></tr>
-    <tr><td>Decision tree &mdash; 0.0</td><td class="miss">meaningless: memorised, measured on itself</td></tr>
-    <tr><td>Random forest &mdash; $18,058</td><td class="miss">meaningless for the same reason</td></tr>
-  </table>
-  <p>We need a way to estimate generalisation error <strong>without</strong>
-  touching the test set.</p>
+<section class="divider" data-menu-title="◆ The method">
+  <p class="kicker">The method</p>
+  <h1>Cross-validation,<br>pipelines and tuning</h1>
+  <p class="clock">40 minutes &middot; examinable</p>
 </section>
-
-<!-- ==================================================================== -->
-<!-- FIX (40 min)                                                         -->
-<!-- ==================================================================== -->
 
 <!-- 37 -->
-<section class="divider" data-menu-title="◆ Fix">
-  <p class="kicker">Part three</p>
-  <h1>Fix</h1>
-  <p class="clock">40 minutes</p>
-</section>
-
-<!-- 38 -->
 <section data-menu-title="★ Colab notebook">
   <h2>Today&rsquo;s notebook</h2>
   <p class="colab-line">
@@ -569,11 +566,12 @@ train_set, test_set = train_test_split(housing_scaled)   # then split
        href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-02.ipynb">
        Open Lecture 2 in Google Colab</a>
   </p>
-  <p class="small muted">It begins from the previous lecture&rsquo;s final state, so you can
-  reproduce the broken numbers before repairing them.</p>
+  <p class="small muted">Everything from here to the end of the lecture, runnable.
+  It repeats the Lecture&nbsp;1 load and split in its first two cells, so it
+  stands on its own.</p>
 </section>
 
-<!-- 39 -->
+<!-- 38 -->
 <section data-menu-title="Holdout validation">
   <h2>Fix 1 &middot; Hold out a validation set</h2>
   <p class="small">Split the <em>training</em> set again: a smaller training set,
@@ -595,7 +593,7 @@ train_set, test_set = train_test_split(housing_scaled)   # then split
   <p class="fix">Solution: many small validation sets, used in rotation.</p>
 </section>
 
-<!-- 41 -->
+<!-- 39 -->
 <section data-menu-title="k-fold">
   <h2>Fix 2 &middot; $k$-fold cross-validation</h2>
   <p>Split the training set into $k$ non-overlapping <strong>folds</strong>.
@@ -606,7 +604,7 @@ train_set, test_set = train_test_split(housing_scaled)   # then split
   <p class="small muted">Cost: you train the model $k$ times.</p>
 </section>
 
-<!-- FIG -->
+<!-- 40 -->
 <section class="figslide" data-menu-title="◆ k-fold, drawn">
   <h2>Every row is a complete, independent fit</h2>
   <figure class="fig fig-wide">
@@ -617,8 +615,7 @@ train_set, test_set = train_test_split(housing_scaled)   # then split
   number, the spread, that a single holdout could never give you.</p>
 </section>
 
-
-<!-- 42 -->
+<!-- 41 -->
 <section data-menu-title="k-fold code">
   <h2>In code</h2>
   <pre><code class="language-python" data-trim data-line-numbers="1-8|4|6-8">from sklearn.model_selection import KFold, cross_val_score
@@ -649,7 +646,7 @@ tree_rmses = -cross_val_score(tree_reg, X_train, y_train,
   a free Colab CPU runtime and are <strong>not examinable</strong>.</p>
 </section>
 
-<!-- 43 -->
+<!-- 42 -->
 <section data-menu-title="Tree, honestly">
   <h2>The tree, measured honestly</h2>
   <pre><code class="language-text" data-trim>
@@ -663,15 +660,15 @@ min      65499.052101
 75%      69962.630213
 max      70958.417942
   </code></pre>
-  <p class="fail lead">Not 0.0. About
-  <span class="usd">$68,574</span>.</p>
+  <p class="lead">The honest number for that same tree:
+  <span class="usd">$68,574</span>, not zero.</p>
   <p class="small muted">And something a single number cannot give us: a spread.
   The ten folds run from <span class="usd">$65,499</span> to
   <span class="usd">$70,958</span>, so any comparison that turns on less than a
   couple of thousand dollars is not a comparison.</p>
 </section>
 
-<!-- 44 -->
+<!-- 43 -->
 <section data-menu-title="All three">
   <h2>All three, measured honestly</h2>
   <table>
@@ -686,7 +683,7 @@ max      70958.417942
   anything, has no gap at all.</p>
 </section>
 
-<!-- FIG -->
+<!-- 44 -->
 <section class="figslide" data-menu-title="◆ Train vs CV">
   <h2>The gap between the columns <em>is</em> the overfitting</h2>
   <figure class="fig fig-wide">
@@ -698,7 +695,7 @@ max      70958.417942
   told you.</p>
 </section>
 
-<!-- FIG -->
+<!-- 45 -->
 <section class="figslide" data-menu-title="◆ Fold spread">
   <h2>Ten folds, not one number</h2>
   <figure class="fig fig-wide">
@@ -714,8 +711,7 @@ max      70958.417942
   is fold by fold. That is the next slide.</aside>
 </section>
 
-
-<!-- 45 -->
+<!-- 46 -->
 <section data-menu-title="Reading the table">
   <h2>Reading the table</h2>
   <ul class="tight small">
@@ -733,7 +729,7 @@ max      70958.417942
   or obtain more training data.</p>
 </section>
 
-<!-- new -->
+<!-- 47 -->
 <section data-menu-title="Comparing two models">
   <h2>Is <span class="usd">$68,574</span> worse than <span class="usd">$68,282</span>?</h2>
   <p class="small">The tree&rsquo;s mean is <span class="usd">$292</span> above the
@@ -747,20 +743,20 @@ max      70958.417942
   </table>
   <p class="fix">The forest is genuinely better &mdash; it averages many trees
   fitted on random subsets, and if their errors are not strongly correlated the
-  average is more accurate than any of them. (Thread 4, in Lecture 8, makes that
-  precise.) The tree is
+  average is more accurate than any of them. (Lecture 7 makes that precise, and
+  derives it.) The tree is
   <strong>indistinguishable</strong> from the linear model &mdash; a paired
   $t$-test gives $p = 0.59$, and on six of the ten folds the tree is the
   <em>better</em> of the two.</p>
   <p class="small fail">Say &ldquo;the tree is worse&rdquo; and you have read a
   ranking out of noise. Two numbers are only different if you have shown that
   they are.</p>
-  <aside class="notes">This is the single most transferable slide in the lecture.
-  It comes back on the interval slide at the end, and in every red-team report
-  they write.</aside>
+  <aside class="notes">This is the single most transferable slide in the
+  lecture. It comes back on the interval slide at the end, and it is what
+  Part C of the paper asks whenever it shows two numbers.</aside>
 </section>
 
-<!-- 47 -->
+<!-- 48 -->
 <section data-menu-title="Pipelines protect">
   <h2>Fix 3 &middot; Pipelines make leakage structurally impossible</h2>
   <pre><code class="language-python" data-trim>
@@ -775,7 +771,7 @@ full_pipeline = Pipeline([
   occur by accident.</p>
 </section>
 
-<!-- FIG -->
+<!-- 49 -->
 <section class="figslide" data-menu-title="◆ The pipeline object">
   <h2>What that object actually is</h2>
   <figure class="fig fig-wide">
@@ -785,8 +781,7 @@ full_pipeline = Pipeline([
   <p class="takeaway">One object, so <code>cross_val_score</code> refits <em>all</em> of it on each fold&rsquo;s training part &mdash; the imputer&rsquo;s median and the scaler&rsquo;s mean never see the validation fold.</p>
 </section>
 
-
-<!-- 48 -->
+<!-- 50 -->
 <section data-menu-title="Grid search">
   <h2>Fix 4 &middot; Tune, instead of guessing</h2>
   <pre><code class="language-python" data-trim>
@@ -806,7 +801,7 @@ grid_search.fit(X_train, y_train)      # 15 x 10 = 150 fits, about 4 minutes
   not the cell hanging &mdash; do not interrupt it. <em>(Timing not examinable.)</em></p>
 </section>
 
-<!-- 50 -->
+<!-- 51 -->
 <section data-menu-title="Grid results">
   <h2>Grid search result</h2>
   <pre><code class="language-text" data-trim>
@@ -828,7 +823,7 @@ grid_search.fit(X_train, y_train)      # 15 x 10 = 150 fits, about 4 minutes
   </div>
 </section>
 
-<!-- FIG -->
+<!-- 52 -->
 <section class="figslide" data-menu-title="◆ The grid">
   <h2>All fifteen combinations at once</h2>
   <figure class="fig fig-wide">
@@ -840,8 +835,7 @@ grid_search.fit(X_train, y_train)      # 15 x 10 = 150 fits, about 4 minutes
   we searched.</p>
 </section>
 
-
-<!-- 49 -->
+<!-- 53 -->
 <section data-menu-title="Tuning preprocessing">
   <h2>Preprocessing has hyperparameters too</h2>
   <p class="small">The imputer lives inside the <code>ColumnTransformer</code>
@@ -865,7 +859,7 @@ grid = {"prep__num__simpleimputer__strategy":
   the pipeline is what lets you find out whether they do here.</p>
 </section>
 
-<!-- 51 -->
+<!-- 54 -->
 <section data-menu-title="Randomized search">
   <h2>Randomised search is usually better</h2>
   <pre><code class="language-python" data-trim>
@@ -891,7 +885,7 @@ rnd_search = RandomizedSearchCV(full_pipeline, n_iter=10, cv=cv, n_jobs=-1,
   </ul>
 </section>
 
-<!-- 52b -->
+<!-- 55 -->
 <section data-menu-title="Halving search">
   <h2>Two more ways to spend the budget</h2>
   <p class="small"><code>HalvingGridSearchCV</code> and
@@ -906,11 +900,12 @@ rnd_search = RandomizedSearchCV(full_pipeline, n_iter=10, cv=cv, n_jobs=-1,
     from &mdash; but only when the members make <strong>different kinds of
     errors</strong>. Averaging correlated mistakes achieves nothing.
   </div>
-  <p class="small muted">Lecture 8 makes &ldquo;different kinds of errors&rdquo;
-  precise; that is thread 4.</p>
+  <p class="small muted">Lecture 7 makes &ldquo;different kinds of
+  errors&rdquo; precise, by deriving the variance of an average of correlated
+  predictors.</p>
 </section>
 
-<!-- 53 -->
+<!-- 56 -->
 <section data-menu-title="Feature importance">
   <h2>Analyse the best model</h2>
   <pre><code class="language-text" data-trim>
@@ -932,7 +927,7 @@ rnd_search = RandomizedSearchCV(full_pipeline, n_iter=10, cv=cv, n_jobs=-1,
   slide before concluding the others are worthless.</p>
 </section>
 
-<!-- FIG -->
+<!-- 57 -->
 <section class="figslide" data-menu-title="◆ Feature importance">
   <h2>What the forest actually leaned on</h2>
   <figure class="fig fig-wide">
@@ -948,11 +943,10 @@ rnd_search = RandomizedSearchCV(full_pipeline, n_iter=10, cv=cv, n_jobs=-1,
   towards columns offering many candidate split points. A continuous feature
   outranks a five-row binary indicator almost by construction, so ISLAND
   sitting last is partly a fact about the measure rather than about the
-  feature. Lecture 8 measures how badly, with a decoy at rank 10 of 55.</aside>
+  feature. Lecture 7 measures how badly, with a decoy at rank 10 of 55.</aside>
 </section>
 
-
-<!-- new -->
+<!-- 58 -->
 <section data-menu-title="The least important column">
   <h2>The gun we loaded in the previous lecture</h2>
   <p class="small">Bottom of that list: <code>ocean_proximity_ISLAND</code>, at
@@ -981,7 +975,7 @@ rnd_search = RandomizedSearchCV(full_pipeline, n_iter=10, cv=cv, n_jobs=-1,
   handle_unknown="error" and be told. All three are defensible; silence is not.</aside>
 </section>
 
-<!-- 54 -->
+<!-- 59 -->
 <section data-menu-title="Fairness check">
   <h2>Also check fairness</h2>
   <p>A model should work well not only on average, but across categories of
@@ -995,7 +989,7 @@ rnd_search = RandomizedSearchCV(full_pipeline, n_iter=10, cv=cv, n_jobs=-1,
   on the test set, and it changes what we would tell the client.</p>
 </section>
 
-<!-- 55 -->
+<!-- 60 -->
 <section data-menu-title="The test set">
   <h2>Finally: the test set</h2>
   <pre><code class="language-python" data-trim>
@@ -1012,7 +1006,7 @@ final_rmse = root_mean_squared_error(y_test, final_predictions)
   <code>fit</code> anything on it.</p>
 </section>
 
-<!-- FIG -->
+<!-- 61 -->
 <section class="figslide" data-menu-title="◆ Residuals">
   <h2>Predicted against actual, on data never seen</h2>
   <figure class="fig fig-tall">
@@ -1026,8 +1020,7 @@ final_rmse = root_mean_squared_error(y_test, final_predictions)
   the previous lecture, before a single model existed.</aside>
 </section>
 
-
-<!-- 56 -->
+<!-- 62 -->
 <section data-menu-title="Confidence interval">
   <h2>How precise is that estimate?</h2>
   <pre><code class="language-python" data-trim>
@@ -1058,7 +1051,7 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   improvement over the incumbent is small.</aside>
 </section>
 
-<!-- FIG -->
+<!-- 63 -->
 <section class="figslide" data-menu-title="◆ The interval">
   <h2>The number you should actually report</h2>
   <figure class="fig fig-wide">
@@ -1078,8 +1071,7 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   in their notes; that is why the paired-comparison slide came first.</aside>
 </section>
 
-
-<!-- 57 -->
+<!-- 64 -->
 <section data-menu-title="Don't tweak now">
   <h2>One last temptation</h2>
   <div class="panel panel-fail">
@@ -1094,9 +1086,12 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   standing between you and a confident fiction.</p>
   <p class="small muted">We searched 15 configurations, so the effect here is
   small enough to be invisible. Search 10,000 and it will not be.</p>
+  <p class="small"><span class="scope scope-exam">examinable</span> Why tuning
+  against the test set makes the test score optimistic, and why the bias is a
+  statement about repeated splits rather than about this one.</p>
 </section>
 
-<!-- new -->
+<!-- 65 -->
 <section data-menu-title="The ten worst predictions">
   <h2>Look at the ten worst predictions</h2>
   <table class="smaller">
@@ -1117,7 +1112,7 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   worst cases. Always.</p>
 </section>
 
-<!-- new -->
+<!-- 66 -->
 <section data-menu-title="Slice the error">
   <h2>The average hides the model</h2>
   <p class="small">One number for 4,128 districts is a summary, not a finding.
@@ -1151,7 +1146,7 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   the count or do not report it.</p>
 </section>
 
-<!-- FIG -->
+<!-- 67 -->
 <section class="figslide" data-menu-title="◆ Where the error lives">
   <h2>The same two slices, drawn</h2>
   <figure class="fig fig-wide">
@@ -1163,8 +1158,7 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   &ldquo;also check fairness&rdquo;, and it is a different report to the client.</p>
 </section>
 
-
-<!-- new -->
+<!-- 68 -->
 <section data-menu-title="Drop the capped districts?">
   <h2>The obvious next move, and its trap</h2>
   <p class="small">The cap causes the worst errors. So remove the 205 capped
@@ -1190,7 +1184,7 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   <em>reporting</em>, only with the sentence above attached.</p>
 </section>
 
-<!-- new -->
+<!-- 69 -->
 <section data-menu-title="Absolute vs relative, measured">
   <h2>The criterion we never measured</h2>
   <p class="small">The brief said the experts are off by more than <strong>30% of
@@ -1224,40 +1218,35 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   that back-transforms predictions is TransformedTargetRegressor.</aside>
 </section>
 
-<!-- ==================================================================== -->
-<!-- RE-MEASURE (15 min)                                                  -->
-<!-- ==================================================================== -->
-
-<!-- 58 -->
-<section class="divider" data-menu-title="◆ Re-measure">
-  <p class="kicker">Part four</p>
-  <h1>Re-measure</h1>
+<!-- 70 -->
+<section class="divider" data-menu-title="◆ What the number means">
+  <p class="kicker">The last fifteen minutes</p>
+  <h1>What the number<br>means</h1>
   <p class="clock">15 minutes</p>
 </section>
 
-<!-- 59 -->
-<section data-menu-title="★ Your numbers">
-  <h2>Compare with your sheet</h2>
-  <div class="commit">
-    <span class="commit-label">From the previous lecture</span>
-    <p class="small">
-      Target RMSE for a good system: $ <span class="blank"></span><br>
-      RMSE I expected from today&rsquo;s model: $ <span class="blank"></span><br>
-      Best RMSE I obtained: $ <span class="blank"></span>
-    </p>
-  </div>
+<!-- 71 -->
+<section data-menu-title="The three numbers">
+  <h2>The three numbers that matter</h2>
   <table>
-    <tr><th>Reality</th><th class="num">RMSE</th><th class="num">vs the baseline</th></tr>
-    <tr><td>Predict a constant</td><td class="num"><span class="usd">$115,311</span></td><td class="num">&mdash;</td></tr>
-    <tr><td>Honest cross-validated best</td><td class="num"><span class="usd">$48,180</span></td><td class="num">58% better</td></tr>
-    <tr><td>Final, on the test set</td><td class="num hit"><span class="usd">$49,037</span></td><td class="num">58% better</td></tr>
+    <tr><th>Measured how</th><th class="num">RMSE</th><th class="num">vs the baseline</th></tr>
+    <tr><td>Predict a constant &mdash; the training mean</td><td class="num"><span class="usd">$115,311</span></td><td class="num">&mdash;</td></tr>
+    <tr><td>Best model, cross-validated on the training set</td><td class="num"><span class="usd">$48,180</span></td><td class="num">58% better</td></tr>
+    <tr><td>The same model, on the test set, once</td><td class="num hit"><span class="usd">$49,037</span></td><td class="num">58% better</td></tr>
   </table>
-  <p class="small muted">Score your three numbers out loud. The interesting
-  question is not whether you were close, but whether you were closer than the
-  constant model &mdash; and whether you knew you were guessing.</p>
+  <div class="panel">
+    <span class="panel-title">Read the third row against the second</span>
+    <span class="usd">$49,037</span> is <span class="usd">$858</span> worse than
+    the cross-validated estimate, against a 95% interval of
+    <span class="usd">&plusmn;$2,313</span>. The estimate was honest, and there
+    is nothing in that <span class="usd">$858</span> to explain.
+  </div>
+  <p class="small muted">The first row is the one people leave out. Without it,
+  <span class="usd">$49,037</span> is a number with no units of judgement
+  attached to it.</p>
 </section>
 
-<!-- 60 -->
+<!-- 72 -->
 <section data-menu-title="The verdict">
   <h2>Is that good?</h2>
   <p class="small">On the stakeholder&rsquo;s own criterion, the system is within
@@ -1278,25 +1267,9 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   RMSE. It is a question about what the organisation does with it.</p>
 </section>
 
-<!-- 61 -->
-<section data-menu-title="Red-team">
-  <h2>Red-team exercise</h2>
-  <p>Swap notebooks with the team beside you. You have eight minutes.</p>
-  <ol class="tight small">
-    <li>Find any place where a transformer is fitted outside the training set</li>
-    <li>Find any metric computed on data the model was trained on</li>
-    <li>Find any hyperparameter chosen by looking at the test set</li>
-    <li>Check whether the split was stratified &mdash; and on what</li>
-    <li>Find any two numbers compared without a spread, or measured on different
-        sets of rows</li>
-  </ol>
-  <p class="fail small">Report what you found, not what you would have done
-  differently.</p>
-</section>
-
-<!-- 62 -->
+<!-- 73 -->
 <section data-menu-title="Leakage checklist">
-  <h2>Leakage checklist &mdash; keep this</h2>
+  <h2>Six questions to ask of any reported number</h2>
   <ul class="tight small">
     <li>Was every transformer fitted <em>after</em> the split, on training data only?</li>
     <li>Is preprocessing inside the pipeline passed to cross-validation?</li>
@@ -1305,15 +1278,16 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
     <li>Were hyperparameters selected using validation data, not test data?</li>
     <li>Does any feature encode information unavailable at prediction time?</li>
   </ul>
-  <p class="small muted">Six questions. They will catch most of what goes wrong
-  in this course and in your projects.</p>
+  <p class="small muted">Keep these. They catch most of what goes wrong in this
+  course and in your own projects, and questions 1 and 2 are what Part&nbsp;B of
+  the paper asks when it hands you a code excerpt.</p>
 </section>
 
-<!-- 62b -->
+<!-- 74 -->
 <section data-menu-title="Red-teaming with the assistant">
-  <h2>Can the assistant red-team for you?</h2>
+  <h2>Can an assistant check this for you?</h2>
   <p>Partly &mdash; and only if you ask it as an <em>adversary</em>, not as an
-  author.</p>
+  author. This is step&nbsp;3 of the loop from Lecture&nbsp;1, delegated.</p>
   <div class="cols">
     <div>
       <div class="panel panel-fail small">
@@ -1333,7 +1307,7 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   Generic review requests return generic praise.</p>
 </section>
 
-<!-- 62c -->
+<!-- 75 -->
 <section data-menu-title="What it will and will not catch">
   <h2>What that catches &mdash; and what it does not</h2>
   <table>
@@ -1348,10 +1322,10 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
   read off the file. Those three are yours.</p>
 </section>
 
-<!-- 62d -->
+<!-- 76 -->
 <section data-menu-title="The prompt that prevents it">
   <h2>Moving the check upstream</h2>
-  <p>Everything diagnosed today was preventable at specification time. Keep this
+  <p>Every failure named today is preventable at specification time. Keep this
   as a standing constraint in every request:</p>
   <div class="panel panel-fix">
     <span class="panel-title">Standing constraint</span>
@@ -1360,18 +1334,19 @@ rmse_lower, rmse_upper = boot_result.confidence_interval
     test set may appear in the training path. Fixed random seed. Print the fold
     scores, not just the mean.&rdquo;
   </div>
-  <p class="small muted">A specification is cheaper than a diagnosis. This one
-  would have saved us the first forty minutes of this lecture.</p>
+  <p class="small muted">A specification is cheaper than a diagnosis. Every
+  notebook in this course is written against it, which is why none of them
+  contains the failures above.</p>
   <aside class="notes">Ask them to paste this into their own notes now. It
   recurs, extended, in every application from here on.</aside>
 </section>
 
-<!-- ANSWERS — moved here from Lecture 1, where nobody could answer them -->
+<!-- 77 -->
 <section data-menu-title="◇ Answer — 3">
   <h2>Back to the specimen question &mdash; 3, the repair</h2>
-  <p class="small muted">The Part B question from the previous lecture: a loop
+  <p class="small muted">The specimen question from the last lecture: a loop
   choosing $\alpha$ by scoring on <code>X_test</code>. You could answer 1 and 2
-  then. You can answer 3 and 4 now.</p>
+  then. You can answer 3 and 4 now, because cross-validation exists.</p>
   <pre><code class="language-python" data-trim data-line-numbers="1-4|1-2|4">gs = GridSearchCV(Ridge(), {"alpha": [0.01, 0.1, 1, 10, 100]},
                   scoring="neg_root_mean_squared_error",
                   cv=KFold(10, shuffle=True, random_state=42)
@@ -1391,7 +1366,7 @@ print(root_mean_squared_error(y_test, gs.predict(X_test)))
   <code>X_test</code> appears before the choice is made.</p>
 </section>
 
-<!-- ANSWERS -->
+<!-- 78 -->
 <section data-menu-title="◇ Answer — 4">
   <h2>Specimen answer &mdash; 4</h2>
   <div class="cols">
@@ -1425,7 +1400,7 @@ print(root_mean_squared_error(y_test, gs.predict(X_test)))
   marked identically by any examiner.</aside>
 </section>
 
-<!-- 63b -->
+<!-- 79 -->
 <section data-menu-title="Presenting the result">
   <h2>Presenting it, and making it reproducible</h2>
   <pre><code class="language-python" data-trim>
@@ -1453,73 +1428,76 @@ joblib.dump(final_model, "my_california_housing_model.pkl")   # with its scores
       </ul>
     </div>
   </div>
-  <p class="small fail">This is graded. A result nobody else can reproduce is not
-  a result.</p>
+  <p class="small fail">A result nobody else can reproduce is not a result
+  &mdash; and at the oral, &ldquo;it worked when I ran it&rdquo; is not an
+  answer.</p>
   <p class="smaller muted">Save every model you experiment with together with its
   cross-validation scores and its validation predictions, so you can compare the
   <em>kinds</em> of errors they make. And deployment is not the end: performance
   decays quietly through <em>data drift</em>, so it has to be monitored.</p>
 </section>
 
-<!-- 64 -->
+<!-- 80 -->
 <section data-menu-title="★ All notebooks">
   <h2>Every notebook in the course</h2>
   <div class="nb-index">
-    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-01.ipynb">01 · Prices — build</a></p>
-    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-02.ipynb">02 · Prices — fix</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-03.ipynb">03 · Rare events — build</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-04.ipynb">04 · Rare events — fix</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-05.ipynb">05 · Survival — build</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-06.ipynb">06 · Survival — fix</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-07.ipynb">07 · Land cover — build</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-08.ipynb">08 · Land cover — fix</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-09.ipynb">09 · Faces — build</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">10 · Faces — fix</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-11.ipynb">11 · First network — build</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-12.ipynb">12 · First network — fix</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-13.ipynb">13 · Deep recognition — build</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-14.ipynb">14 · Deep recognition — fix</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-15.ipynb">15 · Visual inspection — build</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-16.ipynb">16 · Visual inspection — fix</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-17.ipynb">17 · Detection — build</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-18.ipynb">18 · Detection — fix</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-19.ipynb">19 · Forecasting — build</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-20.ipynb">20 · Forecasting — fix</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-21.ipynb">21 · Feedback — build</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-22.ipynb">22 · Feedback — fix</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-23.ipynb">23 · Catalogue — build</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-24.ipynb">24 · Catalogue — fix</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-01.ipynb">01 &middot; What machine learning is, and how we will work</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-02.ipynb">02 &middot; The end-to-end project</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-03.ipynb">03 &middot; Classification and its metrics</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-04.ipynb">04 &middot; Training models</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-05.ipynb">05 &middot; Regularisation and the bias–variance trade-off</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-06.ipynb">06 &middot; Decision trees</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-07.ipynb">07 &middot; Ensembles and random forests</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-08.ipynb">08 &middot; Dimensionality reduction and unsupervised learning</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-09.ipynb">09 &middot; Neural networks, from the perceptron up</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">10 &middot; PyTorch</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-11.ipynb">11 &middot; Training deep networks</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-12.ipynb">12 &middot; Convolutional networks</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-13.ipynb">13 &middot; Transfer learning</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-14.ipynb">14 &middot; Detection and segmentation</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-15.ipynb">15 &middot; Time series</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-16.ipynb">16 &middot; Recurrent networks</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-17.ipynb">17 &middot; Text</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-18.ipynb">18 &middot; Attention and transformers</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-19.ipynb">19 &middot; Information retrieval: the lexical foundation</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-20.ipynb">20 &middot; Information retrieval: dense retrieval</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-21.ipynb">21 &middot; Recommender systems: from ratings to factors</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-22.ipynb">22 &middot; Recommender systems: neural, and evaluated honestly</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-23.ipynb">23 &middot; Vision transformers and multimodal retrieval</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-24.ipynb">24 &middot; Generation, retrieval-augmented systems, and where this leaves you</a></p>
   </div>
 </section>
 
-<!-- 65 -->
+<!-- 81 -->
 <section data-menu-title="Summary">
-  <h2>What we learned</h2>
+  <h2>What we did</h2>
   <ol class="tight smaller">
-    <li>Fitting a linear model is orthogonal projection; the normal equation is
-        the orthogonality condition, and with centred features $\theta_0$ is the
-        baseline you already measured</li>
-    <li>It fails when features are collinear or $m &lt; n$; the SVD pseudoinverse
-        does not</li>
-    <li>A tree scoring zero has memorised, not learned</li>
-    <li>Training error is not generalisation error</li>
-    <li>Cross-validation gives an honest estimate <em>and</em> its precision
-        &mdash; and two estimates are only different if the paired, per-fold
+    <li>Derived the normal equation: fitting a linear model is orthogonal
+        projection, and $\mathbf{X}^{\intercal}\mathbf{X}$ is invertible exactly
+        when the columns are independent</li>
+    <li>Saw why it fails &mdash; collinearity, or $m &lt; n$ &mdash; and that the
+        SVD pseudoinverse does not</li>
+    <li>Established that a score computed on the training rows cannot detect
+        overfitting, and that the test set is spent the first time it influences
+        a choice</li>
+    <li>Named data leakage as a condition, not an accident, and built the
+        <code>Pipeline</code> that makes it structurally impossible</li>
+    <li>Used k-fold cross-validation for an honest estimate <em>and</em> its
+        precision &mdash; two estimates differ only if the paired per-fold
         difference says so</li>
-    <li>Pipelines make leakage structurally impossible</li>
-    <li>Tune with randomised search; touch the test set once; report an interval</li>
-    <li>An average over 4,128 districts describes none of them. Slice it, look at
-        the worst cases, and never compare two numbers measured on different
-        evaluation sets</li>
+    <li>Tuned with grid and randomised search, then touched the test set once and
+        reported an interval</li>
+    <li>Sliced the error: an average over 4,128 districts describes none of them,
+        and two numbers measured on different rows are not comparable</li>
   </ol>
 </section>
 
-<!-- 66 -->
+<!-- 82 -->
 <section data-menu-title="References">
   <h2>In the book</h2>
   <table>
     <tr><th>Topic</th><th>Chapter</th></tr>
-    <tr><td>Normal equation, SVD, pseudoinverse, complexity</td><td>4</td></tr>
+    <tr><td>Normal equation, SVD, pseudoinverse, complexity</td><td>4 &middot; &sect;4.1, brought forward</td></tr>
     <tr><td>Cross-validation, grid and randomised search</td><td>2</td></tr>
     <tr><td>Pipelines and <code>ColumnTransformer</code></td><td>2</td></tr>
     <tr><td>Overfitting, generalisation error, validation sets</td><td>1, 2</td></tr>
@@ -1529,25 +1507,25 @@ joblib.dump(final_model, "my_california_housing_model.pkl")   # with its scores
   </table>
 </section>
 
-<!-- 67 -->
+<!-- 83 -->
 <section class="divider" data-menu-title="Next">
-  <p class="kicker">Lecture 3 &middot; Build</p>
-  <h1>Finding the rare event</h1>
+  <p class="kicker">Lecture 3 &middot; G&eacute;ron Ch. 3</p>
+  <h1>Classification and<br>its metrics</h1>
   <p class="small">
-    A new application, a new metric<br>
-    You will build a classifier that scores above 90%<br>
-    and does nothing useful whatsoever
+    Why accuracy is useless under imbalance, and why precision is not
+    monotone in the threshold<br>
+    The confusion matrix, precision, recall, F1<br>
+    PR and ROC curves, and choosing an operating point you can defend
   </p>
-  <p class="clock">Bring a fresh commitment sheet</p>
+  <p class="clock">Run the Lecture 2 notebook first</p>
 </section>
-
 </div>
 </div>
 
 <div class="deck-footer">
   Applications of Machine Learning
   <span class="sep">&middot;</span> Lecture 2
-  <span class="sep">&middot;</span> Your RMSE was a lie
+  <span class="sep">&middot;</span> The end-to-end project
 </div>
 
 <script src="../lib/reveal.js/dist/reveal.js"></script>

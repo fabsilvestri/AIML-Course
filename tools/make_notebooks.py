@@ -189,14 +189,9 @@ SETUP_PROMPT = prompt(
                "`root_mean_squared_error` arrived in 1.4, and on an older "
                "Colab image the failure is an ImportError twenty cells from "
                "here",
-    left_open="that RANDOM_STATE is defined once and used for every split, "
-              "every model and every shuffle. A notebook with three different "
-              "seeds in it cannot be reproduced by reading it.",
-    student="printing the versions and not checking them, so the notebook "
-            "reports its own incompatibility as information rather than as an "
-            "error.",
-    catch="not examinable, and it is here because a version mismatch produces "
-          "a confusing error in a cell that has nothing to do with versions.")
+    check="RANDOM_STATE is defined here ONCE and used for every split, every "
+          "model and every shuffle in the notebook. A notebook carrying three "
+          "different seeds cannot be reproduced by reading it")
 
 LOADER_PROMPT = prompt(
     label="the data",
@@ -590,11 +585,18 @@ sampling-bias table. What happens to the stratified error, and why?
 
 def lecture_02() -> nbf.NotebookNode:
     cells = header(
-        2, "Your RMSE was a lie", "fix", "Chapters 2 & 4",
-        thread="least squares and the normal equation")
+        2, "The end-to-end project", "", "Chapter 2")
 
     cells += [
-        md("## 1 · Setup and where we left off"),
+        md("""
+The whole pipeline, end to end: the preprocessing that has to be *learned* from
+data, the cross-validation that gives an honest estimate of error, the search
+that tunes it, and the single use of the test set at the end.
+
+The first two cells repeat the Lecture 1 load and split, so this notebook stands
+on its own. Runs on free CPU; the search cell takes two to four minutes.
+"""),
+        md("## 1 · Setup, and the same split as last time"),
         SETUP_PROMPT, SETUP, LOADER_PROMPT, LOADER,
 prompt(
        label="every import, and the same split",
@@ -602,9 +604,7 @@ prompt(
        output="the identical 16,512 / 4,128 split as the previous lecture",
        constraint="every import this notebook needs in ONE place, and the split rebuilt from the seed rather than inherited",
        check="assert the two sizes exactly — if they differ, every comparison against the previous lecture is void",
-       left_open="that the stratification bins are repeated here verbatim. Change them and you get a different split from the same seed.",
-       student="continuing in the previous notebook's kernel, where all of this already exists. It works in the room and nowhere else.",
-       catch="a notebook that only runs because a previous one is still in memory is not reproducible. Restart-and-run-all is the only test of that."),
+       **{"try": "restart the runtime and run this cell first, before anything else. A notebook that only runs because another one is still in memory is not reproducible, and restart-and-run-all is the only test of that."}),
         code('''
 # Every import this notebook needs, in one place — a notebook that only runs
 # because a previous one is still in memory is not reproducible.
@@ -636,7 +636,7 @@ print("same split as the previous lecture — the seed guarantees it")
 '''),
 
         md("""
-## 2 · Thread 1 — what `LinearRegression().fit()` actually computed
+## 2 · What `LinearRegression().fit()` actually computed
 
 Minimising $\\lVert X\\theta - y\\rVert^2$ gives the normal equation
 
@@ -651,10 +651,8 @@ prompt(
        input="the numeric features with an intercept column added",
        output="the normal-equation solution, and the residual's inner product with every column of X",
        constraint="add the intercept column with `add_dummy_feature` BEFORE solving — without it the residual is not orthogonal to the constant and the assert fails for the wrong reason",
-       check="assert the largest |Xᵀ(Xθ̂ − y)| is negligible RELATIVE to the scale of y — an absolute tolerance on dollars is meaningless",
-       left_open="what the orthogonality means. Read row by row, Xᵀ(Xθ̂ − y) = 0 says the residual is orthogonal to EVERY COLUMN of X: least squares is not an algebraic trick, it is a projection onto the column space.",
-       student="taking the normal equation on faith. It is four lines to verify and the verification is the thread.",
-       catch="`np.linalg.inv` is not what scikit-learn uses. It computes the pseudoinverse via SVD, which still returns an answer when XᵀX is singular — more features than instances, or two collinear columns. That is the whole failure condition."),
+       check="assert the largest |Xᵀ(Xθ̂ − y)| is negligible RELATIVE to the scale of y — an absolute tolerance on dollars is meaningless. Read the assert row by row: it says the residual is orthogonal to every column of X",
+       **{"try": "append a column that is the sum of two existing ones, and solve again. `np.linalg.inv` raises or returns nonsense; `np.linalg.pinv` does not. That is the invertibility condition, met in practice."}),
         code('''
 num = X_train.select_dtypes(include=[np.number])
 X = make_pipeline(SimpleImputer(strategy="median"), StandardScaler()).fit_transform(num)
@@ -680,18 +678,26 @@ feature as a weighted sum of existing ones.
 """),
 
         md("""
-## 3 · Why the tree scored zero
+## 3 · A number that means nothing
 
-Not because it is perfect. Because we asked it to grade its own homework.
+Fit an unconstrained decision tree, then score it on the very rows it was
+fitted to. The result is not evidence that the tree is good — it is what any
+model flexible enough to memorise will produce, and it is the reason the next
+section exists.
 """),
-prompt(
-       label="why the tree scored zero",
-       input="the same pipeline and the same training rows",
-       output="its RMSE on the data it was fitted to",
-       constraint="score it on the training rows again, and say in the output what that means",
-       left_open="that it is not zero because the tree is perfect. It is zero because we asked it to grade its own homework, and an unconstrained tree can put every training row in its own leaf.",
-       student="concluding the tree is the best model, or concluding it is broken. Neither: it is a correct answer to a question nobody should have asked.",
-       catch="any model flexible enough to memorise will score perfectly on its own training rows. A zero training error is a statement about capacity, not about accuracy."),
+        prompt(
+            label="a training score on a model that can memorise",
+            input="a ColumnTransformer, and an unconstrained decision tree",
+            output="the tree's RMSE on the rows it was fitted to",
+            constraint="score it on the TRAINING rows, deliberately, and say in "
+                       "the output what that means — this is a demonstration, "
+                       "not a result",
+            check="work out the number before running it: an unconstrained tree "
+                  "splits until every leaf is pure, so what can it score on the "
+                  "rows it split on?",
+            **{"try": "set `max_depth=4` and run it again. The training RMSE "
+                      "stops being zero — what has changed about the model, and "
+                      "has anything changed about the measurement?"}),
         code('''
 num_cols = X_train.select_dtypes(include=[np.number]).columns.tolist()
 preprocessing = ColumnTransformer([
@@ -720,10 +726,9 @@ prompt(
        label="⏱ 90 s — measure it honestly",
        input="the three models, ten folds each",
        output="mean, standard deviation and range of the fold RMSEs",
-       constraint="`shuffle=True` is NOT decoration — the default KFold does not shuffle, so two students whose dataframes are in different row orders get different folds and cannot work out why their numbers disagree",
-       left_open="how to read the spread. The folds span several thousand dollars, so any comparison that turns on less than a couple of thousand is not a comparison.",
-       student="reporting only the mean. A mean of $50,000 built from folds spanning $8,000 supports very different claims from one built from folds spanning $500.",
-       catch="print the fold minimum and maximum beside the mean, every time. It is one f-string and it decides which differences you are allowed to talk about."),
+       constraint="`shuffle=True` is NOT decoration — the default KFold does not shuffle, so two people whose dataframes are in different row orders get different folds and cannot work out why their numbers disagree",
+       check="print the fold minimum and maximum beside the mean. The spread decides which differences you are allowed to talk about: a mean of $50,000 from folds spanning $8,000 supports very different claims from one built from folds spanning $500",
+       **{"try": "drop `shuffle=True` and re-run. The mean moves. Which of the two numbers is right, and what does the question even mean?"}),
         code('''
 cv = KFold(n_splits=10, shuffle=True, random_state=RANDOM_STATE)
 
@@ -755,13 +760,14 @@ prompt(
        label="compare on the SAME folds",
        input="the two arrays of per-fold scores",
        output="the paired difference, and how many folds each model wins",
-       constraint="subtract PER FOLD rather than comparing two averages — paired differences remove the fold-to-fold variation that both models share",
-       left_open="why the paired standard deviation is so much smaller than either model's own. The folds differ in difficulty and both models feel it identically, so the difference cancels it.",
-       student="comparing two means with their own standard deviations, concluding the intervals overlap, and declaring the comparison inconclusive. The paired version usually is not.",
-       catch="report the win count. '10 of 10 folds' is an argument that a mean difference with a large standard deviation is not."),
+       constraint="subtract PER FOLD rather than comparing two averages — the folds differ in difficulty and both models feel that identically, so pairing cancels it",
+       check="the paired standard deviation should be much smaller than either model's own; and the win count, '10 of 10 folds', is an argument that a mean difference alone is not",
+       **{"try": "compare the two models the unpaired way instead — mean ± std against mean ± std. The intervals overlap and the comparison looks inconclusive. The paired version is not."}),
         code('''
 diff = results["Random forest"] - results["Linear regression"]
-print(f"forest − linear, per fold:  mean ${diff.mean():,.0f}  sd ${diff.std():,.0f}")
+# ddof=1: ten folds are a sample, and the slides quote the sample sd
+print(f"forest − linear, per fold:  mean ${diff.mean():,.0f}  "
+      f"sd ${diff.std(ddof=1):,.0f}")
 print(f"folds where the forest wins: {(diff < 0).sum()}/10")
 '''),
 
@@ -772,14 +778,12 @@ print(f"folds where the forest wins: {(diff < 0).sum()}/10")
 lecture's figure uses `cv=10`, which takes twice as long; five is enough here.
 """),
 prompt(
-       label="⏱ 2-4 min — tune on validation folds, never on the test set",
-       input="fifteen combinations, five folds each",
+       label="⏱ 3-6 min — tune on validation folds, never on the test set",
+       input="fifteen combinations, ten folds each — 150 fits",
        output="the best parameters and the best cross-validated RMSE",
-       constraint="the grid searches the WHOLE PIPELINE, so the preprocessing is refitted inside every fold — `model__` prefixes because the parameters belong to a step",
-       check="detect whether the winner sits on the EDGE of the grid and say so — an optimum at the boundary means the optimum may lie outside it",
-       left_open="that `cv=5` here where the deck uses 10. Five is enough to choose between these fifteen and it halves the wall clock; the choice is stated rather than silent.",
-       student="reading `best_score_` as the model's accuracy. It is the score of the winner of a fifteen-way selection, measured on the folds that selected it, and it is optimistic by construction.",
-       catch="the edge-of-grid check is four lines and it is the difference between a search and a shrug. If the largest value wins, the search was too small."),
+       constraint="the grid searches the WHOLE PIPELINE, so the preprocessing is refitted inside every fold — `model__` prefixes because the parameters belong to a step — and it reuses the SAME KFold object as the section above, so its number is comparable with the ones already printed",
+       check="detect whether the winner sits on the EDGE of the grid and say so — an optimum at the boundary means the optimum may lie outside it, and the search was too small",
+       **{"try": "read `best_score_` and ask what it is the score OF. It is the winner of a fifteen-way selection, measured on the folds that did the selecting, so it is optimistic by construction. The honest number is still three sections away."}),
         code('''
 grid = {"model__max_features": [4, 6, 8, 10, 12],
         "model__n_estimators": [30, 100, 200]}
@@ -787,7 +791,9 @@ grid = {"model__max_features": [4, 6, 8, 10, 12],
 search = GridSearchCV(
     Pipeline([("prep", preprocessing),
               ("model", RandomForestRegressor(random_state=RANDOM_STATE, n_jobs=-1))]),
-    grid, cv=5, scoring="neg_root_mean_squared_error", n_jobs=-1)
+    grid, cv=cv,                     # the SAME ten folds as section 4, so the
+                                     # numbers here are comparable with those
+    scoring="neg_root_mean_squared_error", n_jobs=-1)
 search.fit(X_train, y_train)
 
 print(f"best {search.best_params_}")
@@ -800,41 +806,8 @@ if best_n == max(grid["model__n_estimators"]):
 '''),
 
         md("""
-## 6 · Look at what it gets wrong
-
-Two things the previous lecture promised and never did. Both take one cell.
+## 6 · What the encoder does with a category it has never seen
 """),
-prompt(
-       label="look at what it gets wrong",
-       input="the tuned model's training predictions",
-       output="RMSE broken down by ocean proximity and by income band",
-       constraint="break the error down by GROUP — a single RMSE is an average over districts that are not alike",
-       left_open="which group is about to matter. ISLAND — five districts in the whole state — is the category the first lecture warned you about.",
-       student="reporting the headline RMSE and stopping. The stakeholder will ask 'is it worse anywhere in particular', and this is the cell that answers it.",
-       catch="`observed=True` on the groupby. Without it pandas produces a row for every unobserved combination of categories, full of NaN, and the table becomes unreadable."),
-        code('''
-best = search.best_estimator_
-pred_train_cv = best.predict(X_train)
-
-err = pd.DataFrame({
-    "actual": y_train,
-    "predicted": pred_train_cv,
-    "error": pred_train_cv - y_train,
-    "ocean": housing["ocean_proximity"],
-    "income_cat": pd.cut(housing["median_income"],
-                         bins=[0., 1.5, 3.0, 4.5, 6., np.inf], labels=[1, 2, 3, 4, 5]),
-})
-
-print("RMSE by ocean_proximity:")
-print(err.groupby("ocean", observed=True)["error"]
-        .apply(lambda e: np.sqrt((e ** 2).mean())).sort_values(ascending=False)
-        .apply(lambda v: f"${v:,.0f}"))
-
-print("\\nRMSE by income category:")
-print(err.groupby("income_cat", observed=True)["error"]
-        .apply(lambda e: np.sqrt((e ** 2).mean()))
-        .apply(lambda v: f"${v:,.0f}"))
-'''),
         md("""
 `ISLAND` — five districts in the whole state — is the category the first lecture
 warned you about. With ten folds, some folds contain no ISLAND training row at
@@ -846,14 +819,17 @@ prompt(
        input="an encoder fitted without ISLAND, asked to transform ISLAND",
        output="the resulting row, and its sum",
        constraint="DEMONSTRATE it rather than describing it — fit without the category and transform with it",
-       left_open="the consequence for cross-validation. With ten folds, some folds contain no ISLAND training row at all, and `handle_unknown='ignore'` then encodes it as an all-zero column and says nothing.",
-       student="setting `handle_unknown='ignore'` because the alternative raises, and never finding out what it does instead. It is the right choice and it is silent.",
-       catch="the sum of the encoded row is zero. Every other district's row sums to one, so the model sees ISLAND as 'none of the above' — which is a prediction, and nobody made it deliberately."),
+       check="every other district's encoded row sums to one. Work out what this one sums to, and what the model therefore sees",
+       **{"try": "set `handle_unknown='error'` instead and re-run. It raises — which is the same information, delivered loudly. Decide which you would rather have inside a cross-validation loop, and why the quiet option is still the right default here."}),
         code('''
 enc = OneHotEncoder(handle_unknown="ignore").fit(
     housing[["ocean_proximity"]].query("ocean_proximity != 'ISLAND'"))
-print("an unseen category encodes to:", enc.transform([["ISLAND"]]).toarray()[0])
-print("sum:", enc.transform([["ISLAND"]]).toarray().sum(), "— and no warning")
+# a DataFrame, not a bare list: transform() warns about missing feature names
+# otherwise, and a warning here would obscure the point of the cell
+island = pd.DataFrame({"ocean_proximity": ["ISLAND"]})
+row = enc.transform(island).toarray()[0]
+print("an unseen category encodes to:", row)
+print("sum:", row.sum(), "— and no warning, no error")
 '''),
 
         md("""
@@ -866,13 +842,13 @@ prompt(
        label="the test set, once",
        input="the 4,128 held-out districts",
        output="the test RMSE with a 95% bootstrap interval, beside the cross-validated estimate",
-       constraint="`method='percentile'` is NOT optional — scipy defaults to BCa, and we are claiming the percentile bootstrap. Name the estimator you mean",
-       left_open="how to read the two numbers together. They agree within the interval, and a gap smaller than the interval is not evidence of anything.",
-       student="tuning after seeing this number. If you adjust hyperparameters to improve it you are fitting the test set, and the improvement will not generalise.",
-       catch="bootstrap the SQUARED ERRORS and take the square root of the interval, rather than bootstrapping the RMSE directly. The mean is what the bootstrap is good at; the square root comes after."),
+       constraint="bootstrap the SQUARED ERRORS and take the square root of the interval, rather than bootstrapping the RMSE directly — the mean is what the bootstrap is good at, and the square root comes afterwards. `method='percentile'` is not optional either: scipy defaults to BCa, and we are claiming the percentile bootstrap",
+       check="compare the test RMSE with the cross-validated estimate. Is the gap between them bigger or smaller than the interval — and what follows if it is smaller?",
+       **{"try": "nothing. This is the one cell in the course with no `try` line: the test set has now been used, and any change you make in response to its number is you fitting it."}),
         code('''
 from scipy import stats
 
+best = search.best_estimator_          # refitted on the whole training set
 final_pred = best.predict(X_test)
 final_rmse = root_mean_squared_error(y_test, final_pred)
 
@@ -896,17 +872,85 @@ you have is the number you report.
 """),
 
         md("""
-## 8 · Red-team
+## 8 · One number for 4,128 districts is a summary, not a finding
 
-Swap notebooks with the team beside you. Ten minutes. Five questions:
+Analysing the final model's errors is not tuning, and it is the part of the
+report the client actually acts on. Break the error out by the categories they
+care about.
+"""),
+        prompt(
+            label="slice the error",
+            input="the final model's test predictions",
+            output="RMSE and district count, broken down by ocean proximity and "
+                   "by income band",
+            constraint="report the COUNT beside every RMSE — a group of three "
+                       "districts and a group of 1,862 do not deserve the same "
+                       "weight in your conclusion — and pass `observed=True`, "
+                       "or pandas emits a row for every unobserved combination "
+                       "of categories",
+            check="one group is far worse than the rest, and its count is tiny. "
+                  "Before running it, predict which: the first lecture named a "
+                  "category with five districts in the whole state",
+            **{"try": "drop `observed=True`. Count the rows you get, and how "
+                      "many of them are NaN."}),
+        code('''
+err = pd.DataFrame({
+    "error": final_pred - y_test.values,
+    "ocean": test_set["ocean_proximity"].values,
+    "income_cat": pd.cut(test_set["median_income"],
+                         bins=[0., 1.5, 3.0, 4.5, 6., np.inf],
+                         labels=[1, 2, 3, 4, 5]).values,
+})
 
-1. What touched the test set?
-2. What was fitted, and on what? (`fit` and `transform` are different verbs)
-3. What is the shape here?
-4. What was dropped — rows, columns, NaNs? Count them.
-5. What is the default I did not ask for?
+def slice_by(col):
+    g = err.groupby(col, observed=True)["error"]
+    return pd.DataFrame({"n": g.size(),
+                         "RMSE": g.apply(lambda e: np.sqrt((e ** 2).mean()))})
 
-Report what you **found**, not what you would have done differently.
+for col in ("income_cat", "ocean"):
+    out = slice_by(col).sort_values("RMSE")
+    out["RMSE"] = out["RMSE"].map(lambda v: f"${v:,.0f}")
+    print(f"by {col}:"); print(out.to_string()); print()
+'''),
+        md("""
+Read the counts, not only the errors. The poorest band is predicted worst in
+dollars — and its districts are the cheapest, so in *relative* terms it is worse
+still. `ISLAND` has three districts in the test set, so its RMSE is an average
+over three numbers and carries almost no information: it is a reminder that the
+model was asked about a category it saw twice, not a measurement you could act
+on.
+
+**What you would tell the client:** the system is usable, and it should not be
+deployed unqualified for the poorest districts, for the capped ones, or for
+`ISLAND` at all.
+"""),
+
+        md("""
+## 9 · Where we are
+
+- Fitting a linear model is orthogonal projection, and you verified the
+  orthogonality numerically rather than taking it on trust.
+- A score computed on the training rows cannot see overfitting. The tree proves
+  it in one cell.
+- Cross-validation gives an honest estimate **and** its spread, and two models
+  differ only if the paired per-fold difference says so.
+- All preprocessing lives inside the `Pipeline` handed to cross-validation, so
+  leakage is structurally impossible rather than merely avoided.
+- The test set was touched once, and the number came with an interval.
+
+**Six questions to ask of any reported number** — yours or anyone else's:
+
+1. Was every transformer fitted *after* the split, on training data only?
+2. Is the preprocessing inside the pipeline passed to cross-validation?
+3. Was the reported metric computed on held-out data?
+4. Was the test set touched more than once?
+5. Were hyperparameters selected using validation data, not test data?
+6. Does any feature encode information unavailable at prediction time?
+
+**Before the next lecture:** run this notebook top to bottom. Then change the
+`KFold` from 10 splits to 3 and re-run from that cell. What happens to the mean
+RMSE, and what happens to the spread — and which of the two changes should worry
+you more?
 """),
     ]
     return build(cells)

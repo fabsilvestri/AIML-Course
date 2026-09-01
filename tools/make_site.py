@@ -27,7 +27,7 @@ LECTURES = [
     (1, "What machine learning is, and how we will work", "Ch 1–2",
      "California housing", "", True),
     (2, "The end-to-end project", "Ch 2", "California housing",
-     "Least squares and the normal equation", False),
+     "Least squares and the normal equation", True),
     (3, "Classification and its metrics", "Ch 3", "MNIST",
      "Imbalance, and the non-monotonicity of precision", False),
     (4, "Training models", "Ch 4", "Titanic", "Gradient descent", False),
