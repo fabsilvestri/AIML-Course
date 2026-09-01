@@ -14,12 +14,34 @@ Last updated: 2026-09-01 (Lecture 1 built) · Term starts: ~2026-09-22
    commit says exactly where work stopped.
 2. Find the first row below that is not `done`. That is the next task.
 3. Read `AUTHORING.md` §2 (deck anatomy) and §4 (notebooks) before writing.
-4. Build deck and notebook for that lecture, run the checks in §7, commit with
-   the message form `slides+notebooks/lecture-NN — <topic>`, and update the row
-   here **in the same commit**.
 
 Never leave this file stale. A row that says `wip` with no commit behind it is
 worse than no row.
+
+### The per-lecture routine — every lecture, without being asked
+
+Standing instruction from the lecturer. All five steps, in order, before
+starting the next lecture:
+
+1. **Build** the deck and the notebook.
+2. **Check** — `check_decks.py`, `check_overflow.py`, `check_notebooks.py`, and
+   restart-and-run-all on the notebook from a cold kernel.
+3. **Update `index.html`** so the site matches what the lecture now says. The
+   site is student-facing: a lecture that is done and a page that still
+   describes the old one is worse than neither.
+4. **Update this file** — the lecture's row, and any new debt discovered.
+5. **Commit, push to `main`, and print the status** — what is done, what is
+   next, and anything that needs a decision.
+
+Steps 3 and 5 are the ones easily forgotten. They are not optional.
+
+### Reading a deck for stale claims
+
+Converting a deck is **not** a grep for "Build" and "Fix". Lecture 1 shipped
+four false claims that contained neither word: "you will not type most of the
+code in this course", "a loop, run out loud, every lecture", "rule of the room",
+and four rules written for submitted work when nothing is submitted. Read every
+slide asking *does this describe something that still happens?*
 
 ---
 
@@ -44,7 +66,18 @@ Settled with the lecturer; do not relitigate them without asking.
   becomes A mathematics 40% · B method choice applied to a scenario 35% ·
   C reading results 25%.
 - **Slides:** reveal.js 5.2.1 kept, vendored and offline. Theme refreshed, not
-  replaced. Lecture 1 is the template; it gets signed off before the other 23.
+  replaced. Lecture 1 is the template.
+- **Palette: unchanged.** Confirmed by the lecturer — deep blue, brick red,
+  green, purple, tuned for projector contrast. Effort goes into consistency
+  across the 24 decks, not repainting.
+- **Prompt boxes carry a fifth field, `try`** — one modification and what should
+  happen to the output — set below a rule, because it addresses the reader
+  rather than the assistant. *Confirmed by the lecturer.*
+- **Derivations: one step per slide**, with the reason beside the step. Slow and
+  unmissable; the normal equation is ~8 slides. *Confirmed by the lecturer.*
+- **Order of work: teaching order, each lecture finished properly** before the
+  next is started. The tail may still be moving when term begins; nothing that
+  is taught is half-built. *Confirmed by the lecturer.*
 
 ---
 

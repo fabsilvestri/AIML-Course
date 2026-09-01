@@ -10,10 +10,19 @@ that produces it, in the four-part vocabulary the lecture uses:
     output      what comes out, and in what units
     constraint  what must be true of the method, not just the answer
     check       how you would know the answer is wrong
+    try         one modification, and what should happen to the output
 
 Prefer a `check` whose answer can be worked out on paper before the cell is
 run — a shape, a count, a parameter-count arithmetic, a value a formula
 predicts. A box whose check is "it runs" is a box that taught nothing.
+
+`try` is what turns a cell from something read into something done. It names
+ONE change — a parameter, a column, an argument — and asks what the output
+should do, so a student who runs it has a prediction to be wrong about. It is
+set apart from the four specification fields because it is not part of the
+specification: it is the exercise the specification makes possible. Omit it
+where there is genuinely nothing to vary (an import cell), never because
+nothing came to mind.
 
 Two honesty rules, both load-bearing:
 
@@ -44,6 +53,10 @@ import nbformat as nbf
 
 _SPEC_FIELDS = ("input", "output", "constraint", "check")
 
+# Not a specification field. Rendered under the box, after a rule, because it
+# addresses the reader rather than the assistant.
+_TRY_FIELD = "try"
+
 # Accepted and dropped; see the module docstring. Not a rendering vocabulary
 # any more — just the set of names a stale lecture module may still pass.
 _DEAD_FIELDS = ("left_open", "student", "catch")
@@ -57,18 +70,24 @@ def prompt(*, label: str = "", **fields: str) -> nbf.NotebookNode:
                output="a DataFrame indexed by date, bus and rail columns",
                constraint="drop duplicate rows and say how many there were",
                check="the index is sorted and unique, and "
-                     "(raw.bus + raw.rail == raw.total).all()")
+                     "(raw.bus + raw.rail == raw.total).all()",
+               **{"try": "drop the sort. Which of the two asserts fails, "
+                         "and which one silently still passes?"})
+
+    `try` is a Python keyword, so it can only be passed as **{"try": ...}.
+    That is ugly enough to be worth the trade: the field reads as `try ·` in
+    the notebook, which is the word that belongs there.
 
     Any field may be omitted where it genuinely does not apply — a setup cell
     has no meaningful `check` — but omitting `constraint` on a cell that fits
     or scores a model is almost always a specification too vague to be worth
     writing down.
     """
-    unknown = set(fields) - set(_SPEC_FIELDS) - set(_DEAD_FIELDS)
+    unknown = set(fields) - set(_SPEC_FIELDS) - {_TRY_FIELD} - set(_DEAD_FIELDS)
     if unknown:
         raise ValueError(
             f"prompt() got {sorted(unknown)}; the vocabulary is "
-            f"{list(_SPEC_FIELDS)}")
+            f"{list(_SPEC_FIELDS)} plus {_TRY_FIELD!r}")
 
     spec = [f"> **{k}** · {_flat(fields[k])}"
             for k in _SPEC_FIELDS if fields.get(k)]
@@ -77,7 +96,13 @@ def prompt(*, label: str = "", **fields: str) -> nbf.NotebookNode:
                          + ", ".join(_SPEC_FIELDS))
 
     head = f"> **Prompt · {label}**" if label else "> **Prompt**"
-    return nbf.v4.new_markdown_cell("\n".join([head, ">", "\n>\n".join(spec)]))
+    parts = [head, ">", "\n>\n".join(spec)]
+
+    if fields.get(_TRY_FIELD):
+        parts += [">", "> ---", ">",
+                  f"> **try** · {_flat(fields[_TRY_FIELD])}"]
+
+    return nbf.v4.new_markdown_cell("\n".join(parts))
 
 
 def _flat(text: str) -> str:
