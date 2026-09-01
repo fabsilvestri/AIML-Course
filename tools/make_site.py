@@ -29,7 +29,7 @@ LECTURES = [
     (2, "The end-to-end project", "Ch 2", "California housing",
      "Least squares and the normal equation", True),
     (3, "Classification and its metrics", "Ch 3", "MNIST",
-     "Imbalance, and the non-monotonicity of precision", False),
+     "Imbalance, and the non-monotonicity of precision", True),
     (4, "Training models", "Ch 4", "Titanic", "Gradient descent", False),
     (5, "Regularisation and the bias–variance trade-off", "Ch 4", "Titanic",
      "The bias–variance decomposition", False),

@@ -4,7 +4,7 @@ Resumable progress log for the redesign. **If you are picking this up cold —
 a new session, a restarted machine — read this file first, then `LECTURES.md`
 (the plan) and `AUTHORING.md` (how to build one lecture).**
 
-Last updated: 2026-09-01 (Lectures 1-2 built) · Term starts: ~2026-09-22
+Last updated: 2026-09-01 (Lectures 1-3 built) · Term starts: ~2026-09-22
 
 ---
 
@@ -54,6 +54,19 @@ mentioned the old structure. The other eleven were:
    check_provenance, and they disagreed: 62 against 79 districts at $350,000.
    **Whenever a notebook and its deck report the same quantity, run the notebook
    and diff the numbers against the slide.**
+
+### Renumbering: the source modules are keyed by OLD lecture numbers
+
+`tools/notebooks/lecture_NN.py` and `slides/lecture-NN.html` still carry the old
+numbering for everything not yet rebuilt. The "Source" column in the table below
+is the authority on which old lecture feeds which new one. When a new lecture
+consumes an old module, **`git mv` the module into place or delete it** — do not
+leave two files claiming the same number.
+
+Consumed so far: old `lecture_04.py` (It never fires) is merged into the new
+`lecture_03.py` and deleted. `notebooks/lecture-04.ipynb` is therefore stale on
+disk until new L4 is built from old L5; it is not linked from the site, which
+shows *In preparation* for it.
 
 ### Reading a deck for stale claims
 
@@ -142,9 +155,9 @@ Deck = `slides/lecture-NN.html`, Notebook = `notebooks/lecture-NN.ipynb`.
 |---|---|---|---|---|---|---|
 | 1 | What ML is, and how we will work | 1–2 | housing | old L1 | **done** | **done** |
 
-*Lectures 1-2 are complete through all five steps of the routine, site included.*
+*Lectures 1-3 are complete through all five steps of the routine, site included.*
 | 2 | The end-to-end project | 2 | housing | old L1+L2 | **done** | **done** |
-| 3 | Classification and its metrics | 3 | MNIST | old L3+L4 | todo | todo |
+| 3 | Classification and its metrics | 3 | MNIST | old L3+L4 | **done** | **done** |
 | 4 | Training models | 4 | Titanic | old L5 | todo | todo |
 | 5 | Regularisation and bias–variance | 4 | Titanic | old L6 | todo | todo |
 | 6 | Decision trees | 5 | CoverType | old L7 | todo | todo |
@@ -197,6 +210,13 @@ Things noticed during the rebuild that are not yet fixed.
   `tools/notebooks/lecture_*.py`. `_prompt.py` drops them silently, so nothing
   is broken; delete them lecture by lecture as each is rewritten, and tighten
   `_prompt.py` to reject them once the last one goes.
+- **A merge is roughly twice a remap.** L3 fused two 580-line generator modules
+  and two decks (72 + 87 slides) into one 92-slide deck and one 27-cell
+  notebook. The mechanical parts — stripping the dead annotation kwargs,
+  renumbering `## N ·` headings, re-adding the imports the dropped setup cell
+  carried — are where the time went, not the writing.
+- **Lecture 3 takes ~2.5 min to execute.** The random forest on 60,000 rows
+  dominates.
 - **Lecture 2 took ~70 s to execute** (150 grid fits at 10 folds). On Colab's
   two cores expect several minutes; the cell says 3-6 min.
 - **No notebook ships with stored outputs** (`execution_count: null`

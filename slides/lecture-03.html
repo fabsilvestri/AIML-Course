@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lecture 3 — Finding the rare event</title>
+<title>Lecture 3 — Classification and its metrics</title>
 
 <link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
 <link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
@@ -18,83 +18,72 @@
 <div class="reveal">
 <div class="slides">
 
-<!-- ==================================================================== -->
-<!-- OPENING                                                              -->
-<!-- ==================================================================== -->
-
 <!-- 1 -->
 <section class="title-slide" data-menu-title="Title">
-  <h1>Finding the rare event</h1>
-  <p class="subtitle">Application 2 &middot; MNIST &middot; a detector for one digit</p>
-  <p><span class="badge badge-build">Lecture 3 &middot; Build</span>
+  <h1>Classification and its metrics</h1>
+  <p class="subtitle">MNIST &middot; detecting one digit</p>
+  <p><span class="badge badge-lec">Lecture 3</span>
      <span class="badge badge-ch">Géron Ch. 3</span></p>
   <p class="meta">
     Applications of Machine Learning<br>
     BSc Mathematics of Artificial Intelligence &middot; Third year
   </p>
-  <aside class="notes">New application, new commitment sheet. Say so before the
-  first slide of content: they will need paper again today.</aside>
+  <aside class="notes">The whole lecture turns on one number, 96.90%, being
+  simultaneously correct and useless. Do not give that away in the first ten
+  minutes.</aside>
 </section>
 
 <!-- 2 -->
-<section data-menu-title="Application 1, closed">
-  <h2>Application 1 is closed</h2>
-  <table>
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Two lectures on a regression problem, ending with a number and
+  an interval around it:</p>
+  <table class="smaller">
     <tr><th>California housing</th><th class="num">RMSE</th></tr>
-    <tr><td>Predict a constant &mdash; the anchor</td><td class="num"><span class="usd">$115,300</span></td></tr>
+    <tr><td>Predict a constant &mdash; the baseline</td><td class="num"><span class="usd">$115,311</span></td></tr>
     <tr><td>Best honest cross-validated estimate</td><td class="num"><span class="usd">$48,180</span></td></tr>
-    <tr><td>Final, on the test set, once</td><td class="num hit"><span class="usd">$49,037</span></td></tr>
+    <tr><td>Final, on the test set, once</td><td class="num"><span class="usd">$49,037</span></td></tr>
   </table>
-  <p class="small">Two lectures, one number, and an interval around it. The thing
-  that made the second lecture work was that you had written a prediction down
-  before you knew.</p>
-  <p class="small muted">Today we do it again, on a problem that looks nothing
-  like the last one.</p>
-</section>
-
-<!-- 3 -->
-<section data-menu-title="What carries over">
-  <h2>What carries over, unchanged</h2>
   <div class="panel">
-    <span class="panel-title">The standing constraint</span>
+    <span class="panel-title">The standing constraint, unchanged</span>
     Split before anything is fitted. All preprocessing inside a
     <code>Pipeline</code> passed to cross-validation. Nothing derived from the
     test set in the training path. Fixed seeds. Report the fold scores, not only
     the mean.
   </div>
-  <p class="small">You wrote that down in the previous lecture. It is not a
-  housing rule; it is the rule. Everything today obeys it, and one slide near the
-  end shows what it costs when it is dropped.</p>
+  <p class="small muted">Today the problem is classification, the metric is not
+  RMSE, and the baseline turns out to matter more than it did in either of the
+  last two lectures.</p>
 </section>
 
-<!-- 4 -->
+<!-- 3 -->
 <section data-menu-title="Today">
   <h2>Today</h2>
   <ol>
-    <li>The brief, the data, the stakeholder
+    <li>The task, the data, and a first detector
         <span class="muted small">(15 min)</span></li>
-    <li>Choose a metric, measure the anchor, and
-        <strong>commit a number in writing</strong>
+    <li><strong>The mathematics</strong> &mdash; why accuracy fails under
+        imbalance, and why precision is not monotone in the threshold
+        <span class="muted small">(20 min)</span></li>
+    <li><strong>The method</strong> &mdash; the confusion matrix, precision,
+        recall, F1, the trade-off, PR and ROC
+        <span class="muted small">(40 min)</span></li>
+    <li>Choosing an operating point, and beyond binary
         <span class="muted small">(15 min)</span></li>
-    <li>Build the simplest thing that runs, and measure it honestly
-        <span class="muted small">(60 min)</span></li>
   </ol>
-  <p class="small muted">No mathematical thread today &mdash; this is a Build
-  lecture. Thread 2 opens the next one.</p>
+  <p class="small muted">One number runs through the whole lecture. It is
+  correctly measured, and it is worth almost nothing &mdash; and the second block
+  is what lets you say why.</p>
 </section>
 
-<!-- ==================================================================== -->
-<!-- PART 1 — THE BRIEF (15 min)                                          -->
-<!-- ==================================================================== -->
+<!-- 4 -->
+<section class="divider" data-menu-title="◆ The task">
+  <p class="kicker">First fifteen minutes</p>
+  <h1>The task, and a<br>first detector</h1>
+  <p class="clock">15 minutes</p>
+</section>
 
 <!-- 5 -->
-<section class="divider" data-menu-title="◆ The brief">
-  <p class="kicker">Part one</p>
-  <h1>The brief</h1>
-  <p class="clock">15 minutes &middot; the problem, the data, the stakeholder</p>
-</section>
-
-<!-- 6 -->
 <section data-menu-title="The scenario">
   <h2>You have been hired again</h2>
   <p>A national postal operator sorts handwritten postcodes automatically. A
@@ -110,52 +99,7 @@
   digit.</strong> Yes or no, one class against the other nine.</p>
 </section>
 
-<!-- 7 -->
-<section data-menu-title="First question">
-  <h2>The first question is never technical</h2>
-  <p class="lead"><em>What does the organisation do with the output?</em></p>
-  <ul class="tight">
-    <li>A flagged digit costs a person thirty seconds at a desk</li>
-    <li>A missed 5 costs a misdirected envelope, found weeks later, if at all</li>
-    <li>The two costs are not equal, and they are not paid by the same
-        department</li>
-  </ul>
-  <p class="small fail">Hold on to that asymmetry. It is the whole of the next
-  lecture, and we are about to choose a metric that cannot see it.</p>
-  <aside class="notes">Say this line and move on quickly. It is a flag planted
-  for the next lecture, not a hint — nobody can act on it yet.</aside>
-</section>
-
-<!-- 8 -->
-<section data-menu-title="The desk">
-  <h2>The constraint the desk imposes</h2>
-  <p>The verification desk is staffed for one shift at a time and can re-check
-  about <strong>1,000</strong> items per shift.</p>
-  <div class="panel panel-book">
-    <span class="panel-title">A stakeholder figure, not a measurement</span>
-    We were told this. We did not measure it. Every number we derive from it
-    inherits that status, and it goes on the slide labelled as an assumption
-    &mdash; exactly as the experts&rsquo; 30% did in Application 1.
-  </div>
-  <p class="small muted">One shift is 10,000 scanned digits. Keep both numbers;
-  they come back at the end of the next lecture as literal counts.</p>
-</section>
-
-<!-- 9 -->
-<section data-menu-title="Frame the problem">
-  <h2>Frame the problem</h2>
-  <p>Four questions, before any code:</p>
-  <ol class="tight">
-    <li>What <strong>training supervision</strong> is available?</li>
-    <li>Is it classification, regression, or something else?</li>
-    <li><strong>Batch or online</strong> learning?</li>
-    <li>What are we <strong>assuming</strong>?</li>
-  </ol>
-  <p class="small muted">Answer them yourself before the next slide. You have
-  done this once already.</p>
-</section>
-
-<!-- 10 -->
+<!-- 6 -->
 <section data-menu-title="Framing, answered">
   <h2>Framing, answered</h2>
   <table class="smaller">
@@ -172,7 +116,7 @@
   need a new metric. That is the whole reason this application exists.</p>
 </section>
 
-<!-- 11 -->
+<!-- 7 -->
 <section data-menu-title="What makes it rare">
   <h2>What makes this a <em>rare-event</em> problem</h2>
   <p>The ten digits appear in roughly equal numbers. The task does not.</p>
@@ -187,7 +131,7 @@
   own the shape of the problem, not the digits.</aside>
 </section>
 
-<!-- 12 -->
+<!-- 8 -->
 <section data-menu-title="The dataset">
   <h2>The data: MNIST</h2>
   <ul class="tight small">
@@ -207,26 +151,7 @@
   </div>
 </section>
 
-<!-- 13 -->
-<section data-menu-title="Fetching it">
-  <h2>Fetching it</h2>
-  <pre><code class="language-python" data-trim>
-from sklearn.datasets import fetch_openml
-
-mnist = fetch_openml("mnist_784", as_frame=False)
-X, y = mnist.data, mnist.target
-
-print(X.shape, X.dtype)      # (70000, 784) float64
-print(y.shape, y.dtype)      # (70000,)     &lt;U1  — strings!
-  </code></pre>
-  <p class="small"><code>as_frame=False</code> asks for NumPy arrays rather than
-  a DataFrame. For 784 homogeneous numeric columns a DataFrame buys nothing and
-  costs memory.</p>
-  <p class="smaller muted">About 30 seconds the first time; scikit-learn caches
-  the download afterwards. <em>(Timing not examinable.)</em></p>
-</section>
-
-<!-- 14 -->
+<!-- 9 -->
 <section data-menu-title="The labels are strings">
   <h2>The first default nobody asked for</h2>
   <p><code>y</code> arrives as an array of <strong>one-character strings</strong>:
@@ -248,7 +173,7 @@ assert set(np.unique(y)) == set(range(10))
   for — arriving in the first three minutes of code. Name it as such.</aside>
 </section>
 
-<!-- 15 -->
+<!-- 10 -->
 <section class="figslide" data-menu-title="◆ What the data looks like">
   <h2>Forty-eight of the seventy thousand</h2>
   <figure class="fig fig-wide">
@@ -259,26 +184,7 @@ assert set(np.unique(y)) == set(range(10))
   forty-eight are 5s. That ratio is the whole problem.</p>
 </section>
 
-<!-- 16 -->
-<section data-menu-title="One image">
-  <h2>What one instance actually is</h2>
-  <pre><code class="language-python" data-trim>
-some_digit = X[0]
-some_digit_image = some_digit.reshape(28, 28)
-
-plt.imshow(some_digit_image, cmap="binary")
-plt.axis("off"); plt.show()
-
-print(y[0])                 # 5
-  </code></pre>
-  <p class="small">A 784-vector and a 28 &times; 28 image are the same object in
-  two shapes. The model never sees the square; it sees 784 numbers in a fixed
-  order, and it has no idea that pixel 0 and pixel 28 are vertical neighbours.</p>
-  <p class="small muted">That last sentence is why convolutional networks exist.
-  Chapter 12, and a long way off.</p>
-</section>
-
-<!-- 17 -->
+<!-- 11 -->
 <section data-menu-title="The split is given">
   <h2>The split has already been made for us</h2>
   <pre><code class="language-python" data-trim>
@@ -298,26 +204,7 @@ assert X_train.shape[1] == X_test.shape[1] == 784
   </ul>
 </section>
 
-<!-- 18 -->
-<section data-menu-title="Why not train_test_split">
-  <h2>&ldquo;Why not <code>train_test_split</code>?&rdquo;</h2>
-  <p class="small">You could. You would then be reporting a number that nobody
-  else has measured, on a benchmark whose entire value is that everybody
-  measures the same thing.</p>
-  <div class="panel">
-    <span class="panel-title">But the shuffle still matters, one level down</span>
-    Some algorithms are sensitive to the <em>order</em> of the training
-    instances, and cross-validation folds cut the training set into contiguous
-    blocks unless you say otherwise. That is why every splitter in this course
-    carries <code>shuffle=True, random_state=42</code> &mdash; the same rule as
-    in the previous lecture, for the same reason.
-  </div>
-  <p class="small muted">Shuffling is not always right. It is wrong for time
-  series, where a random split puts a point&rsquo;s own future in the training
-  set. Lecture 20.</p>
-</section>
-
-<!-- 19 -->
+<!-- 12 -->
 <section data-menu-title="Relabel">
   <h2>From ten classes to two</h2>
   <pre><code class="language-python" data-trim>
@@ -335,7 +222,7 @@ print(f"{y_train_5.sum():,} positives out of {len(y_train_5):,}")
   <code>0 == 5421</code> instead of silently training on nothing.</p>
 </section>
 
-<!-- 20 -->
+<!-- 13 -->
 <section class="figslide" data-menu-title="◆ The class counts">
   <h2>Balanced data, imbalanced question</h2>
   <figure class="fig fig-wide">
@@ -347,7 +234,7 @@ print(f"{y_train_5.sum():,} positives out of {len(y_train_5):,}")
   become the negative class.</p>
 </section>
 
-<!-- 21 -->
+<!-- 14 -->
 <section class="figslide" data-menu-title="◆ The pipeline, drawn">
   <h2>The whole build, before we write it</h2>
   <figure class="fig fig-wide">
@@ -359,37 +246,7 @@ print(f"{y_train_5.sum():,} positives out of {len(y_train_5):,}")
   compared against.</p>
 </section>
 
-<!-- 22 -->
-<section data-menu-title="Shapes">
-  <h2>Reviewer question 3, on image data</h2>
-  <p class="small">&ldquo;What is the shape here?&rdquo; bites harder on images
-  than on tables, because a wrong shape still runs.</p>
-  <pre><code class="language-python" data-trim>
-assert X_train.shape == (60000, 784)
-assert y_train_5.shape == (60000,)
-assert X_train.min() == 0 and X_train.max() == 255
-  </code></pre>
-  <div class="panel panel-fail">
-    <span class="panel-title">The one that does not raise</span>
-    <code>X.reshape(70000, 28, 28)</code> and then a flatten in the wrong axis
-    order gives you 784 columns again &mdash; with the pixels transposed. Every
-    model still fits, every score still prints, and accuracy drops by a few
-    points for a reason you will never find by reading the metric.
-  </div>
-</section>
-
-<!-- ==================================================================== -->
-<!-- PART 2 — THE METRIC AND THE COMMITMENT (15 min)                      -->
-<!-- ==================================================================== -->
-
-<!-- 23 -->
-<section class="divider" data-menu-title="◆ The metric">
-  <p class="kicker">Part two</p>
-  <h1>The metric</h1>
-  <p class="clock">15 minutes &middot; and a number in writing</p>
-</section>
-
-<!-- 24 -->
+<!-- 15 -->
 <section data-menu-title="Metric before model">
   <h2>Metric before model</h2>
   <p class="lead">Rule 1 of this course, and we are about to apply it for the
@@ -405,7 +262,7 @@ assert X_train.min() == 0 and X_train.max() == 255
   chose it.</p>
 </section>
 
-<!-- 25 -->
+<!-- 16 -->
 <section data-menu-title="Accuracy">
   <h2>The obvious metric for a classifier</h2>
   <p><strong>Accuracy</strong>: the fraction of instances the classifier gets
@@ -421,211 +278,7 @@ assert X_train.min() == 0 and X_train.max() == 255
   </ul>
 </section>
 
-<!-- 26 -->
-<section data-menu-title="Accuracy in code">
-  <h2>What it looks like in code</h2>
-  <pre><code class="language-python" data-trim>
-from sklearn.model_selection import StratifiedKFold, cross_val_score
-
-cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
-
-scores = cross_val_score(clf, X_train, y_train_5,
-                         cv=cv, scoring="accuracy")
-print(scores)                    # one number per fold
-  </code></pre>
-  <p class="small"><code>"accuracy"</code> is also what
-  <code>cross_val_score</code> uses if you say nothing at all for a classifier.
-  We are naming it anyway, because a metric you did not name is a metric you did
-  not choose.</p>
-</section>
-
-<!-- 27 -->
-<section data-menu-title="Stratified folds">
-  <h2>Why <code>StratifiedKFold</code> and not <code>KFold</code></h2>
-  <p class="small">With 9% positives and three folds, a plain shuffle can hand
-  one fold noticeably fewer 5s than another, and the fold scores then differ for
-  a reason that has nothing to do with the model.</p>
-  <div class="panel">
-    Stratified folds preserve the class proportion in every fold. This is the
-    same idea as stratifying the split on income in Application 1 &mdash; and
-    here it is not optional judgement, it is the class we are trying to detect.
-  </div>
-  <p class="small muted">For a classifier, <code>cross_val_score(cv=3)</code>
-  already stratifies. We write it out because the default is invisible, and an
-  invisible default is one you cannot check.</p>
-</section>
-
-<!-- 28 -->
-<section data-menu-title="What counts as good">
-  <h2>What number counts as success?</h2>
-  <ul class="tight small">
-    <li>The line reads 10,000 digits per shift</li>
-    <li>The desk can re-check about 1,000 of them</li>
-    <li>The audit wants the 5s found</li>
-  </ul>
-  <div class="panel">
-    None of those three is an accuracy. Converting them into one requires an
-    assumption we have not stated &mdash; so any target we set today is an
-    order of magnitude, not a specification.
-  </div>
-  <p class="small fail">It is also not a baseline. A baseline is something you
-  can run. Next slide.</p>
-  <aside class="notes">Do not resolve the tension. They should feel that the
-  translation is awkward without being told why yet.</aside>
-</section>
-
-<!-- 29 -->
-<section data-menu-title="The trivial baseline">
-  <h2>Before you commit: what does <em>nothing</em> score?</h2>
-  <p class="small">The cheapest possible detector. It looks at nothing and
-  answers &ldquo;not a 5&rdquo; every time.</p>
-  <pre><code class="language-python" data-trim>
-from sklearn.base import BaseEstimator
-
-class NeverFires(BaseEstimator):
-    def fit(self, X, y=None):
-        return self
-    def predict(self, X):
-        return np.zeros(len(X), dtype=bool)
-
-cross_val_score(NeverFires(), X_train, y_train_5, cv=cv,
-                scoring="accuracy")     # array([0.90965, 0.90965, 0.90965])
-  </code></pre>
-  <p class="fix">It is right 54,579 times out of 60,000 &mdash;
-  <strong>90.96%</strong> accuracy, with no model, no fit and no features.</p>
-</section>
-
-<!-- 30 -->
-<section class="figslide" data-menu-title="◆ The anchor">
-  <h2>The same anchor exists for all ten digits</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l03-baseline.svg"
-         alt="Horizontal bars showing the accuracy of a never-fires detector for each of the ten digits, from 88.76% for digit 1 to 90.96% for digit 5, which is drawn in red and labelled ours.">
-  </figure>
-  <p class="takeaway">Whichever digit the audit had picked, doing nothing scores
-  between <strong>88.76%</strong> and <strong>90.96%</strong>. That is the number
-  every result today has to be measured against.</p>
-</section>
-
-<!-- 31 -->
-<section data-menu-title="Reading the anchor">
-  <h2>How to read that</h2>
-  <ul class="tight small">
-    <li>An accuracy of 90.96% is available for free, so 90.96% is
-        <strong>zero</strong> in the units that matter</li>
-    <li>The interesting quantity is the distance above it, not the number
-        itself</li>
-    <li>The anchor is different for every task &mdash; 88.76% for digit 1,
-        because there are more 1s in the corpus than any other digit</li>
-  </ul>
-  <div class="panel">
-    <span class="panel-title">Rule 2, applied to ourselves</span>
-    A metric with nothing to compare it to is decoration. You measured a
-    constant predictor before committing an RMSE; measure a constant classifier
-    before committing an accuracy.
-  </div>
-</section>
-
-<!-- 32 -->
-<section class="commit-slide" data-menu-title="★ COMMIT">
-  <h2>Commit</h2>
-  <div class="commit">
-    <span class="commit-label">Write this down. On paper. Now.</span>
-    <p class="small">
-      Metric: <span class="blank"></span><br>
-      Accuracy a <em>good</em> detector would need: <span class="blank"></span><br>
-      Accuracy I expect from the model we build today: <span class="blank"></span>
-    </p>
-  </div>
-  <p class="small">You are estimating, not guessing: doing nothing scores
-  <strong>90.96%</strong>, and a perfect detector scores 100%. Your number lives
-  somewhere in that band, and saying <em>where</em> is the exercise.</p>
-  <p class="small muted">We score all three out loud at the start of the next
-  lecture.</p>
-  <aside class="notes">Walk the room. Nobody proceeds without three numbers on
-  paper. Ask two people to read theirs out — it makes the scoring in the next
-  lecture personal rather than abstract.</aside>
-</section>
-
-<!-- ==================================================================== -->
-<!-- PART 3 — BUILD (60 min)                                              -->
-<!-- ==================================================================== -->
-
-<!-- 33 -->
-<section class="divider" data-menu-title="◆ Build">
-  <p class="kicker">Part three</p>
-  <h1>Build</h1>
-  <p class="clock">60 minutes &middot; the simplest thing that runs</p>
-</section>
-
-<!-- 34 -->
-<section data-menu-title="★ Colab notebook">
-  <h2>Today&rsquo;s notebook</h2>
-  <p class="colab-line">
-    <a class="colab-btn" target="_blank"
-       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-03.ipynb">
-       Open Lecture 3 in Google Colab</a>
-  </p>
-  <div class="panel">
-    <span class="panel-title">How to work</span>
-    Run the setup cell first, then work section by section. Where the notebook
-    says <code># YOUR SPECIFICATION HERE</code>, write what you want in plain
-    English, generate the code, <strong>then read it before running it</strong>.
-  </div>
-  <p class="small muted">Every notebook in the course is listed near the end of
-  this deck.</p>
-</section>
-
-<!-- 35 -->
-<section data-menu-title="The plan">
-  <h2>The plan</h2>
-  <ol class="tight">
-    <li>Pick an estimator that can handle 60,000 &times; 784</li>
-    <li>Put it in a pipeline with the preprocessing</li>
-    <li>Fit it, and predict one instance to see that it works</li>
-    <li>Measure it with three-fold cross-validation</li>
-    <li>Compare against the anchor, and record the result</li>
-  </ol>
-  <p class="small muted">Five steps and about forty minutes. The other twenty
-  are spent on one prompt that goes wrong.</p>
-</section>
-
-<!-- 36 -->
-<section data-menu-title="The estimator">
-  <h2>Stochastic gradient descent</h2>
-  <p><code>SGDClassifier</code> fits a linear model by taking one training
-  instance at a time and nudging the parameters against the gradient of the loss
-  for that instance.</p>
-  <ul class="tight small">
-    <li>It never needs the whole training set in memory at once &mdash; it is
-        capable of <strong>online</strong> learning</li>
-    <li>It handles very large training sets efficiently, which is exactly our
-        situation</li>
-    <li>It is a linear model, so it is fast, and it will not be the best thing
-        available</li>
-  </ul>
-  <div class="panel panel-book">
-    The name describes the training procedure, not the model. The same class
-    fits several different linear models depending on its <code>loss</code>
-    argument; the default is a linear support vector machine.
-  </div>
-</section>
-
-<!-- 37 -->
-<section data-menu-title="Why start here">
-  <h2>Why start with the worst reasonable model</h2>
-  <ul class="tight small">
-    <li>It runs in seconds, so the loop &mdash; specify, read, test, verify
-        &mdash; can go round several times in one lecture</li>
-    <li>Every later model is measured against it, so it is the second anchor</li>
-    <li>If a linear model on raw pixels already answers the brief, the project
-        is finished and nobody had to buy a GPU</li>
-  </ul>
-  <p class="small fail">Starting with the most powerful model available is how
-  you end up unable to say which part of your system is doing the work.</p>
-</section>
-
-<!-- 38 -->
+<!-- 17 -->
 <section data-menu-title="Build it">
   <h2>Build it</h2>
   <pre><code class="language-python" data-trim>
@@ -646,75 +299,7 @@ clf.fit(X_train, y_train_5)
   models &mdash; and you will spend an afternoon on the difference.</p>
 </section>
 
-<!-- 39 -->
-<section data-menu-title="Scaling pixels">
-  <h2>Scaling pixels &mdash; is it even necessary?</h2>
-  <p class="small">Every feature is already on the same scale, 0 to 255. So the
-  usual argument for standardising does not obviously apply. We measure instead
-  of arguing:</p>
-  <table class="smaller">
-    <tr><th>Estimator</th><th class="num">Fold 1</th><th class="num">Fold 2</th><th class="num">Fold 3</th><th class="num">Mean</th></tr>
-    <tr><td>Pipeline with <code>StandardScaler</code></td><td class="num">96.83%</td><td class="num">96.84%</td><td class="num">97.04%</td><td class="num hit">96.90%</td></tr>
-    <tr><td>The same classifier, raw pixels</td><td class="num">96.69%</td><td class="num fail">91.63%</td><td class="num">96.79%</td><td class="num">95.03%</td></tr>
-  </table>
-  <p class="small">The means differ by less than two points. <strong>The spreads
-  do not compare at all</strong> &mdash; one fold of the unscaled version lands
-  five points below its own siblings.</p>
-</section>
-
-<!-- 40 -->
-<section class="figslide" data-menu-title="◆ Three folds, twice">
-  <h2>This is why you report every fold</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l03-folds.svg"
-         alt="Two rows of three points each: the scaled pipeline's folds cluster between 96.83% and 97.04%, the unscaled classifier's spread from 91.63% to 96.79%, against a dashed line marking the never-fires baseline at 90.96%.">
-  </figure>
-  <p class="takeaway fail">Report only the mean, and the unscaled row looks like
-  a 95% classifier. Its worst fold is <strong>91.63%</strong> &mdash; barely
-  above doing nothing.</p>
-  <aside class="notes">Ask what the second row's bad fold means. Gradient descent
-  on unstandardised features takes a badly conditioned path; the answer depends
-  on where it happened to start.</aside>
-</section>
-
-<!-- 41 -->
-<section data-menu-title="Predict one">
-  <h2>Predict one instance, before measuring anything</h2>
-  <pre><code class="language-python" data-trim>
-some_digit = X_train[0]              # the image we plotted earlier
-print(y_train[0])                    # 5
-
-clf.predict([some_digit])            # array([ True])
-  </code></pre>
-  <p class="small">A test with a known answer, run before any metric exists.
-  Step 4 of the working method, and the cheapest twenty seconds in the
-  lecture.</p>
-  <div class="panel">
-    <span class="panel-title">Note the brackets</span>
-    <code>predict</code> expects a <em>collection</em> of instances, so a single
-    784-vector has to be wrapped. Passing <code>some_digit</code> bare raises,
-    which is the good case &mdash; scikit-learn checks this one for you.
-  </div>
-</section>
-
-<!-- 42 -->
-<section data-menu-title="Measure it">
-  <h2>Now measure it, honestly</h2>
-  <pre><code class="language-python" data-trim>
-from sklearn.model_selection import StratifiedKFold, cross_val_score
-
-cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
-
-scores = cross_val_score(clf, X_train, y_train_5,
-                         cv=cv, scoring="accuracy")
-print(scores)          # [0.9683  0.9684  0.97035]
-print(scores.mean())   # 0.96902
-  </code></pre>
-  <p class="smaller muted">About 30 seconds: three complete refits of scaler and
-  classifier on 40,000 rows each. <em>(Timing not examinable.)</em></p>
-</section>
-
-<!-- 43 -->
+<!-- 18 -->
 <section data-menu-title="The number">
   <h2>The headline number</h2>
   <p class="big-num good">96.90%</p>
@@ -725,7 +310,47 @@ print(scores.mean())   # 0.96902
   anything in the previous application.</p>
 </section>
 
-<!-- 44 -->
+<!-- 19 -->
+<section data-menu-title="The trivial baseline">
+  <h2>Before you commit: what does <em>nothing</em> score?</h2>
+  <p class="small">The cheapest possible detector. It looks at nothing and
+  answers &ldquo;not a 5&rdquo; every time.</p>
+  <pre><code class="language-python" data-trim>
+from sklearn.base import BaseEstimator
+
+class NeverFires(BaseEstimator):
+    def fit(self, X, y=None):
+        return self
+    def predict(self, X):
+        return np.zeros(len(X), dtype=bool)
+
+cross_val_score(NeverFires(), X_train, y_train_5, cv=cv,
+                scoring="accuracy")     # array([0.90965, 0.90965, 0.90965])
+  </code></pre>
+  <p class="fix">It is right 54,579 times out of 60,000 &mdash;
+  <strong>90.96%</strong> accuracy, with no model, no fit and no features.</p>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="Reading the anchor">
+  <h2>How to read that</h2>
+  <ul class="tight small">
+    <li>An accuracy of 90.96% is available for free, so 90.96% is
+        <strong>zero</strong> in the units that matter</li>
+    <li>The interesting quantity is the distance above it, not the number
+        itself</li>
+    <li>The anchor is different for every task &mdash; 88.76% for digit 1,
+        because there are more 1s in the corpus than any other digit</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">Rule 2, applied here</span>
+    A metric with nothing to compare it to is decoration. You measured a
+    constant predictor before committing an RMSE; measure a constant classifier
+    before committing an accuracy.
+  </div>
+</section>
+
+<!-- 21 -->
 <section data-menu-title="Against the anchor">
   <h2>Against the anchor</h2>
   <table>
@@ -742,376 +367,1037 @@ print(scores.mean())   # 0.96902
   Say which one you mean when you report it.</p>
 </section>
 
+<!-- 22 -->
+<section class="divider" data-menu-title="◆ The mathematics">
+  <p class="kicker">The mathematics</p>
+  <h1>Imbalance, and the<br>non-monotonicity of precision</h1>
+  <p class="clock">20 minutes &middot; examinable</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="The question">
+  <h2>One question, for the whole lecture</h2>
+  <p class="lead">Doing nothing scores <strong>90.96%</strong>.<br>
+  We score <strong>96.90%</strong>.</p>
+  <p class="lead fail">What, exactly, did those 5.94 points buy?</p>
+  <p class="small muted">The number is correctly cross-validated, there is no
+  leakage in it, and the three folds agree to two tenths of a point. Everything
+  about how it was measured is right. That is what makes the question worth
+  twenty minutes.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Two claims">
+  <h2>Two claims, both provable</h2>
+  <ol class="tight">
+    <li>A classifier that <strong>never fires</strong> attains an accuracy of
+        exactly one minus the base rate &mdash; and it is not an approximation,
+        it is an identity</li>
+    <li>As the decision threshold rises, <strong>recall is monotone and
+        precision is not</strong> &mdash; because recall&rsquo;s denominator is
+        fixed and precision&rsquo;s is not</li>
+  </ol>
+  <div class="panel panel-math">
+    <span class="panel-title">Why you need them</span>
+    The first tells you what your accuracy is worth. The second tells you why
+    you cannot simply turn a dial until both numbers are good.
+  </div>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Notation">
+  <h2>Notation, fixed for the whole derivation</h2>
+  <ul class="tight small">
+    <li>$m$ instances, each with a true label $y^{(i)} \in \{0, 1\}$</li>
+    <li>$P$ &mdash; the number of positives, $N$ &mdash; the number of negatives,
+        $P + N = m$</li>
+    <li>$p = P/m$ &mdash; the <strong>base rate</strong>, or prevalence</li>
+    <li>A scoring function $s$ and a threshold $t$; predict positive when
+        $s(x) \ge t$</li>
+    <li>$\mathrm{TP}(t)$, $\mathrm{FP}(t)$, $\mathrm{FN}(t)$, $\mathrm{TN}(t)$
+        &mdash; the four counts at threshold $t$</li>
+  </ul>
+  <p class="small muted">Everything below is arithmetic on those four counts.
+  There is no probability theory in this derivation and none is needed.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Accuracy defined">
+  <h2>Accuracy, in the four counts</h2>
+  <div class="eqn-box">
+    $$\text{accuracy}(t) \;=\; \frac{\mathrm{TP}(t) + \mathrm{TN}(t)}{m}$$
+  </div>
+  <p>Two of the four counts in the numerator, all four in the denominator. Note
+  that the two mistakes &mdash; $\mathrm{FP}$ and $\mathrm{FN}$ &mdash; enter
+  with <strong>equal weight</strong>.</p>
+  <p class="small fail">A missed 5 and a wrongly flagged 3 cost the same, as far
+  as this formula is concerned. Nobody in the postal operator believes that.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Claim 1">
+  <h2>Claim 1 &middot; the classifier that never fires</h2>
+  <p class="small">Let $h_0(x) = 0$ for every $x$. Then $\mathrm{TP} = 0$ and
+  $\mathrm{FP} = 0$, so every negative is a true negative:</p>
+  <div class="eqn-box">
+    $$\text{accuracy}(h_0) \;=\; \frac{0 + N}{m} \;=\; \frac{N}{m} \;=\; 1 - p$$
+  </div>
+  <p class="eqn-label">An identity, not an estimate &mdash; no model, no data, no variance</p>
+  <p class="small">On our task, $p = 0.09035$, so
+  $\text{accuracy}(h_0) = 0.90965$. That is the 90.96% you measured, and you
+  could have written it down without running anything.</p>
+</section>
+
+<!-- 28 -->
+<section class="figslide" data-menu-title="◆ Doing nothing, plotted">
+  <h2>The accuracy of doing nothing</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l04-never-fires.svg"
+         alt="A straight line falling from 100% accuracy at a base rate of zero to 50% at a base rate of 50%, with our task marked at 9.04% base rate and 90.96% accuracy, and a dashed line at our classifier's 96.90%.">
+  </figure>
+  <p class="takeaway fail">The rarer the event, the better the model that does
+  nothing looks. At a base rate of 1%, doing nothing scores 99%.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Corollary 1">
+  <h2>Corollary &middot; accuracy is unbounded above by uselessness</h2>
+  <div class="eqn-box">
+    $$\lim_{p \to 0^{+}} \text{accuracy}(h_0) \;=\; 1$$
+  </div>
+  <p>For any target accuracy $a &lt; 1$ you care to name, there is a detection
+  problem rare enough that the empty model beats it.</p>
+  <div class="panel panel-math">
+    So &ldquo;99.2% accurate&rdquo; is not a statement about a classifier. It is
+    a statement about a classifier <em>and</em> a base rate, and quoting it
+    without the second is quoting half a measurement.
+  </div>
+  <p class="small muted">That is the specimen question from the previous lecture,
+  answered.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Claim 1b">
+  <h2>Where the rest of accuracy goes</h2>
+  <p class="small">Split the four counts by their true class. Write
+  $\text{recall} = \mathrm{TP}/P$ and
+  $\text{specificity} = \mathrm{TN}/N$. Then</p>
+  <div class="eqn-box">
+    $$\begin{aligned}
+      \text{accuracy} \;&=\; \frac{\mathrm{TP} + \mathrm{TN}}{m}
+        \;=\; \frac{P}{m}\cdot\frac{\mathrm{TP}}{P}
+            + \frac{N}{m}\cdot\frac{\mathrm{TN}}{N} \\[6pt]
+      \;&=\; p\,\text{recall} + (1-p)\,\text{specificity}
+      \end{aligned}$$
+  </div>
+  <p class="eqn-label">Accuracy is a weighted average of two rates, weighted by the class sizes</p>
+  <p class="fix">This is the whole of claim 1, and claim 1 is the special case
+  $\text{recall} = 0$, $\text{specificity} = 1$.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="On our numbers">
+  <h2>The identity, on our own detector</h2>
+  <table class="smaller">
+    <tr><th>Term</th><th class="num">Value</th><th class="num">Contribution to accuracy</th></tr>
+    <tr><td>$(1-p)\cdot\text{specificity}$</td><td class="num">0.90965 &times; 0.98860</td><td class="num">0.89928</td></tr>
+    <tr><td>$p\cdot\text{recall}$</td><td class="num">0.09035 &times; 0.77181</td><td class="num hit">0.06973</td></tr>
+    <tr><td><strong>accuracy</strong></td><td class="num">&mdash;</td><td class="num">0.96902</td></tr>
+  </table>
+  <p class="fail">92.8% of our headline number is the first row &mdash; being
+  right about the digits that are <em>not</em> 5s.</p>
+  <p class="small muted">Read that carefully. Everything the detector does about
+  the class we were hired to find is the 0.0697 on the second row.</p>
+</section>
+
+<!-- 32 -->
+<section class="figslide" data-menu-title="◆ The weights">
+  <h2>What a point of recall is worth</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l04-accuracy-weights.svg"
+         alt="Three lines of accuracy against recall at base rates 50%, 9.04% and 1%; the 50% line rises steeply while the 1% line is almost flat.">
+  </figure>
+  <p class="takeaway">The slope of each line <em>is</em> the base rate. At ours,
+  ten points of recall move accuracy by 0.90 points.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="The derivative">
+  <h2>Stated as a derivative</h2>
+  <div class="eqn-box">
+    $$\frac{\partial\,\text{accuracy}}{\partial\,\text{recall}} \;=\; p
+      \qquad\qquad
+      \frac{\partial\,\text{accuracy}}{\partial\,\text{specificity}} \;=\; 1-p$$
+  </div>
+  <p>Accuracy responds to the class you care about in proportion to how little
+  of it there is.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">The consequence, stated plainly</span>
+    You can lose <strong>a third of the 5s</strong> and pay under three points
+    of accuracy for it. If accuracy is what you optimise, that trade looks
+    attractive.
+  </div>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="Turning the dial">
+  <h2>Part two &middot; what happens when you turn the dial</h2>
+  <p>Every scoring classifier is really a family of classifiers, one for each
+  threshold $t$:</p>
+  <div class="eqn-box">
+    $$\hat y_t(x) \;=\; \mathbf{1}\!\left[\,s(x) \ge t\,\right]$$
+  </div>
+  <p class="small">Raising $t$ makes the classifier more reluctant to fire.
+  Lowering it makes the classifier more eager. Nothing about the model changes
+  &mdash; only where we cut.</p>
+  <p class="small fix">So there is a dial. The question is what the two metrics
+  do as we turn it.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Monotone counts">
+  <h2>What is monotone, immediately</h2>
+  <p class="small">The flagged set $\{x : s(x) \ge t\}$ shrinks as $t$ rises, and
+  it shrinks by <em>losing</em> instances, never by gaining any. So for
+  $t' \ge t$:</p>
+  <div class="eqn-box">
+    $$\mathrm{TP}(t') \le \mathrm{TP}(t), \qquad
+      \mathrm{FP}(t') \le \mathrm{FP}(t)$$
+  </div>
+  <p>Both are non-increasing. Every quantity here is built from
+  these two.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Recall is monotone">
+  <h2>Recall is monotone, and here is why</h2>
+  <div class="eqn-box">
+    $$\text{recall}(t) \;=\; \frac{\mathrm{TP}(t)}{\mathrm{TP}(t) + \mathrm{FN}(t)}
+      \;=\; \frac{\mathrm{TP}(t)}{P}$$
+  </div>
+  <p class="derive-step">The denominator does not depend on $t$ at all:
+  $\mathrm{TP}(t) + \mathrm{FN}(t)$ counts every positive in the data, whatever
+  we predict about it.</p>
+  <p>So recall is $\mathrm{TP}(t)$ divided by a constant, and
+  $\mathrm{TP}$ is non-increasing. <strong>Recall is non-increasing in
+  $t$.</strong></p>
+  <p class="small muted">Raise the threshold, recall can only fall or stay put.
+  There are no exceptions and no conditions.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Precision is not">
+  <h2>Precision has no such guarantee</h2>
+  <div class="eqn-box">
+    $$\text{precision}(t) \;=\; \frac{\mathrm{TP}(t)}{\mathrm{TP}(t) + \mathrm{FP}(t)}$$
+  </div>
+  <p>Now <strong>both</strong> the numerator and the denominator move, and they
+  move in the same direction. A ratio of two decreasing quantities can do
+  anything at all.</p>
+  <div class="panel panel-math">
+    The denominator is the size of the set <em>we chose to flag</em>. It is not
+    a property of the data; it is a property of our decision.
+  </div>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="The one-step lemma">
+  <h2>The one-step lemma</h2>
+  <p class="small">Raise $t$ just enough to drop the lowest-scoring flagged
+  instance. Write $T = \mathrm{TP}$, $F = \mathrm{FP}$, $n = T + F$ before the
+  step, and let $y \in \{0,1\}$ be the true label of the instance dropped.</p>
+  <div class="eqn-box">
+    $$\text{precision before} = \frac{T}{n}
+      \qquad
+      \text{precision after} = \frac{T - y}{n - 1}$$
+  </div>
+  <p class="derive-step small">Cross-multiplying, the step increases precision exactly
+  when $n(T-y) &gt; T(n-1)$, that is when</p>
+  <div class="eqn-box">
+    $$y \;&lt;\; \frac{T}{n} \;=\; \text{precision before}$$
+  </div>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="The corollary">
+  <h2>And since $y$ is 0 or 1</h2>
+  <table class="smaller">
+    <tr><th>The instance dropped</th><th>$y$</th><th>Effect on precision</th></tr>
+    <tr><td>a false positive</td><td>0</td><td class="hit">rises &mdash; always, since precision &gt; 0</td></tr>
+    <tr><td>a true positive</td><td>1</td><td class="miss">falls &mdash; unless precision was already 1</td></tr>
+  </table>
+  <div class="panel panel-math">
+    <span class="panel-title">The whole result, in one sentence</span>
+    Raising the threshold past a <strong>positive</strong> lowers precision;
+    raising it past a <strong>negative</strong> raises precision. The
+    non-monotonicity is not an anomaly, it is the generic case.
+  </div>
+  <p class="small">Recall meanwhile falls by $1/P$ in the first case and by
+  nothing in the second. Both metrics are decided by the same single fact: what
+  the dropped instance was.</p>
+</section>
+
+<!-- 40 -->
+<section class="figslide" data-menu-title="◆ Twelve instances">
+  <h2>The textbook&rsquo;s counterexample, drawn</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-threshold.svg"
+         alt="Twelve squares ordered by score, six of them 5s in green, with four threshold positions marked A, B, B-prime and C, and a table giving flagged count, precision and recall at each.">
+  </figure>
+  <p class="takeaway fail">B to B&prime; is one step to the right, and precision
+  falls from 4/5 to 3/4 while recall falls from 4/6 to 3/6.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="The book's example">
+  <h2>Reading that off the lemma</h2>
+  <div class="panel panel-book">
+    &ldquo;Starting from the central threshold and moving it just one digit to
+    the right, precision goes from 4/5 (80%) down to 3/4 (75%).&rdquo;
+  </div>
+  <ul class="tight small">
+    <li>At B: $T = 4$, $n = 5$, precision $= 0.8$</li>
+    <li>The instance dropped is a 5, so $y = 1$</li>
+    <li>The lemma: $1 &lt; 0.8$ is false, so precision does <strong>not</strong>
+        increase &mdash; it falls to $3/4$</li>
+  </ul>
+  <p class="fix">And from B to C, two more steps, precision rises to
+  <strong>100%</strong> because the next instance dropped is a negative. Up,
+  down, up: that is what &ldquo;not monotone&rdquo; means.</p>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Count it on our data">
+  <h2>Now count it on sixty thousand instances</h2>
+  <p class="small">Sort every training instance by its out-of-fold score and walk
+  the threshold down the list one instance at a time. That is 59,999 steps.</p>
+  <table class="smaller">
+    <tr><th>As the threshold rises, one step at a time</th><th class="num">Steps</th></tr>
+    <tr><td>the instance dropped is <strong>not</strong> a 5 &mdash; precision rises</td><td class="num hit">54,579</td></tr>
+    <tr><td>the instance dropped <strong>is</strong> a 5 &mdash; precision falls</td><td class="num fail">5,417</td></tr>
+    <tr><td>&hellip; or stays at 1, because it was already 1</td><td class="num">3</td></tr>
+  </table>
+  <p class="small">54,579 is the number of non-5s in the training set. And
+  5,417 + 3 = 5,420 is the number of 5s, less the one at the very top of the
+  ranking, which has no step above it.</p>
+  <p class="fix">Every single step is accounted for by the lemma. This is not a
+  tendency; it is an exact classification of all 59,999 steps.</p>
+</section>
+
+<!-- 43 -->
+<section class="figslide" data-menu-title="◆ Non-monotone, measured">
+  <h2>Both metrics, along our own ranking</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l04-nonmonotone.svg"
+         alt="Left: precision falling and recall rising as more instances are predicted positive. Right: a zoom on the twelve top-ranked instances showing precision step down from 100% to 80% and then climb again.">
+  </figure>
+  <p class="takeaway">The right-hand panel is the book&rsquo;s picture, on our
+  data: the sixth-ranked digit is a 5, and dropping it takes precision from
+  <strong>5/6</strong> to <strong>4/5</strong>.</p>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="What is monotone">
+  <h2>What <em>is</em> guaranteed</h2>
+  <ul class="tight small">
+    <li><strong>Recall</strong> is non-increasing in $t$. Always</li>
+    <li><strong>The flagged count</strong> $n(t)$ is non-increasing. Always</li>
+    <li><strong>Precision</strong>: nothing. It has no monotone envelope you can
+        rely on, only a local rule</li>
+  </ul>
+  <div class="panel panel-math">
+    <span class="panel-title">A repair you will meet again</span>
+    Average precision is defined using the <em>maximum</em> precision at or
+    above each recall level. That maximum is there for exactly one reason: to
+    replace a non-monotone quantity by a monotone one. Lecture 14 builds mAP on
+    top of it.
+  </div>
+</section>
+
 <!-- 45 -->
-<section data-menu-title="Write your own CV">
-  <h2>What <code>cross_val_score</code> is doing</h2>
-  <pre><code class="language-python" data-trim>
-from sklearn.base import clone
-
-for train_idx, test_idx in cv.split(X_train, y_train_5):
-    fold_clf = clone(clf)                          # an unfitted copy
-    fold_clf.fit(X_train[train_idx], y_train_5[train_idx])
-
-    pred = fold_clf.predict(X_train[test_idx])
-    n_correct = (pred == y_train_5[test_idx]).sum()
-    print(n_correct / len(test_idx))
-  </code></pre>
-  <p class="small"><code>clone</code> copies the hyperparameters and discards
-  anything learned. Reusing <code>clf</code> here would train the same object
-  three times in succession, and each fold would start from the previous
-  fold&rsquo;s parameters.</p>
-  <p class="small fix">Write this loop once in your life. After that, use the
-  library &mdash; but you will know what it did.</p>
+<section data-menu-title="What the derivation buys you">
+  <h2>What the derivation buys you</h2>
+  <ul class="tight small">
+    <li>$\text{accuracy} = p\,\text{recall} + (1-p)\,\text{specificity}$</li>
+    <li>Hence a classifier that never fires scores $1 - p$, exactly, and
+        $\partial\,\text{accuracy}/\partial\,\text{recall} = p$</li>
+    <li>Recall is non-increasing in the threshold because its denominator is
+        $P$, which the threshold cannot touch</li>
+    <li>Precision&rsquo;s denominator is the flagged count, which the threshold
+        chooses; one step raises precision iff the instance dropped is a
+        negative</li>
+    <li>Counted on our own data: 54,579 rises, 5,417 falls, 3 flat</li>
+  </ul>
+  <p class="small muted">Examinable: state and prove both claims; compute the
+  never-fires accuracy from a base rate; apply the one-step lemma to a stated
+  ranking.</p>
 </section>
-
-<!-- 45b -->
-<section data-menu-title="The loop, today">
-  <h2>The working loop, on this notebook</h2>
-  <table class="smaller">
-    <tr><th>Step</th><th>What it was today</th></tr>
-    <tr><td>1 · Specify</td><td>&ldquo;binary detector for one digit, accuracy per fold, seed 42&rdquo;</td></tr>
-    <tr><td>2 · Generate, then stop</td><td>the pipeline, before running it</td></tr>
-    <tr><td>3 · Read</td><td>the five reviewer questions</td></tr>
-    <tr><td>4 · Test</td><td><code>clf.predict([some_digit])</code> on an image whose label we know</td></tr>
-    <tr><td>5 · Verify</td><td>compare 96.90% against the 90.96% anchor</td></tr>
-  </table>
-  <p class="small fail">Step 5 is the one that gets skipped, because step 4
-  already felt like checking. It is not: step 4 asks whether the code runs, step
-  5 asks whether the number means anything.</p>
-</section>
-
-<!-- 45c -->
-<section data-menu-title="Inside SGDClassifier">
-  <h2>The defaults inside the estimator</h2>
-  <table class="smaller">
-    <tr><th>Argument</th><th>Default</th><th>What it decides</th></tr>
-    <tr><td><code>loss</code></td><td><code>"hinge"</code></td><td>a linear support vector machine, not logistic regression</td></tr>
-    <tr><td><code>penalty</code></td><td><code>"l2"</code></td><td>ridge-style regularisation is on, always</td></tr>
-    <tr><td><code>alpha</code></td><td>0.0001</td><td>how much of it</td></tr>
-    <tr><td><code>max_iter</code></td><td>1000</td><td>passes over the training set</td></tr>
-    <tr><td><code>random_state</code></td><td><code>None</code></td><td>a different model on every run</td></tr>
-  </table>
-  <p class="small">Five decisions, none of which we made. Four are defensible
-  here; the last one is not, which is why it is the only one we overrode.</p>
-  <p class="small muted">The loss and the penalty are Chapter 4, and Lecture 6
-  will make the penalty do visible work. Today they are simply named.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- THE WORKED ASSISTANT FAILURE                                         -->
-<!-- ==================================================================== -->
 
 <!-- 46 -->
-<section class="divider" data-menu-title="◆ The assistant">
-  <p class="kicker">Part three, continued</p>
-  <h1>One prompt,<br>one wrong number</h1>
-  <p class="clock">20 minutes</p>
+<section class="divider" data-menu-title="◆ Reading the errors">
+  <p class="kicker">Applying it</p>
+  <h1>What 96.90%<br>was hiding</h1>
+  <p class="clock">15 minutes</p>
 </section>
 
 <!-- 47 -->
-<section data-menu-title="The weak prompt">
-  <h2>Beat 1 &middot; the prompt</h2>
-  <div class="panel panel-fail">
-    <span class="panel-title">What was asked</span>
-    &ldquo;Evaluate my classifier on the MNIST 5-detector and print the
-    score.&rdquo;
+<section data-menu-title="Apply it to our number">
+  <h2>Apply that to our own number</h2>
+  <table class="smaller">
+    <tr><th>Detector</th><th class="num">Accuracy</th><th class="num">Recall</th></tr>
+    <tr><td>Never fires</td><td class="num">90.96%</td><td class="num fail">0%</td></tr>
+    <tr><td>Ours</td><td class="num hit">96.90%</td><td class="num">77.18%</td></tr>
+    <tr><td>Difference</td><td class="num">5.94 points</td><td class="num">77.18 points</td></tr>
+  </table>
+  <p class="small">The identity says where those 5.94 points came from. Recall
+  earns $p \times 77.18\%$, which is <strong>6.97</strong> points. Specificity
+  fell from a perfect 100% to 98.86%, and that costs
+  $(1-p) \times 1.14\%$, which is <strong>1.04</strong> points.</p>
+  <div class="eqn-box">
+    $$5.94 \;=\; 6.97 \;-\; 1.04$$
   </div>
-  <p>Read it as a specification. What is missing?</p>
-  <ul class="tight small">
-    <li>Which score?</li>
-    <li>Evaluated on <em>which rows</em>?</li>
-    <li>Compared against what?</li>
-  </ul>
-  <p class="small muted">Thirty seconds. Then the next slide.</p>
+  <p class="small fix">The arithmetic closes exactly. Now the question is whether
+  77.18% recall is good &mdash; and accuracy cannot answer it.</p>
 </section>
 
 <!-- 48 -->
-<section data-menu-title="The code it returns">
-  <h2>Beat 2 &middot; the code that comes back</h2>
-  <pre><code class="language-python" data-trim data-line-numbers>from sklearn.metrics import accuracy_score
-
-clf = make_pipeline(StandardScaler(), SGDClassifier(random_state=42))
-clf.fit(X_train, y_train_5)
-
-y_pred = clf.predict(X_train)
-print(f"Accuracy: {accuracy_score(y_train_5, y_pred):.4f}")
-# Accuracy: 0.9738
-</code></pre>
-  <p class="small">It runs. It imports nothing exotic. It prints a number that
-  is <em>better</em> than the one we measured, and it took one line instead of
-  five.</p>
-  <p class="small fail">Everything about it is plausible. That is the
-  problem.</p>
+<section class="figslide" data-menu-title="◆ The confusion matrix">
+  <h2>The same four numbers, laid out</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l04-confusion.svg"
+         alt="A two-by-two confusion matrix showing 53,957 true negatives, 622 false positives, 1,237 false negatives outlined in red dashes, and 4,184 true positives outlined in green.">
+  </figure>
+  <p class="takeaway fail">1,237 fives went past unflagged &mdash;
+  <strong>22.8%</strong> of every 5 in the training set.</p>
 </section>
 
 <!-- 49 -->
-<section data-menu-title="Reviewer question 1">
-  <h2>Beat 3 &middot; reviewer question 1: what touched what?</h2>
-  <pre><code class="language-python" data-trim data-line-numbers="1-4|2|4">clf.fit(X_train, y_train_5)          # fitted on X_train
-
-y_pred = clf.predict(X_train)        # predicted on X_train
-
-accuracy_score(y_train_5, y_pred)    # scored on X_train
-</code></pre>
-  <p class="lead fail">The same 60,000 rows, three times.</p>
-  <p class="small">This is the cardinal error from the previous lecture, in a new
-  costume. A decision tree scoring exactly zero made it obvious; a linear model
-  scoring 97.38% does not, because 97.38% is a completely believable number.</p>
+<section data-menu-title="Reading the matrix">
+  <h2>Reading a confusion matrix</h2>
+  <ul class="tight small">
+    <li>Rows are the <strong>actual</strong> class; columns are the
+        <strong>predicted</strong> class</li>
+    <li>The diagonal is what went right; everything off it went wrong</li>
+    <li>A perfect classifier has zeros off the diagonal, and nothing else</li>
+    <li>Row 1 is the negatives: 53,957 correct, 622 false alarms</li>
+    <li>Row 2 is the positives: 1,237 missed, 4,184 caught</li>
+  </ul>
+  <p class="small">Both mistakes are visible, separately, and they are not the
+  same size or the same kind. Accuracy added them together and divided by
+  60,000.</p>
 </section>
 
 <!-- 50 -->
-<section data-menu-title="Reviewer question 5">
-  <h2>Beat 3, continued &middot; reviewer question 5</h2>
-  <p class="lead"><em>What is the default I did not ask for?</em></p>
-  <div class="panel panel-fail">
-    <span class="panel-title">Two of them, in six lines</span>
-    The assistant chose <strong>accuracy</strong>, because the prompt said
-    &ldquo;the score&rdquo; and accuracy is what a classifier reports when
-    nobody says otherwise. And it chose to evaluate on the training set, because
-    the prompt did not name an evaluation set.
-  </div>
-  <p class="small">Neither choice was flagged, argued or mentioned in the reply.
-  You asked for a number and you got one.</p>
-  <p class="small fix">A metric nobody chose is a metric nobody can defend. Write
-  down who chose yours.</p>
+<section class="figslide" data-menu-title="◆ Two ratios">
+  <h2>Two ratios live in this table</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-confusion.svg"
+         alt="The confusion matrix with a bracket down the predicted-positive column labelled precision, 4,184 over 4,806, and a bracket across the actually-positive row labelled recall, 4,184 over 5,421.">
+  </figure>
+  <p class="takeaway">Same numerator, different denominators. Precision divides
+  by what we chose to flag; recall divides by what was there.</p>
 </section>
 
 <!-- 51 -->
-<section data-menu-title="Measure the damage">
-  <h2>Beat 3, continued &middot; measure the damage</h2>
-  <p class="small">Do not assert that it is wrong. Measure how wrong, and pair
-  the measurements &mdash; the same fitted model scored twice, so the
-  fold-to-fold variation cancels.</p>
-  <pre><code class="language-python" data-trim>
-from sklearn.model_selection import cross_validate
-
-r = cross_validate(clf, X_train, y_train_5, cv=cv,
-                   scoring="accuracy", return_train_score=True)
-
-print(r["train_score"] - r["test_score"])
-  </code></pre>
-  <p class="smaller muted">Repeated over five seeds, so that fifteen paired
-  measurements stand behind the number rather than one. About four minutes.
-  <em>(Timing not examinable.)</em></p>
+<section data-menu-title="The two numbers">
+  <h2>The two numbers accuracy was hiding</h2>
+  <table>
+    <tr><th>Metric</th><th class="num">Value</th><th>Reads as</th></tr>
+    <tr><td>Precision</td><td class="num">87.06%</td><td>of the digits we flag, 87% really are 5s</td></tr>
+    <tr><td>Recall</td><td class="num fail">77.18%</td><td>of the 5s that exist, we find 77%</td></tr>
+    <tr><td>Accuracy</td><td class="num">96.90%</td><td>&mdash;</td></tr>
+  </table>
+  <p class="fail lead">Nearly a quarter of the 5s go past the desk.</p>
+  <p class="small muted">Both of those were computable an hour ago. Nothing new
+  was fitted; we asked the same predictions a different question.</p>
 </section>
 
 <!-- 52 -->
-<section class="figslide" data-menu-title="◆ The damage">
-  <h2>The same fitted model, scored twice</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l03-train-vs-cv.svg"
-         alt="Fifteen vertical pairs of points; in every pair the training-set score sits above the held-out score, by an average of 0.52 percentage points.">
-  </figure>
-  <p class="takeaway fail">Fifteen out of fifteen pairs point the same way. The
-  gap is <strong>0.52 percentage points</strong>, with a standard deviation of
-  0.14.</p>
+<section data-menu-title="What the client hears">
+  <h2>The two sentences, side by side</h2>
+  <div class="cols">
+    <div>
+      <div class="panel panel-fix small">
+        &ldquo;The detector is <strong>96.9% accurate</strong>.&rdquo;
+        <br><span class="small muted">True. Signed off. Deployed.</span>
+      </div>
+    </div>
+    <div>
+      <div class="panel panel-fail small">
+        &ldquo;The detector <strong>misses 22.8% of the 5s</strong> &mdash; on the
+        test shift, 183 envelopes.&rdquo;
+        <br><span class="small muted">Also true. Same model, same data, same
+        predictions.</span>
+      </div>
+    </div>
+  </div>
+  <p class="small">Both are honest. Only one of them is a report the audit team
+  can act on, and it is not the one the default metric produces.</p>
 </section>
 
 <!-- 53 -->
-<section data-menu-title="Half a point">
-  <h2>Half a point. So why is it a bug?</h2>
-  <ol class="tight small">
-    <li><strong>You did not know it was half a point until you measured.</strong>
-        A tree in the previous lecture had a gap of 68,574 &mdash; and nothing
-        in either piece of code said which case you were in</li>
-    <li><strong>It is this small for a specific reason</strong>: a linear model
-        on 60,000 instances and 784 features has far too few parameters to
-        memorise the training set. Give the same code an unconstrained tree and
-        the gap is the whole number</li>
-    <li><strong>The sign is guaranteed and the size is not.</strong> Fifteen out
-        of fifteen, because a model always fits the data it was fitted to at
-        least as well as data it has not seen</li>
-  </ol>
-  <p class="small fail">The rule is procedural, not empirical: never score on
-  the rows you fitted &mdash; not because the damage is always large, but
-  because you cannot tell whether it is.</p>
+<section data-menu-title="The diagnosis">
+  <h2>The diagnosis</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Stated once, precisely</span>
+    Accuracy was not <em>wrong</em>. It correctly answered a question &mdash;
+    &ldquo;what fraction of all decisions were right?&rdquo; &mdash; which
+    nobody in this brief had asked.
+  </div>
+  <ul class="tight small">
+    <li>It weights the class we care about by $p = 0.09$</li>
+    <li>It adds two errors that the client prices completely differently</li>
+    <li>It has a floor of 90.96% that no model can go below by being cautious</li>
+  </ul>
+  <p class="small fail">And nobody chose it. It arrived as a default, in the
+  previous lecture, from a prompt that did not name a metric.</p>
 </section>
 
 <!-- 54 -->
-<section data-menu-title="The corrected prompt">
-  <h2>Beat 4 &middot; the corrected specification</h2>
-  <div class="panel panel-fix">
-    <span class="panel-title">What to ask instead</span>
-    &ldquo;Evaluate this classifier with <strong>stratified 3-fold
-    cross-validation</strong> on the training set, seed 42. Report
-    <strong>accuracy per fold</strong> and the mean. In the same table, report
-    the same metric for a baseline that always predicts the negative class.
-    Do not touch <code>X_test</code>.&rdquo;
-  </div>
-  <p class="small">Four sentences. They name the estimator of generalisation
-  error, the folds, the seed, the granularity of the report, the comparison, and
-  the thing that must not be touched.</p>
-  <p class="small muted">Notice what is <em>not</em> in it: the metric is still
-  accuracy. We named it, so it is now ours &mdash; and being ours is what makes
-  it something we can be held to.</p>
+<section class="divider" data-menu-title="◆ The method">
+  <p class="kicker">The method</p>
+  <h1>Precision, recall,<br>and the curves</h1>
+  <p class="clock">40 minutes &middot; examinable</p>
 </section>
 
 <!-- 55 -->
-<section data-menu-title="The specification, generalised">
-  <h2>The shape of every evaluation request</h2>
-  <table class="smaller">
-    <tr><th>Say</th><th>Or you get</th></tr>
-    <tr><td>which metric</td><td>whatever the library defaults to</td></tr>
-    <tr><td>on which rows</td><td>the rows that are in scope &mdash; usually the training set</td></tr>
-    <tr><td>how the rows were held out</td><td>a single split, or none</td></tr>
-    <tr><td>the seed</td><td>a number nobody can reproduce</td></tr>
-    <tr><td>per-fold or aggregated</td><td>a mean, with the spread discarded</td></tr>
-    <tr><td>what to compare against</td><td>nothing, and therefore no meaning</td></tr>
-  </table>
-  <p class="small fix">Paste this into your notes. It is six lines and it
-  prevents most of what goes wrong in this course.</p>
+<section data-menu-title="Precision and recall">
+  <h2>Fix 1 &middot; ask for both numbers</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.metrics import precision_score, recall_score, f1_score
+
+precision_score(y_train_5, y_pred)   # 0.8706  — 4184 / (4184 + 622)
+recall_score(y_train_5, y_pred)      # 0.7718  — 4184 / (4184 + 1237)
+f1_score(y_train_5, y_pred)          # 0.8182
+  </code></pre>
+  <div class="eqn-box">
+    $$\text{precision} = \frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FP}}, \qquad
+      \text{recall} = \frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FN}}$$
+  </div>
+  <p class="small muted">Recall is also called <em>sensitivity</em> or the
+  <em>true positive rate</em>. Three names, one quantity; the third one comes
+  back on the ROC curve in twenty minutes.</p>
 </section>
 
 <!-- 56 -->
-<section data-menu-title="Red-team, briefly">
-  <h2>The five reviewer questions, on today&rsquo;s notebook</h2>
-  <ol class="tight small">
-    <li><strong>What touched the test set?</strong> Nothing. <code>X_test</code>
-        appears once, in the split, and not again</li>
-    <li><strong>What was fitted, and on what?</strong> The scaler and the
-        classifier, together, on each fold&rsquo;s training part only</li>
-    <li><strong>What is the shape here?</strong> 60,000 &times; 784, asserted</li>
-    <li><strong>What was dropped?</strong> Nothing. No missing values in MNIST,
-        no rows removed, no columns removed</li>
-    <li><strong>What is the default I did not ask for?</strong> The label dtype,
-        the fold count, the loss inside <code>SGDClassifier</code>, and the
-        metric</li>
-  </ol>
-  <p class="small muted">Four of the five come out clean today. Keep the answer
-  to the fifth.</p>
+<section data-menu-title="F1">
+  <h2>Fix 2 &middot; one number, when you must have one</h2>
+  <p class="small">$F_1$ is the <strong>harmonic</strong> mean of precision and
+  recall:</p>
+  <div class="eqn-box">
+    $$F_1 \;=\; \frac{2}{\dfrac{1}{\text{precision}} + \dfrac{1}{\text{recall}}}
+      \;=\; 2 \cdot \frac{\text{precision} \cdot \text{recall}}{\text{precision} + \text{recall}}$$
+  </div>
+  <p>Ours is <strong>81.82%</strong>, which sits below both of the numbers it
+  combines. That is not an accident.</p>
 </section>
 
 <!-- 57 -->
-<section data-menu-title="Runtime honesty">
-  <h2>What each cell costs, so silence is not alarming</h2>
+<section data-menu-title="Why harmonic">
+  <h2>Why harmonic and not ordinary</h2>
   <table class="smaller">
-    <tr><th>Cell</th><th class="num">Wall clock</th></tr>
-    <tr><td><code>fetch_openml</code>, first time</td><td class="num">~30 s</td></tr>
-    <tr><td>One <code>fit</code> on 60,000 &times; 784</td><td class="num">~30 s</td></tr>
-    <tr><td>Three-fold <code>cross_val_score</code></td><td class="num">~70 s</td></tr>
-    <tr><td>The five-seed damage measurement</td><td class="num">~4 min</td></tr>
+    <tr><th>Precision</th><th>Recall</th><th class="num">Arithmetic mean</th><th class="num">$F_1$</th></tr>
+    <tr><td>0.90</td><td>0.90</td><td class="num">0.900</td><td class="num">0.900</td></tr>
+    <tr><td>0.99</td><td>0.81</td><td class="num">0.900</td><td class="num">0.891</td></tr>
+    <tr><td>1.00</td><td>0.02</td><td class="num fail">0.510</td><td class="num hit">0.039</td></tr>
   </table>
-  <p class="small">A cell with no output for four minutes is a cell working, not
-  a cell hung. Interrupting it loses the fit and you start again.</p>
-  <p class="smaller muted">Free Colab CPU runtime. <strong>Not
-  examinable</strong> &mdash; this is engineering practice, and the numbers
-  depend on hardware we do not control.</p>
+  <p class="small">The harmonic mean is dominated by the <em>smaller</em> of the
+  two. A classifier that flags three digits a year and is right every time has
+  an arithmetic mean above one half and an $F_1$ near zero.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">And that is a choice, not a virtue</span>
+    $F_1$ rewards classifiers with <strong>similar</strong> precision and recall.
+    Our brief does not ask for similar precision and recall. It asks for the 5s
+    to be found, within a fixed desk capacity.
+  </div>
 </section>
 
-<!-- ==================================================================== -->
-<!-- CLOSING                                                              -->
-<!-- ==================================================================== -->
-
 <!-- 58 -->
-<section class="divider" data-menu-title="◆ Record it">
-  <p class="kicker">Part four</p>
-  <h1>Record it</h1>
-  <p class="clock">5 minutes</p>
+<section data-menu-title="Two briefs">
+  <h2>Which one you want depends on the brief</h2>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>A filter for children&rsquo;s videos</strong></p>
+      <p class="smaller">Rejecting good videos is annoying. Letting a bad one
+      through is not. <span class="fix">High precision</span>, low recall
+      &mdash; and a human reviews the rest.</p>
+    </div>
+    <div>
+      <p class="small"><strong>A shoplifter detector for a surveillance
+      system</strong></p>
+      <p class="smaller">A guard checking a false alarm costs a minute. A missed
+      thief costs the stock. <span class="fix">High recall</span>, and accept
+      the false alarms.</p>
+    </div>
+  </div>
+  <p class="fail">Ours is the second shape, with a hard cap: find the 5s, and do
+  not send the desk more than it can process.</p>
+  <p class="small muted">Both examples are the textbook&rsquo;s. They are worth
+  keeping because they are memorable and because they point in opposite
+  directions.</p>
 </section>
 
 <!-- 59 -->
-<section data-menu-title="★ Record your number">
-  <h2>On the same sheet of paper</h2>
-  <div class="commit">
-    <span class="commit-label">Add one line, underneath the three you wrote</span>
-    <p class="small">
-      Best accuracy I actually obtained: <span class="blank"></span>
-    </p>
-  </div>
-  <p class="small">Bring the sheet to the next lecture. We open by comparing all
-  four numbers out loud, and the comparison is the lecture.</p>
-  <p class="small muted">Do not tidy the notebook, do not tune anything, and do
-  not delete the version with the bug in it. You will need it.</p>
-</section>
-
-<!-- 59b -->
-<section data-menu-title="What we did not do">
-  <h2>What we deliberately did not do</h2>
-  <ul class="tight small">
-    <li><strong>No hyperparameter tuning.</strong> Not one grid search. A tuned
-        number would be harder to interpret and we have nothing yet that says
-        which direction to tune in</li>
-    <li><strong>No test set.</strong> <code>X_test</code> has been read once, in
-        the split, and never since</li>
-    <li><strong>No second model.</strong> One estimator, so that any change in
-        the number has exactly one possible cause</li>
-    <li><strong>No error analysis.</strong> We have a score and we have not
-        looked at a single mistake the model makes</li>
-  </ul>
-  <p class="small muted">Three of those four are correct discipline. One of them
-  is the reason the next lecture exists.</p>
-  <aside class="notes">Do not say which. Someone will ask; tell them to write
-  their guess on the sheet as well.</aside>
-</section>
-
-<!-- 59c -->
-<section data-menu-title="Exercise">
-  <h2>Before the next lecture</h2>
-  <ol class="tight small">
-    <li>Re-run the whole notebook for a <strong>different digit</strong>. Pick
-        one and record its anchor and its cross-validated accuracy</li>
-    <li>Digit 1 has the lowest anchor of the ten, at 88.76%. Does your detector
-        for it beat 96.90%, and what would that comparison even mean?</li>
-    <li>Bring both numbers, on the same sheet as your commitment</li>
-  </ol>
+<section data-menu-title="The trade-off">
+  <h2>Fix 3 &middot; you cannot have both</h2>
+  <p class="lead">Raising recall lowers precision, and lowering recall raises it
+  &mdash; usually.</p>
+  <p class="small">&ldquo;Usually&rdquo; is doing real work in that sentence, and
+  the one-step lemma says exactly how much: precision rises at 54,579 of the steps and
+  falls at 5,417 of them. The <em>trend</em> is reliable; the individual step is
+  not.</p>
   <div class="panel">
-    <span class="panel-title">The question that makes it worth doing</span>
-    Two detectors, two accuracies, two different anchors. Write down how you
-    would decide which detector is <em>better</em> &mdash; in one sentence,
-    before you have the numbers.
+    <span class="panel-title">The precision/recall trade-off</span>
+    It is not a property of our model, or of SGD, or of MNIST. It is a property
+    of ranking instances and cutting the ranking somewhere.
   </div>
 </section>
 
 <!-- 60 -->
-<section data-menu-title="What we have">
-  <h2>What we are taking away</h2>
-  <table class="smaller">
-    <tr><th>Quantity</th><th class="num">Value</th><th>Status</th></tr>
-    <tr><td>Positives in the training set</td><td class="num">5,421</td><td>measured</td></tr>
-    <tr><td>Base rate</td><td class="num">9.04%</td><td>measured</td></tr>
-    <tr><td>Never-fires accuracy</td><td class="num">90.96%</td><td>measured</td></tr>
-    <tr><td>Our detector, cross-validated</td><td class="num hit">96.90%</td><td>measured</td></tr>
-    <tr><td>Our detector, scored on its own training rows</td><td class="num fail">97.38%</td><td>discarded</td></tr>
-    <tr><td>Desk capacity per shift</td><td class="num">1,000</td><td>stated by the client</td></tr>
-  </table>
-  <p class="small">Six rows, and the status column matters as much as the value
-  column. Two of these we measured, one we were told, and one we threw away.</p>
+<section data-menu-title="decision_function">
+  <h2>Where the dial is</h2>
+  <pre><code class="language-python" data-trim>
+y_scores = clf.decision_function([some_digit])
+print(y_scores)                       # e.g. array([1231.4])
+
+threshold = 0
+y_scores &gt; threshold                  # array([ True])
+
+threshold = 3000
+y_scores &gt; threshold                  # array([False]) — the same 5, missed
+  </code></pre>
+  <p class="small">Every scoring classifier computes a number and compares it to
+  a threshold. <code>predict()</code> hides the number and hard-codes the
+  threshold at zero.</p>
+  <p class="small fix">There is no <code>set_threshold()</code> method, and there
+  should not be. You compute the scores and you compare them yourself.</p>
 </section>
 
 <!-- 61 -->
-<section data-menu-title="Specimen exam question">
-  <h2>Specimen exam question &mdash; Part A</h2>
-  <div class="panel">
-    A colleague reports that their detector for a rare defect achieves
-    <strong>99.2% accuracy</strong> on a held-out set, using correct
-    cross-validation with no leakage.<br><br>
-    <strong>1.</strong> State one further quantity you would need before you
-    could say whether that is a good result, and why.<br>
-    <strong>2.</strong> Their defect occurs in 0.9% of items. What accuracy does
-    a detector that never fires achieve? Show the arithmetic.
-  </div>
-  <p class="small muted">Two marks each. Answer them before the next slide; the
-  worked answers are at the end of the next lecture.</p>
+<section class="figslide" data-menu-title="◆ The trade-off">
+  <h2>The dial, and the curve it traces</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l04-pr-curve.svg"
+         alt="Left: precision rising and recall falling as the decision threshold increases, with a dashed line at threshold 20. Right: the precision-recall curve with the 90%-precision operating point marked at 73.3% recall.">
+  </figure>
+  <p class="takeaway">Precision starts to fall off a cliff at about 80% recall.
+  Choose the operating point just before the cliff, not on it.</p>
 </section>
 
 <!-- 62 -->
-<section data-menu-title="◇ Answer — 2">
-  <h2>Specimen answer &mdash; 2</h2>
-  <p>If 0.9% of items carry the defect, then 99.1% do not, and a detector that
-  answers &ldquo;no defect&rdquo; to everything is right on all of them.</p>
-  <div class="eqn-box">
-    $$\text{accuracy}_{\text{never fires}} \;=\; 1 - 0.009 \;=\; 0.991$$
-  </div>
-  <p class="fail">99.1% for a model that does not exist. The colleague&rsquo;s
-  99.2% is one tenth of a point above it.</p>
-  <p class="small muted">Part 1 is the harder half and we return to it. Any
-  quantity that lets you locate 99.2% relative to <em>something</em> earns the
-  marks; naming the base rate is the cleanest answer.</p>
-  <aside class="notes">Do not develop this further today. It is deliberately
-  sitting there, unanswered, for the next ninety minutes to pick up.</aside>
+<section data-menu-title="Choose a threshold">
+  <h2>Fix 4 &middot; choose the threshold deliberately</h2>
+  <pre><code class="language-python" data-trim>
+import numpy as np
+
+flagged = recalls[:-1] * n_pos / precisions[:-1]   # tp / precision = tp + fp
+ok  = (precisions[:-1] &gt;= 0.90) &amp; (flagged &gt;= 500)
+idx = int(np.argmax(ok))                   # first crossing WITH support
+threshold_90 = thresholds[idx]             # 20.09
+
+y_pred_90 = (y_scores &gt;= threshold_90)
+print(precision_score(y_train_5, y_pred_90))   # 0.9001
+print(recall_score(y_train_5, y_pred_90))      # 0.7333
+  </code></pre>
+  <p class="small"><code>argmax</code> on a boolean array returns the first
+  <code>True</code>. The idiom is compact and it is not obvious; read it once
+  and remember it.</p>
+  <p class="fail">Ninety per cent precision costs us 3.86 points of recall,
+  from 77.18% down to 73.33%.</p>
 </section>
 
 <!-- 63 -->
+<section data-menu-title="Why the support test">
+  <h2>Why <code>&amp; (flagged &gt;= 500)</code> is in that line</h2>
+  <p>We have just spent twenty minutes proving this curve is
+  <strong>not monotone</strong>. So &ldquo;the first index reaching 90%&rdquo;
+  could be a single lucky step, held up by a handful of flagged digits, that
+  the very next threshold falls back below.</p>
+  <p>Requiring support turns the crossing into a claim you can defend. And on
+  this data it <strong>passes</strong>:</p>
+  <table>
+    <tr><th>&nbsp;</th><th>threshold</th><th>digits flagged</th></tr>
+    <tr><td>first crossing, unguarded</td><td class="num">20.09</td><td class="num">4,416</td></tr>
+    <tr><td>first crossing with support &ge; 500</td><td class="num">20.09</td><td class="num">4,416</td></tr>
+  </table>
+  <p class="fix">Same point &mdash; the result, not a reason to delete the guard. You now <em>know</em> it rests on 4,416 digits.</p>
+  <aside class="note">Note the asymmetry with the recall constraint two slides
+  on, which correctly uses <code>np.where(...)[0][-1]</code> — the
+  <em>last</em> index. For a floor on recall you want the highest threshold
+  that still clears it; for a floor on precision, the lowest. Getting these the
+  same way round is a common and silent error.</aside>
+</section>
+
+<!-- 64 -->
+<section data-menu-title="The threshold trap">
+  <h2>Two traps in that one line</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Do not choose the threshold on the test set</span>
+    A threshold is a hyperparameter. Choosing it by looking at test performance
+    is the same error as choosing $\alpha$ that way, and it produces the same
+    optimistic bias. Choose it on cross-validated training scores, then measure
+    once.
+  </div>
+  <p class="small">And the second: aiming for very high precision is nearly
+  free-looking and very expensive. At <strong>99%</strong> precision our recall
+  falls to <strong>2.12%</strong> &mdash; a detector that finds one 5 in fifty
+  and is almost never wrong when it does.</p>
+  <p class="small muted">&ldquo;99% precision&rdquo; is a sentence that should
+  always be followed by &ldquo;at what recall?&rdquo;</p>
+  <p class="fail small">&mdash; and then by &ldquo;on how many
+  instances?&rdquo; Apply the support test from the previous slide and this
+  point <strong>fails it</strong>: 99% precision is reached on only
+  <strong>116</strong> flagged digits, across a plateau
+  <strong>21</strong> thresholds wide. Compare the 90% point:
+  <strong>4,416</strong> digits and <strong>4,411</strong> thresholds.</p>
+  <aside class="note">Which is why 2.12% is quoted here as an
+  <em>illustration</em> of what high precision costs, and never proposed as an
+  operating point. The right response to a target you cannot meet with support
+  is to say so — not to lower the support test until it passes.</aside>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="ROC">
+  <h2>Fix 5 &middot; the ROC curve</h2>
+  <p class="small">Same sweep, different pair of axes: the true positive rate
+  against the false positive rate.</p>
+  <div class="eqn-box">
+    $$\mathrm{TPR} = \frac{\mathrm{TP}}{P} = \text{recall}, \qquad
+      \mathrm{FPR} = \frac{\mathrm{FP}}{N} = 1 - \text{specificity}$$
+  </div>
+  <pre><code class="language-python" data-trim>
+from sklearn.metrics import roc_curve, roc_auc_score
+fpr, tpr, thresholds = roc_curve(y_train_5, y_scores)
+roc_auc_score(y_train_5, y_scores)          # 0.9724
+  </code></pre>
+  <p class="small">Note that <strong>both</strong> denominators are fixed by the
+  data. Neither axis moves when we change the threshold&rsquo;s effect on the
+  flagged count &mdash; which is precisely why the ROC curve behaves so much
+  better than the PR curve, and why that is a warning rather than a
+  recommendation.</p>
+</section>
+
+<!-- 66 -->
+<section class="figslide" data-menu-title="◆ ROC">
+  <h2>Two classifiers on the same axes</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l04-roc.svg"
+         alt="ROC curves for the SGD classifier at AUC 0.9724 and a random forest at AUC 0.9984, both far above the diagonal of a random classifier.">
+  </figure>
+  <p class="takeaway">The diagonal is a coin. The area under the curve is 0.5
+  for the coin, 1.0 for a perfect classifier, and 0.9724 for ours.</p>
+</section>
+
+<!-- 67 -->
+<section data-menu-title="AUC meaning">
+  <h2>What the area actually measures</h2>
+  <div class="panel panel-math">
+    ROC AUC is the probability that a randomly chosen positive is scored above a
+    randomly chosen negative. It is a statement about the <strong>ranking</strong>
+    and about nothing else.
+  </div>
+  <ul class="tight small">
+    <li>It does not depend on the threshold &mdash; there is no threshold in it</li>
+    <li>It does not depend on the base rate, because both its axes are
+        normalised within a class</li>
+    <li>So it cannot tell you whether the classifier is usable. Only how well it
+        ranks</li>
+  </ul>
+  <p class="small fail">That base-rate independence is usually sold as a virtue.
+  On a rare-event problem it is the whole difficulty.</p>
+</section>
+
+<!-- 68 -->
+<section data-menu-title="PR or ROC">
+  <h2>Fix 6 &middot; which curve to prefer</h2>
+  <div class="panel panel-book">
+    <span class="panel-title">The rule</span>
+    Prefer the precision/recall curve whenever the <strong>positive class is
+    rare</strong>, or whenever you care more about false positives than about
+    false negatives. Otherwise use the ROC curve.
+  </div>
+  <p class="small">The reason is arithmetic. FPR divides false positives by
+  $N$, which is huge when positives are rare, so a large number of false alarms
+  produces a small, comfortable-looking FPR. Precision divides the same false
+  positives by the flagged count, which is small.</p>
+  <p class="small fix">Do not take that on trust. Measure it.</p>
+</section>
+
+<!-- 69 -->
+<section data-menu-title="Measure the rule">
+  <h2>The same classifier, three base rates</h2>
+  <p class="small">Take our scores unchanged, and thin the positive class to
+  make the event rarer. The model, the ranking and the scores are
+  <em>identical</em>; only the class balance moves.</p>
+  <table class="smaller">
+    <tr><th>Base rate</th><th class="num">Positives</th><th class="num">ROC AUC</th><th class="num">Average precision</th></tr>
+    <tr><td>9.04% &mdash; as measured</td><td class="num">5,421</td><td class="num">0.9724</td><td class="num">0.8784</td></tr>
+    <tr><td>2.00%</td><td class="num">1,114</td><td class="num">0.9699</td><td class="num">0.7203</td></tr>
+    <tr><td>1.00%</td><td class="num">551</td><td class="num hit">0.9709</td><td class="num fail">0.5800</td></tr>
+  </table>
+  <p class="fail">ROC AUC moves by 0.0015. Average precision falls by 0.298.</p>
+</section>
+
+<!-- 70 -->
+<section class="figslide" data-menu-title="◆ PR against ROC">
+  <h2>The same three experiments, drawn</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l04-pr-vs-roc.svg"
+         alt="Left: three ROC curves at base rates 9.04%, 2% and 1% lying almost on top of one another. Right: the corresponding precision-recall curves, falling steadily lower as the positive class gets rarer.">
+  </figure>
+  <p class="takeaway fail">Three indistinguishable ROC curves and three obviously
+  different PR curves, from one set of scores. The ROC curve cannot see the
+  problem you have.</p>
+  <aside class="notes">This is the slide that answers "why did you make us learn
+  two curves". Do not rush it.</aside>
+</section>
+
+<!-- 71 -->
+<section data-menu-title="A better model">
+  <h2>Fix 7 &middot; and now a better classifier</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.ensemble import RandomForestClassifier
+
+forest = RandomForestClassifier(n_estimators=100, random_state=42)
+
+y_proba = cross_val_predict(forest, X_train, y_train_5, cv=cv,
+                            method="predict_proba")
+y_scores_forest = y_proba[:, 1]        # the positive class column
+  </code></pre>
+  <div class="panel">
+    <span class="panel-title">A different dial</span>
+    A forest has no <code>decision_function</code>. It has
+    <code>predict_proba</code>, which returns one column per class. The second
+    column &mdash; the estimated probability of the positive class &mdash; plays
+    exactly the role of the score, and every curve above works unchanged.
+  </div>
+</section>
+
+<!-- 72 -->
+<section data-menu-title="Forest results">
+  <h2>The same four metrics, on the forest</h2>
+  <table class="smaller">
+    <tr><th>Metric</th><th class="num">SGD</th><th class="num">Random forest</th></tr>
+    <tr><td>Accuracy</td><td class="num">96.90%</td><td class="num">98.77%</td></tr>
+    <tr><td>Precision</td><td class="num">87.06%</td><td class="num">98.93%</td></tr>
+    <tr><td>Recall</td><td class="num">77.18%</td><td class="num hit">87.31%</td></tr>
+    <tr><td>$F_1$</td><td class="num">81.82%</td><td class="num">92.76%</td></tr>
+    <tr><td>ROC AUC</td><td class="num">0.9724</td><td class="num">0.9984</td></tr>
+    <tr><td>Average precision</td><td class="num">0.8784</td><td class="num">0.9883</td></tr>
+    <tr><td>Recall available at 90% precision</td><td class="num">73.33%</td><td class="num hit">97.51%</td></tr>
+  </table>
+  <p class="small">Accuracy improves by 1.87 points, which reads as polish. The
+  last row improves by <strong>24.18 points</strong>, and it is the row the brief
+  is about.</p>
+</section>
+
+<!-- 73 -->
+<section data-menu-title="Which improved">
+  <h2>Which metric noticed?</h2>
+  <ul class="tight small">
+    <li><strong>Accuracy</strong>: 96.90% &rarr; 98.77%. Both look excellent;
+        the difference looks like polish</li>
+    <li><strong>Recall</strong>: 77.18% &rarr; 87.31%. 10.13 points of the thing
+        we care about</li>
+    <li><strong>Recall at 90% precision</strong>: 73.33% &rarr; 97.51%. Two
+        completely different systems</li>
+  </ul>
+  <p class="fail">Three descriptions of one comparison. Which one you report
+  decides whether anyone approves the change.</p>
+  <p class="small muted">Report the one that matches the brief, and say why you
+  chose it. That sentence is the deliverable.</p>
+</section>
+
+<!-- 74 -->
+<section class="divider" data-menu-title="◆ Beyond binary">
+  <p class="kicker">The last fifteen minutes</p>
+  <h1>An operating point,<br>and beyond binary</h1>
+  <p class="clock">15 minutes</p>
+</section>
+
+<!-- 75 -->
+<section data-menu-title="The operating point">
+  <h2>The operating point, stated</h2>
+  <div class="panel">
+    <span class="panel-title">What the client asked for, in our vocabulary</span>
+    <strong>Catch at least 90% of the 5s</strong> on a shift, and
+    <strong>flag no more than 1,000 items</strong>, out of 10,000 scanned.
+  </div>
+  <p class="small">Two constraints, one dial. A threshold either satisfies both
+  or it does not, and the honest answer may be that none does.</p>
+  <p class="small fix">Choose the threshold on the cross-validated training
+  scores. Then touch the test shift <strong>once</strong>.</p>
+</section>
+
+<!-- 76 -->
+<section class="figslide" data-menu-title="◆ Operating points">
+  <h2>Four operating points, counted</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l04-operating.svg"
+         alt="Four stacked horizontal bars showing 5s caught, false alarms and 5s missed for each operating point, against a vertical line at the desk capacity of 1,000; only the 90%-recall SGD threshold crosses it.">
+  </figure>
+  <p class="takeaway fix">The forest, tuned for the same 90% recall, flags
+  <strong>811</strong> &mdash; inside capacity, because almost none of them are
+  false alarms.</p>
+</section>
+
+<!-- 77 -->
+<section data-menu-title="Defend it">
+  <h2>Now defend the choice</h2>
+  <p class="small">Whichever threshold you propose, you must be able to answer
+  all four:</p>
+  <ol class="tight small">
+    <li>Which constraint did you satisfy, and which did you sacrifice?</li>
+    <li>What does one extra point of recall cost, in items sent to the desk?</li>
+    <li>On what data was the threshold chosen &mdash; and had you seen the test
+        shift when you chose it?</li>
+    <li>What happens to your answer if the base rate changes next quarter?</li>
+  </ol>
+  <div class="panel panel-fix">
+    <span class="panel-title">The defensible report</span>
+    &ldquo;The forest at threshold 0.44 catches 89.9% of the 5s and flags 811
+    items per shift. It misses the 90% target by 0.1 points, which is inside the
+    variation between the folds it was chosen on.&rdquo;
+  </div>
+</section>
+
+<!-- 78 -->
+<section data-menu-title="The wrinkle">
+  <h2>The wrinkle in that sentence</h2>
+  <p class="small">We chose 0.44 because it gave <strong>90.39%</strong> recall
+  on the cross-validated training scores. On the test shift it gives
+  <strong>89.91%</strong>.</p>
+  <table class="smaller">
+    <tr><th>Random forest at threshold 0.44</th><th class="num">Recall</th><th class="num">Precision</th><th class="num">Flagged</th></tr>
+    <tr><td>Cross-validated, on the training set</td><td class="num">90.39%</td><td class="num">98.33%</td><td class="num">&mdash;</td></tr>
+    <tr><td>Test shift, measured once</td><td class="num">89.91%</td><td class="num">98.89%</td><td class="num">811</td></tr>
+  </table>
+  <p class="small">Half a point below target. Is that a failure, a bad fold, or
+  noise? It is noise: the target was hit on a different sample, and a threshold
+  chosen at exactly 90% will land either side of it about half the time.</p>
+  <p class="small fail">Report it, do not tune it away. Re-tuning to make the
+  test number reach 90% is fitting the test set, and it is the temptation
+  Lecture 2 told you to refuse.</p>
+</section>
+
+<!-- 79 -->
+<section data-menu-title="One metric is never enough">
+  <h2>The general rule</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Never optimise one metric of a pair</span>
+    Precision and recall, bias and variance, latency and accuracy, memory and
+    throughput. Ask for one and you will get it, at the price of the other, and
+    the price will not be in the reply.
+  </div>
+  <p class="small">The counter-measure is not cleverness. It is stating the
+  second quantity as a <strong>constraint</strong> in the same sentence as the
+  first.</p>
+</section>
+
+<!-- 80 -->
+<section data-menu-title="Beyond binary">
+  <h2>The rest of Chapter 3, in four minutes</h2>
+  <p class="small">Everything above was one class against the rest. The chapter
+  covers three more shapes, and all of them reuse the same confusion matrix.</p>
+  <table class="smaller">
+    <tr><th>Shape</th><th>Output per instance</th><th>Example</th></tr>
+    <tr><td>Binary</td><td>one label from two</td><td>is it a 5?</td></tr>
+    <tr><td>Multiclass</td><td>one label from many</td><td>which digit is it?</td></tr>
+    <tr><td>Multilabel</td><td>several labels at once</td><td>is it large? is it odd?</td></tr>
+    <tr><td>Multioutput</td><td>several labels, each multiclass</td><td>the denoised image, pixel by pixel</td></tr>
+  </table>
+</section>
+
+<!-- 81 -->
+<section data-menu-title="Multiclass">
+  <h2>Multiclass, from binary parts</h2>
+  <ul class="tight small">
+    <li><strong>One-versus-rest</strong>: ten detectors like ours, and take the
+        highest score. Ten fits</li>
+    <li><strong>One-versus-one</strong>: one detector per pair, and take the
+        most-won duel. $10 \times 9 / 2 = 45$ fits, each on a much smaller
+        training set</li>
+    <li>Scikit-learn picks one for you automatically when you hand a multiclass
+        target to a binary classifier, and does not mention which</li>
+  </ul>
+  <p class="small fail">Another default nobody asked for. It matters: for
+  algorithms that scale badly with training-set size, forty-five small fits beat
+  ten large ones.</p>
+</section>
+
+<!-- 82 -->
+<section data-menu-title="Multilabel">
+  <h2>Multilabel and multioutput</h2>
+  <ul class="tight small">
+    <li><strong>Multilabel</strong>: the target is a vector of booleans. Metrics
+        are computed per label and then averaged &mdash;
+        <code>average="macro"</code> weights every label equally,
+        <code>average="weighted"</code> weights by support</li>
+    <li><strong>Multioutput</strong>: each output is itself multiclass. Removing
+        noise from an image is 784 separate 256-class problems, one per
+        pixel</li>
+  </ul>
+  <p class="small fail">The averaging argument is a third default that changes
+  the number without changing the model. On imbalanced labels, macro and
+  weighted averages can disagree substantially.</p>
+  <p class="small muted">All of this is Chapter 3 and all of it is examinable.
+  None of it changes the lesson: name the metric, and name the average.</p>
+</section>
+
+<!-- 83 -->
+<section data-menu-title="◇ Answer — 1">
+  <h2>Back to the specimen question &mdash; 1</h2>
+  <p class="small muted">A colleague reports 99.2% accuracy on a rare defect,
+  correctly cross-validated. <em>State one further quantity you would need, and
+  why.</em></p>
+  <div class="panel panel-fix">
+    <span class="panel-title">What earns the marks</span>
+    The <strong>base rate</strong>. Without it, 99.2% cannot be located relative
+    to the classifier that never fires, which scores $1 - p$ and requires no
+    model. At $p = 0.009$ that baseline is 99.1%, so the reported result is one
+    tenth of a point above doing nothing.
+  </div>
+  <p class="small">Also full marks: the confusion matrix, precision and recall
+  together, or the recall alone &mdash; each of them locates the number against
+  something. Half marks for &ldquo;the test set size&rdquo;: relevant, but it
+  bounds the precision of the estimate rather than its meaning.</p>
+</section>
+
+<!-- 84 -->
+<section data-menu-title="Specimen — new">
+  <h2>Specimen exam question &mdash; Part B</h2>
+  <div class="panel">
+    A ranking classifier is evaluated on 10 instances, of which 4 are positive.
+    Sorted by score, highest first, the true labels are<br><br>
+    <strong>1, 1, 0, 1, 0, 0, 1, 0, 0, 0</strong><br><br>
+    <strong>1.</strong> Compute precision and recall when the top 4 are
+    flagged, and when the top 5 are flagged.<br>
+    <strong>2.</strong> The threshold is raised from &ldquo;top 5&rdquo; to
+    &ldquo;top 4&rdquo;. State, with the one-step lemma, whether precision rises
+    or falls, and why.
+  </div>
+  <p class="small muted">Three marks. Worked answer on the next slide.</p>
+</section>
+
+<!-- 85 -->
+<section data-menu-title="◇ Answer — Part B">
+  <h2>Specimen answer &mdash; Part B</h2>
+  <table class="smaller">
+    <tr><th>Flagged</th><th class="num">TP</th><th class="num">Precision</th><th class="num">Recall</th></tr>
+    <tr><td>top 4</td><td class="num">3</td><td class="num">3/4 = 75%</td><td class="num">3/4 = 75%</td></tr>
+    <tr><td>top 5</td><td class="num">3</td><td class="num">3/5 = 60%</td><td class="num">3/4 = 75%</td></tr>
+  </table>
+  <p class="small">Going from top 5 to top 4 drops the fifth-ranked instance,
+  whose label is <strong>0</strong>. The lemma says precision increases exactly
+  when $y &lt; \text{precision before}$, and $0 &lt; 0.6$, so precision
+  <span class="fix">rises</span>, from 60% to 75%. Recall is unchanged, because
+  no positive was dropped.</p>
+  <p class="small fail">The common wrong answer is &ldquo;precision falls,
+  because raising the threshold always loses information&rdquo;. Both halves of
+  that sentence are wrong, and the lemma is three lines.</p>
+</section>
+
+<!-- 86 -->
 <section data-menu-title="Scope">
   <h2>What is examinable from today</h2>
   <ul class="tight small">
@@ -1129,7 +1415,7 @@ print(r["train_score"] - r["test_score"])
   the internals of <code>fetch_openml</code>.</p>
 </section>
 
-<!-- 63b -->
+<!-- 87 -->
 <section data-menu-title="Reproducibility">
   <h2>Making today reproducible</h2>
   <ul class="tight small">
@@ -1149,13 +1435,37 @@ print(r["train_score"] - r["test_score"])
   practice, outside the book and <strong>not examinable</strong>.</p>
 </section>
 
-<!-- 64 -->
+<!-- 88 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-03.ipynb">Open Lecture 3 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> The slowest cell is the
+        cross-validated fit, about 30 seconds</li>
+    <li>Everything on today&rsquo;s slides: the split, the never-fires baseline,
+        the detector, the confusion matrix, the curves, and the threshold choice</li>
+    <li>It verifies the two results of the mathematics numerically &mdash; the
+        accuracy identity closes to the last decimal, and the one-step lemma is
+        checked at every one of the 59,999 thresholds</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change before the next lecture</span>
+    Detect a different digit. Change one character &mdash; the <code>5</code> in
+    <code>y_train == 5</code> &mdash; and re-run. The baseline moves, the
+    accuracy moves with it, and the pair tells you something neither does alone.
+  </div>
+</section>
+
+<!-- 89 -->
 <section data-menu-title="★ All notebooks">
   <h2>Every notebook in the course</h2>
   <div class="nb-index">
     <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-01.ipynb">01 &middot; What machine learning is, and how we will work</a></p>
     <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-02.ipynb">02 &middot; The end-to-end project</a></p>
-    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-03.ipynb">03 &middot; Classification and its metrics</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-03.ipynb">03 &middot; Classification and its metrics</a></p>
     <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-04.ipynb">04 &middot; Training models</a></p>
     <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-05.ipynb">05 &middot; Regularisation and the bias–variance trade-off</a></p>
     <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-06.ipynb">06 &middot; Decision trees</a></p>
@@ -1180,63 +1490,62 @@ print(r["train_score"] - r["test_score"])
   </div>
 </section>
 
-<!-- 65 -->
+<!-- 90 -->
 <section data-menu-title="Summary">
-  <h2>What we learned</h2>
+  <h2>What we did</h2>
   <ol class="tight smaller">
-    <li>A detection brief is a binary classification problem carved out of a
-        multiclass one, and the carving is what creates the imbalance</li>
-    <li>MNIST arrives with its split already made; the labels arrive as strings,
-        and <code>y == 5</code> is silently <code>False</code> until you fix
-        that</li>
-    <li>Accuracy is the obvious metric, and it is the one you get by default if
-        you name nothing</li>
-    <li>The trivial baseline &mdash; never fire &mdash; scores 90.96%, so the
-        only meaningful part of any result is the distance above it</li>
-    <li>An SGD classifier in a pipeline reaches 96.90%, cross-validated, with
-        folds that agree to two tenths of a point</li>
-    <li>Report every fold: the same classifier without scaling has a mean of
-        95.03% and a worst fold of 91.63%</li>
-    <li>Scoring on the rows you fitted flatters the number by 0.52 points here,
-        and by everything on a model that can memorise</li>
+    <li>Framed a detection task as binary classification, which makes the
+        positive class rare by construction &mdash; one in ten here, one in ten
+        thousand for fraud, and the arithmetic is the same</li>
+    <li>Derived $\text{accuracy} = p\,\text{recall} + (1-p)\,\text{specificity}$:
+        a classifier that never fires scores exactly $1-p$, and accuracy weights
+        the class you care about by how rare it is</li>
+    <li>Proved that recall is monotone in the threshold and precision is not, and
+        that the one-step lemma says exactly when each moves</li>
+    <li>Read the confusion matrix, and separated the two errors that accuracy
+        adds together and the client prices differently</li>
+    <li>Used precision, recall and F1 &mdash; and saw what each is blind to</li>
+    <li>Chose an operating point against a stated constraint, and defended it
+        with the PR curve rather than the ROC curve, because the negatives
+        outnumber the positives ten to one</li>
+    <li>Extended to multiclass, multilabel and multioutput, where the same
+        matrix and the same ratios still apply</li>
   </ol>
 </section>
 
-<!-- 66 -->
+<!-- 91 -->
 <section data-menu-title="References">
   <h2>In the book</h2>
   <table>
     <tr><th>Topic</th><th>Chapter</th></tr>
-    <tr><td>MNIST, fetching it, and looking at a digit</td><td>3</td></tr>
-    <tr><td>Training a binary classifier; <code>SGDClassifier</code></td><td>3</td></tr>
-    <tr><td>Measuring accuracy with cross-validation</td><td>3</td></tr>
-    <tr><td>Implementing cross-validation by hand</td><td>3</td></tr>
-    <tr><td>Feature scaling and pipelines</td><td>2</td></tr>
-    <tr><td>Stochastic gradient descent as a training procedure</td><td>4</td></tr>
+    <tr><td>Confusion matrix, precision, recall, $F_1$</td><td>3</td></tr>
+    <tr><td>The precision/recall trade-off and <code>decision_function</code></td><td>3</td></tr>
+    <tr><td>The ROC curve and ROC AUC; when to prefer PR</td><td>3</td></tr>
+    <tr><td>Multiclass, error analysis, multilabel, multioutput</td><td>3</td></tr>
+    <tr><td>Random forests and <code>predict_proba</code></td><td>3, 6</td></tr>
+    <tr><td>Average precision, and the maximum that repairs it</td><td>12 (Lecture 14)</td></tr>
   </table>
-  <p class="small muted">Chapter 3 continues past where we stopped. The rest of
-  it is the next lecture, and it exists because of what is on your sheet of
-  paper.</p>
 </section>
 
-<!-- 67 -->
+<!-- 92 -->
 <section class="divider" data-menu-title="Next">
-  <p class="kicker">Lecture 4 &middot; Fix</p>
-  <h1>It never fires</h1>
+  <p class="kicker">Lecture 4 &middot; G&eacute;ron Ch. 4</p>
+  <h1>Training models</h1>
   <p class="small">
-    Thread 2: why accuracy behaves the way it does under imbalance,<br>
-    and why precision is not monotone in the threshold
+    Gradient descent, derived &mdash; batch, mini-batch and stochastic, and what
+    the learning rate does<br>
+    Linear regression by descent rather than by the normal equation<br>
+    Logistic and softmax regression, and reading a coefficient as log-odds
   </p>
-  <p class="clock">Bring the sheet. We open by scoring it.</p>
+  <p class="clock">Run the Lecture 3 notebook first</p>
 </section>
-
 </div>
 </div>
 
 <div class="deck-footer">
   Applications of Machine Learning
   <span class="sep">&middot;</span> Lecture 3
-  <span class="sep">&middot;</span> Finding the rare event
+  <span class="sep">&middot;</span> Classification and its metrics
 </div>
 
 <script src="../lib/reveal.js/dist/reveal.js"></script>
