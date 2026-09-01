@@ -205,14 +205,9 @@ LOADER_PROMPT = prompt(
     constraint="a FUNCTION that downloads if absent and reads if present — the "
                "data will change, and you will need this on another machine",
     check="assert the shape, rather than trusting the download",
-    left_open="what to do if the download is truncated. A short read gives a "
-              "smaller frame and the assert catches it; anything subtler it "
-              "will not.",
-    student="downloading by hand and reading a path under ~/Downloads. It "
-            "works on your machine and nowhere else, which you discover at the "
-            "demo.",
-    catch="delete `datasets/` and re-run. If the cell cannot rebuild its own "
-          "input from nothing, it is not reproducible, it is cached.")
+    **{"try": "delete the `datasets/` directory and re-run the cell. If it "
+              "cannot rebuild its own input from nothing, it is not "
+              "reproducible — it is cached."})
 
 
 # ------------------------------------------------------------------ lecture 1
@@ -249,7 +244,10 @@ holes in it. Find both before reading on.
                        "here are a non-numeric column and a column with holes in "
                        "it, and neither is visible in five rows",
             check="the non-null count of nine columns equals the row count, and "
-                  "of one column it does not"),
+                  "of one column it does not",
+            **{"try": "`housing_full.head()` instead. Which of the two "
+                      "findings above is still visible in five rows, and which "
+                      "is not?"}),
         code('''
 housing_full.info()
 '''),
@@ -261,7 +259,10 @@ housing_full.info()
             constraint="print the missing count as a PERCENTAGE as well as a "
                        "count — 207 sounds like a lot and 1% does not",
             check="`value_counts()` on the categorical sums to 20,640, and one "
-                  "of its levels has n < 10"),
+                  "of its levels has n < 10",
+            **{"try": "`normalize=True` on the value_counts. ISLAND becomes "
+                      "0.0002 — at what point does a rare level stop being a "
+                      "curiosity and start being a problem?"}),
         code('''
 n_missing = housing_full["total_bedrooms"].isna().sum()
 print(f"total_bedrooms is missing in {n_missing} districts "
@@ -292,7 +293,9 @@ scroll past them.
                        "distribution is one bar, and at 10 bins it is inside a "
                        "bar with everything else",
             check="nine panels, one per numeric column, and two of them have a "
-                  "conspicuous spike at their right-hand edge"),
+                  "conspicuous spike at their right-hand edge",
+            **{"try": "`bins=10`, the default. Both spikes vanish into a "
+                      "neighbouring bar. That is why the constraint is there."}),
         code('''
 import matplotlib.pyplot as plt
 
@@ -313,7 +316,10 @@ squinting at it:
             constraint="count it — a histogram shows you a spike and a count "
                        "tells you whether it is 5% of your labels or 0.5%",
             check="the commonest values below the cap are all multiples of the "
-                  "same number; work out which before running it"),
+                  "same number; work out which before running it",
+            **{"try": "raise the threshold from 500,000 to 500,001. The count "
+                      "does not change — what does that tell you about how the "
+                      "cap was applied?"}),
         code('''
 capped = (housing_full["median_house_value"] >= 500_000).sum()
 print(f"{capped} districts sit at the cap "
@@ -349,7 +355,10 @@ the numbers are checkable.
                        "rather than repeating it",
             check="compare each against the median count printed above — one of "
                   "the three is real, one is marginal, and one is "
-                  "indistinguishable from the background"),
+                  "indistinguishable from the background",
+            **{"try": "three values nobody claimed — 460,000, 340,000 and "
+                      "270,000. If those come back comparable, the original "
+                      "claim was about the background, not about the data."}),
         code('''
 for value in (450_000, 350_000, 280_000):
     print(f"${value:>9,}  {counts.get(value, 0):>4d} districts")
@@ -374,7 +383,10 @@ worth doing.
             constraint="stratify on the income BAND, not on the raw income — "
                        "`train_test_split` stratifies on a categorical, and "
                        "20,640 distinct incomes are 20,640 strata",
-            check="the two halves sum to 20,640 and their indices are disjoint"),
+            check="the two halves sum to 20,640 and their indices are disjoint",
+            **{"try": "`stratify=housing_full[\"median_income\"]`, the raw "
+                      "income, instead of the band. Read the error — it says "
+                      "exactly why the banding step exists."}),
         code('''
 from sklearn.model_selection import train_test_split
 
@@ -411,7 +423,9 @@ proportion each kind of split produces.
             constraint="the same seed for both splits, so the only difference "
                        "between them is the stratification",
             check="the stratified error is smaller in every band; the interesting "
-                  "question is by how much"),
+                  "question is by how much",
+            **{"try": "change `random_state` to 0, then 1, then 2. The random "
+                      "error moves every time; does the stratified one?"}),
         code('''
 random_test = train_test_split(housing_full, test_size=0.2,
                                random_state=RANDOM_STATE)[1]
@@ -451,7 +465,10 @@ made from here on.
                        "into a solid blob and the density information, which is "
                        "the point of the plot, is destroyed",
             check="the coastline is legible, and the expensive districts are "
-                  "visibly not uniformly distributed"),
+                  "visibly not uniformly distributed",
+            **{"try": "`alpha=1`, then separately `cmap=\"jet\"`. Two "
+                      "different lessons, and the second is easier to see than "
+                      "to explain."}),
         code('''
 housing.plot(kind="scatter", x="longitude", y="latitude",
              alpha=0.2,                       # density, not just position
@@ -480,7 +497,10 @@ use — and one we will make explicit as a feature in the next lecture.
             constraint="Pearson only, and say so — it measures LINEAR "
                        "association and nothing else",
             check="median_income is far the strongest; every other column is "
-                  "below 0.15 in absolute value"),
+                  "below 0.15 in absolute value",
+            **{"try": "`method=\"spearman\"`, which ranks rather than "
+                      "measures. Which column moves most, and what does its "
+                      "histogram above look like?"}),
         code('''
 corr = housing.select_dtypes(include=[np.number]).corr(numeric_only=True)
 print("linear (Pearson) correlation with the target:\\n")
@@ -506,7 +526,10 @@ tell you that; only knowing what the column means can.
                        "district size, and district size is not what we are "
                        "predicting",
             check="at least one ratio correlates more strongly than either "
-                  "column it was built from"),
+                  "column it was built from",
+            **{"try": "add `bedrooms_per_person`. It is a ratio too — is it "
+                      "any use? Not every combination is worth having, and the "
+                      "correlation is how you find out."}),
         code('''
 housing["rooms_per_house"]   = housing["total_rooms"] / housing["households"]
 housing["bedrooms_ratio"]    = housing["total_bedrooms"] / housing["total_rooms"]
