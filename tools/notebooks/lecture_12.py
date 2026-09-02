@@ -1,14 +1,16 @@
 """
-Lecture 15 — Visual inspection. Flowers102, a convolutional network from
-scratch.
+Lecture 12 — Convolutional networks. Flowers102, a network built from scratch.
+
+Derivation: weight sharing, equivariance and memory.
 
 Exports build() -> list[nbformat cell]. Self-contained: it downloads and
 decodes the data itself rather than assuming a previous notebook is still in
 memory. A notebook that only runs because another one left variables behind is
 not reproducible.
 
-The deck quotes a run of 80 epochs. This notebook runs 30, so that a free Colab
-session finishes it inside the hour, and says so in the cell that trains.
+Runs on CPU. The corpus is subsampled and the run is shortened so a free Colab
+session finishes in minutes; the cell that trains says what it cost and what
+the deck's longer run reached.
 """
 
 from __future__ import annotations
@@ -26,9 +28,9 @@ def code(text: str) -> nbf.NotebookNode:
 
 
 HEADER = """
-# Visual inspection
+# Convolutional networks
 
-**Lecture 15 · Build** · Géron, Chapter 12
+**Lecture 12** · Géron, Chapter 12
 
 Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
 
@@ -36,11 +38,14 @@ Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
 
 **How to use this notebook.** You are not expected to type the code. You are
 expected to *read* it before you run it, and to be able to say what every line
-does and what would break if it changed. Cells marked **⚠ read before running**
-contain a defect on purpose.
+does and what would break if it changed.
+
+Every code cell is preceded by the specification that would produce it — input,
+output, constraint, check. Read the box, work out what the check should say,
+*then* run the cell.
 
 Run the cells in order. Anything that takes more than about twenty seconds says
-so before it starts.
+so before it starts. Nothing here is wrong on purpose.
 
 **The deck's numbers come from an 80-epoch run.** This notebook trains for 30,
 so that it finishes on a free Colab runtime. The shape of every curve is the
@@ -59,7 +64,8 @@ def build() -> list:
             input="nothing",
             output="versions, seeds, and the device",
             constraint="pick the device by asking, and say what to do if it is cpu",
-            check="a version mismatch here produces a confusing error twenty cells later, in a cell that has nothing to do with versions. Print them."),
+            check="a version mismatch here produces a confusing error twenty cells later, in a cell that has nothing to do with versions. Print them.",
+            **{"try": "force `device = \"cpu\"`. Everything in this notebook is sized to run there, and the wall clock tells you whether the accelerator was buying anything."}),
         code('''
 # --- setup -------------------------------------------------------------------
 # Not examinable: engineering hygiene, not machine learning. It is here because
@@ -112,7 +118,8 @@ inside the training loop would dominate every epoch.
             input="Flowers102, all three splits",
             output="uint8 tensors of shape (N, 3, 128, 128) and their labels",
             constraint="decode ONCE, at one resolution, outside the training loop — decoding 8,189 JPEGs inside every epoch would dominate the wall clock",
-            check="assert all three shapes, the dtype, and that the labels run 0 to 101. Assert the shapes rather than trusting the documentation. A resize that silently did nothing gives you variable-sized images and a stack that fails much later."),
+            check="assert all three shapes, the dtype, and that the labels run 0 to 101. Assert the shapes rather than trusting the documentation. A resize that silently did nothing gives you variable-sized images and a stack that fails much later.",
+            **{"try": "decode inside the training loop instead of once up front. The epochs get several times slower and nothing else changes — decoding is not free, it is just usually invisible."}),
         code('''
 IMG = 128            # every image resized to 128 x 128
 N_CLASSES = 102
@@ -155,7 +162,8 @@ the documentation.
             input="the training and test labels",
             output="images per species in each split",
             constraint="assert the training split is exactly balanced at ten per species, and show that the test split is NOT",
-            check="count it rather than believing the documentation. A dataset's README describes what the authors intended to ship."),
+            check="count it rather than believing the documentation. A dataset's README describes what the authors intended to ship.",
+            **{"try": "work out what that number would be for 1,000 classes instead. The anchor falls, and the accuracy a result has to beat falls with it."}),
         code('''
 counts_train = torch.bincount(y_train, minlength=N_CLASSES)
 counts_test  = torch.bincount(y_test,  minlength=N_CLASSES)
@@ -172,7 +180,8 @@ print(f"test:     {counts_test.min()} to {counts_test.max()} images per species"
             input="one image from each of eight random species",
             output="a row of eight, titled by class",
             constraint="`permute(1, 2, 0)` before imshow — the tensor is channels-first and matplotlib wants channels-last",
-            check="look at the data with the architecture in mind. Every property in that list is an argument for weight sharing across position."),
+            check="look at the data with the architecture in mind. Every property in that list is an argument for weight sharing across position.",
+            **{"try": "plot ten images from a single species. The within-class variation is the reason this is harder than Fashion-MNIST, and it is visible in ten pictures."}),
         code('''
 rng = np.random.default_rng(RANDOM_STATE)
 picked = [int((y_train == c).nonzero()[0]) for c in rng.choice(N_CLASSES, 8,
@@ -203,7 +212,8 @@ deliberately rather than reaching for a library default.
             input="the training images",
             output="two numbers per colour channel, and a normalise function taking them as arguments",
             constraint="training split only, and pass the statistics as ARGUMENTS rather than closing over globals — section 11 needs to call this with a different pair",
-            check="a check with a known answer: the training set, normalised, must have mean 0 and sd 1. `del xf` after computing the statistics. 1,020 images in float32 is 200 MB held for no reason once the two numbers are out."),
+            check="a check with a known answer: the training set, normalised, must have mean 0 and sd 1. `del xf` after computing the statistics. 1,020 images in float32 is 200 MB held for no reason once the two numbers are out.",
+            **{"try": "normalise with statistics computed on all the images instead, and compare. They are close — which is why this mistake survives, and why the rule is procedural."}),
         code('''
 xf = X_train.float() / 255.0
 MEAN = xf.mean(dim=(0, 2, 3))
@@ -235,7 +245,8 @@ anything, measure the two models that do no work at all.
             input="the test label counts",
             output="the majority-class accuracy and the uniform-guess accuracy",
             constraint="compute BOTH — with 102 classes they differ by a factor of four, and which one is the fair anchor depends on the imbalance",
-            check="assert the majority baseline exceeds the uniform one, which also confirms the test set is genuinely unbalanced. The assert doubles as a data check. If the two anchors came out equal, the test set is balanced and the counts above are wrong."),
+            check="assert the majority baseline exceeds the uniform one, which also confirms the test set is genuinely unbalanced. The assert doubles as a data check. If the two anchors came out equal, the test set is balanced and the counts above are wrong.",
+            **{"try": "compute a third: the accuracy of always predicting the class that is commonest IN THE TEST SPLIT. It is higher, and it is not available to a real system."}),
         code('''
 majority = float(counts_test.max()) / float(counts_test.sum())
 uniform  = 1.0 / N_CLASSES
@@ -246,24 +257,7 @@ assert majority > uniform, "the test set is balanced after all — check the cou
 '''),
 
         md("""
-## 6 · Commit
-
-**Stop. On paper, now.** Not in this notebook — on paper, where you cannot
-quietly revise it.
-
-```
-Metric:                                            ____________
-Accuracy a deployable sorter would need:         ____________ %
-Accuracy I expect from the network we build:     ____________ %
-```
-
-Doing nothing scores 3.87%. A perfect machine scores 100. Saying *where between
-them* is the exercise, and a prediction you can silently revise is not a
-prediction.
-"""),
-
-        md("""
-## 7 · The network
+## 6 · The network
 
 Three ideas, and nothing else: a convolution shares one set of weights across
 every position; pooling halves the height and width; batch normalisation is
@@ -274,7 +268,8 @@ what makes a stack this deep trainable at all — that was the previous lecture.
             input="the channel counts",
             output="a convolutional stack with a dense head",
             constraint="`bias=False` on every convolution followed by batch norm — the batch norm has its own shift, so a convolution bias is a parameter with no effect on the function",
-            check="a convolution shares one set of weights across every position, pooling halves height and width, and batch norm is what makes a stack this deep trainable at all. Three ideas."),
+            check="a convolution shares one set of weights across every position, pooling halves height and width, and batch norm is what makes a stack this deep trainable at all. Three ideas.",
+            **{"try": "add a fourth convolutional block. Parameters rise, and on this corpus the accuracy does not — depth without data is not free."}),
         code('''
 def conv_block(c_in, c_out, k=3):
     """Conv, batch-norm, ReLU.
@@ -312,7 +307,8 @@ it turns a size-mismatch traceback two hundred lines deep into a printed table.
             input="a dummy batch of two",
             output="the tensor shape after every layer",
             constraint="walk a dummy batch through and PRINT — four lines that turn a size-mismatch traceback two hundred lines deep into a table",
-            check="assert the final shape is (2, N_CLASSES). Print shapes before you train, always. It costs four lines and it is the cheapest debugging in deep learning."),
+            check="assert the final shape is (2, N_CLASSES). Print shapes before you train, always. It costs four lines and it is the cheapest debugging in deep learning.",
+            **{"try": "set `padding=0` on every convolution and re-run this cell alone. Every map shrinks and the flattened size no longer matches the first linear layer."}),
         code('''
 x = torch.zeros(2, 3, IMG, IMG)
 for m in net:
@@ -335,7 +331,8 @@ title suggests.
             input="the network",
             output="the parameter count of the convolutional part, the dense head and the output layer",
             constraint="count by PART, not just in total — and assert the parts sum to the whole, so a layer cannot be missed",
-            check="parameters per training image. Four thousand parameters per image means nothing stops the network storing the training set, and dropout is the only thing asked to prevent it."),
+            check="parameters per training image. Four thousand parameters per image means nothing stops the network storing the training set, and dropout is the only thing asked to prevent it.",
+            **{"try": "replace the first convolution with a dense layer of the same output width and count again. The ratio is the derivation, measured."}),
         code('''
 def n_params(module):
     return sum(p.numel() for p in module.parameters())
@@ -361,7 +358,7 @@ set, and dropout is the only thing we have asked to prevent it.
 """),
 
         md("""
-## 8 · Train it
+## 7 · Train it
 
 ⏱ **about 40 seconds on a GPU or MPS, several minutes on CPU.** 30 epochs of
 32 batches. Nothing prints until the first epoch finishes; that is not a hang.
@@ -375,7 +372,8 @@ that does not announce itself.
             input="1,020 training images, 30 epochs",
             output="training and validation accuracy at every epoch, with wall clock",
             constraint="normalise ONE BATCH AT A TIME in the accuracy function — `normalise(X_test)` as a single tensor is 6,149 × 3 × 128 × 128 float32 = 1.2 GB, and three of those at once is how a Colab session dies",
-            check="assert the history has one entry per epoch. `model.eval()` in the accuracy function. Dropout AND batch norm both change behaviour, and this network has both."),
+            check="assert the history has one entry per epoch. `model.eval()` in the accuracy function. Dropout AND batch norm both change behaviour, and this network has both.",
+            **{"try": "halve the epochs. The final accuracy falls by less than you expect, which is what the flattening curve was already telling you."}),
         code('''
 EPOCHS, BATCH, LR = 30, 32, 3e-4
 
@@ -440,7 +438,8 @@ from the next lecture on, time is one of the things being compared.
             input="the recorded history",
             output="both accuracies against SECONDS, with the baseline marked",
             constraint="wall clock on the x-axis, not epochs — epochs are a unit of nothing, and from the next lecture on, time is one of the things being compared",
-            check="fix the y-axis to 0-100 and draw the baseline. An autoscaled accuracy axis makes every run look dramatic."),
+            check="fix the y-axis to 0-100 and draw the baseline. An autoscaled accuracy axis makes every run look dramatic.",
+            **{"try": "plot against epoch instead of wall clock. The shape is the same and the decision it supports is not — one of the two axes is about the method and the other about the machine."}),
         code('''
 fig, ax = plt.subplots(figsize=(9, 3.4))
 ax.plot(hist["seconds"], [100*v for v in hist["train"]], label="training set")
@@ -460,14 +459,15 @@ shape: a persistent gap between two plateaus is **variance**.
 """),
 
         md("""
-## 9 · The test set. Once.
+## 8 · The test set. Once.
 """),
         prompt(
             label="the test set, once",
             input="the 6,149 held-out images",
             output="the accuracy, and its ratio to the baseline",
             constraint="run the evaluation TWICE and assert the two agree exactly — a deterministic function of fixed weights and fixed data returns the same number every time",
-            check="an exact-equality assert on a repeated evaluation is the cheapest possible eval-mode check, and it catches both dropout and batch norm."),
+            check="an exact-equality assert on a repeated evaluation is the cheapest possible eval-mode check, and it catches both dropout and batch norm.",
+            **{"try": "nothing. The test set has now been used, and any change made in response to its number is you fitting it."}),
         code('''
 test_acc = accuracy(net, X_test, y_test)
 print(f"test accuracy {test_acc:.4f}   ({test_acc:.2%})")
@@ -483,7 +483,7 @@ assert accuracy(net, X_test, y_test) == test_acc, \\
 '''),
 
         md("""
-## 10 · Look at what it learned
+## 9 · Look at what it learned
 
 The first layer's weights are 4,704 numbers arranged as 32 filters of
 7 × 7 × 3. That is small enough to *look at*.
@@ -493,7 +493,8 @@ The first layer's weights are 4,704 numbers arranged as 32 filters of
             input="the first layer's 32 filters of 7×7×3, before and after training",
             output="two rows of sixteen",
             constraint="rescale EVERY FILTER to its own range — on a shared scale only the loudest filter is visible and the rest are grey squares",
-            check="keep a clone of the initial weights BEFORE training. There is no way to recover them afterwards except by re-seeding, and the comparison is the whole point of the figure."),
+            check="keep a clone of the initial weights BEFORE training. There is no way to recover them afterwards except by re-seeding, and the comparison is the whole point of the figure.",
+            **{"try": "look at the SECOND convolutional layer's filters instead. They are far less interpretable, which is a fact about depth rather than a failure of the plot."}),
         code('''
 def filter_grid(w):
     """Rescale every filter to its own range, or only the loudest is visible."""
@@ -528,7 +529,8 @@ answer it now.
             input="a single test image through the first conv-bn-relu block",
             output="the input beside eight of the 32 activation maps",
             constraint="`eval()` and `no_grad()` — batch norm in training mode on a batch of ONE would standardise the image against itself",
-            check="assert the activation shape is (1, 32, 128, 128). `magma` rather than a diverging colormap. These are post-ReLU, so they are non-negative, and a diverging map wastes half its range."),
+            check="assert the activation shape is (1, 32, 128, 128). `magma` rather than a diverging colormap. These are post-ReLU, so they are non-negative, and a diverging map wastes half its range.",
+            **{"try": "pick a filter that looks like noise and apply it. Its feature map is not noise — a filter is hard to read and its output is not."}),
         code('''
 net.eval()
 with torch.no_grad():
@@ -549,22 +551,23 @@ print("bright means: this filter fired strongly here. Nothing more mystical.")
 '''),
 
         md("""
-## 11 · An assistant writes the normalisation
+## 10 · Normalisation is fitted, and fitting has a scope
 
-Here is a real request and the code it returns. **⚠ Read before running.** It
-runs, it imports nothing exotic, and it prints three believable means.
+Per-channel means and standard deviations are **learned from data**, exactly
+like the imputer and the scaler in Lecture 2. So the same rule applies: they are
+computed on the training split, and the validation and test images are
+normalised with those numbers, not with their own.
 
-> *"Compute the per-channel normalisation statistics for the Flowers102
-> dataset and write a function that normalises an image batch with them."*
-
-There is exactly one thing missing from that prompt, and it is a noun.
+It is easy to miss here because the statistics look like a property of the
+dataset rather than a fitted quantity. They are not. Measure the difference.
 """),
         prompt(
-            label="⚠ what the assistant returns",
+            label="statistics from all the data, against training only",
             input="'compute the per-channel normalisation statistics for the Flowers102 dataset and write a function that normalises with them'",
             output="the three channel means, beside the training-only ones",
             constraint="run it exactly as returned — it imports nothing exotic and prints three believable means",
-            check="reviewer question 1, applied to a cell with no model in it. What touched the test set — and `mean()` counts as touching."),
+            check="reviewer question 1, applied to a cell with no model in it. What touched the test set — and `mean()` counts as touching.",
+            **{"try": "compute the statistics on the TEST split alone and compare all three. They are close, which is exactly why this mistake survives — closeness is not correctness, and nothing warns you."}),
         code('''
 # what the assistant returned
 all_images = torch.cat([X_train, X_val, X_test])       # <-- all 8,189
@@ -600,7 +603,8 @@ everything else identical.
             input="two seeds under each set of statistics",
             output="validation accuracy each way, the difference between conditions, and the difference between seeds",
             constraint="report BOTH differences — the effect is smaller than the seed noise, and that is the finding rather than an embarrassment",
-            check="the rule is PROCEDURAL — split first — precisely because you cannot tell from the score which case you are in. A test set of 50 images, or statistics of the target rather than the input, and it has teeth."),
+            check="the rule is PROCEDURAL — split first — precisely because you cannot tell from the score which case you are in. A test set of 50 images, or statistics of the target rather than the input, and it has teeth.",
+            **{"try": "shrink the corpus to a tenth and measure again. The difference grows, because the training statistics and the full statistics diverge as the sample shrinks."}),
         code('''
 def quick_train(mean, std, seed, epochs=12):
     torch.manual_seed(seed)
@@ -662,7 +666,8 @@ known answer.
             input="the statistics and their provenance",
             output="a provenance check",
             constraint="assert what the statistics were computed FROM, not what they are — the values are unremarkable either way, and only the provenance distinguishes the two cases",
-            check="the corrected specification has four additions: which split, print it, pass it explicitly, and a check with a known answer. Only the first is about correctness; the other three are about being able to tell."),
+            check="the corrected specification has four additions: which split, print it, pass it explicitly, and a check with a known answer. Only the first is about correctness; the other three are about being able to tell.",
+            **{"try": "weaken the assertion to compare means only. It passes, and the standard deviations are still wrong — an assertion that cannot fail is decoration."}),
         code('''
 # the assertion that catches this particular bug is not about the statistics —
 # it is about what they were computed from
@@ -673,7 +678,7 @@ print("statistics provenance check passes")
 '''),
 
         md("""
-## 12 · Where we are
+## 11 · Where we are
 
 | | Test accuracy |
 |---|---|
@@ -682,25 +687,23 @@ print("statistics provenance check passes")
 | **yours, today** | printed above |
 | what the operator needs | 90% |
 
-Write your **measured** accuracy on the same sheet of paper, next to the number
-you predicted, and bring it to the next lecture. We open by comparing them.
-
 **What we deliberately did not do:** no augmentation, no pretrained weights, no
-schedule, no architecture search. Each is a lever. One of them moves the number
-by more than everything else in this course put together.
+schedule, no architecture search. Each is a lever, and Lecture 13 pulls the one
+that moves the number by more than all the others together.
 
-### Red-team
-
-Swap notebooks with the team beside you. Ten minutes, five questions:
+**Five questions to ask of any vision pipeline**, and the fifth has a specific
+answer here:
 
 1. What touched the test set?
-2. What was fitted, and on what?
-3. What is the shape here?
-4. What was dropped — rows, columns, images? Count them.
-5. What is the default I did not ask for?
+2. What was fitted, and on what? — the normalisation statistics are fitted
+3. What is the shape here? — after every convolution and every pool
+4. What was dropped: rows, columns, images? Count them
+5. What is the default you did not ask for? In this notebook it is a keyword
+   argument of `nn.Conv2d`, and it changes the output size of every layer
 
-Question 5 has a specific answer in this lecture, and it is a keyword argument
-of `nn.Conv2d`. Report what you **found**, not what you would have done
-differently.
+**Before the next lecture:** run this notebook top to bottom. Then set
+`padding=0` on every convolution and re-run just the shape check. Every feature
+map shrinks, the flattened size changes, and the first linear layer no longer
+matches — which is question 5, answered by breaking it.
 """),
     ]
