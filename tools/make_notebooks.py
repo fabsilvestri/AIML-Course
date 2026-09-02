@@ -1285,6 +1285,14 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true",
                     help="execute each notebook and fail on the first error")
+    ap.add_argument("--module", default="",
+                    help="build ONE module file by path, ignoring the "
+                         "lecture_NN.py naming rule, and write it to --out. "
+                         "This is how a draft parked at lecture_NN_NEW.py is "
+                         "tested while its real slot is still occupied by the "
+                         "old lecture another agent is converting.")
+    ap.add_argument("--out", default="",
+                    help="output path for --module (default: a temp file)")
     ap.add_argument("--only", default="",
                     help="comma-separated lecture numbers, e.g. --only 19,20. "
                          "Executing all 24 takes hours, so a notebook under "
@@ -1294,6 +1302,36 @@ def main() -> int:
 
     OUT.mkdir(parents=True, exist_ok=True)
     written = []
+    if args.module:
+        import importlib.util, tempfile
+        src = Path(args.module).resolve()
+        if not src.is_file():
+            print(f"{src} does not exist")
+            return 1
+        spec = importlib.util.spec_from_file_location(src.stem, src)
+        mod = importlib.util.module_from_spec(spec)
+        sys.path.insert(0, str(src.parent))
+        spec.loader.exec_module(mod)
+        nb = build(mod.build())
+        _ensure_prompt_note(nb, 0)
+        out = Path(args.out) if args.out else Path(
+            tempfile.gettempdir()) / f"{src.stem}.ipynb"
+        nbf.write(nb, out)
+        cells = nbf.read(out, as_version=4).cells
+        bad = 0
+        for i, c in enumerate(cells):
+            if c.cell_type != "code":
+                continue
+            try:
+                compile(c.source, f"cell {i}", "exec")
+            except SyntaxError as e:
+                print(f"  cell {i} does not compile — {e}")
+                bad += 1
+        n_code = sum(c.cell_type == "code" for c in cells)
+        print(f"  {out}  {n_code} code cells"
+              + (f"  {bad} DO NOT COMPILE" if bad else ""))
+        return 1 if bad else 0
+
     for n, fn in sorted(LECTURES.items()):
         if wanted and n not in wanted:
             continue

@@ -68,6 +68,20 @@ them.
 Regenerate with `python3 tools/make_notebooks.py --only NN` (never without
 `--only`, which would rewrite all 24).
 
+**If your target slot is still occupied** — a merge's number is usually still
+held by the old lecture another agent is converting — build at
+`slides/lecture-NN-NEW.html` and `tools/notebooks/lecture_NN_NEW.py`. Discovery
+matches exactly `lecture_NN.py`, so a `-NEW` module is invisible to `--only`.
+Test it with:
+
+    python3 tools/make_notebooks.py --module tools/notebooks/lecture_NN_NEW.py \
+                                    --out /tmp/draft.ipynb
+
+which builds it, compiles every cell, and writes it where you can execute it
+with nbconvert. The integrator renames it into place and runs the consistency
+check. **Never overwrite an occupied slot** — the file in it is another agent's
+source.
+
 ---
 
 ## Three classes of error that are invisible to grep
