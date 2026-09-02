@@ -255,28 +255,39 @@ majority = max(test_y.mean(), 1 - test_y.mean())
 print(f"always predict one class:  {majority:.1%}")
 '''),
         prompt(
-            label="⏱ 15 s — the anchor that is actually hard to beat",
-            input="all 25,000 training reviews, unigrams and bigrams",
+            label="⏱ 30 s — the anchor that is actually hard to beat",
+            input="all 25,000 training reviews, first unigrams alone and then unigrams with bigrams",
             output="a tf-idf logistic regression and its test accuracy",
             constraint="`fit_transform` on train and `transform` on test — different verbs, and the vocabulary is a fitted object like any other",
             check="assert the two matrices have the same number of COLUMNS, which is what fails if `fit_transform` was called twice. Thirty seconds of counting words is the thing your recurrent network has to beat. Measure it before you build anything."),
         code('''
-# ⏱ about 15 seconds: 25,000 documents, unigrams and bigrams.
+# ⏱ about 30 seconds for the two of them: 25,000 documents each.
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 
+def fit_bow(ngram_range, max_features):
+    """One tf-idf logistic regression. Everything else is held fixed."""
+    vec = TfidfVectorizer(min_df=2, ngram_range=ngram_range,
+                          max_features=max_features)
+    Xtr = vec.fit_transform(train_x)              # fit on TRAINING reviews only
+    Xte = vec.transform(test_x)                   # transform, a different verb
+    assert Xtr.shape[0] == 25_000
+    assert Xtr.shape[1] == Xte.shape[1], "different feature spaces"
+    clf = LogisticRegression(max_iter=2000, C=4.0).fit(Xtr, train_y)
+    return vec, clf, Xtr, Xte, float((clf.predict(Xte) == test_y).mean())
+
+# Single words first, so that adding pairs is a change of ONE thing and its
+# cost can be read off rather than argued about.
+_, _, X_uni, _, uni_acc = fit_bow((1, 1), None)
+print(f"tf-idf, single words:      {uni_acc:.1%}  "
+      f"({X_uni.shape[1]:,} features)")
+
 t0 = time.perf_counter()
-vec = TfidfVectorizer(min_df=2, ngram_range=(1, 2), max_features=200_000)
-X_bow_train = vec.fit_transform(train_x)          # fit on TRAINING reviews only
-X_bow_test  = vec.transform(test_x)               # transform, a different verb
-
-bow = LogisticRegression(max_iter=2000, C=4.0).fit(X_bow_train, train_y)
-bow_acc = (bow.predict(X_bow_test) == test_y).mean()
-
-assert X_bow_train.shape[0] == 25_000
-assert X_bow_train.shape[1] == X_bow_test.shape[1], "different feature spaces"
-print(f"tf-idf + logistic regression: {bow_acc:.1%}  "
+vec, bow, X_bow_train, X_bow_test, bow_acc = fit_bow((1, 2), 200_000)
+print(f"tf-idf, words and pairs:   {bow_acc:.1%}  "
       f"({X_bow_train.shape[1]:,} features, {time.perf_counter() - t0:.0f}s)")
+print(f"pairs buy {100*(bow_acc - uni_acc):+.1f} points for "
+      f"{X_bow_train.shape[1] / X_uni.shape[1]:.1f}x the features")
 '''),
 
         md("""
