@@ -67,8 +67,14 @@ run it again, until it is clean. See §7 of AUTHORING.md.
 | 8 | 0 | — | clean, first try |
 | 9 | 0 | — | clean |
 | 10 | 3 | **0** | clean |
-| 12 | deck done; notebook next | | |
-| 11, 13–24 | not begun | | |
+| 11 | deck + notebook built (merge of old 13+14) | | to check |
+| 12 | deck + notebook built | | checking |
+| 13 | deck + notebook built | | to check |
+| 14–24 | not begun | | |
+
+**Decks on the new design: 13 of 24.** Old 9, 10, 13, 14 and 16 are deleted,
+their content merged into new 8, 11 and 13. Remaining old-numbered files: 17,
+18, 19, 20, 21, 22, 23, 24.
 
 **Lecture 12's derivation had to be moved between lectures.** `LECTURES.md`
 assigns *weight sharing, equivariance and memory* to Lecture 12, but the whole
