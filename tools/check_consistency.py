@@ -117,11 +117,14 @@ NAMESPACES: dict[int, tuple[str, ...]] = {
     16: ("app10",),                  # old 20, recurrent networks
     17: ("l21",),                   # old 21, IMDb
     18: ("l22",),                   # old 22, IMDb / transformers
-    19: ("l19",),                    # SciFact, lexical retrieval — figures_ir.py
-    20: ("l20",),                    # SciFact, dense retrieval — figures_ir.py
-    # 21-22 are Part V RecSys and own no keys yet. Left OUT deliberately so
-    # they are skipped loudly rather than checked against an empty pool, which
-    # would pass and mean nothing.
+    19: ("l19",),                   # SciFact, lexical retrieval — figures_ir.py
+    20: ("l20",),                   # SciFact, dense retrieval — figures_dense.py
+    # rec21/rec22, not l21/l22: those names belong to Lectures 17 and 18, which
+    # carried those numbers under the old plan. The facts did not move when the
+    # lectures were renumbered, and renaming several hundred keys to repair it
+    # is risk with no benefit to a student.
+    21: ("rec21",),                 # MovieLens, factorisation — figures_recsys.py
+    22: ("rec22",),                 # MovieLens, ranking and protocols
     23: ("l23",),                   # old 23, COCO multimodal
     24: ("l24",),                   # old 24, RAG and closing
 }

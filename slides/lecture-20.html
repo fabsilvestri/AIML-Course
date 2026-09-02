@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 20 — Information retrieval: dense retrieval</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Information retrieval:<br>dense retrieval</h1>
+  <p class="subtitle">SciFact, and the same judgements as last week</p>
+  <p><span class="badge badge-lec">Lecture 20</span>
+     <span class="badge badge-notes">Lecture notes</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">The headline result is that the off-the-shelf neural
+  retriever LOSES to BM25 here. Do not soften it — it is the most useful thing
+  in the lecture.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we left off">
+  <h2>Where we left off</h2>
+  <p class="small">BM25, with no training at all, scored
+  <strong>0.6611</strong> NDCG@10 on SciFact. And it failed in a
+  way no parameter could fix:</p>
+  <p class="lead small">&ldquo;In mice, P. chabaudi parasites are able to proliferate faster early in infection when inoculated at lower numbers than when inoculated at high numbers.&rdquo;</p>
+  <p class="small">Its one relevant abstract shares two words with it &mdash;
+  <code>in</code> and <code>to</code> &mdash; and BM25 ranks that abstract
+  <strong class="fail">4,999</strong> of 5,183.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Two separate gaps, needing two separate answers</span>
+    <strong>Ranked too low:</strong> recall@10 is 77.8% but
+    recall@100 is 88.5%. Those documents were found and misplaced.<br><br>
+    <strong>Never found:</strong> the rest. No re-ordering of what BM25 returned
+    can reach them.
+  </div>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="The vocabulary of the problem, once more">
+  <h2>The vocabulary of the problem, once more</h2>
+  <p class="small">Three words get used interchangeably and should not be:</p>
+  <table class="smaller">
+    <tr><td><strong>Retrieval</strong></td><td class="small">producing candidates from the whole corpus. Judged on recall at depth</td></tr>
+    <tr><td><strong>Ranking</strong></td><td class="small">ordering a fixed candidate set. Judged on NDCG, MRR, P@1</td></tr>
+    <tr><td><strong>Relevance</strong></td><td class="small">a property of a pair, decided by a person, recorded in the judgements</td></tr>
+  </table>
+  <p class="small">A method improves one of the first two. Claims that mix them
+  are how &ldquo;our re-ranker improves retrieval&rdquo; gets written, which is
+  a sentence that cannot be true.</p>
+  <p class="small muted">Our numbers: retrieval, 0.8852 against
+  0.9250; ranking, 0.6611 against 0.6451.
+  Two different questions, and the two systems trade places between them.</p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>Vocabulary mismatch, and why an index of strings cannot solve it
+        <span class="muted small">(10 min)</span></li>
+    <li><strong>Bi-encoders</strong> &mdash; encode once, retrieve by inner
+        product; and in-batch negatives <span class="muted small">(30 min)</span></li>
+    <li><strong>Measured</strong> against BM25, on the same judgements
+        <span class="muted small">(20 min)</span></li>
+    <li>Cross-encoders and re-ranking; hybrid retrieval; approximate
+        nearest neighbours <span class="muted small">(30 min)</span></li>
+  </ol>
+  <p class="small muted">No derivation today. The mathematics of this lecture is
+  the dot product, and you have had it since Lecture&nbsp;8.</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="What you should be able to do afterwards">
+  <h2>What you should be able to do afterwards</h2>
+  <ul class="tight small">
+    <li>Say what a bi-encoder computes and why it can be indexed in advance</li>
+    <li>Say what a cross-encoder computes and why it cannot</li>
+    <li>Explain in-batch negatives, and what the batch size actually buys</li>
+    <li>State the first-stage ceiling argument, and compute it from a recall
+        curve</li>
+    <li>Read a recall/latency curve for an approximate index and choose a point
+        on it</li>
+    <li>Say, from a table, when a neural retriever is not worth deploying</li>
+  </ul>
+</section>
+
+<!-- 6 -->
+<section class="divider" data-menu-title="◆ What an index of strings<br>cannot do">
+  <p class="kicker">First ten minutes</p>
+  <h1>What an index of strings<br>cannot do</h1>
+  <p class="clock">10 minutes</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="The mismatch, restated as a requirement">
+  <h2>The mismatch, restated as a requirement</h2>
+  <p class="small">Last lecture measured it: a relevant abstract is missing
+  <strong>40.9%</strong> of its
+  claim&rsquo;s words on average, and
+  28.6% of judged pairs share
+  fewer than half.</p>
+  <ul class="tight small">
+    <li>&ldquo;heart attack&rdquo; and &ldquo;myocardial infarction&rdquo;</li>
+    <li>&ldquo;lower numbers&rdquo; and &ldquo;reduced inoculum&rdquo;</li>
+    <li>A mechanism described rather than named</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What is needed</span>
+    A representation in which <strong>two texts that mean the same thing are
+    close</strong>, whether or not they share a word. Which is precisely what
+    Lectures&nbsp;17 and 18 built, and why Part&nbsp;V comes after Part&nbsp;IV.
+  </div>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="The three repairs that do not work">
+  <h2>The three repairs that do not work</h2>
+  <table class="smaller">
+    <tr><th>Repair</th><th>Why it falls short</th></tr>
+    <tr><td>Stemming</td><td class="small">merges word forms, not concepts &mdash; nothing links <em>infarction</em> to <em>attack</em></td></tr>
+    <tr><td>A synonym dictionary</td><td class="small">someone must write it, per domain, and it cannot cover paraphrase</td></tr>
+    <tr><td>Query expansion</td><td class="small">adds terms from the top results, so it needs the answer to already be near the top &mdash; exactly what fails here</td></tr>
+  </table>
+  <p class="small">Each is a patch on the same assumption: that relevance is
+  visible in shared strings. The assumption is what has to go.</p>
+  <p class="small muted">This is the shape of every move from feature
+  engineering to learned representations in this course. The patches are not
+  stupid; they are bounded, and the bound is the assumption.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="What a lexical index gets right">
+  <h2>What a lexical index gets right</h2>
+  <p class="small">Before replacing it, be fair to it. BM25 is
+  <strong>exact</strong> where the words do match:</p>
+  <ul class="tight small">
+    <li>A rare technical term &mdash; a gene name, a drug, an identifier &mdash;
+        is matched exactly, and an embedding may blur it into its neighbours</li>
+    <li>It needs no training data, no GPU and no model version to record</li>
+    <li>Its score is <strong>explainable</strong>: the contribution of every
+        term can be printed, as we did last lecture</li>
+    <li>A new document is indexed in microseconds; no re-encoding, no re-fitting</li>
+  </ul>
+  <p class="small">None of that is nostalgia. Three of the four are operational
+  requirements that outlive whichever model is fashionable, and they are why
+  BM25 is still in the first stage of systems that also run neural rankers.</p>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="What Part IV already gave us">
+  <h2>What Part IV already gave us</h2>
+  <ul class="tight small">
+    <li>Lecture&nbsp;17: a token embedding, and a sentence vector from pooling</li>
+    <li>Lecture&nbsp;18: attention, so a token&rsquo;s vector depends on its
+        context &mdash; <em>bank</em> in a river sentence and in a finance
+        sentence are no longer the same vector</li>
+    <li>Both: a fixed-width vector for a variable-length text</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">The one new idea in this lecture</span>
+    Put the <strong>query and the document in the same space</strong>, and make
+    the score a dot product. Everything else today is a consequence of that
+    choice &mdash; what can be precomputed, what must be approximated, and what
+    the model is allowed to see.
+  </div>
+  <p class="small muted">Which is why there is no derivation: the mathematics is
+  a normalised inner product, and you have had it since Lecture&nbsp;8.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="From tokens to one vector">
+  <h2>From tokens to one vector</h2>
+  <p class="small">Lecture&nbsp;18 left us with one vector per token. A
+  retrieval score needs one vector per <em>text</em>, so they must be pooled:</p>
+  <table class="smaller">
+    <tr><th>Pooling</th><th>What it does</th></tr>
+    <tr><td>[CLS]</td><td class="small">take the reserved first token&rsquo;s vector &mdash; only meaningful if the model was trained to put something there</td></tr>
+    <tr><td>Mean</td><td class="small">average the token vectors, masking padding &mdash; robust, and what our model uses</td></tr>
+    <tr><td>Max</td><td class="small">component-wise maximum &mdash; rarely better, and discards how often a thing was said</td></tr>
+  </table>
+  <p class="small fail">Masking the padding is not optional. Mean-pooling
+  <em>over</em> the padding tokens makes a text&rsquo;s vector depend on the
+  batch it was encoded in &mdash; the same abstract gets two different vectors,
+  and nothing raises an error.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="Why the vectors are normalised">
+  <h2>Why the vectors are normalised</h2>
+  <p class="small">Normalise to unit length and the inner product becomes the
+  cosine, which throws away vector <em>magnitude</em>. That is deliberate.</p>
+  <ul class="tight small">
+    <li>Magnitude in these encoders tracks length and token frequency, not
+        relevance &mdash; so an unnormalised dot product quietly prefers long
+        documents, which is the failure BM25&rsquo;s $b$ was invented for</li>
+    <li>Normalised scores are bounded in $[-1,1]$, which makes a threshold
+        transferable between corpora</li>
+    <li>And it makes the clustering in the last section legitimate: $k$-means on
+        the sphere is a meaningful thing to do</li>
+  </ul>
+  <p class="small muted">The same trap as Lecture&nbsp;19&rsquo;s length
+  normalisation, arriving from a different direction. Long documents win by
+  default unless something is done about it.</p>
+</section>
+
+<!-- 13 -->
+<section class="divider" data-menu-title="◆ Bi-encoders">
+  <p class="kicker">The method</p>
+  <h1>Bi-encoders</h1>
+  <p class="clock">30 minutes · examinable</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Encode both sides into one space">
+  <h2>Encode both sides into one space</h2>
+  <div class="eqn-box">
+    $$\text{score}(q, d) \;=\; E(q) \cdot E(d), \qquad
+    E : \text{text} \to \mathbb{R}^{384}$$
+  </div>
+  <p class="small">One encoder, applied separately to the query and to the
+  document. Vectors normalised, so the inner product is a cosine.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">Why "separately" is the whole design</span>
+    $E(d)$ does not depend on the query. So <strong>every document can be
+    encoded once, offline, and stored</strong>; at request time you encode one
+    short query and take 5,183
+    inner products. The expensive part happens before anyone asks.
+  </div>
+  <p class="small muted">Hold on to that sentence. It is also the reason the
+  bi-encoder is the <em>weaker</em> of the two neural models in this lecture.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="One encoder or two?">
+  <h2>One encoder or two?</h2>
+  <table class="smaller">
+    <tr><th></th><th>Shared encoder</th><th>Two encoders</th></tr>
+    <tr><td>Parameters</td><td class="num">one set</td><td class="num">two sets</td></tr>
+    <tr><td>Suits</td><td class="small">symmetric tasks &mdash; sentence similarity</td><td class="small">asymmetric &mdash; short query, long document</td></tr>
+    <tr><td>Risk</td><td class="small">a short query and a long abstract are not the same kind of text</td><td class="small">twice the parameters on the same labels</td></tr>
+  </table>
+  <p class="small">We use a shared encoder today, because the model we borrow
+  was trained that way. It is a real modelling choice and it should be reported
+  &mdash; a paper that says &ldquo;bi-encoder&rdquo; without saying which has
+  told you less than it thinks.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="The two architectures, side by side">
+  <h2>The two architectures, side by side</h2>
+  <div class="pipeline">
+    <div class="stage"><span class="stage-n">B</span> <strong>Bi-encoder</strong>
+      <span class="small">$E(q)$ and $E(d)$ computed apart, then a dot product.
+      $E(d)$ is query-independent, so it can be stored. The query never touches
+      the document&rsquo;s tokens.</span></div>
+    <div class="stage"><span class="stage-n">X</span> <strong>Cross-encoder</strong>
+      <span class="small">one pass over $q$ and $d$ together. Every query token
+      attends to every document token. Nothing can be stored, because nothing
+      exists until the query arrives.</span></div>
+  </div>
+  <p class="small">The accuracy difference and the cost difference have the
+  <strong>same cause</strong>: whether the query is present when the document is
+  read. That is worth being able to say in one sentence in the oral.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="What that costs to store">
+  <h2>What that costs to store</h2>
+  <table class="smaller">
+    <tr><th></th><th class="num">Per document</th><th class="num">Whole corpus</th></tr>
+    <tr><td>Dense vectors, 384-d float32</td><td class="num">1,536 bytes</td><td class="num">8.0 MB</td></tr>
+    <tr><td>Inverted index postings</td><td class="num">488 bytes</td><td class="num">2.5 MB</td></tr>
+  </table>
+  <p class="small">Three times the storage, and &mdash; unlike postings &mdash;
+  <strong>every byte of it is touched by every query</strong>: the dense scan is
+  dense. The inverted index skips the documents sharing no term; the dense index
+  cannot skip anything, because every vector has a non-zero dot product with
+  every query.</p>
+  <p class="small fail">That is why approximate nearest-neighbour search exists,
+  and it is the last section of this lecture.</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="Building the dense index">
+  <h2>Building the dense index</h2>
+  <pre><code class="language-python">D = encode(model, documents)     # once, offline, 5,183 x 384
+D = D / np.linalg.norm(D, axis=1, keepdims=True)
+
+def search(query, k=10):
+    q = encode(model, [query])[0]
+    q /= np.linalg.norm(q)
+    s = D @ q                    # every document, exactly
+    return np.argsort(-s)[:k]</code></pre>
+  <p class="small">Six lines, and it is a complete retrieval system. Note what
+  is <em>not</em> here: no index structure, no library, no database &mdash; the
+  matrix product <em>is</em> the search, and on this corpus it is fast enough to
+  be exact.</p>
+  <p class="small muted">Everything a vector database adds is a way of not doing
+  that matrix product in full, and it is bought with recall.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="The dimension is a dial too">
+  <h2>The dimension is a dial too</h2>
+  <p class="small">384 dimensions is a choice the model made for us.
+  Its consequences are arithmetic:</p>
+  <table class="smaller">
+    <tr><td>Bytes per document</td><td class="num">1,536</td></tr>
+    <tr><td>This corpus</td><td class="num">8.0 MB</td></tr>
+    <tr><td>The same corpus at 768 dimensions</td><td class="num">15.9 MB</td></tr>
+    <tr><td>Ten million documents at 384-d</td><td class="num">15.4 GB</td></tr>
+  </table>
+  <p class="small">Every one of those bytes is read on every exact query. This is
+  the sense in which a dense index is expensive: not to build, but to
+  <em>use</em> &mdash; and it is what quantisation and approximate search exist
+  to reduce.</p>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="Training it: what the objective must say">
+  <h2>Training it: what the objective must say</h2>
+  <p class="small">We want $E(q)\cdot E(d^{+})$ large and
+  $E(q)\cdot E(d^{-})$ small. Written as a softmax over one positive and a set
+  of negatives:</p>
+  <div class="eqn-box compact">
+    $$\mathcal{L} = -\log
+    \frac{\exp(E(q)\cdot E(d^{+})/\tau)}
+         {\exp(E(q)\cdot E(d^{+})/\tau) + \sum_{d^{-}}\exp(E(q)\cdot E(d^{-})/\tau)}$$
+  </div>
+  <p class="small">Which is the cross-entropy of Lecture&nbsp;17 with the
+  documents as classes, and the contrastive objective you will meet again in
+  Lecture&nbsp;23 with images on one side.</p>
+  <p class="small">The positives come from the judgements. <strong>Where do the
+  negatives come from?</strong> There are millions of documents and you cannot
+  score them all.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="In-batch negatives">
+  <h2>In-batch negatives</h2>
+  <p class="small">The trick: in a batch of $B$ query&ndash;document pairs,
+  every <em>other</em> document in the batch is a negative for every query. One
+  encoding pass, $B^2$ scores.</p>
+  <table class="smaller">
+    <tr><th class="num">Batch $B$</th><th class="num">Texts encoded</th><th class="num">Scores available</th><th class="num">Negatives per query</th></tr>
+    <tr><td class="num">8</td><td class="num">16</td><td class="num">64</td><td class="num">7</td></tr>
+    <tr><td class="num">32</td><td class="num">64</td><td class="num">1,024</td><td class="num">31</td></tr>
+    <tr><td class="num">128</td><td class="num">256</td><td class="num">16,384</td><td class="num">127</td></tr>
+    <tr><td class="num">512</td><td class="num">1,024</td><td class="num">262,144</td><td class="num">511</td></tr>
+  </table>
+  <p class="small">Encoding grows linearly and negatives grow linearly, but the
+  <em>scores</em> grow quadratically &mdash; the dot products are free next to
+  the encoder. This is why dense-retrieval papers report batch sizes in the
+  thousands, and why the batch size is a modelling decision here rather than a
+  memory setting.</p>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="The temperature, and what it does">
+  <h2>The temperature, and what it does</h2>
+  <p class="small">The $\tau$ in the objective is not decoration. Scores are
+  cosines, so they live in $[-1, 1]$; a softmax over that range is nearly
+  uniform, and the gradient nearly vanishes.</p>
+  <ul class="tight small">
+    <li>Small $\tau$ &mdash; sharpens the distribution, so the hardest negative
+        dominates the gradient</li>
+    <li>Large $\tau$ &mdash; flattens it, so all negatives contribute nearly
+        equally and the model learns slowly</li>
+  </ul>
+  <p class="small">Typical values are 0.01 to 0.05, which are <em>small</em>:
+  dividing a cosine by 0.05 spreads $[-1,1]$ across $[-20, 20]$, which is where
+  a softmax has gradient to give.</p>
+  <p class="small muted">Lecture&nbsp;23 derives this properly, for the same
+  objective with images on one side. Today it is a parameter with a stated job.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="Why the negatives are most of the work">
+  <h2>Why the negatives are most of the work</h2>
+  <p class="small">A random negative is almost always trivially wrong: a random
+  abstract shares nothing with the claim, and the model learns to separate
+  &ldquo;about medicine&rdquo; from &ldquo;about anything else&rdquo;.</p>
+  <ul class="tight small">
+    <li><strong>Hard negatives</strong> &mdash; documents BM25 ranks highly but
+        which are not relevant. These teach the distinction that matters</li>
+    <li><strong>False negatives</strong> &mdash; and the trap: a hard negative
+        mined this way is often <em>relevant but unjudged</em>, so training
+        actively teaches the model that a correct answer is wrong</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">The same pooling problem, now inside training</span>
+    Lecture&nbsp;19 said unjudged documents are scored as irrelevant at
+    <em>evaluation</em>. Here they are scored as irrelevant during
+    <strong>training</strong>, which is worse: the error is no longer an
+    accounting mistake, it is a gradient.
+  </div>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="The false-negative problem, sized">
+  <h2>The false-negative problem, sized</h2>
+  <p class="small">Hard negatives are mined by taking a first stage&rsquo;s
+  top results and calling the unjudged ones negative. On this corpus:</p>
+  <table class="smaller">
+    <tr><td>Claim&ndash;abstract pairs in the grid</td><td class="num">1.55 million</td></tr>
+    <tr><td>Pairs judged relevant</td><td class="num">338</td></tr>
+    <tr><td>Relevant per claim, mean</td><td class="num">1.13</td></tr>
+  </table>
+  <p class="small">BM25&rsquo;s top 10 for a claim contains, on average,
+  <strong>0.86 judged-relevant abstracts</strong> and
+  9.14 others. Those others are <em>unjudged</em>, not
+  <em>judged irrelevant</em> &mdash; and on a corpus this sparsely judged, some
+  of them are relevant.</p>
+  <p class="small fail">Train on them as negatives and the gradient pushes the
+  model away from correct answers. This is the single commonest reason a
+  fine-tuned retriever underperforms the paper it copied.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Today we do not train one">
+  <h2>Today we do not train one</h2>
+  <p class="small">SciFact has 300 test claims and a
+  training set of a few hundred more. Fine-tuning a bi-encoder on that would
+  measure the split, not the method.</p>
+  <p class="small">So we take a model trained on something else entirely
+  &mdash; <code>all-MiniLM-L6-v2</code>, trained on a billion general sentence
+  pairs, never shown a scientific claim &mdash; and apply it <strong>zero
+  shot</strong>.</p>
+  <div class="panel">
+    <span class="panel-title">Which is also the honest question</span>
+    &ldquo;Should I put an off-the-shelf embedding model in front of my
+    search?&rdquo; is the decision most of you will actually face. It is not
+    &ldquo;can a dense retriever be trained to beat BM25 given enough
+    labels?&rdquo; &mdash; the answer to that is yes, and it is not usually the
+    question you have.
+  </div>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="What "trained on a billion pairs" means">
+  <h2>What "trained on a billion pairs" means</h2>
+  <p class="small"><code>all-MiniLM-L6-v2</code> was trained by contrastive
+  learning on about a billion sentence pairs scraped from the web: questions and
+  answers, titles and bodies, duplicate posts.</p>
+  <ul class="tight small">
+    <li>Its notion of &ldquo;these two texts belong together&rdquo; comes from
+        that mixture, and from nothing else</li>
+    <li>Scientific claims and abstracts are not in it in any quantity</li>
+    <li>384 dimensions and six layers &mdash; small, which is why the
+        notebook runs on a CPU</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The prediction to make before the measurement</span>
+    A model whose training distribution excludes your domain should do worst
+    exactly where the domain vocabulary is most specialised. Write down whether
+    you expect it to beat BM25 here, before the next section.
+  </div>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="What the bi-encoder gave up">
+  <h2>What the bi-encoder gave up</h2>
+  <p class="small">A single 384-dimensional vector must stand for a
+  225-token abstract, and it is computed <strong>before the
+  query is known</strong>.</p>
+  <ul class="tight small">
+    <li>An abstract about three things compresses to one point, so it is
+        somewhat about each and exactly about none</li>
+    <li>Nothing in the encoder can emphasise the part of the document the query
+        is asking about &mdash; it has not been asked yet</li>
+    <li>Exact term matching is not guaranteed: two different gene names may land
+        close together</li>
+  </ul>
+  <p class="small fail">That is the price of indexability, and it is the whole
+  reason a second, non-indexable model appears later in this lecture. Notice the
+  trade is <em>structural</em>: it is not fixed by a bigger encoder.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Adding one document">
+  <h2>Adding one document</h2>
+  <table class="smaller">
+    <tr><th></th><th>Inverted index</th><th>Dense index</th></tr>
+    <tr><td>New document</td><td class="small">append to its terms&rsquo; postings &mdash; microseconds</td><td class="small">one encoder pass, then append the vector</td></tr>
+    <tr><td>New model version</td><td class="small">nothing to do</td><td class="num fail">re-encode the entire corpus</td></tr>
+    <tr><td>Mixed versions</td><td class="small">impossible to have</td><td class="num fail">silently wrong &mdash; vectors from two models are not comparable</td></tr>
+  </table>
+  <p class="small fail">The last row is a real outage, and a quiet one: nothing
+  errors, the scores are simply meaningless for the documents encoded by the old
+  model. <strong>A dense index needs a model version stored beside it</strong>,
+  and that is an operational cost the accuracy table never shows.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="The protocol, stated before the numbers">
+  <h2>The protocol, stated before the numbers</h2>
+  <ul class="tight small">
+    <li>Same corpus: 5,183 abstracts. Same
+        300 test claims. Same judgements</li>
+    <li>Same metric code &mdash; the functions written in last week&rsquo;s
+        notebook, unchanged</li>
+    <li>Both retrievers scored <strong>exactly</strong>: every document for
+        every query, no approximate index in either</li>
+    <li>The metric was named before the run: <strong>NDCG@10</strong>, with
+        recall@100 reported alongside because the first stage is judged on it</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">Why this slide exists</span>
+    Naming the metric after seeing the scores is the commonest dishonesty in
+    this literature, and this lecture is about to produce a result where the
+    temptation is real.
+  </div>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Prediction, before the section that follows">
+  <h2>Prediction, before the section that follows</h2>
+  <p class="small">Everything is now in place: the corpus, the model, the
+  protocol, the baseline. Before the next slide, commit to an answer.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Write down a number</span>
+    BM25 scored <strong>0.6611</strong> NDCG@10 with no training.
+    A general-purpose neural encoder, trained on a billion web sentence pairs
+    and never shown a scientific claim, applied zero-shot to this corpus, will
+    score&nbsp;&hellip;?
+  </div>
+  <p class="small">A prediction made before the measurement is worth ten made
+  after it &mdash; and the point of this one is not whether you are right. It is
+  to notice, on the next slide, whether you would have <em>argued</em> for the
+  answer if you had seen it first.</p>
+</section>
+
+<!-- 31 -->
+<section class="divider" data-menu-title="◆ Against BM25,<br>on the same judgements">
+  <p class="kicker">Measured</p>
+  <h1>Against BM25,<br>on the same judgements</h1>
+  <p class="clock">20 minutes</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="The result">
+  <h2>The result</h2>
+  <table>
+    <tr><th>Metric</th><th class="num">BM25</th><th class="num">Dense, zero shot</th></tr>
+    <tr><td>NDCG@10</td><td class="num hit">0.6611</td><td class="num fail">0.6451</td></tr>
+    <tr><td>Precision@1</td><td class="num hit">0.5433</td><td class="num fail">0.5033</td></tr>
+    <tr><td>MRR</td><td class="num hit">0.6350</td><td class="num fail">0.6113</td></tr>
+    <tr><td>Recall@10</td><td class="num">0.7784</td><td class="num hit">0.7833</td></tr>
+    <tr><td>Recall@100</td><td class="num">0.8852</td><td class="num hit">0.9250</td></tr>
+  </table>
+  <p class="small fail"><strong>The neural model loses on the headline
+  metric.</strong> Thirty years of age, no training, no GPU, no vector store
+  &mdash; and BM25 is ahead by 0.0160 NDCG@10.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="Sit with that for a moment">
+  <h2>Sit with that for a moment</h2>
+  <ul class="tight small">
+    <li>It is not a bug in the experiment. Same corpus, same
+        300 claims, same judgements, same metric code</li>
+    <li>It is a well-known result: BEIR was built to report it, and
+        out-of-domain dense retrieval loses to BM25 on a good fraction of its
+        tasks</li>
+    <li>Scientific text is exactly where it should be worst &mdash; the
+        vocabulary is technical, and a general-purpose encoder has never seen
+        most of it</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">The transferable lesson</span>
+    &ldquo;Newer&rdquo; is not an argument, and neither is
+    &ldquo;neural&rdquo;. <strong>The baseline you skipped is the result you
+    will not be able to defend.</strong> If BM25 is missing from a retrieval
+    table, that is now a question you know how to ask.
+  </div>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="What this result does not license">
+  <h2>What this result does not license</h2>
+  <ul class="tight small">
+    <li>It does <strong>not</strong> say dense retrieval is worse in general.
+        Fine-tuned on in-domain pairs, it beats BM25 on this corpus, and that is
+        a well-replicated result</li>
+    <li>It does <strong>not</strong> say embeddings are a bad idea. Recall@100
+        went up, and the mismatch case went from rank 4,999 to 8</li>
+    <li>It <em>does</em> say that this particular substitution &mdash;
+        off-the-shelf encoder for BM25, no labels, technical corpus &mdash; is a
+        loss, and that is a decision many teams make without measuring</li>
+  </ul>
+  <p class="small">Stating the scope of a claim is not hedging. A result whose
+  boundary you cannot draw is a result you cannot use.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="But look at recall@100">
+  <h2>But look at recall@100</h2>
+  <table class="smaller">
+    <tr><th>Metric</th><th class="num">BM25</th><th class="num">Dense</th><th class="num">Difference</th></tr>
+    <tr><td>NDCG@10</td><td class="num">0.6611</td><td class="num">0.6451</td><td class="num fail">+0.0160</td></tr>
+    <tr><td>Recall@10</td><td class="num">0.7784</td><td class="num">0.7833</td><td class="num">+0.0049</td></tr>
+    <tr><td>Recall@100</td><td class="num">0.8852</td><td class="num">0.9250</td><td class="num hit">+0.0398</td></tr>
+  </table>
+  <p class="small">The dense retriever is <em>worse at ordering</em> and
+  <strong>better at finding</strong>. It retrieves 92.5% of relevant
+  abstracts somewhere in its first hundred, against BM25&rsquo;s
+  88.5%.</p>
+  <p class="small">Recall from the last lecture what a first stage is judged on:
+  not what the user sees, but what it makes possible. On <em>that</em>
+  criterion &mdash; the criterion for the job it would actually be given
+  &mdash; the dense retriever wins.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Do they find the same documents?">
+  <h2>Do they find the same documents?</h2>
+  <p class="small">Take every relevant abstract in the test set and ask which
+  method placed it in the top ten:</p>
+  <table class="smaller">
+    <tr><th>Found by</th><th class="num">Count</th><th class="num">Share</th></tr>
+    <tr><td>Both</td><td class="num">227</td><td class="num">67.0%</td></tr>
+    <tr><td>BM25 only</td><td class="num hit">30</td><td class="num">8.8%</td></tr>
+    <tr><td>Dense only</td><td class="num hit">38</td><td class="num">11.2%</td></tr>
+    <tr><td>Neither</td><td class="num fail">44</td><td class="num">13.0%</td></tr>
+  </table>
+  <p class="small"><strong>68 of 339
+  relevant abstracts are found by exactly one of the two.</strong> They are not
+  two attempts at the same ranking &mdash; they fail on different documents.</p>
+  <p class="small muted">Two methods with almost the same score and different
+  errors is the classic signal that combining them will help. Which we will do,
+  after the interesting case.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="A mean hides the disagreement">
+  <h2>A mean hides the disagreement</h2>
+  <p class="small">BM25 0.6611, dense 0.6451 &mdash;
+  a gap of 0.0160, which sounds like two systems doing
+  almost the same thing.</p>
+  <p class="small">The overlap table says otherwise:
+  227 relevant abstracts found by both, 30 by BM25 alone,
+  38 by the dense model alone. Per claim, they frequently
+  disagree completely.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">The general point</span>
+    <strong>Two systems with the same mean can have entirely different error
+    sets.</strong> The mean answers "which is better on average"; it cannot
+    answer "are these the same system", and only the second question tells you
+    whether to combine them.
+  </div>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="The claim BM25 could not find">
+  <h2>The claim BM25 could not find</h2>
+  <p class="lead small">&ldquo;In mice, P. chabaudi parasites are able to proliferate faster early in infection when inoculated at lower numbers than when inoculated at high numbers.&rdquo;</p>
+  <table>
+    <tr><th>Rank of its one relevant abstract</th><th class="num"></th></tr>
+    <tr><td>BM25</td><td class="num fail">4,999</td></tr>
+    <tr><td>Dense, zero shot</td><td class="num hit">8</td></tr>
+  </table>
+  <p class="small">From 4,999 to 8. The
+  abstract still shares almost no words with the claim &mdash; nothing about the
+  text changed. What changed is that the comparison is no longer between
+  strings.</p>
+  <p class="small">This is the case the whole lecture was built around, and it
+  is worth being precise about what it does and does not show: it does
+  <strong>not</strong> show the dense retriever is better. The table three
+  slides ago showed it is not. It shows the two methods fail
+  <em>independently</em>.</p>
+</section>
+
+<!-- 39 -->
+<section class="divider" data-menu-title="◆ Combining them,<br>and paying for it">
+  <p class="kicker">Last thirty minutes</p>
+  <h1>Combining them,<br>and paying for it</h1>
+  <p class="clock">30 minutes</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="Hybrid retrieval: fuse the two rankings">
+  <h2>Hybrid retrieval: fuse the two rankings</h2>
+  <p class="small">Two methods, complementary errors. The scores are not on a
+  comparable scale &mdash; BM25 returns unbounded sums, the dense model returns
+  cosines &mdash; so fuse the <strong>ranks</strong> instead:</p>
+  <div class="eqn-box compact">
+    $$\text{RRF}(d) = \sum_{\text{systems}} \frac{1}{k + \text{rank}(d)},
+    \qquad k = 60$$
+  </div>
+  <p class="small">Reciprocal rank fusion. No training, no tuning, no
+  calibration &mdash; and it needs nothing from the two systems but their
+  orderings, which is why it is what people actually deploy.</p>
+  <p class="small muted">The constant $k$ damps the top ranks so one system
+  cannot dominate on a single confident hit. 60 is conventional, and yes, that
+  is the same kind of convention as $\log_2(i+1)$.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="Hybrid, measured">
+  <h2>Hybrid, measured</h2>
+  <table>
+    <tr><th>Metric</th><th class="num">BM25</th><th class="num">Dense</th><th class="num">Hybrid</th></tr>
+    <tr><td>NDCG@10</td><td class="num">0.6611</td><td class="num">0.6451</td><td class="num hit">0.6948</td></tr>
+    <tr><td>Precision@1</td><td class="num">0.5433</td><td class="num">0.5033</td><td class="num hit">0.5633</td></tr>
+    <tr><td>Recall@10</td><td class="num">0.7784</td><td class="num">0.7833</td><td class="num hit">0.8239</td></tr>
+    <tr><td>Recall@100</td><td class="num">0.8852</td><td class="num">0.9250</td><td class="num hit">0.9617</td></tr>
+  </table>
+  <p class="small">Better than either, on every metric, from adding two
+  reciprocals. The gain over BM25 is
+  <strong>+0.0338</strong> NDCG@10 &mdash; larger
+  than anything else in this lecture will buy you.</p>
+  <p class="small">And it is not mysterious: the earlier table said
+  68 relevant
+  abstracts were found by exactly one system. Fusion is how you keep both.</p>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Why not just add the scores?">
+  <h2>Why not just add the scores?</h2>
+  <p class="small">The obvious fusion is
+  $\alpha \cdot \text{BM25} + (1-\alpha) \cdot \text{cosine}$. It works, and
+  it costs you two things:</p>
+  <ul class="tight small">
+    <li>The scales are incomparable and corpus-dependent &mdash; BM25 is an
+        unbounded sum, the cosine is in $[-1,1]$ &mdash; so the scores must be
+        normalised, and the normalisation is another choice</li>
+    <li>$\alpha$ must be tuned on held-out queries, so you now need labels for
+        a method whose selling point was needing none</li>
+  </ul>
+  <p class="small">Rank fusion avoids both: ranks are already comparable, and
+  there is nothing to fit. Score fusion can do better when you have the labels
+  to tune it &mdash; which is exactly the condition under which you would have
+  fine-tuned the encoder instead.</p>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="The other neural model: cross-encoders">
+  <h2>The other neural model: cross-encoders</h2>
+  <div class="eqn-box compact">
+    $$\text{score}(q,d) = \text{Transformer}\big(\,[\text{CLS}]\;q\;[\text{SEP}]\;d\,\big)$$
+  </div>
+  <p class="small">Concatenate the query and the document and put
+  <strong>both through the model together</strong>. Every token of the query can
+  attend to every token of the document, which is exactly what a bi-encoder
+  forbids by construction.</p>
+  <table class="smaller">
+    <tr><th></th><th>Bi-encoder</th><th>Cross-encoder</th></tr>
+    <tr><td>Sees</td><td class="small">each text alone</td><td class="small">the pair, jointly</td></tr>
+    <tr><td>Document vectors</td><td class="small">precomputed</td><td class="small">impossible &mdash; depends on the query</td></tr>
+    <tr><td>Cost per query</td><td class="small">one encoding + $N$ dot products</td><td class="small">$N$ transformer passes</td></tr>
+    <tr><td>Accuracy</td><td class="small">lower</td><td class="small">higher</td></tr>
+  </table>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Why the accurate model cannot go first">
+  <h2>Why the accurate model cannot go first</h2>
+  <p class="small">A full cross-encoder scan of this corpus, for these claims,
+  is</p>
+  <div class="eqn-box compact">
+    $$5,183 \times 300 =
+    1,554,900 \ \text{transformer passes}$$
+  </div>
+  <p class="small">On the <em>toy</em> corpus of this course. A web index is
+  $10^{10}$ documents and the user is waiting 200&nbsp;ms, so the arithmetic
+  is not close &mdash; it is off by ten orders of magnitude.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">Hence the pipeline of Lecture 19, slide 6</span>
+    A <strong>cheap first stage</strong> reduces millions to a hundred; an
+    <strong>expensive second stage</strong> reorders that hundred. The
+    architecture of every production search system is a direct consequence of
+    the fact that the good model does not scale.
+  </div>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="What the second stage costs, per query">
+  <h2>What the second stage costs, per query</h2>
+  <table class="smaller">
+    <tr><th>Stage</th><th class="num">Model passes per query</th></tr>
+    <tr><td>BM25</td><td class="num">0</td></tr>
+    <tr><td>Bi-encoder</td><td class="num">1 (the query)</td></tr>
+    <tr><td>Cross-encoder over top 10</td><td class="num">10</td></tr>
+    <tr><td>Cross-encoder over top 100</td><td class="num">100</td></tr>
+    <tr><td>Cross-encoder over the corpus</td><td class="num fail">5,183</td></tr>
+  </table>
+  <p class="small">The last row is why the pipeline exists, and the middle rows
+  are why its depth is the parameter you actually argue about in a design
+  review. Both are the same arithmetic.</p>
+</section>
+
+<!-- 46 -->
+<section data-menu-title="Re-ranking, measured">
+  <h2>Re-ranking, measured</h2>
+  <p class="small">Cross-encoder over BM25&rsquo;s top $k$, everything below
+  $k$ left where it was:</p>
+  <table class="smaller">
+    <tr><th>System</th><th class="num">NDCG@10</th><th class="num">P@1</th><th class="num">Pairs scored</th></tr>
+    <tr><td>BM25 alone</td><td class="num">0.6611</td><td class="num">0.5433</td><td class="num">0</td></tr>
+    <tr><td>+ re-rank top 10</td><td class="num">0.6656</td><td class="num">0.5600</td><td class="num">3,000</td></tr>
+    <tr><td>+ re-rank top 50</td><td class="num">0.6773</td><td class="num">0.5667</td><td class="num">15,000</td></tr>
+    <tr class="hit"><td>+ re-rank top 100</td><td class="num">0.6781</td><td class="num">0.5667</td><td class="num">30,000</td></tr>
+  </table>
+  <p class="small">Going from 10 to 50 buys +0.0117;
+  going from 50 to 100 buys +0.0008 for twice the
+  compute. <strong>The depth is a dial with diminishing returns, and it is the
+  main thing you tune in a deployed system.</strong></p>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="Reading the re-ranking curve">
+  <h2>Reading the re-ranking curve</h2>
+  <table class="smaller">
+    <tr><th class="num">Depth</th><th class="num">NDCG@10</th><th class="num">Gain</th><th class="num">Passes</th></tr>
+    <tr><td class="num">0</td><td class="num">0.6611</td><td class="num">&mdash;</td><td class="num">0</td></tr>
+    <tr><td class="num">10</td><td class="num">0.6656</td><td class="num">+0.0046</td><td class="num">10</td></tr>
+    <tr><td class="num">50</td><td class="num">0.6773</td><td class="num">+0.0117</td><td class="num">50</td></tr>
+    <tr><td class="num">100</td><td class="num">0.6781</td><td class="num">+0.0008</td><td class="num">100</td></tr>
+  </table>
+  <p class="small">The first ten candidates give most of the gain; the next
+  ninety give a tenth of it, for ten times the compute. That is the shape of
+  every re-ranking curve you will meet, and the reason production depths are
+  usually in the tens rather than the thousands.</p>
+  <p class="small muted">Note also that recall@10 barely moves: re-ranking the
+  top 10 cannot change <em>which</em> documents are in the top 10 at all. It
+  changes their order, and P@1 with it.</p>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="The ceiling the re-ranker cannot pass">
+  <h2>The ceiling the re-ranker cannot pass</h2>
+  <p class="small">Re-ranking reorders; it cannot retrieve. So the recall of
+  the first stage at depth $k$ is a hard bound on the second stage at depth $k$:</p>
+  <table class="smaller">
+    <tr><th class="num">Depth $k$</th><th class="num">10</th><th class="num">50</th><th class="num">100</th><th class="num">1000</th></tr>
+    <tr><td>BM25 recall@$k$</td><td class="num">0.7784</td><td class="num">0.8654</td><td class="num">0.8852</td><td class="num">0.9650</td></tr>
+  </table>
+  <p class="small">Re-rank BM25&rsquo;s top 100 and a <em>perfect</em>
+  cross-encoder still cannot exceed recall 0.8852 at any
+  cutoff &mdash; 11.5% of relevant abstracts are simply
+  not in the candidate set.</p>
+  <p class="small fail">Notice that the hybrid first stage reaches
+  recall@100 of 0.9617. <strong>Improving the first stage raises the
+  ceiling for everything above it; improving the second stage never does.</strong>
+  That is the single most useful sentence in this lecture for building a
+  system.</p>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="An exam-style question, worked">
+  <h2>An exam-style question, worked</h2>
+  <p class="small"><em>&ldquo;A system reports NDCG@10 of 0.6781
+  using a cross-encoder over the top 100 of a BM25 first stage. Its authors
+  propose replacing the cross-encoder with a larger one. What is the most you
+  can say about the gain, and what would you propose instead?&rdquo;</em></p>
+  <ul class="tight small">
+    <li>The first stage&rsquo;s recall@100 is 0.8852, so
+        <strong>no</strong> re-ranker can exceed that recall &mdash;
+        11.5% of relevant documents are absent from the
+        candidates</li>
+    <li>Going from depth 50 to 100 already bought only
+        +0.0008, so the candidates are close to
+        exhausted</li>
+    <li>Propose improving the <strong>first stage</strong>: a hybrid one reaches
+        recall@100 0.9617, which raises the ceiling itself</li>
+  </ul>
+  <p class="small muted">Section B of the paper is exactly this shape: a table,
+  a proposal, and the question of whether the proposal can possibly work.</p>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Approximate nearest neighbours: the last cost">
+  <h2>Approximate nearest neighbours: the last cost</h2>
+  <p class="small">One problem remains. The dense scan touches every one of the
+  8.0 MB of vectors, for every query, and unlike the
+  inverted index it cannot skip anything.</p>
+  <p class="small">The standard answer, and the one we build in the notebook:
+  <strong>cluster the vectors once</strong> ($k$-means, 64 clusters), then at
+  query time score only the nearest few clusters.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Note what this changes about the numbers</span>
+    Every dense number so far was an <em>exact</em> scan, so it measured the
+    model. From here on the numbers measure the model <strong>and the
+    index</strong>, and the two must be reported separately &mdash; which is
+    exactly why the whole lecture was built on a corpus small enough to scan
+    exactly.
+  </div>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="Why clustering works at all">
+  <h2>Why clustering works at all</h2>
+  <p class="small">The claim behind an IVF index: a query&rsquo;s nearest
+  documents are <em>mostly</em> in the clusters nearest the query. Which is a
+  claim about geometry, and it is only approximately true.</p>
+  <ul class="tight small">
+    <li>A document near a cluster boundary is missed when its cluster is not
+        probed &mdash; and boundary documents are common in high dimensions</li>
+    <li>So the index has a <strong>recall</strong>, and the recall is a
+        parameter, not a property</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">The measurement that matters</span>
+    Recall of the approximate index is measured <strong>against the exact
+    scan</strong>, never against the relevance judgements. Mixing the two
+    conflates "my index missed it" with "my model ranked it low", and they have
+    different fixes.
+  </div>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="The recall/latency trade-off, measured">
+  <h2>The recall/latency trade-off, measured</h2>
+  <p class="small">Recall against the <em>exact</em> dense ranking, not against
+  the judgements &mdash; this table is about the index, not the model:</p>
+  <table class="smaller">
+    <tr><th class="num">Clusters probed</th><th class="num">Corpus scanned</th><th class="num">Recall@10 vs exact</th></tr>
+    <tr><td class="num">1</td><td class="num">1.8%</td><td class="num">0.5047</td></tr>
+    <tr><td class="num">2</td><td class="num">3.6%</td><td class="num">0.6580</td></tr>
+    <tr class="hit"><td class="num">4</td><td class="num">7.3%</td><td class="num">0.8013</td></tr>
+    <tr><td class="num">8</td><td class="num">14.1%</td><td class="num">0.8920</td></tr>
+    <tr><td class="num">16</td><td class="num">27.9%</td><td class="num">0.9577</td></tr>
+    <tr><td class="num">64</td><td class="num">100.0%</td><td class="num">1.0000</td></tr>
+  </table>
+  <p class="small">Probing 4 of 64 scans <strong>7.3%</strong>
+  of the corpus and keeps <strong>80.1%</strong>
+  of the exact top ten. A dial, not a default &mdash; and a vector database ships
+  with it set by someone who never saw your corpus.</p>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="A latency budget, worked">
+  <h2>A latency budget, worked</h2>
+  <p class="small">Suppose 200&nbsp;ms end to end, and take the pipeline as
+  built:</p>
+  <table class="smaller">
+    <tr><th>Stage</th><th class="num">Model passes</th><th>Scales with</th></tr>
+    <tr><td>BM25</td><td class="num">0</td><td class="small">query terms &times; postings length</td></tr>
+    <tr><td>Encode the query</td><td class="num">1</td><td class="small">nothing &mdash; the query is short</td></tr>
+    <tr><td>Dense scan (exact)</td><td class="num">0</td><td class="num fail">corpus size &times; 384</td></tr>
+    <tr><td>Dense scan (probe 4 of 64)</td><td class="num">0</td><td class="small">7.3% of that</td></tr>
+    <tr><td>Re-rank top 50</td><td class="num">50</td><td class="small">the depth you chose</td></tr>
+  </table>
+  <p class="small">Two of the five rows are dials you set, and both trade
+  quality for time along a curve you can measure. The budget does not tell you
+  where to sit on them &mdash; but it does tell you that the choice is yours and
+  has to be made deliberately.</p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="The whole table, in one place">
+  <h2>The whole table, in one place</h2>
+  <table class="smaller">
+    <tr><th>System</th><th class="num">NDCG@10</th><th class="num">R@100</th><th>Cost per query</th></tr>
+    <tr><td>Corpus unranked</td><td class="num fail">0.0012</td><td class="num">0.0117</td><td class="small">nothing</td></tr>
+    <tr><td>BM25</td><td class="num">0.6611</td><td class="num">0.8852</td><td class="small">postings walk</td></tr>
+    <tr><td>Dense, zero shot</td><td class="num">0.6451</td><td class="num">0.9250</td><td class="small">1 encode + full scan</td></tr>
+    <tr><td>BM25 + cross-encoder@100</td><td class="num">0.6781</td><td class="num">0.8852</td><td class="small">+ 100 transformer passes</td></tr>
+    <tr class="hit"><td>Hybrid (BM25 &plus; dense, RRF)</td><td class="num">0.6948</td><td class="num">0.9617</td><td class="small">1 encode + both</td></tr>
+  </table>
+  <p class="small">The best NDCG@10 in this lecture comes from the row with
+  <strong>no training in it at all</strong> &mdash; two untrained retrievers and
+  a sum of reciprocals.</p>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="The arc of the two IR lectures">
+  <h2>The arc of the two IR lectures</h2>
+  <table class="smaller">
+    <tr><th>Step</th><th>Because</th></tr>
+    <tr><td>Boolean retrieval</td><td class="small">obvious &mdash; and returns nothing for 98% of claims</td></tr>
+    <tr><td>Score, do not filter</td><td class="small">a missing term should cost something, not everything</td></tr>
+    <tr><td>idf, saturation, length</td><td class="small">three named failures of raw counting</td></tr>
+    <tr><td>Dense retrieval</td><td class="small">strings cannot capture paraphrase</td></tr>
+    <tr><td>Hybrid</td><td class="small">the two fail on different documents</td></tr>
+    <tr><td>Re-ranking</td><td class="small">the accurate model does not scale</td></tr>
+    <tr><td>Approximate index</td><td class="small">the dense scan cannot skip anything</td></tr>
+  </table>
+  <p class="small">Every row is a response to a measured failure of the row
+  above. That is the shape this course keeps asking you to produce.</p>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="The two lectures in one table">
+  <h2>The two lectures in one table</h2>
+  <table class="smaller">
+    <tr><th>System</th><th class="num">NDCG@10</th><th class="num">R@100</th><th class="num">Trained?</th></tr>
+    <tr><td>Corpus unranked</td><td class="num">0.0012</td><td class="num">0.0117</td><td class="num">no</td></tr>
+    <tr><td>Raw term counting</td><td class="num">0.0944</td><td class="num">&mdash;</td><td class="num">no</td></tr>
+    <tr><td>BM25</td><td class="num">0.6611</td><td class="num">0.8852</td><td class="num">no</td></tr>
+    <tr><td>Dense, zero shot</td><td class="num">0.6451</td><td class="num">0.9250</td><td class="small">elsewhere</td></tr>
+    <tr><td>BM25 + cross-encoder@100</td><td class="num">0.6781</td><td class="num">0.8852</td><td class="small">elsewhere</td></tr>
+    <tr class="hit"><td>Hybrid</td><td class="num">0.6948</td><td class="num">0.9617</td><td class="num">no</td></tr>
+  </table>
+  <p class="small">Six systems, one corpus, one metric named in advance. That
+  table is the deliverable of Part&nbsp;V&rsquo;s first half.</p>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="How to choose, in practice">
+  <h2>How to choose, in practice</h2>
+  <table class="smaller">
+    <tr><th>Situation</th><th>What to do</th></tr>
+    <tr><td>No labels, technical vocabulary</td><td class="small">BM25. Measure before you consider anything else</td></tr>
+    <tr><td>No labels, everyday language, paraphrase matters</td><td class="small">hybrid &mdash; BM25 plus an off-the-shelf encoder, fused</td></tr>
+    <tr><td>Thousands of labelled pairs in your domain</td><td class="small">fine-tune a bi-encoder; now it can beat BM25</td></tr>
+    <tr><td>Latency budget allows a second stage</td><td class="small">add a cross-encoder over the top 50&ndash;100</td></tr>
+    <tr><td>Corpus too large to scan</td><td class="small">approximate index, and report the recall you chose</td></tr>
+  </table>
+  <p class="small fail">Every row starts with BM25 in the table. Not because it
+  wins &mdash; on your corpus it may not &mdash; but because a comparison without
+  it is not a measurement.</p>
+</section>
+
+<!-- 58 -->
+<section data-menu-title="Five questions, for a neural retrieval claim">
+  <h2>Five questions, for a neural retrieval claim</h2>
+  <ol class="tight small">
+    <li><strong>Is BM25 in the table?</strong> On the same corpus, queries and
+        judgements, tuned no less carefully than the neural model</li>
+    <li><strong>Zero-shot or fine-tuned?</strong> And if fine-tuned, on what,
+        and how close is it to the test corpus?</li>
+    <li><strong>Exact scan or approximate index?</strong> If approximate, at
+        what recall against the exact scan?</li>
+    <li><strong>Where did the negatives come from?</strong> And what fraction of
+        them are unjudged rather than judged irrelevant?</li>
+    <li><strong>First stage or whole pipeline?</strong> A re-ranker&rsquo;s
+        NDCG is a property of the candidates it was given</li>
+  </ol>
+</section>
+
+<!-- 59 -->
+<section data-menu-title="What this lecture left out">
+  <h2>What this lecture left out</h2>
+  <ul class="tight small">
+    <li><strong>Late interaction</strong> &mdash; keep one vector per token and
+        score with a max-similarity sum. Between the two architectures in both
+        cost and accuracy</li>
+    <li><strong>Learned sparse retrieval</strong> &mdash; use a transformer to
+        <em>predict term weights</em>, then use an ordinary inverted index. The
+        two families are not as separate as this lecture made them look</li>
+    <li><strong>Distillation</strong> &mdash; train the bi-encoder to imitate the
+        cross-encoder, moving accuracy into the model that can be indexed</li>
+  </ul>
+  <p class="small muted">Not examinable, and each is a direct response to a
+  trade-off this lecture measured. If Part&nbsp;V interests you, these three are
+  where to read next.</p>
+</section>
+
+<!-- 60 -->
+<section data-menu-title="Where students lose marks on this material">
+  <h2>Where students lose marks on this material</h2>
+  <ul class="tight small">
+    <li>Saying a cross-encoder is &ldquo;a bigger bi-encoder&rdquo;. It is a
+        different computation: joint, and therefore unindexable</li>
+    <li>Claiming a re-ranker improves recall@100. It cannot &mdash; it reorders
+        a fixed candidate set</li>
+    <li>Reporting approximate-index recall against the <em>judgements</em>
+        rather than against the exact scan, which conflates two errors</li>
+    <li>Describing in-batch negatives as &ldquo;free&rdquo;. The scores are
+        free; the encodings are not, and the batch is the memory limit</li>
+    <li>Concluding from this lecture that dense retrieval does not work. The
+        claim is narrower: <em>zero-shot</em>, on <em>this</em> corpus</li>
+  </ul>
+</section>
+
+<!-- 61 -->
+<section data-menu-title="Reading">
+  <h2>Reading</h2>
+  <ul class="tight small">
+    <li>These lecture notes are the primary source</li>
+    <li>Karpukhin et al., <em>Dense Passage Retrieval</em> &mdash; where
+        in-batch negatives were made to work</li>
+    <li>Thakur et al., <em>BEIR</em> &mdash; the benchmark built to test
+        zero-shot generalisation, and the source of the result we reproduced</li>
+    <li>Nogueira and Cho, <em>Passage Re-ranking with BERT</em> &mdash; the
+        cross-encoder as a second stage</li>
+    <li>Johnson et al., <em>Billion-scale similarity search</em> &mdash; what an
+        IVF index is, done properly</li>
+  </ul>
+  <p class="small muted">Examinable content is what is on these slides and in
+  the notebook.</p>
+</section>
+
+<!-- 62 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-20.ipynb">Open Lecture 20 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU</strong>, in about ten minutes. Encoding the
+        corpus once is most of it; nothing is trained</li>
+    <li>The same BM25 code as Lecture 19, so the baseline in the comparison is
+        the baseline you already built</li>
+    <li>RRF, cross-encoder re-ranking, and an IVF index written out by hand in
+        twenty lines &mdash; no vector database</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Re-rank the <em>hybrid</em> top 100 rather than BM25&rsquo;s. The ceiling
+    slide predicts what should happen to recall; check whether NDCG follows.
+  </div>
+</section>
+
+<!-- 63 -->
+<section data-menu-title="Vocabulary">
+  <h2>Vocabulary</h2>
+  <table class="smaller">
+    <tr><td><strong>Bi-encoder</strong></td><td class="small">query and document encoded separately; score is a dot product</td></tr>
+    <tr><td><strong>Cross-encoder</strong></td><td class="small">the pair encoded jointly; cannot be precomputed</td></tr>
+    <tr><td><strong>In-batch negatives</strong></td><td class="small">the other documents in the batch, used as negatives</td></tr>
+    <tr><td><strong>Hard negative</strong></td><td class="small">a high-scoring irrelevant document, mined from a first stage</td></tr>
+    <tr><td><strong>First stage / re-ranker</strong></td><td class="small">cheap over everything; expensive over a few</td></tr>
+    <tr><td><strong>RRF</strong></td><td class="small">fusing rankings by summing $1/(k+\text{rank})$</td></tr>
+    <tr><td><strong>ANN, IVF, nprobe</strong></td><td class="small">approximate search; cluster the vectors, probe a few</td></tr>
+    <tr><td><strong>Zero shot</strong></td><td class="small">applied without training on this task or corpus</td></tr>
+  </table>
+</section>
+
+<!-- 64 -->
+<section data-menu-title="Scope">
+  <h2>Scope</h2>
+  <h2>Scope</h2>
+  <ul class="tight small">
+    <li><span class="scope scope-exam">examinable</span> vocabulary mismatch and
+        why lexical repairs are bounded; what a bi-encoder computes and why it
+        is indexable; the contrastive objective and in-batch negatives; why hard
+        negatives matter and how they go wrong; cross-encoders and the first
+        stage/re-rank argument including the ceiling; hybrid fusion; the
+        recall/latency trade-off of an approximate index</li>
+    <li><span class="scope scope-eng">not examinable &mdash; engineering</span>
+        specific model checkpoints, vector-database APIs, HNSW and product
+        quantisation internals</li>
+    <li><span class="scope scope-context">beyond the syllabus</span> late
+        interaction (ColBERT), learned sparse retrieval (SPLADE),
+        distillation of cross-encoders into bi-encoders</li>
+  </ul>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="Summary">
+  <h2>Summary</h2>
+  <ol class="tight small">
+    <li>A lexical index matches strings; relevance is about meaning, and no
+        patch on the index closes that gap</li>
+    <li>A bi-encoder can be indexed because $E(d)$ does not depend on the query
+        &mdash; and that same independence is why it is the weaker model</li>
+    <li>Zero shot on this corpus, it <strong>loses</strong> to BM25 on NDCG@10
+        (0.6451 against 0.6611) and
+        <strong>wins</strong> on recall@100 (0.9250 against
+        0.8852)</li>
+    <li>They fail on different documents:
+        68 of 339 relevant abstracts
+        were found by exactly one, so fusing them beats both
+        (0.6948)</li>
+    <li>The accurate model goes second because it does not scale; and it cannot
+        exceed the first stage&rsquo;s recall at that depth</li>
+  </ol>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="Where this sits in the course">
+  <h2>Where this sits in the course</h2>
+  <table class="smaller">
+    <tr><td>Lecture&nbsp;8</td><td class="small">a vector space, and distance in it &mdash; here, the score itself</td></tr>
+    <tr><td>Lecture&nbsp;17</td><td class="small">cross-entropy &mdash; here, over documents instead of classes</td></tr>
+    <tr><td>Lecture&nbsp;18</td><td class="small">the encoder producing both vectors</td></tr>
+    <tr><td>Lecture&nbsp;19</td><td class="small">the metrics, the baseline, and the judgements</td></tr>
+    <tr><td>Lecture&nbsp;23</td><td class="small">the same contrastive objective, with images</td></tr>
+    <tr><td>Lecture&nbsp;24</td><td class="small">this retriever, feeding a generator</td></tr>
+  </table>
+  <p class="small">Lecture&nbsp;24 is worth noting now: retrieval-augmented
+  generation is <em>this pipeline</em> with a language model on the end, and its
+  failures are mostly this lecture&rsquo;s failures.</p>
+</section>
+
+<!-- 67 -->
+<section data-menu-title="One line to keep">
+  <h2>One line to keep</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">The line</span>
+    <strong>The first stage sets the ceiling; the second stage only decides how
+    close you get to it.</strong>
+  </div>
+  <p class="small">Which is why the interesting engineering is almost always in
+  the cheap model, not the good one &mdash; and why the largest single gain in
+  this lecture, +0.0338 NDCG@10, came from fusing two
+  untrained first stages rather than from any neural model.</p>
+</section>
+
+<!-- 68 -->
+<section data-menu-title="If you take one table away">
+  <h2>If you take one table away</h2>
+  <table>
+    <tr><th></th><th class="num">NDCG@10</th><th class="num">Recall@100</th></tr>
+    <tr><td>BM25</td><td class="num hit">0.6611</td><td class="num">0.8852</td></tr>
+    <tr><td>Dense, zero shot</td><td class="num">0.6451</td><td class="num">0.9250</td></tr>
+    <tr class="hit"><td>Both, fused</td><td class="num"><strong>0.6948</strong></td><td class="num"><strong>0.9617</strong></td></tr>
+  </table>
+  <p class="small">The old method wins the ranking. The new method wins the
+  retrieval. <strong>Neither is the answer, and the combination beats both on
+  both</strong> &mdash; for the cost of adding two reciprocals.</p>
+  <p class="small">If a lecture in this part has a single practical
+  recommendation, it is that one: before you replace a lexical retriever, try
+  keeping it.</p>
+</section>
+
+<!-- 69 -->
+<section data-menu-title="Before the next lecture">
+  <h2>Before the next lecture</h2>
+  <ul class="tight small">
+    <li>Run the notebook, and try the change on the notebook slide: re-rank the
+        hybrid candidates instead of BM25&rsquo;s. Predict the direction before
+        you run it</li>
+    <li>Part&nbsp;V continues with <strong>recommendation</strong>, which is
+        retrieval with the query removed &mdash; there is no query, only a user
+        and what they did</li>
+    <li>Keep the evaluation habits of Lecture&nbsp;19. Recommender systems are
+        where they are most often abandoned, and Lecture&nbsp;22 is largely
+        about that</li>
+  </ul>
+</section>
+
+<!-- 70 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 21 &middot; Lecture notes</p>
+  <h1>Recommender systems:<br>from ratings to factors</h1>
+  <p class="small">
+    No query, and feedback that is a by-product of use<br>
+    Explicit ratings against implicit feedback, and why implicit data has no
+    negatives<br>
+    <strong>Derivation:</strong> matrix factorisation, and why the SVD of
+    Lecture&nbsp;8 cannot simply be taken
+  </p>
+  <p class="clock">Part V &middot; Lecture notes &middot; examinable</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 20
+  <span class="sep">&middot;</span> Information retrieval: dense retrieval
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

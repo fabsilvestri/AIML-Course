@@ -72,17 +72,17 @@ LECTURES = [
 
 PARTS = [
     (1, 8, "Part I — Tabular data and classical models",
-     "Lectures 1–8 · Chapters 1–8 · CPU only"),
+     "Lectures 1–8 · Chapters 1–8 · runs on CPU"),
     (9, 11, "Part II — Neural networks",
-     "Lectures 9–11 · Chapters 9–11 · GPU from Lecture 10"),
+     "Lectures 9–11 · Chapters 9–11 · runs on CPU"),
     (12, 14, "Part III — Computer vision",
-     "Lectures 12–14 · Chapter 12 · GPU"),
+     "Lectures 12–14 · Chapter 12 · runs on CPU"),
     (15, 18, "Part IV — Sequences and language",
-     "Lectures 15–18 · Chapters 13–15 · GPU"),
+     "Lectures 15–18 · Chapters 13–15 · runs on CPU"),
     (19, 22, "Part V — Search and recommendation",
      "Lectures 19–22 · Lecture notes · examinable"),
     (23, 24, "Part VI — Multimodal models, and closing the course",
-     "Lectures 23–24 · Chapters 15–16 · GPU"),
+     "Lectures 23–24 · Chapters 15–16 · runs on CPU"),
 ]
 
 COLAB = ("https://colab.research.google.com/github/fabsilvestri/AIML-Course"
