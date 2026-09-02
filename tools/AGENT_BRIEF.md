@@ -101,6 +101,47 @@ notebook reports any timing at all.
 
 ---
 
+## Your lecture must run on CPU
+
+Lectures 10-24 were written for a GPU. They are being shrunk so every notebook
+runs on Colab's free CPU in a few minutes: fewer epochs, a subsampled corpus, a
+smaller backbone. This is not optional and it is not cosmetic — a notebook
+nobody can execute cannot be checked against its own slides, which is the one
+check that finds anything.
+
+Consequences you own:
+
+* **The slide numbers change with the notebook.** If you cut epochs, the
+  accuracy on the slide is no longer the accuracy the notebook produces. Say so
+  in your report and give both; the integrator decides whether to regenerate
+  `figures.json` or restate the slide.
+* **Keep the shape, not the score.** The lesson is "transfer learning beats
+  training from scratch", not "it reaches 91.4%". Shrink until the *ordering*
+  still holds, and check that it does.
+* **State the wall-clock and cap BLAS threads** if the notebook reports any
+  timing at all — see the duration rule above.
+
+## The consistency check
+
+Before you report, run:
+
+    python3 tools/check_consistency.py N
+
+It executes your notebook and then verifies that every `figures.json` value
+your deck states is a number your notebook actually prints. This is the check
+that has found a real defect in every lecture so far, and passing it is part of
+being done.
+
+If it says *"no figures.json namespace mapped"*, your lecture is being skipped
+rather than checked. Say so in your report — the integrator maintains that map,
+not you.
+
+Expect the fixes to be "the notebook never computed this at all" rather than
+"this number is wrong". The repair is to add the computation, which is also the
+right thing: a student running the notebook can then check the claim in front
+of them. Do **not** delete the figure from the slide to make the check pass —
+if a number is on a slide for a reason, that reason survives.
+
 ## Deliverable
 
 Report back, in prose, no more than 30 lines:
