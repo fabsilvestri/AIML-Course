@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 16 — Recurrent networks</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Recurrent networks</h1>
+  <p class="subtitle">Chicago transit ridership</p>
+  <p><span class="badge badge-lec">Lecture 16</span>
+     <span class="badge badge-ch">G&eacute\;ron Ch. 13</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot\; Third year
+  </p>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Lecture&nbsp;15 established the ground rules and a number to
+  beat:</p>
+  <ul class="tight small">
+    <li>Evaluation is a <strong>rolling origin</strong>, never a random split</li>
+    <li>The seasonal-naive forecast &mdash; copy the same weekday last week
+        &mdash; is genuinely hard to beat, and the autocorrelation says why</li>
+    <li>A linear model on lagged features is an AR model, and it does beat the
+        baseline, modestly</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What a linear model on lags cannot do</span>
+    It has a <strong>fixed window</strong>. Anything outside the last 56 days is
+    invisible to it, and every lag gets one weight regardless of context. A
+    recurrent network keeps a state instead, and that state is not bounded by a
+    window.
+  </div>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>Recurrent cells, unrolling, and backpropagation through time
+        <span class="muted small">(20 min)</span></li>
+    <li><strong>The method</strong> &mdash; deep RNNs, multivariate inputs, and
+        forecasting several steps ahead
+        <span class="muted small">(35 min)</span></li>
+    <li>LSTM and GRU, gate by gate
+        <span class="muted small">(20 min)</span></li>
+    <li>A convolutional alternative, and what we still cannot do
+        <span class="muted small">(15 min)</span></li>
+  </ol>
+  <p class="small muted">No new derivation today. Lecture&nbsp;11&rsquo;s
+  variance argument is the one that applies, unrolled through time instead of
+  down layers &mdash; which is exactly why the gates exist.
+  <span class="scope scope-exam">examinable</span> the architectures, and what
+  each gate is for.</p>
+</section>
+
+<!-- 4 -->
+<section class="divider" data-menu-title="◆ The recurrent cell">
+  <p class="kicker">First twenty minutes</p>
+  <h1>A cell with<br>a memory</h1>
+  <p class="clock">20 minutes &middot\; examinable</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="The cell, in equations">
+  <h2>The recurrent cell, written out</h2>
+  <div class="eqn-box">
+    $$\mathbf{h}_t \;=\; \phi\!\left(\mathbf{W}_x^{\mathsf T}\mathbf{x}_t
+    \;+\; \mathbf{W}_h^{\mathsf T}\mathbf{h}_{t-1} \;+\; \mathbf{b}\right)$$
+    <p class="eqn-label">one step of a recurrent layer</p>
+  </div>
+  <ul class="tight small">
+    <li>$\mathbf{x}_t$ &mdash; the input at step $t$; $\mathbf{h}_t$ &mdash; the state after it</li>
+    <li>$\mathbf{W}_x$ and $\mathbf{W}_h$ do not depend on $t$: <strong>the same weights at every step</strong></li>
+    <li>Compare Lecture&nbsp;9: this is $\phi(\mathbf{X}\mathbf{W} + \mathbf{b})$ with one extra term, and that term is the whole idea</li>
+  </ul>
+  <p class="small">The state is the only route by which anything before step $t$
+  reaches step $t$. Its width is therefore a budget: whatever the network needs
+  to remember has to fit in $\mathbf{h}$.</p>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="Why not just a longer window">
+  <h2>Why not just a longer window</h2>
+  <p class="small">A linear model on 56 lags has 56 weights. Take 365 lags and
+  it has 365 &mdash; each fitted from the same amount of data, each learning one
+  number about one position.</p>
+  <ul class="tight small">
+    <li>The parameter count grows linearly with the reach</li>
+    <li>Nothing is shared between positions: the weight on lag 7 learns nothing
+        from the weight on lag 14, though both are &ldquo;a week ago&rdquo;</li>
+    <li>Anything beyond the window is invisible, however important</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What recurrence changes</span>
+    One set of weights, applied at every step. Reach is decoupled from parameter
+    count &mdash; the same argument as weight sharing in Lecture&nbsp;12, along
+    time instead of across an image.
+  </div>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="The state is a summary">
+  <h2>The state is a summary</h2>
+  <p class="lead">$\mathbf{h}_t$ is everything the network has decided to
+  remember about $x_1 \dots x_t$.</p>
+  <ul class="tight small">
+    <li>It is <strong>fixed width</strong>, whatever the sequence length &mdash;
+        so it is a lossy summary by construction</li>
+    <li>What it keeps is learned, not designed: nothing tells the cell that
+        &ldquo;the same weekday last week&rdquo; matters</li>
+    <li>Two sequences with the same state are indistinguishable to everything
+        downstream. That is the definition of a sufficient statistic, and the
+        network is trying to learn one</li>
+  </ul>
+  <p class="small muted">Which is also the honest limit: if the task needs more
+  bits than the state has, no amount of training supplies them.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="Why not just more layers">
+  <h2>Why not simply stack dense layers?</h2>
+  <p>You could. Flatten the 56 values and put a multilayer perceptron on top.
+  It would work.</p>
+  <ul class="tight small">
+    <li>But the window length is baked into the first layer's shape</li>
+    <li>Nothing in the architecture knows that position 40 comes before
+        position 41</li>
+    <li>Every position gets its own private set of weights, so a pattern learned
+        at one position is not available at another</li>
+  </ul>
+  <p class="small muted">The same argument as convolution against dense layers on
+  images, transposed from space to time.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="The recurrent neuron">
+  <h2>A recurrent neuron</h2>
+  <p class="small">A neuron that, at every step, receives the input <em>and</em>
+  its own output from the previous step.</p>
+  <div class="eqn-box">
+    $$\mathbf{h}_{t} \;=\; \phi\!\left(\mathbf{W}_x^{\intercal}\mathbf{x}_{t}
+      + \mathbf{W}_h^{\intercal}\mathbf{h}_{t-1} + \mathbf{b}\right)$$
+  </div>
+  <ul class="tight smaller">
+    <li>$\mathbf{h}_t$ &mdash; the hidden state after step $t$</li>
+    <li>$\mathbf{W}_x$, $\mathbf{W}_h$ &mdash; two weight matrices, shared across
+        <strong>every</strong> time step</li>
+    <li>$\phi$ &mdash; the activation\; $\tanh$ by default, and there is a reason</li>
+  </ul>
+  <p class="small">The hidden state is a function of every input so far. That is
+  the memory.</p>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="Unrolling">
+  <h2>Unrolling through time</h2>
+  <p>Draw the same cell once per time step and you get a network 56 layers deep
+  &mdash; but with <strong>one</strong> set of weights, reused.</p>
+  <div class="panel">
+    <span class="panel-title">Two consequences, both important</span>
+    The parameter count does not grow with the sequence length. And the gradient
+    has to travel back through 56 applications of the same matrix, which is the
+    variance-propagation problem from Lecture 14 in a new costume.
+  </div>
+  <p class="small muted">That second consequence is why $\tanh$ rather than ReLU:
+  a bounded activation keeps the repeated product from exploding.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="Four shapes">
+  <h2>Four shapes of recurrent model</h2>
+  <table class="smaller">
+    <tr><th>Shape</th><th>Input</th><th>Output</th><th>Example</th></tr>
+    <tr><td>sequence to vector</td><td>a sequence</td><td>one value</td><td class="fix">today's model</td></tr>
+    <tr><td>vector to sequence</td><td>one value</td><td>a sequence</td><td>a caption from an image</td></tr>
+    <tr><td>sequence to sequence</td><td>a sequence</td><td>a sequence</td><td>a forecast at every step</td></tr>
+    <tr><td>encoder&ndash;decoder</td><td>a sequence</td><td>a sequence</td><td>translation</td></tr>
+  </table>
+  <p class="small">We build the first today. The third appears in the next
+  lecture, and the fourth in two applications' time.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="Backpropagation through time">
+  <h2>Training it: backpropagation through time</h2>
+  <p>Unroll the network over the window and it becomes a deep feed-forward
+  network whose layers <em>share their weights</em>. Then differentiate it
+  exactly as Lecture&nbsp;10 taught &mdash; nothing new is needed.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Which is also the problem</span>
+    Unrolling 56 steps gives a 56-layer network, and Lecture&nbsp;11 said what
+    happens to a gradient descending 56 layers: it is multiplied by the same
+    factor 56 times. Here the factor is the <em>same</em> matrix every step,
+    because the weights are shared &mdash; so the gradient is governed by a
+    power of one matrix, and powers of a matrix either vanish or explode unless
+    its spectral radius sits almost exactly at one.
+  </div>
+  <p class="small">Initialisation cannot fix this the way it did in
+  Lecture&nbsp;11, because there the layers were independent. Something has to
+  change in the cell itself.</p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="The model">
+  <h2>The model, in eleven lines</h2>
+  <pre><code class="language-python" data-trim>
+import torch.nn as nn
+
+class SimpleRnn(nn.Module):
+    def __init__(self, input_size=1, hidden_size=32, output_size=1):
+        super().__init__()
+        self.rnn = nn.RNN(input_size, hidden_size, batch_first=True)
+        self.head = nn.Linear(hidden_size, output_size)
+
+    def forward(self, X):                      # X: [batch, time, series]
+        outputs, last_state = self.rnn(X)
+        return self.head(outputs[:, -1])       # only the final step
+  </code></pre>
+  <p class="small"><code>batch_first=True</code> because our batches are
+  [batch, time, series]. Without it the module silently reads the first
+  dimension as time.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Why the head">
+  <h2>Why the linear head is not optional</h2>
+  <ul class="tight small">
+    <li>The hidden state has 32 components\; the target has one</li>
+    <li>$\tanh$ outputs lie in $(-1, 1)$, and our scaled targets sometimes
+        exceed that</li>
+    <li>The head is one affine map from 32 numbers to one, applied to the last
+        step only</li>
+  </ul>
+  <div class="panel">
+    <code>outputs[:, -1]</code> is the hidden state after the final time step.
+    Everything the model knows about the window has to fit in those 32 numbers.
+  </div>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="Training loop">
+  <h2>Training it</h2>
+  <pre><code class="language-python" data-trim>
+model = SimpleRnn()
+loss_fn = nn.HuberLoss(delta=0.05)
+opt = torch.optim.SGD(model.parameters(), lr=0.05, momentum=0.9)
+loader = DataLoader(train_set, batch_size=32, shuffle=True)
+
+for epoch in range(200):
+    model.train()
+    for Xb, yb in loader:
+        opt.zero_grad()
+        loss_fn(model(Xb), yb).backward()
+        opt.step()
+  </code></pre>
+  <p class="small muted">The same five lines as Lecture 12, unchanged.
+  <code>zero_grad</code> is still not optional and still fails silently.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="Huber">
+  <h2>Why the Huber loss</h2>
+  <div class="eqn-box">
+    $$L_\delta(e) \;=\; \begin{cases}
+      \tfrac{1}{2}e^{2} & |e| \le \delta\\[2pt]
+      \delta\left(|e| - \tfrac{1}{2}\delta\right) & |e| > \delta
+    \end{cases}$$
+  </div>
+  <p class="small">Quadratic near zero, linear far away. We are optimising a
+  proxy for MAE, and minimising the absolute error directly gives a gradient
+  that never gets smaller as you approach the optimum.</p>
+  <p class="small muted">The metric and the training loss are allowed to differ.
+  Lecture 2 said so\; here is the case.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="Shuffle the windows">
+  <h2>Shuffle, but shuffle the right thing</h2>
+  <div class="panel">
+    <code>DataLoader(train_set, shuffle=True)</code> shuffles the
+    <strong>windows</strong>. It does not shuffle the values inside a window
+    &mdash; the sequence within each row is untouched.
+  </div>
+  <p class="small">Gradient descent expects the instances in a batch to be
+  independent draws. Presenting 56 consecutive days as a batch, in order, gives
+  56 highly correlated gradients and a noisier step, not a smoother one.</p>
+  <p class="small muted">Read that sentence again in the next lecture.</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="RNN result">
+  <h2>The recurrent network, measured the same way</h2>
+  <p class="big-num good">38,224</p>
+  <p class="lead">Five folds, shuffled, seed 42 &mdash; identical protocol to the
+  linear model.</p>
+  <p class="small">Against <strong>55,399</strong> for copying last week and
+  <strong>44,925</strong> for the linear model. That is
+  <strong>31.0%</strong> better than the baseline, and 15% better than the
+  linear model on the same folds.</p>
+  <aside class="notes">This is the number they will carry into the next lecture.
+  Say it slowly and write it on the board.</aside>
+</section>
+
+<!-- 19 -->
+<section class="figslide" data-menu-title="◆ Where we finish">
+  <h2>Where we finish today</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l19-committed.svg"
+         alt="Horizontal bars of mean absolute error under five-fold cross-validation: copying last week, the linear model on 56 lags, and the simple recurrent network, with a dashed line at the naive baseline.">
+  </figure>
+  <p class="takeaway">Two models, both comfortably past the baseline, on
+  identical folds.</p>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="Reading the table">
+  <h2>Reading it</h2>
+  <ul class="tight small">
+    <li>Both models beat the baseline by more than the fold-to-fold spread, so
+        the ordering is real</li>
+    <li>The recurrent model beats the linear one &mdash; it can use the
+        <em>order</em> of the window, not only a weighted sum of it</li>
+    <li>Neither is close to zero, and neither should be: some of the next day is not
+        in the last eight weeks</li>
+  </ul>
+  <p class="small muted">Everything on this slide is a statement about the folds
+  we measured on. Every such statement carries an unstated assumption, and
+  ours is on the next slide but one.</p>
+</section>
+
+<!-- 21 -->
+<section class="divider" data-menu-title="◆ The method">
+  <p class="kicker">The method</p>
+  <h1>Deeper, wider,<br>and further ahead</h1>
+  <p class="clock">35 minutes &middot\; examinable</p>
+</section>
+
+<!-- 22 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-16.ipynb">Open Lecture 16 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> The series is short and the networks
+        are small\; every model here trains in seconds</li>
+    <li>Every architecture scored on the <em>same</em> rolling-origin protocol
+        as Lecture&nbsp;15, so the ladder is a comparison and not a collection</li>
+    <li>The gradient norm through an unrolled RNN, measured &mdash; the same
+        probe as Lecture&nbsp;11, along time instead of depth</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Lengthen the window from 56 steps to 200 and re-run the plain RNN. It gets
+    worse, not better, and the gradient probe says why.
+  </div>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="Four shapes of sequence problem">
+  <h2>Four shapes of sequence problem</h2>
+  <table class="smaller">
+    <tr><th>Shape</th><th>In</th><th>Out</th><th>Example</th></tr>
+    <tr><td>sequence to vector</td><td>a sequence</td><td>one value</td><td>forecast one step; classify a review</td></tr>
+    <tr><td>vector to sequence</td><td>one value</td><td>a sequence</td><td>caption an image</td></tr>
+    <tr><td>sequence to sequence</td><td>a sequence</td><td>a sequence</td><td>forecast seven days; translate</td></tr>
+    <tr><td>encoder&ndash;decoder</td><td>a sequence</td><td>a sequence, after reading all of it</td><td>translate properly</td></tr>
+  </table>
+  <p class="small">The cell is the same in all four. What changes is where you
+  take the output from &mdash; the last state, every state, or a second network
+  fed by the last state &mdash; and that choice is the architecture.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Reading the shapes off the code">
+  <h2>Reading the shapes off the code</h2>
+  <ul class="tight small">
+    <li><code>return_sequences=False</code> &mdash; one output, from the final
+        state. Sequence to vector</li>
+    <li><code>return_sequences=True</code> &mdash; one output per step. Needed
+        for every layer that feeds another recurrent layer, or you hand the next
+        layer a vector where it expects a sequence</li>
+    <li>A <code>Dense</code> on top applied at every step is
+        <em>time-distributed</em>: the same weights at every position, which is
+        the recurrent idea again, one level up</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">The commonest shape error</span>
+    Stacking two recurrent layers and forgetting <code>return_sequences=True</code>
+    on the first. It does not raise: the second layer receives a
+    <em>length-one</em> sequence and trains happily on almost no information.
+    The symptom is a model that is inexplicably no better than a shallower one.
+  </div>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Loss for a forecast">
+  <h2>Loss for a forecast</h2>
+  <p class="small">Squared error punishes a large miss quadratically, which on a
+  series with occasional shocks means a handful of days dominate the gradient.</p>
+  <table class="smaller">
+    <tr><th>Loss</th><th>Behaviour</th></tr>
+    <tr><td>MSE</td><td>smooth everywhere; dominated by outliers</td></tr>
+    <tr><td>MAE</td><td>robust; gradient is constant, so it converges slowly near the optimum</td></tr>
+    <tr><td>Huber</td><td>quadratic near zero, linear beyond &mdash; both properties, one knob</td></tr>
+  </table>
+  <p class="small">The choice is the same argument as RMSE against MAE in
+  Lecture&nbsp;2, and it has the same answer: it depends on what an error costs
+  the operator, and that is a question for them and not for us.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Windows overlap, and that matters">
+  <h2>Windows overlap, and that matters</h2>
+  <p class="small">Consecutive training windows share almost all their content:
+  a 56-day window starting on day $t$ and one starting on day $t+1$ differ in two
+  values out of fifty-six.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Two consequences</span>
+    <strong>Shuffle them.</strong> Otherwise a mini-batch is fifty near-identical
+    examples, its gradient is one example's gradient with less noise, and
+    training stalls. <br><br>
+    <strong>Do not let that shuffling cross the split.</strong> Windows are
+    shuffled <em>within</em> the training period only; the evaluation period is
+    still strictly later in time. Shuffling and leakage are different operations
+    and it is easy to conflate them.
+  </div>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Normalising a series">
+  <h2>Normalising a series</h2>
+  <ul class="tight small">
+    <li>Scale by a constant computed on the <strong>training period only</strong>
+        &mdash; the same rule as every other lecture, and easier to break here
+        because the series looks like one object</li>
+    <li>Divide rather than standardise if the series is positive and
+        multiplicative: ridership is counts, and a ratio is more natural than a
+        difference</li>
+    <li>If you differenced, remember to <em>un</em>-difference the prediction
+        before reporting it. The metric is in the units the operator uses</li>
+  </ul>
+  <p class="small fail">A model evaluated in differenced units can look
+  excellent and mean nothing: predicting a change of zero every day is nearly
+  right, and it is the naive forecast wearing a disguise.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="What to log while it trains">
+  <h2>What to log while it trains</h2>
+  <ul class="tight small">
+    <li>Training and validation loss per epoch &mdash; the gap is Lecture&nbsp;5's</li>
+    <li>The gradient norm &mdash; Lecture&nbsp;11's probe, along time here rather
+        than depth. A plain RNN on a long window shows it decaying</li>
+    <li>The forecast itself, plotted against truth, on a held-out stretch. A
+        number cannot tell you the model has learned to output last week's value
+        with a one-day lag; a picture can</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The failure a plot catches and a metric does not</span>
+    A model that simply repeats the previous value scores well on almost any
+    error metric and is worthless. On a plot it is unmistakable: the prediction
+    is the truth, shifted right by one step.
+  </div>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Three ways to forecast ahead">
+  <h2>Forecasting $k$ steps ahead: three strategies</h2>
+  <table class="smaller">
+    <tr><th>Strategy</th><th>How</th><th>Weakness</th></tr>
+    <tr><td>Recursive</td><td>predict one step, feed it back, repeat</td><td>errors compound\; the model never trained on its own output</td></tr>
+    <tr><td>Direct</td><td>a separate model per horizon</td><td>$k$ models, and none of them shares what the others learned</td></tr>
+    <tr><td>Sequence-to-sequence</td><td>one model, $k$ outputs at once</td><td>more to fit, and the outputs are not independent</td></tr>
+  </table>
+  <p class="small">All three are defensible and all three must be evaluated the
+  same way: <strong>on the rolling origin, at the horizon you actually need</strong>.
+  A model that is excellent one step ahead and useless seven steps ahead is not
+  a good model if the operator plans a week in advance.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Teacher forcing">
+  <h2>Teacher forcing, and what it costs</h2>
+  <p class="small">Training a sequence-to-sequence model, you can feed the
+  decoder the <em>true</em> previous token or its <em>own</em> previous
+  prediction.</p>
+  <table class="smaller">
+    <tr><th></th><th>Trains</th><th>At prediction time</th></tr>
+    <tr><td>True token (teacher forcing)</td><td class="hit">fast and stable</td><td class="fail">the model has never seen its own mistakes</td></tr>
+    <tr><td>Own prediction</td><td class="fail">slow, and early training is noise</td><td class="hit">matches deployment</td></tr>
+  </table>
+  <div class="panel panel-when">
+    <span class="panel-title">Exposure bias</span>
+    A model trained only on true prefixes meets a distribution at prediction
+    time that it never saw in training: its own errors, compounding. The forecast
+    drifts, and the further ahead you go the worse it gets &mdash; which is
+    precisely the recursive strategy&rsquo;s weakness two slides ago.
+  </div>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Bidirectional, and when you may not">
+  <h2>Bidirectional layers</h2>
+  <p class="small">Run one recurrent layer forwards and another backwards, and
+  concatenate their states. Every position then sees the whole sequence.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">The condition, and it is absolute</span>
+    A backward pass reads the <em>future</em>. That is fine when the whole
+    sequence is available at prediction time &mdash; classifying a review,
+    tagging a sentence &mdash; and it is <strong>leakage</strong> when it is not.
+    A bidirectional forecaster is Lecture&nbsp;15&rsquo;s random split wearing a
+    different hat: the number goes up and the system cannot be deployed.
+  </div>
+  <p class="small">Ask one question: <em>at prediction time, do I have the rest
+  of the sequence?</em> For text classification, usually yes. For forecasting,
+  never.</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Stateful or stateless">
+  <h2>Carrying the state between batches</h2>
+  <ul class="tight small">
+    <li><strong>Stateless</strong> &mdash; the state resets to zero for every
+        window. Windows can be shuffled, which is what makes training well
+        behaved</li>
+    <li><strong>Stateful</strong> &mdash; the final state of one batch becomes
+        the initial state of the next. In principle unbounded memory\; in
+        practice the batches must be consecutive and correctly ordered, so you
+        cannot shuffle</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The trade, plainly</span>
+    Stateful buys memory beyond the window and costs you shuffling &mdash; and
+    shuffling is what stops consecutive, highly-correlated windows from arriving
+    in the same batch. Most practical systems are stateless with a long enough
+    window, which is a statement about engineering rather than about theory.
+  </div>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="Improvement 1">
+  <h2>Improvement 1 &middot\; A deeper network</h2>
+  <pre><code class="language-python" data-trim>
+self.rnn = nn.RNN(input_size, hidden_size, num_layers=3,
+                  batch_first=True)
+  </code></pre>
+  <p class="small">One argument. Three recurrent layers stacked, the output of
+  each feeding the next.</p>
+  <table class="smaller">
+    <tr><th>Model</th><th class="num">Forecast MAE</th></tr>
+    <tr><td>Simple RNN, one layer</td><td class="num hit">49,073</td></tr>
+    <tr><td>Deep RNN, three layers</td><td class="num fail">53,491</td></tr>
+  </table>
+  <p class="fail lead">It got worse.</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="Why deeper failed">
+  <h2>Why the deeper network lost</h2>
+  <ul class="tight small">
+    <li>Three times the parameters, fitted on the same 1,040 windows</li>
+    <li>Its error on the training rows is <em>higher</em> too &mdash; 40,630
+        against 35,972 &mdash; so this is not overfitting, it is a harder
+        optimisation</li>
+    <li>Gradients now traverse 56 time steps <em>and</em> three layers, which is
+        the vanishing-signal problem of Lecture 14 compounded</li>
+  </ul>
+  <p class="fix small">Report the negative result. A ladder of improvements in
+  which every rung works is a ladder somebody edited.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Improvement 2">
+  <h2>Improvement 2 &middot\; Give it more series</h2>
+  <p class="small">We have been forecasting rail from rail alone, while a bus
+  series sits unused beside it &mdash; and a day-type column we established is
+  known in advance.</p>
+  <pre><code class="language-python" data-trim>
+mulvar = df[["rail", "bus"]] / 1e6
+mulvar["next_day_type"] = df["day_type"].shift(-1)   # known in advance
+mulvar = pd.get_dummies(mulvar, dtype=float)         # 5 columns
+
+assert list(mulvar.columns) == ["rail", "bus", "next_day_type_A",
+                                "next_day_type_U", "next_day_type_W"]
+  </code></pre>
+  <p class="small">The architecture changes by one number: <code>input_size=5</code>.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="shift(-1) again">
+  <h2>Wait &mdash; that is a <code>shift(-1)</code></h2>
+  <p class="lead">The previous lecture spent ten minutes on a
+  <code>shift(-7)</code> that read the future. This one is deliberate.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">The test that separates them</span>
+    Is the value <strong>available at prediction time</strong>? The type of the
+    day we are forecasting is on the public calendar and has been for a year.
+    Its ridership is not.
+  </div>
+  <p class="small fail">This is the one question about leakage that no static
+  check can answer for you. It is not a property of the code\; it is a property
+  of the world.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Multivariate result">
+  <h2>The result</h2>
+  <table class="smaller">
+    <tr><th>Model</th><th class="num">Forecast MAE</th><th class="num">vs copying last week</th></tr>
+    <tr><td>Copy last week</td><td class="num">55,399</td><td class="num">&mdash;</td></tr>
+    <tr><td>Simple RNN, rail only</td><td class="num">49,073</td><td class="num">11% better</td></tr>
+    <tr><td>Simple RNN, five inputs</td><td class="num hit">40,046</td><td class="num">28% better</td></tr>
+  </table>
+  <p class="fix">Eighteen per cent off the error for one line of feature
+  engineering and one changed constructor argument.</p>
+  <p class="small muted">Most of it is the day type. The network no longer has to
+  infer that a holiday is coming from the shape of the previous eight weeks
+  &mdash; which is impossible &mdash; because we told it.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="Several steps ahead">
+  <h2>Improvement 4 &middot\; Forecasting further than one day</h2>
+  <p>The operations team also wants a fortnight. Two ways:</p>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>Feed the forecast back</strong></p>
+      <p class="smaller">Predict day $t{+}1$, append it to the window as though it
+      had happened, predict $t{+}2$. Errors accumulate.</p>
+    </div>
+    <div>
+      <p class="small"><strong>Predict all fourteen at once</strong></p>
+      <p class="smaller">Change the output layer to fourteen units and the target
+      to a vector. One model, no accumulation.</p>
+    </div>
+  </div>
+  <pre><code class="language-python" data-trim>
+target = self.series[end : end + 14, 0]     # 14 values, not 1
+model = GruModel(input_size=5, hidden_size=32, output_size=14)
+  </code></pre>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Seq2seq">
+  <h2>And a third way &mdash; predict fourteen at <em>every</em> step</h2>
+  <p class="small">At step 0 the model outputs the forecasts for steps 1 to 14\;
+  at step 1, for steps 2 to 15\; and so on. The target is a sequence of windows
+  rather than a single vector.</p>
+  <pre><code class="language-python" data-trim>
+def forward(self, X):
+    outputs, _state = self.rnn(X)
+    return self.head(outputs)        # every step, not outputs[:, -1]
+  </code></pre>
+  <div class="panel">
+    <span class="panel-title">Is that cheating?</span>
+    No. A recurrent cell at step $t$ has seen steps $1$ to $t$ and nothing more
+    &mdash; it is <strong>causal</strong>. The loss simply gains a term at every
+    step, so many more gradients flow and they travel a shorter distance.
+  </div>
+  <p class="small muted">After training, only the last step's output is used.</p>
+</section>
+
+<!-- 40 -->
+<section class="figslide" data-menu-title="◆ Horizon">
+  <h2>How far ahead can it see?</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l20-horizon.svg"
+         alt="Mean absolute error against forecast horizon from one to fourteen days for a GRU on a 56-day window and for a convolution-plus-GRU on a 112-day window, with a dashed line for copying the same day of the week\; both models rise from about 36,000 at one day to the high forties by fourteen days.">
+  </figure>
+  <p class="takeaway">The error grows with distance, from
+  <strong>35,997</strong> at one day to <strong>46,586</strong> at fourteen
+  &mdash; and stays below the no-model baseline throughout.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="Gradient clipping, here">
+  <h2>Gradient clipping, here</h2>
+  <p class="small">Lecture&nbsp;11 introduced clipping as one repair among
+  seven. On a recurrent network it is not optional.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Why here in particular</span>
+    The gradient through $T$ steps carries a power of one matrix. When its
+    spectral radius exceeds one even slightly, the norm does not drift upwards
+    &mdash; it explodes, over a handful of steps, and a single bad batch can
+    move every weight to a place training never recovers from.
+  </div>
+  <p class="small">Clip by global norm, not per parameter: the direction of the
+  update is information and only its length is the problem.</p>
+</section>
+
+<!-- 42 -->
+<section class="divider" data-menu-title="◆ Gates">
+  <p class="kicker">The repair</p>
+  <h1>LSTM and GRU,<br>gate by gate</h1>
+  <p class="clock">20 minutes &middot\; examinable</p>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="Why a gate helps">
+  <h2>Why a gate helps, in one line</h2>
+  <p class="small">A plain cell <em>multiplies</em> the state at every step:</p>
+  <div class="eqn-box compact">
+    $$\frac{\partial \mathbf{h}_t}{\partial \mathbf{h}_{t-1}}
+    \;=\; \text{diag}(\phi')\,\mathbf{W}_h^{\mathsf T}$$
+  </div>
+  <p class="small">so over $T$ steps the gradient carries $T$ copies of the same
+  matrix, and Lecture&nbsp;11&rsquo;s argument applies with the extra force that
+  it is <em>one</em> matrix rather than many independent ones.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">What a gated cell does instead</span>
+    An LSTM keeps a separate cell state $\mathbf{c}_t$ updated <strong>additively</strong>:
+    $\mathbf{c}_t = \mathbf{f}_t \odot \mathbf{c}_{t-1} + \mathbf{i}_t \odot \tilde{\mathbf{c}}_t$.
+    When the forget gate $\mathbf{f}_t$ is near one, $\partial\mathbf{c}_t/\partial\mathbf{c}_{t-1}\approx\mathbf{1}$
+    and the gradient passes through almost unchanged. That is the entire trick:
+    <strong>a path along which the gradient is added to rather than multiplied.</strong>
+  </div>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="LSTM, gate by gate">
+  <h2>LSTM, gate by gate</h2>
+  <table class="smaller">
+    <tr><th>Gate</th><th>Equation</th><th>What it decides</th></tr>
+    <tr><td>forget $\mathbf{f}_t$</td><td>$\sigma(\cdot)$</td><td>how much of the old cell state to keep</td></tr>
+    <tr><td>input $\mathbf{i}_t$</td><td>$\sigma(\cdot)$</td><td>how much of the candidate to write</td></tr>
+    <tr><td>candidate $\tilde{\mathbf{c}}_t$</td><td>$\tanh(\cdot)$</td><td>what to write, if anything</td></tr>
+    <tr><td>output $\mathbf{o}_t$</td><td>$\sigma(\cdot)$</td><td>how much of the cell state to expose as $\mathbf{h}_t$</td></tr>
+  </table>
+  <p class="small">Every gate is a sigmoid of the same two inputs
+  $(\mathbf{x}_t, \mathbf{h}_{t-1})$ with its own weights, so a
+  sigmoid in $[0,1]$ is a soft switch and the network <em>learns when to open
+  it</em>. Four gates means roughly four times the parameters of a plain cell.</p>
+  <p class="small muted"><span class="scope scope-exam">examinable</span> State
+  what each gate does and why the cell-state update is additive.</p>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="GRU">
+  <h2>GRU: the same idea, two gates</h2>
+  <ul class="tight small">
+    <li><strong>Update gate</strong> $\mathbf{z}_t$ &mdash; merges LSTM&rsquo;s forget and input into one: what is kept is what is not written</li>
+    <li><strong>Reset gate</strong> $\mathbf{r}_t$ &mdash; how much of the previous state to use when forming the candidate</li>
+    <li>No separate cell state: $\mathbf{h}_t$ does both jobs</li>
+  </ul>
+  <div class="eqn-box compact">
+    $$\mathbf{h}_t = (1-\mathbf{z}_t)\odot\mathbf{h}_{t-1} + \mathbf{z}_t\odot\tilde{\mathbf{h}}_t$$
+  </div>
+  <p class="small">Still additive, still a near-identity path when
+  $\mathbf{z}_t$ is small &mdash; the property that mattered, kept, with about
+  three quarters of the parameters.</p>
+  <div class="panel">
+    <span class="panel-title">Which to use</span>
+    On most problems they are within noise of one another. GRU is smaller and
+    trains faster\; LSTM has the longer track record. Measure, on your own
+    protocol, rather than inheriting an opinion.
+  </div>
+</section>
+
+<!-- 46 -->
+<section data-menu-title="Long sequences">
+  <h2>Improvement 3 &middot\; The problem with a plain recurrent cell</h2>
+  <p class="small">Unrolled over 56 steps, the network applies the same weight
+  matrix 56 times. The gradient carries a product of 56 Jacobians.</p>
+  <div class="panel panel-math">
+    That is Lecture 14's variance-propagation argument with depth replaced by
+    time. The signal from step 1 has been transformed 55 times before it reaches
+    the output, and what survives is a memory that fades.
+  </div>
+  <p class="small">The repair is not a better initialisation. It is a cell that
+  can <strong>choose</strong> what to keep.</p>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="Gated result">
+  <h2>Both gated cells, measured</h2>
+  <table class="smaller">
+    <tr><th>Model, all five inputs</th><th class="num">Forecast MAE</th><th class="num">Training MAE</th></tr>
+    <tr><td>Simple RNN</td><td class="num">40,046</td><td class="num">27,035</td></tr>
+    <tr><td>LSTM</td><td class="num">37,542</td><td class="num">24,540</td></tr>
+    <tr><td>GRU</td><td class="num hit">34,639</td><td class="num fail">20,356</td></tr>
+  </table>
+  <p class="small">The GRU wins on the forecast, and the second column says why
+  to be careful: it fits the training rows 40% better than the plain cell but
+  the forecast only 14% better. <strong>That gap is overfitting</strong>, and it
+  is the next thing to attack.</p>
+  <p class="small muted">Both cells are Chapter 13. Neither is a large model:
+  a few thousand parameters.</p>
+</section>
+
+<!-- 48 -->
+<section class="figslide" data-menu-title="◆ The ladder">
+  <h2>Every model, measured the honest way</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l20-ladder.svg"
+         alt="Horizontal bars of forecast mean absolute error: copying last week at about 55,000, the linear model and simple RNN near 49,000, the deep RNN worse at 53,500, the multivariate RNN at 40,000, the LSTM at 37,500 and the GRU best at 34,600.">
+  </figure>
+  <p class="takeaway">From 55,399 to 34,639 &mdash; <strong>37%</strong> better
+  than doing nothing, and every bar is a forecast.</p>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="Convolutional">
+  <h2>A convolutional alternative</h2>
+  <p class="small">A one-dimensional convolution with stride 2 halves the
+  sequence before the recurrent layer sees it, so the same number of recurrent
+  steps covers twice as much history.</p>
+  <pre><code class="language-python" data-trim>
+self.conv = nn.Conv1d(input_size, hidden_size, kernel_size=4, stride=2)
+self.gru  = nn.GRU(hidden_size, hidden_size, batch_first=True)
+# time is a spatial dimension for Conv1d, so permute before and after
+  </code></pre>
+  <table class="smaller">
+    <tr><th>Model, 14 outputs</th><th class="num">MAE at $t{+}1$</th><th class="num">MAE at $t{+}14$</th></tr>
+    <tr><td>GRU, 56-day window</td><td class="num hit">35,997</td><td class="num hit">46,586</td></tr>
+    <tr><td>Conv then GRU, 112-day window</td><td class="num">39,792</td><td class="num">55,148</td></tr>
+  </table>
+  <p class="small fail">On this series the extra history does not pay for the
+  resolution it costs. Reported because we measured it, not because it won.</p>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Dilated convolutions">
+  <h2>Dilated convolutions</h2>
+  <p class="small">A convolution with gaps: stack layers whose dilation doubles
+  &mdash; 1, 2, 4, 8, 16 &mdash; and the receptive field grows exponentially with
+  depth while the parameter count grows linearly.</p>
+  <table class="smaller">
+    <tr><th></th><th>Recurrent</th><th>Dilated convolution</th></tr>
+    <tr><td>Along the sequence</td><td class="fail">sequential</td><td class="hit">parallel</td></tr>
+    <tr><td>Reach</td><td>in principle unbounded</td><td>fixed by depth and dilation</td></tr>
+    <tr><td>Gradient path</td><td>through every step</td><td class="hit">through $\log T$ layers</td></tr>
+  </table>
+  <p class="small">It must be <strong>causal</strong>: pad on the left only, so
+  no output depends on a later input. A symmetric convolution here is
+  Lecture&nbsp;15's leak again, in a third costume.</p>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="What we cut">
+  <h2>What we cut, and where it sits</h2>
+  <table class="smaller">
+    <tr><th>Left out</th><th>Where it belongs</th></tr>
+    <tr><td>SARIMA and its grid search</td><td>Chapter 13 &mdash; in scope, cut for time</td></tr>
+    <tr><td>WaveNet: stacked dilated convolutions</td><td>Chapter 13 &mdash; in scope, cut for time</td></tr>
+    <tr><td>Layer normalisation inside a cell\; dropout between layers</td><td>Chapter 13</td></tr>
+    <tr><td>Attention over the window</td><td>Chapters 14&ndash;15, in two lectures</td></tr>
+    <tr><td>Prediction intervals rather than point forecasts</td><td class="fail">outside the book</td></tr>
+  </table>
+  <p class="small">Thirty-five minutes buys four improvements measured
+  end-to-end. It does not buy eight described end-to-end and none measured.</p>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="The final table">
+  <h2>The whole application, in one table</h2>
+  <table class="smaller">
+    <tr><th>Forecast</th><th class="num">What we reported</th><th class="num">What it does</th></tr>
+    <tr><td>Copy last week</td><td class="num">55,399</td><td class="num">55,399</td></tr>
+    <tr><td>Linear, 56 lags</td><td class="num">44,925</td><td class="num fail">56,446</td></tr>
+    <tr><td>Simple RNN</td><td class="num">38,224</td><td class="num fail">49,073</td></tr>
+    <tr><td>GRU, five inputs</td><td class="num">&mdash;</td><td class="num hit">34,639</td></tr>
+  </table>
+  <p class="small">The two middle rows are the same models measured twice. The
+  bottom row is the model we would actually deploy, and it was never measured
+  the wrong way.</p>
+  <p class="fix small">The final number is <strong>better</strong> than the one
+  we committed to &mdash; but we reached it by first admitting that the
+  committed one was fiction.</p>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="Is it good">
+  <h2>Is 34,639 good?</h2>
+  <p class="small">It is <strong>37%</strong> better than the system a transit
+  authority could run with no data scientist at all, and its typical miss is
+  around six per cent of a day's ridership.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">What a defensible report says</span>
+    &ldquo\;Forecasting the five months after the training cut, and never seeing
+    them, the model's mean absolute error is 34,639 boardings a day against
+    55,399 for copying the same day of the previous week. Both figures are on
+    identical rows. The gain is concentrated on holidays.&rdquo\;
+  </div>
+  <p class="small muted">Note what that sentence contains: the protocol, the
+  baseline, the rows, and where the gain comes from. Four things the number
+  alone does not carry.</p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="Regime change">
+  <h2>Red team it: what happens when the world changes?</h2>
+  <p class="small">Fit on everything to the end of 2019. Forecast the four months
+  from March 2020, which nobody in this room needs reminding about.</p>
+  <table class="smaller">
+    <tr><th></th><th class="num">MAE</th></tr>
+    <tr><td>The linear model, trained to the end of 2019</td><td class="num fail">84,380</td></tr>
+    <tr><td>Copying last week, on the same 122 days</td><td class="num hit">36,282</td></tr>
+    <tr><td>The actual mean level over that period</td><td class="num">141,404</td></tr>
+  </table>
+  <p class="fail">The model is <strong>2.3 times worse</strong> than doing
+  nothing, and its error is six tenths of the entire level.</p>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="Regime change 2">
+  <h2>And the shuffled split cannot see it at all</h2>
+  <p class="small">Run the same shuffled five-fold cross-validation over
+  2016&ndash;2021, spanning the collapse:</p>
+  <p class="big-num bad">36,554</p>
+  <p class="small">It reports a <em>better</em> number than before, because the
+  post-2020 days are easier to interpolate: they are flat, low, and surrounded by
+  other flat low days that are in the training set.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">The failure mode to remember</span>
+    A random split does not merely overstate performance. It is
+    <strong>structurally incapable</strong> of detecting a regime change, which
+    is the failure that actually ends forecasting systems.
+  </div>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="Not a leak">
+  <h2>To be fair to the model</h2>
+  <p class="small">March 2020 is not a leak and it is not the model's fault. No
+  forecaster could have produced it from eight weeks of history, and copying
+  last week wins only because it adapts within a week of the collapse.</p>
+  <div class="panel">
+    The lesson is not &ldquo\;the model is bad&rdquo\;. It is that an honest
+    protocol <em>told you</em> the model had failed, on the day it failed, and
+    the dishonest one reported an improvement.
+  </div>
+  <p class="fix small">Which is why a deployed forecaster is monitored against
+  its own naive baseline, continuously. If the margin disappears, something has
+  changed in the world.</p>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="Temporal checklist">
+  <h2>Temporal leakage checklist &mdash; keep this</h2>
+  <ul class="tight small">
+    <li>Is the split by <strong>date</strong>, not by row?</li>
+    <li>Does every feature exist at the moment the forecast is made? Name the
+        moment</li>
+    <li>Were any statistics &mdash; means, scalers, encodings &mdash; computed
+        over the whole series before the cut?</li>
+    <li>Do the training windows overlap the scored windows? Purge them</li>
+    <li>Is the baseline computed on <em>identical rows</em> to the model?</li>
+    <li>Does the reported score come from more than one origin?</li>
+  </ul>
+  <p class="small muted">Six questions. The third is the leak from Lecture 2,
+  meeting the leak from today.</p>
+</section>
+
+<!-- 58 -->
+<section data-menu-title="What recurrence cannot do">
+  <h2>What recurrence still cannot do</h2>
+  <ul class="tight small">
+    <li><strong>It is sequential.</strong> Step $t$ needs step $t-1$, so the
+        computation cannot be parallelised along the sequence &mdash; on long
+        sequences this, not the mathematics, is the binding constraint</li>
+    <li><strong>The state is a bottleneck.</strong> Everything the network
+        remembers must fit in one fixed-width vector, whatever the sequence
+        length</li>
+    <li><strong>Long-range dependence is still hard.</strong> Gates make the
+        gradient survive\; they do not make position 400 as accessible as
+        position 2</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">What replaces it</span>
+    Let every position look directly at every other, with learned weights, and
+    all three problems go at once: the computation parallelises, there is no
+    single state to squeeze through, and position 400 is exactly as far away as
+    position 2. That is attention, and it is Lecture&nbsp;18.
+  </div>
+</section>
+
+<!-- 59 -->
+<section data-menu-title="What we did not do">
+  <h2>What we did not do</h2>
+  <ul class="tight small">
+    <li><strong>Hierarchical or multi-scale models</strong>, which forecast a
+        weekly aggregate and a daily deviation separately</li>
+    <li><strong>Probabilistic forecasts</strong> &mdash; an interval rather than
+        a point. Operators usually want one, and every method here gives a point</li>
+    <li><strong>Exogenous shocks</strong> known in advance: a public holiday, a
+        closure, a fare change. The model can be told, and was not</li>
+  </ul>
+  <p class="small muted"><span class="scope scope-context">beyond the syllabus,
+  for context</span> All three are standard practice and none is examinable.
+  They are here so you know they exist when a real forecasting problem asks for
+  them.
+</section>
+
+<!-- 60 -->
+<section data-menu-title="Reading a recurrent result honestly">
+  <h2>Reading a recurrent result honestly</h2>
+  <table class="smaller">
+    <tr><th>Question</th><th>Why it decides whether the number means anything</th></tr>
+    <tr><td>At what horizon?</td><td>one step ahead is a different problem from seven</td></tr>
+    <tr><td>Against which baseline?</td><td>seasonal-naive, not the mean &mdash; Lecture&nbsp;15</td></tr>
+    <tr><td>On which protocol?</td><td>rolling origin, and how many folds</td></tr>
+    <tr><td>With what spread?</td><td>one origin is one sample</td></tr>
+    <tr><td>In which units?</td><td>differenced or not; scaled or not</td></tr>
+  </table>
+  <p class="small fail">A recurrent network that beats the naive forecast by
+  less than the fold-to-fold spread has not beaten it. This is the paired
+  comparison of Lecture&nbsp;2, and it applies unchanged.</p>
+</section>
+
+<!-- 61 -->
+<section data-menu-title="A recipe for a forecasting model">
+  <h2>A recipe for a forecasting model</h2>
+  <ol class="tight small">
+    <li>Plot the series. Seasonality and trend are usually visible, and cost
+        nothing to find</li>
+    <li>Compute the autocorrelation, and the naive and seasonal-naive baselines.
+        <strong>These are the numbers to beat</strong></li>
+    <li>Fix the protocol before fitting anything: horizon, rolling origin,
+        number of folds, metric</li>
+    <li>Fit a linear model on lags. It is fast, and it is often close</li>
+    <li>Only then a recurrent model, scored on the same protocol</li>
+    <li>Report the ladder with its spread, not the best row alone</li>
+  </ol>
+  <p class="small fail">Steps 2 and 3 come before step 4 for the same reason
+  they did in Lecture&nbsp;2: after you have a number, you will not choose the
+  protocol that makes it look worse.</p>
+</section>
+
+<!-- 62 -->
+<section data-menu-title="What still cannot be parallelised">
+  <h2>What still cannot be parallelised</h2>
+  <p class="small">The sequential dependence is not an implementation detail
+  that a better library removes.</p>
+  <div class="eqn-box compact">
+    $$\mathbf{h}_t = f(\mathbf{h}_{t-1}, \mathbf{x}_t)$$
+  </div>
+  <ul class="tight small">
+    <li>Step $t$ cannot begin until step $t-1$ has finished, by definition</li>
+    <li>Batching parallelises across <em>sequences</em>, never along one</li>
+    <li>So training time grows linearly with sequence length, on any hardware</li>
+  </ul>
+  <p class="small">On a 56-step window nobody cares. On a document of ten
+  thousand tokens it is the binding constraint, and it is the practical reason
+  &mdash; more than the gradient &mdash; that attention replaced recurrence.</p>
+</section>
+
+<!-- 63 -->
+<section data-menu-title="Vocabulary">
+  <h2>Vocabulary</h2>
+  <table class="smaller">
+    <tr><td><strong>unrolling</strong></td><td>writing the recurrence out as a deep network with shared weights</td></tr>
+    <tr><td><strong>BPTT</strong></td><td>backpropagation applied to the unrolled network</td></tr>
+    <tr><td><strong>truncated BPTT</strong></td><td>unrolling only the last $k$ steps, to bound cost and gradient</td></tr>
+    <tr><td><strong>cell state</strong></td><td>an LSTM's second, additively-updated memory</td></tr>
+    <tr><td><strong>teacher forcing</strong></td><td>feeding the true previous token during training</td></tr>
+    <tr><td><strong>exposure bias</strong></td><td>the mismatch that creates at prediction time</td></tr>
+    <tr><td><strong>causal</strong></td><td>no output depends on a later input</td></tr>
+  </table>
+</section>
+
+<!-- 64 -->
+<section data-menu-title="Scope">
+  <h2>Scope</h2>
+  <ul class="tight small">
+    <li><span class="scope scope-exam">examinable</span> the recurrent cell and
+        what unrolling means; why BPTT is unstable and how gates address it;
+        what each LSTM and GRU gate does; the three multi-step strategies; when
+        a bidirectional layer is leakage</li>
+    <li><span class="scope scope-eng">not examinable &mdash; engineering</span>
+        the framework's argument names, stateful mode, and the details of
+        truncated BPTT</li>
+    <li><span class="scope scope-context">beyond the syllabus</span> attention,
+        named today and derived in Lecture&nbsp;18; probabilistic forecasting;
+        hierarchical models</li>
+  </ul>
+  <p class="small muted">If you can say why an additive update helps and a
+  multiplicative one does not, you have the examinable half of this lecture.</p>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="Summary">
+  <h2>What we learned</h2>
+  <ol class="tight smaller">
+    <li>Weak stationarity is what a model assumes about a series\; ours does not
+        have it</li>
+    <li>$\nabla^{d}$ removes a degree-$d$ polynomial trend\; $\nabla_s$ removes a
+        component of period $s$ exactly</li>
+    <li>$\operatorname{Var}(y_t - y_{t-k}) = 2\sigma^2(1-\rho_k)$: differencing
+        helps if and only if $\rho_k > \tfrac12$, and $\rho_7 = 0.831$ is the
+        whole reason copying last week was hard to beat</li>
+    <li>A shuffled split of an autocorrelated series is biased optimistically,
+        because the model is fitted on rows that surround what it is scored on</li>
+    <li>Measured here: 28% on the raw number, of which 9 to 10% survives every
+        control &mdash; a fifth of the model's entire value over doing nothing</li>
+    <li>Repair with time-ordered splits and rolling-origin backtesting, and put a
+        no-model baseline on identical rows beside every score</li>
+    <li>Then: multivariate inputs and a gated cell take the honest forecast from
+        55,399 to 34,639</li>
+  </ol>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="References">
+  <h2>In the book</h2>
+  <table>
+    <tr><th>Topic</th><th>Chapter</th></tr>
+    <tr><td>Stationarity, differencing, seasonality, moving averages</td><td>13</td></tr>
+    <tr><td>ARMA, ARIMA and SARIMA</td><td>13</td></tr>
+    <tr><td>Splitting a time series across time</td><td>13</td></tr>
+    <tr><td>Deep RNNs, multivariate inputs, several steps ahead, seq2seq</td><td>13</td></tr>
+    <tr><td>LSTM and GRU cells\; 1D convolution over sequences</td><td>13</td></tr>
+    <tr><td>Unstable gradients through depth</td><td>11</td></tr>
+    <tr><td>Cross-validation and its assumptions</td><td>2</td></tr>
+  </table>
+</section>
+
+<!-- 67 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight smaller">
+    <li>Replaced a fixed window with a <em>state</em>, and unrolled the cell to
+        see that a recurrent network is a deep network with shared weights</li>
+    <li>Saw that backpropagation through time is Lecture&nbsp;11&rsquo;s problem
+        with one aggravation: the same matrix multiplies the gradient at every
+        step, so its powers vanish or explode</li>
+    <li>Met LSTM and GRU, and read each gate as an answer to that: a path along
+        which the gradient is added to rather than multiplied</li>
+    <li>Forecast several steps ahead three ways &mdash; recursively, directly,
+        and sequence-to-sequence &mdash; and saw what each assumes</li>
+    <li>Added multivariate inputs, and measured whether they paid</li>
+    <li>Saw a dilated convolution reach the same horizon without recurrence at
+        all</li>
+  </ol>
+</section>
+
+<!-- 68 -->
+<section data-menu-title="One line to keep">
+  <h2>One line to keep</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">The line</span>
+    <strong>A gate is a path along which the gradient is added to rather than
+    multiplied.</strong> Everything else about LSTM and GRU is arrangement.
+  </div>
+  <p class="small">And its consequence, which is the honest summary of the
+  lecture: gates make long-range dependence <em>trainable</em>, not
+  <em>easy</em>. Position 400 is still four hundred steps away, and that is the
+  problem Lecture&nbsp;18 removes rather than mitigates.</p>
+</section>
+
+<!-- 69 -->
+<section data-menu-title="Before the next lecture">
+  <h2>Before the next lecture</h2>
+  <ul class="tight small">
+    <li>Run the notebook. Then lengthen the window and watch the plain RNN get
+        <em>worse</em>, and the gradient probe say why</li>
+    <li>Look at the forecast plot for a model that scores well. Check it is not
+        the truth shifted by one step</li>
+    <li>Lecture&nbsp;17 changes the data from numbers to text and keeps the
+        architecture. Almost everything today survives; what changes is what a
+        &ldquo;step&rdquo; is</li>
+  </ul>
+</section>
+
+<!-- 70 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 17 &middot\; G&eacute\;ron Ch. 14</p>
+  <h1>Text</h1>
+  <p class="small">
+    Softmax, cross-entropy and logits &mdash; derived, and why the loss consumes
+    logits rather than probabilities<br>
+    Subword tokenisation, and what an embedding space encodes<br>
+    A recurrent classifier, then the same architecture with pretrained embeddings
+  </p>
+  <p class="clock">Run the Lecture 16 notebook first</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot\;</span> Lecture 16
+  <span class="sep">&middot\;</span> Recurrent networks
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

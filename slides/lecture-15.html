@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 15 — Time series</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Time series</h1>
+  <p class="subtitle">Chicago transit ridership</p>
+  <p><span class="badge badge-lec">Lecture 15</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 13</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">The backtesting argument is the one thing from this
+  lecture they will use outside the course. Give it the time.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>A new kind of data</h2>
+  <p class="small">Everything so far assumed the rows were exchangeable: a
+  random split was valid because any row was as good as any other for training.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Not here</span>
+    In a time series the rows are <strong>ordered</strong>, and neighbouring
+    rows are alike: one day&rsquo;s ridership tells you most of the next
+    day&rsquo;s. Split such data at random and a point&rsquo;s own near-future
+    lands in the
+    training set &mdash; so the score you report is not the score you would get
+    in deployment, and it is optimistic by a margin we will measure.
+  </div>
+  <p class="small">So the split changes, the baselines change, and the first
+  thing to derive is what makes a series predictable at all.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>The brief, the series, and what a plot of it already tells you
+        <span class="muted small">(15 min)</span></li>
+    <li><strong>The mathematics</strong> &mdash; stationarity, differencing and
+        autocorrelation <span class="muted small">(20 min)</span></li>
+    <li><strong>The method</strong> &mdash; naive baselines, a linear model on
+        lags, and backtesting on a rolling origin
+        <span class="muted small">(40 min)</span></li>
+    <li>ARMA and its relatives, for context
+        <span class="muted small">(10 min)</span></li>
+  </ol>
+</section>
+
+<!-- 4 -->
+<section class="divider" data-menu-title="◆ The brief">
+  <p class="kicker">Part one</p>
+  <h1>The brief</h1>
+  <p class="clock">8 minutes</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="The scenario">
+  <h2>You have just been hired</h2>
+  <p>You are a data scientist at the transit authority of a large city.</p>
+  <div class="panel">
+    <span class="panel-title">The task</span>
+    Forecast the number of people who will board <strong>rail</strong> and
+    <strong>bus</strong> on the following day. You have daily boarding totals
+    going back twenty years.
+  </div>
+  <p>One number per mode, per day, one day ahead.</p>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="What the forecast is for">
+  <h2>The first question is never technical</h2>
+  <p class="lead"><em>What decision does this number change?</em></p>
+  <ul class="tight">
+    <li>How many train sets leave the depot</li>
+    <li>How many drivers are rostered, and at what notice</li>
+    <li>Whether a spare crew is held at each terminus</li>
+  </ul>
+  <p class="small">Those decisions are made the evening before. That fixes the
+  horizon at <strong>one day</strong>, and it fixes when the forecast has to
+  exist: <em>before</em> the day it describes.</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="Asymmetry">
+  <h2>The two errors are not equal</h2>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>Forecast too high</strong></p>
+      <p class="smaller">Empty vehicles run. The cost is fuel, crew hours and a
+      line in the budget. It is measurable and it is survivable.</p>
+    </div>
+    <div>
+      <p class="small"><strong>Forecast too low</strong></p>
+      <p class="smaller">Passengers are left on platforms at peak. The cost is
+      political, and it does not appear in any table you will be shown.</p>
+    </div>
+  </div>
+  <p class="small fail">We are about to choose a symmetric metric anyway, and
+  we should say so out loud rather than discover it later.</p>
+  <aside class="notes">Ask the room which error they would rather make and why.
+  Nobody has to agree; the point is that the metric encodes an answer whether or
+  not anyone chose it.</aside>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="Frame the problem">
+  <h2>Frame the problem</h2>
+  <table>
+    <tr><th>Question</th><th>Answer</th><th>Because</th></tr>
+    <tr><td>Supervision</td><td class="fix">supervised</td><td>the day arrives, and then we know</td></tr>
+    <tr><td>Task</td><td class="fix">regression</td><td>a count, not a category</td></tr>
+    <tr><td>Learning mode</td><td class="fix">batch, offline</td><td>one row per day; the whole record fits in memory</td></tr>
+  </table>
+  <div class="panel panel-book">
+    <span class="panel-title">The label is free</span>
+    Nobody has to annotate anything. The next day's value <em>is</em> the label
+    for today's window. Chapter 13 calls this the trick that makes a series into
+    a supervised dataset.
+  </div>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="What is different">
+  <h2>What is different from every application so far</h2>
+  <p class="lead">The rows are <strong>not exchangeable</strong>.</p>
+  <ul class="tight small">
+    <li>Row 400 is not a fresh draw from the same distribution as row 10. It is
+        the same city, eighteen months later</li>
+    <li>Row 400 and row 401 are almost the same measurement made twice</li>
+    <li>The thing we are asked to predict is, by construction, the row we do
+        <em>not</em> have</li>
+  </ul>
+  <p class="small muted">Hold on to that. It has consequences we will not reach
+  today.</p>
+</section>
+
+<!-- 10 -->
+<section class="divider" data-menu-title="◆ The data">
+  <p class="kicker">Part one, continued</p>
+  <h1>The data</h1>
+  <p class="clock">7 minutes</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="Fetching it">
+  <h2>Fetch it with a function, not a download</h2>
+  <pre><code class="language-python" data-trim>
+from pathlib import Path
+import tarfile, urllib.request
+import pandas as pd
+
+def load_ridership():
+    tarball = Path("datasets/ridership.tgz")
+    if not tarball.is_file():
+        Path("datasets").mkdir(parents=True, exist_ok=True)
+        url = "https://github.com/ageron/data/raw/main/ridership.tgz"
+        urllib.request.urlretrieve(url, tarball)
+        with tarfile.open(tarball) as t:
+            t.extractall(path="datasets", filter="data")
+    return pd.read_csv(
+        "datasets/ridership/CTA_-_Ridership_-_Daily_Boarding_Totals.csv",
+        parse_dates=["service_date"])
+  </code></pre>
+  <p class="small muted">Same shape as the loader in the first application. The
+  data will change; you will be on another machine; write the function.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="Tidy it">
+  <h2>Four lines of tidying, and one of them matters</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-5|4|5">df = load_ridership()
+df.columns = ["date", "day_type", "bus", "rail", "total"]
+df = df.sort_values("date").set_index("date")
+df = df.drop("total", axis=1)      # it is just bus + rail
+df = df.drop_duplicates()          # and this one removes 62 rows
+</code></pre>
+  <p class="small">The file ships with <strong>7,701</strong> rows and
+  <strong>7,639</strong> distinct ones. Sixty-two days appear twice, identically.
+  Nothing warns you.</p>
+  <p class="fix small">Reviewer question 4, from the first application:
+  <em>what was dropped &mdash; rows, columns, NaNs? Count them.</em> Here the
+  answer is 62, and you only know because you counted.</p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="Head">
+  <h2>What one row looks like</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; df.head(3)
+           day_type     bus    rail
+date
+2001-01-01        U  297192  126455
+2001-01-02        W  780827  501952
+2001-01-03        W  824923  536432
+  </code></pre>
+  <p class="small">On the first day of 2001, <strong>297,192</strong> people
+  boarded a bus and <strong>126,455</strong> boarded a train. It was a public
+  holiday, which is why both numbers are low &mdash; and which the
+  <code>day_type</code> column is telling us.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="day_type">
+  <h2>The one categorical column</h2>
+  <table>
+    <tr><th><code>day_type</code></th><th>Meaning</th><th class="num">Days</th></tr>
+    <tr><td><code>W</code></td><td>an ordinary working day</td><td class="num">5,336</td></tr>
+    <tr><td><code>U</code></td><td>the second weekend day, and public holidays</td><td class="num">1,216</td></tr>
+    <tr><td><code>A</code></td><td>the first weekend day</td><td class="num">1,087</td></tr>
+  </table>
+  <p class="small">This column is unusual and worth pausing on: we know it
+  <strong>in advance</strong>. The next day's type is on the calendar today, so
+  it is a legitimate input to a forecast of that day. Most features are not like
+  that.</p>
+  <aside class="notes">This is the first appearance of the question "is this
+  feature available at prediction time?" in a setting where the answer is
+  genuinely interesting.</aside>
+</section>
+
+<!-- 15 -->
+<section class="figslide" data-menu-title="◆ Twenty-one years">
+  <h2>Plot it before you do anything else</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l19-series.svg"
+         alt="Monthly mean daily boardings for bus and rail from 2001 to 2021: bus drifts down from about 800,000, rail climbs from about 500,000 to about 700,000, and both collapse to a fraction of that in March 2020.">
+  </figure>
+  <p class="takeaway">Three things are visible at this scale and none of them is
+  the thing we will model.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="What the plot says">
+  <h2>What that plot says</h2>
+  <ol class="tight">
+    <li><strong>Bus is falling, rail rose and then fell.</strong> The two modes
+        are not the same problem</li>
+    <li><strong>There is an annual wobble</strong> on both, of the order of a
+        tenth of the level</li>
+    <li><strong>March 2020 is a cliff</strong>, not a dip</li>
+  </ol>
+  <p class="small">A model fitted across that cliff is being asked to describe
+  two different cities. We will come back to it, but not by pretending it is
+  noise.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="The decision">
+  <h2>The decision that follows</h2>
+  <div class="panel">
+    <span class="panel-title">Model 2016 to the middle of 2019</span>
+    Four years of one regime: 1,247 days, ending 31 May 2019. The book uses the
+    same window, and for the same reason.
+  </div>
+  <p class="small">Everything after that date is set aside. Not because it is
+  uninteresting &mdash; it is the most interesting part of the record &mdash;
+  but because we cannot both use it and claim to have been surprised by it.</p>
+  <p class="small muted">Data snooping, from the first application, applies to
+  time as well as to rows.</p>
+</section>
+
+<!-- 18 -->
+<section class="figslide" data-menu-title="◆ Ten weeks">
+  <h2>Now zoom in until you can see individual days</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l19-weekly.svg"
+         alt="Daily bus and rail boardings from March to May 2019, showing a sharp repeating seven-day sawtooth with deep troughs on the shaded weekend bands, and one extra trough at the end of May.">
+  </figure>
+  <p class="takeaway">A seven-day cycle so strong that it dominates everything
+  else on the plot.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="Weekly seasonality">
+  <h2>Observation 1 &middot; A seven-day cycle</h2>
+  <ul class="tight">
+    <li>Working days sit near the top of the range</li>
+    <li>The two weekend days drop to roughly half</li>
+    <li>The pattern repeats <strong>every seven days</strong>, almost exactly</li>
+  </ul>
+  <div class="panel">
+    A repeating pattern with a fixed period is called <strong>seasonality</strong>.
+    The period here is a week, not a year &mdash; the word has nothing to do with
+    the seasons.
+  </div>
+  <p class="small fix">This immediately suggests a forecast that requires no
+  model at all. Hold that thought for ten minutes.</p>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="The extra trough">
+  <h2>Observation 2 &middot; One trough is in the wrong place</h2>
+  <p>At the end of May there is a deep trough in the middle of a working week.
+  Ask the data rather than the calendar:</p>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; list(df.loc["2019-05-25":"2019-05-27"]["day_type"])
+['A', 'U', 'U']
+  </code></pre>
+  <p class="small">Three consecutive non-working days: a public holiday extending
+  the weekend. The column we were given already knows.</p>
+  <p class="small muted">Every anomaly you find should end either in an
+  explanation or in a note that you could not find one. Not in silence.</p>
+</section>
+
+<!-- 21 -->
+<section class="figslide" data-menu-title="◆ Yearly">
+  <h2>And a second, slower cycle</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l19-yearly.svg"
+         alt="Monthly means for bus and rail from 2001 to 2019 with a twelve-month rolling mean drawn through each, showing a repeating annual wobble around a slowly changing level.">
+  </figure>
+  <p class="takeaway">The thin line wobbles once a year; the thick line is where
+  the level is actually going.</p>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Trend and seasonality">
+  <h2>Observation 3 &middot; Seasonality and trend are different things</h2>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>Seasonality</strong></p>
+      <p class="smaller">A pattern that repeats with a fixed period. Here: seven
+      days, strongly; twelve months, weakly.</p>
+    </div>
+    <div>
+      <p class="small"><strong>Trend</strong></p>
+      <p class="smaller">A slow movement of the level itself, with no period.
+      Here: rail rising to about 2015, then falling.</p>
+    </div>
+  </div>
+  <p class="small">A moving average of the right width removes the seasonality
+  and leaves the trend. That is the whole content of the thick line.</p>
+  <p class="small muted">In the next lecture we take both of them out
+  arithmetically, and that turns out to explain something about today.</p>
+</section>
+
+<!-- 23 -->
+<section class="divider" data-menu-title="◆ The mathematics">
+  <p class="kicker">The mathematics</p>
+  <h1>Stationarity, differencing<br>and autocorrelation</h1>
+  <p class="clock">20 minutes &middot; examinable</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="The question">
+  <h2>The question</h2>
+  <p class="lead">Every model you have fitted in this course assumes that the
+  data it was trained on and the data it will meet are <em>the same kind of
+  thing</em>.</p>
+  <p class="lead">For a time series, what exactly does that assumption say
+  &mdash; and does our series satisfy it?</p>
+  <div class="panel panel-math">
+    <span class="panel-title">Why you need the answer</span>
+    The property has a name, our series does not have it, and the repair for not
+    having it is the same operation that will explain why copying last week was
+    so hard to beat.
+  </div>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Strict stationarity">
+  <h2>Stationarity, strictly</h2>
+  <p>A series $\{y_t\}$ is <strong>strictly stationary</strong> if, for every
+  $k$, every choice of times $t_1 &lt; \dots &lt; t_k$ and every shift $h$,</p>
+  <div class="eqn-box">
+    $$\left(y_{t_1}, \dots, y_{t_k}\right)
+      \;\overset{d}{=}\;
+      \left(y_{t_1+h}, \dots, y_{t_k+h}\right)$$
+  </div>
+  <p class="small">The whole joint law is invariant under a shift in time.
+  Nothing about the process distinguishes one epoch from another.</p>
+  <p class="small muted">This is far more than we need, and far more than any
+  real series has.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Weak stationarity">
+  <h2>Weak stationarity &mdash; the version we use</h2>
+  <p>$\{y_t\}$ is <strong>weakly</strong> (or second-order) stationary if three
+  things hold:</p>
+  <div class="eqn-box">
+    $$\mathbb{E}[y_t] = \mu \quad\text{(constant)}$$
+  </div>
+  <div class="eqn-box">
+    $$\operatorname{Var}(y_t) = \sigma^2 < \infty \quad\text{(constant)}$$
+  </div>
+  <div class="eqn-box">
+    $$\operatorname{Cov}(y_t, y_{t+k}) = \gamma_k \quad\text{(depends on $k$ only)}$$
+  </div>
+  <p class="small">Only the first two moments, and only the requirement that the
+  covariance forgets <em>when</em> and remembers only <em>how far apart</em>.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Why models need it">
+  <h2>Why a model depends on it</h2>
+  <p class="small">Fitting minimises an average loss over the training rows and
+  we then quote that as an estimate of the loss on future rows. That step is a
+  claim: <em>the future rows come from the same distribution</em>.</p>
+  <div class="panel panel-math">
+    For rows indexed by time, &ldquo;the same distribution&rdquo; is exactly
+    what weak stationarity asserts about the first two moments. If $\mu$ drifts,
+    a model fitted on the past is <strong>systematically</strong> wrong on the
+    future &mdash; not noisily wrong, biased.
+  </div>
+  <p class="small">And it is not a technicality you can ignore: it is the
+  difference between an error that averages out and one that accumulates.</p>
+</section>
+
+<!-- 28 -->
+<section class="figslide" data-menu-title="◆ Not stationary">
+  <h2>Test the definition directly</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l20-stationarity.svg"
+         alt="Rolling 365-day mean and rolling 365-day standard deviation of rail boardings from 2001 to 2019: the mean climbs from about 500,000 to about 660,000 and then falls, while the standard deviation drifts more slowly.">
+  </figure>
+  <p class="takeaway fail">The rolling mean moves by more than 170,000 riders
+  across the record. The first condition fails outright.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="ADF">
+  <h2>A statistical test, and what it does not say</h2>
+  <p class="small">The augmented Dickey&ndash;Fuller test on the 2016&ndash;2019
+  window returns a statistic of $-4.61$ with $p \approx 0.0001$, so it
+  <em>rejects</em> its null hypothesis.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Read what was rejected</span>
+    The null is the presence of a <strong>unit root</strong> &mdash; one
+    specific way of being non-stationary. Rejecting it does not establish
+    stationarity; the plot on the previous slide already refuted that.
+  </div>
+  <p class="small">A test answers the question it was given. Ours was not that
+  question.</p>
+  <p class="smaller muted">The test itself is outside the book and
+  <strong>not examinable</strong>. The habit of asking what a $p$-value is a
+  $p$-value <em>for</em> is very much examinable.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Differencing">
+  <h2>Differencing</h2>
+  <p>Define the difference operator</p>
+  <div class="eqn-box">
+    $$(\nabla y)_t \;=\; y_t - y_{t-1}$$
+  </div>
+  <p>and its iterates $\nabla^d$. Applied to a sampled function, $\nabla$ is a
+  discrete derivative: it returns the slope of the series at each step.</p>
+  <p class="small muted">One value is lost at the start each time you apply it.
+  Count those losses; the book's <code>diff</code> returns
+  <code>NaN</code> there and says nothing.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Differencing kills a trend">
+  <h2>One difference removes a linear trend</h2>
+  <p class="small">Take the series $3, 5, 7, 9, 11$ &mdash; exactly linear in
+  $t$:</p>
+  <div class="eqn-box">
+    $$\nabla:\quad 3,\,5,\,7,\,9,\,11 \;\longmapsto\; 2,\,2,\,2,\,2$$
+  </div>
+  <p>A linear trend becomes a constant. The constant is the slope.</p>
+  <p class="fix small">And a constant mean is the first condition of weak
+  stationarity, which we have just bought.</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Quadratic">
+  <h2>Two differences remove a quadratic one</h2>
+  <div class="eqn-box">
+    $$\nabla:\quad 1,\,4,\,9,\,16,\,25,\,36 \;\longmapsto\; 3,\,5,\,7,\,9,\,11$$
+  </div>
+  <div class="eqn-box">
+    $$\nabla:\quad 3,\,5,\,7,\,9,\,11 \;\longmapsto\; 2,\,2,\,2,\,2$$
+  </div>
+  <p>The squares become a linear series, which becomes a constant.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="The general statement">
+  <h2>The general statement, and its proof</h2>
+  <div class="panel panel-math">
+    <span class="panel-title">Claim</span>
+    If $p$ has degree $d \ge 1$ then $\nabla p$ has degree exactly $d-1$, so $\nabla^{d}$ annihilates every polynomial trend of degree $d$. <em>Monomials suffice, as $\nabla$ is linear.</em>
+  </div>
+  
+  <div class="eqn-box">
+    $$\begin{aligned}
+      t^{d} - (t-1)^{d}
+        \;&=\; \sum_{j=0}^{d-1}\binom{d}{j}(-1)^{d-1-j}\,t^{\,j} \\
+        \;&=\; d\,t^{\,d-1} + \text{lower order}
+      \end{aligned}$$
+  </div>
+  <p class="small">Leading coefficient $d \neq 0$, so the degree drops by exactly one. Induct.</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="Order of integration">
+  <h2>This has a name in the book</h2>
+  <p class="small">The number $d$ of differencing rounds is the
+  <strong>order of integration</strong> &mdash; the <em>I</em> in ARIMA. An
+  ARIMA model differences $d$ times, fits an ARMA model to the result, and adds
+  back what it subtracted when it forecasts.</p>
+  <div class="eqn-box">
+    $$\hat{y}_t \;=\; \sum_{i=1}^{p}\alpha_i\,y_{t-i}
+      \;+\; \sum_{i=1}^{q}\theta_i\,\varepsilon_{t-i}$$
+  </div>
+  <p class="small">Autoregressive part: a weighted sum of past values &mdash;
+  which is precisely the linear model of the previous lecture. Moving-average
+  part: a weighted sum of past forecast errors.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Seasonal differencing">
+  <h2>Seasonal differencing removes a periodic component</h2>
+  <div class="eqn-box">
+    $$(\nabla_s y)_t \;=\; y_t - y_{t-s}$$
+  </div>
+  <p class="small">Suppose $y_t = c_t + r_t$ where $c$ is periodic with period
+  $s$, so $c_t = c_{t-s}$ for every $t$. Then</p>
+  <div class="eqn-box">
+    $$(\nabla_s y)_t \;=\; (c_t - c_{t-s}) + (r_t - r_{t-s}) \;=\; r_t - r_{t-s}$$
+  </div>
+  <p class="fix">The periodic part cancels <strong>exactly</strong>, with no
+  approximation and no fitted parameter. This is the SARIMA family's
+  contribution.</p>
+</section>
+
+<!-- 36 -->
+<section class="figslide" data-menu-title="◆ Differencing, drawn">
+  <h2>Both operators, on our own series</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l20-differencing.svg"
+         alt="Three stacked panels over March to May 2019: the rail series with its deep weekly troughs; the one-step difference, which still oscillates violently at weekly period; and the seven-step difference, which is flat and near zero apart from one holiday spike.">
+  </figure>
+  <p class="takeaway">Differencing once leaves the weekly cycle intact.
+  Differencing at lag seven removes it.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Differencing can hurt">
+  <h2>And differencing can make things <em>worse</em></h2>
+  <table class="smaller">
+    <tr><th>Series</th><th class="num">Standard deviation</th></tr>
+    <tr><td>the level</td><td class="num">183,841</td></tr>
+    <tr><td>differenced once</td><td class="num fail">198,098</td></tr>
+    <tr><td>differenced at lag 7</td><td class="num hit">104,730</td></tr>
+  </table>
+  <p class="lead">One difference <em>increased</em> the variability by 8%.</p>
+  <p class="small">That is not a bug and it is not an accident. There is an exact
+  condition, and it is the next slide.</p>
+  <aside class="notes">Ask why before showing the algebra. Somebody will say
+  "because consecutive days are not similar", which is the right answer in
+  words.</aside>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="Autocorrelation">
+  <h2>Autocorrelation</h2>
+  <p>For a weakly stationary series, define</p>
+  <div class="eqn-box">
+    $$\rho_k \;=\; \frac{\gamma_k}{\gamma_0}
+      \;=\; \frac{\operatorname{Cov}(y_t, y_{t+k})}{\operatorname{Var}(y_t)}
+      \;\in\; [-1, 1]$$
+  </div>
+  <p class="small">The correlation of the series with itself, $k$ steps later.
+  $\rho_0 = 1$ by construction, and the whole function $k \mapsto \rho_k$ is the
+  <strong>autocorrelation function</strong>.</p>
+  <p class="small muted">Note that it is defined only under stationarity: without
+  it, the covariance depends on $t$ as well as on $k$ and there is no single
+  number to plot.</p>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Variance of a difference">
+  <h2>The variance of a lag-$k$ difference</h2>
+  <p class="derive-step">Expand, using stationarity at each step:</p>
+  <div class="eqn-box">
+    $$\begin{aligned}
+      \operatorname{Var}(y_t - y_{t-k})
+        \;&=\; \operatorname{Var}(y_t) + \operatorname{Var}(y_{t-k})
+                - 2\operatorname{Cov}(y_t, y_{t-k}) \\
+        \;&=\; \sigma^2 + \sigma^2 - 2\sigma^2\rho_k
+        \;=\; 2\sigma^{2}\left(1 - \rho_k\right)
+    \end{aligned}$$
+  </div>
+  <p class="fix">So differencing at lag $k$ reduces the variance iff $2(1-\rho_k) < 1$:</p>
+  <div class="eqn-box">
+    $$\rho_k \;>\; \tfrac{1}{2}$$
+  </div>
+</section>
+
+<!-- 40 -->
+<section class="figslide" data-menu-title="◆ The autocorrelation">
+  <h2>So look at $\rho_k$ before differencing anything</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l20-acf.svg"
+         alt="Two stacked bar charts of autocorrelation against lag for the rail series: the top shows a spike near 0.83 at every multiple of seven and about 0.42 at lag one; the bottom, after differencing at lag seven, is small at every lag.">
+  </figure>
+  <p class="takeaway">Every multiple of seven stands up. Lag 1 does not reach a
+  half, and that is the whole explanation of the previous slide.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="Check the prediction">
+  <h2>The theory, checked against the data</h2>
+  <table class="smaller">
+    <tr><th>Lag $k$</th><th class="num">$\rho_k$</th><th class="num">$\sqrt{2\sigma^2(1-\rho_k)}$</th><th class="num">Measured</th></tr>
+    <tr><td>1</td><td class="num">0.419</td><td class="num">198,236</td><td class="num hit">198,098</td></tr>
+    <tr><td>7</td><td class="num">0.831</td><td class="num">106,782</td><td class="num hit">104,730</td></tr>
+  </table>
+  <p class="small">The lag-1 prediction is right to one part in a thousand; the
+  lag-7 prediction to two per cent. The residual discrepancy is the series
+  failing to be exactly stationary, which we already knew.</p>
+  <p class="fix small">$\rho_1 = 0.419 &lt; \tfrac12$, so the first difference must
+  be worse. $\rho_7 = 0.831 &gt; \tfrac12$, so the seventh must be better. Both
+  were, before we knew why.</p>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Why the naive forecast is strong">
+  <h2>And now the naive forecast is explained</h2>
+  <p class="small">The forecast &ldquo;copy the value from seven days ago&rdquo;
+  has error</p>
+  <div class="eqn-box">
+    $$\hat{y}_t - y_t \;=\; y_{t-7} - y_t \;=\; -(\nabla_7 y)_t$$
+  </div>
+  <p>Its error <em>is</em> the seasonal difference. So its error variance is
+  $2\sigma^{2}(1-\rho_7)$, and with $\rho_7 = 0.831$ that is
+  $0.34\,\sigma^{2}$.</p>
+  <div class="panel panel-math">
+    The naive forecast was hard to beat for one reason and one reason only:
+    <strong>$\rho_7$ is large</strong>. It is not a lucky heuristic. It is the
+    autocorrelation function, read off at a single lag.
+  </div>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="Not Gaussian">
+  <h2>One caution before you convert that into an MAE</h2>
+  <p class="small">A Gaussian of standard deviation 104,730 would have mean
+  absolute value $\sqrt{2/\pi}\,\sigma \approx$ <strong>83,562</strong>. Our
+  measured MAE is <strong>55,051</strong>.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Because the errors are not Gaussian</span>
+    The excess kurtosis of the seven-day difference is <strong>12</strong>: most
+    days are almost exactly like the same day last week, and a handful are
+    catastrophically different. A variance is the wrong summary of that
+    distribution, and so is any conversion that assumes normality.
+  </div>
+  <p class="small muted">Which is also the argument for MAE over RMSE, arriving
+  from a second direction.</p>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="What the derivation buys you">
+  <h2>What the derivation buys you</h2>
+  <ul class="tight smaller">
+    <li>Weak stationarity: constant mean, constant finite variance, and a
+        covariance depending only on the lag</li>
+    <li>Models assume it, because they quote a training average as an estimate of
+        a future one. Our series does not have it</li>
+    <li>$\nabla^{d}$ annihilates a polynomial trend of degree $d$, because
+        $\nabla$ drops the degree by exactly one</li>
+    <li>$\nabla_s$ annihilates a component of period $s$ exactly</li>
+    <li>$\operatorname{Var}(y_t - y_{t-k}) = 2\sigma^2(1-\rho_k)$, so differencing
+        helps if and only if $\rho_k > \tfrac12$</li>
+    <li>The naive forecast's error is $\nabla_7 y$; its strength is $\rho_7$</li>
+  </ul>
+  <p class="small muted">Examinable: state weak stationarity; prove the
+  degree-drop; derive the variance identity and its consequence.</p>
+</section>
+
+<!-- 45 -->
+<section class="divider" data-menu-title="◆ The method">
+  <p class="kicker">The method</p>
+  <h1>Baselines, lags,<br>and honest evaluation</h1>
+  <p class="clock">40 minutes &middot; examinable</p>
+</section>
+
+<!-- 46 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-15.ipynb">Open Lecture 15 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> The series is small; nothing here
+        needs an accelerator</li>
+    <li>The autocorrelation computed, and the naive forecast&rsquo;s strength
+        predicted from it before it is measured</li>
+    <li>The same model evaluated both ways &mdash; random split and rolling
+        origin &mdash; so the optimism is a number you produce</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Shuffle the rows before splitting and re-run the evaluation. The score
+    improves, and nothing warns you. That improvement is the whole argument of
+    the second half of this lecture.
+  </div>
+</section>
+
+<!-- 47 -->
+<section class="divider" data-menu-title="◆ The metric">
+  <p class="kicker">Part two</p>
+  <h1>The metric</h1>
+  <p class="clock">15 minutes &middot; ending with a number in writing</p>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="What exactly">
+  <h2>State the prediction precisely first</h2>
+  <div class="eqn-box">
+    $$\hat{y}_{t+1} \;=\; f\!\left(y_{t-55},\, y_{t-54},\, \dots,\, y_{t}\right)$$
+  </div>
+  <p class="small">Given the last eight weeks of daily boardings up to and
+  including today, predict the next day. One number out.</p>
+  <p class="small muted">Eight weeks is a choice, not a law. We will justify it
+  when we build the dataset.</p>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="Three candidates">
+  <h2>Three metrics, and what each one buys</h2>
+  <div class="eqn-box">
+    $$\mathrm{MAE} = \frac{1}{m}\sum_i \left|\hat{y}_i - y_i\right|
+      \qquad
+      \mathrm{RMSE} = \sqrt{\frac{1}{m}\sum_i \left(\hat{y}_i - y_i\right)^2}$$
+  </div>
+  <div class="eqn-box">
+    $$\mathrm{MAPE} = \frac{1}{m}\sum_i \frac{\left|\hat{y}_i - y_i\right|}{y_i}$$
+  </div>
+  <p class="small">RMSE punishes a large miss quadratically; MAE does not;
+  MAPE is relative and therefore unit-free.</p>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Choosing">
+  <h2>We choose MAE, and here is the argument</h2>
+  <ul class="tight small">
+    <li>The units are <strong>passengers</strong>. The operations team can act on
+        &ldquo;we were out by forty thousand boardings&rdquo;</li>
+    <li>The worst days are holidays, which the calendar already tells us about.
+        We do not want the metric dominated by days we can look up</li>
+    <li>RMSE would make one bad holiday worth more than a whole ordinary month</li>
+  </ul>
+  <div class="panel panel-book">
+    Choosing a metric is choosing what to care about. The book states this
+    plainly: if the project suffers quadratically more from large errors, prefer
+    the squared metric. Ours does not.
+  </div>
+  <p class="small">We report MAPE beside it, because a percentage is what a
+  stakeholder will repeat back to you.</p>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="MAPE trap">
+  <h2>One trap in MAPE, stated before we use it</h2>
+  <p class="small">MAPE divides by the truth. On a day when ridership collapses,
+  the denominator collapses too, and a modest absolute miss becomes an enormous
+  percentage.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Where this bites</span>
+    Exactly on the holidays, which is exactly where the model is worst. A metric
+    that is most sensitive where the model is weakest will make every
+    improvement look like noise.
+  </div>
+  <p class="small muted">We use it as a second opinion, never as the objective.</p>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="What is good">
+  <h2>What would count as good?</h2>
+  <p>Nobody in the room knows yet, and neither do we. So do what the second
+  lecture told us to do: <strong>measure what costs nothing</strong> before
+  committing to anything.</p>
+  <ul class="tight small">
+    <li>Predict the same number every day</li>
+    <li>Predict today's value again for the next day</li>
+    <li>Predict the value from seven days ago</li>
+  </ul>
+  <p class="fix small">None of these is machine learning. All of them are systems
+  a transit authority could deploy on the first day.</p>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="Baseline code">
+  <h2>Three lines, three baselines</h2>
+  <pre><code class="language-python" data-trim>
+rail = df["rail"]["2016-01":"2019-05"]
+target = rail[56:]                      # the days we will be scoring
+
+for name, forecast in [("a constant",   rail[:"2018-12"].mean()),
+                       ("copy the day before", rail.shift(1)[56:]),
+                       ("copy last week", rail.shift(7)[56:])]:
+    print(f"{name:16s} MAE {(target - forecast).abs().mean():>10,.0f}")
+  </code></pre>
+  <p class="small muted">All three are scored on exactly the rows the models will
+  be scored on, which is the only way the comparison means anything.</p>
+</section>
+
+<!-- 54 -->
+<section class="figslide" data-menu-title="◆ Baselines">
+  <h2>What nothing scores</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l19-baselines.svg"
+         alt="Horizontal bars of mean absolute error for four model-free forecasts: predicting a constant is worst at about 160,000, copying the previous day about 131,000, copying two weeks ago about 61,000, and copying last week best at about 55,000.">
+  </figure>
+  <p class="takeaway">Copying last week is <strong>2.4 times</strong> better than
+  copying the previous day. The seven-day cycle is worth more than recency.</p>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="The naive number">
+  <h2>The number to beat</h2>
+  <p class="big-num">55,399</p>
+  <p class="lead">Mean absolute error of <em>copy the value from seven days
+  ago</em>, over 1,191 days.</p>
+  <p class="small">That is <strong>12.0%</strong> of a typical day. On the three
+  months the book plots it is better still: <strong>42,143</strong> for rail
+  (9.0%) and <strong>43,916</strong> for bus (8.3%).</p>
+  <aside class="notes">Ask for a show of hands on whether they expect to beat
+  this by 10%, by half, or not at all. Write the show of hands on the board; it
+  is worth revisiting.</aside>
+</section>
+
+<!-- 56 -->
+<section class="figslide" data-menu-title="◆ The naive forecast">
+  <h2>Copy last week, drawn</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l19-naive.svg"
+         alt="Rail boardings from March to May 2019 with the seven-day-lagged series overlaid; the two curves nearly coincide, and the error panel beneath is small everywhere except one enormous negative spike at the end of May.">
+  </figure>
+  <p class="takeaway fail">One holiday costs <strong>464,640</strong> in a single
+  day &mdash; more than eight ordinary days of error put together.</p>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="Respect the baseline">
+  <h2>Take this baseline seriously</h2>
+  <div class="panel">
+    <span class="panel-title">It is not a straw man</span>
+    It needs no training, no maintenance, no monitoring and no data scientist.
+    It fails only on the days that appear on a public calendar. A transit
+    authority could put it into service in an afternoon.
+  </div>
+  <p class="small">Any model we build has to be better than this by enough to
+  justify existing. &ldquo;Better&rdquo; is not enough; <em>enough</em> better
+  is the bar.</p>
+  <p class="small fail">Write down what you think <em>enough</em> is, before you
+  see any model output. That is the next slide.</p>
+</section>
+
+<!-- 58 -->
+<section data-menu-title="The plan">
+  <h2>The plan</h2>
+  <ol class="tight">
+    <li>Turn one series into a table of rows</li>
+    <li>Check the shapes, twice</li>
+    <li>Fit a linear model on the past 56 days</li>
+    <li>Fit a recurrent network on the same rows</li>
+    <li>Measure, and record the result</li>
+  </ol>
+  <p class="small muted">Step 1 is the only step that is new. Steps 3 to 5 are
+  the same verbs as every application before this one.</p>
+</section>
+
+<!-- 59 -->
+<section class="figslide" data-menu-title="◆ Windowing">
+  <h2>One series becomes a table of overlapping rows</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-window.svg"
+         alt="Three rows drawn over a numbered strip of days: row one takes days one to six as inputs and day seven as its label, row two takes days two to seven and day eight, row three takes days three to eight and day nine, with a bracket showing the five days rows one and two have in common.">
+  </figure>
+  <p class="takeaway">Every row is the row above it, shifted by one day. They
+  overlap almost completely.</p>
+</section>
+
+<!-- 60 -->
+<section data-menu-title="Windowing code">
+  <h2>The dataset class</h2>
+  <pre><code class="language-python" data-trim>
+import torch
+
+class TimeSeriesDataset(torch.utils.data.Dataset):
+    def __init__(self, series, window_length):
+        self.series, self.window_length = series, window_length
+
+    def __len__(self):
+        return len(self.series) - self.window_length
+
+    def __getitem__(self, idx):
+        end = idx + self.window_length     # first index after the window
+        return self.series[idx:end], self.series[end]
+  </code></pre>
+  <p class="small">Nine lines. The subtlety is entirely in
+  <code>__len__</code> and in the single index <code>end</code>, which is both
+  the end of the window and the position of the label.</p>
+</section>
+
+<!-- 61 -->
+<section data-menu-title="Test the class">
+  <h2>Test it on a series whose answer you know</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; toy = torch.tensor([[0], [1], [2], [3], [4], [5]])
+&gt;&gt;&gt; for window, target in TimeSeriesDataset(toy, window_length=3):
+...     print(window.flatten().tolist(), "->", target.item())
+[0, 1, 2] -> 3
+[1, 2, 3] -> 4
+[2, 3, 4] -> 5
+  </code></pre>
+  <p class="fix">Three rows, three targets, none of them inside its own window.
+  Step 4 of the working loop: <em>test against a case whose answer is
+  known</em>.</p>
+  <p class="small muted">This takes twenty seconds and it is the only thing
+  standing between you and an off-by-one that produces a beautiful score.</p>
+</section>
+
+<!-- 62 -->
+<section data-menu-title="The shapes">
+  <h2>Shapes, stated once and asserted</h2>
+  <pre><code class="language-python" data-trim>
+window_length = 56
+pool = df["rail"]["2016-01":"2019-05"]          # 1,247 days
+
+X, y = windows(pool.values / 1e6, window_length)
+
+assert X.shape == (1191, 56, 1)      # rows, time steps, series
+assert y.shape == (1191, 1)
+assert len(X) == len(pool) - window_length
+  </code></pre>
+  <p class="small">The recurrent modules want three dimensions:
+  <strong>batch, time, dimensionality</strong>. For one series the last is 1,
+  and forgetting it produces an error message about matrix sizes that names
+  neither time nor batch.</p>
+</section>
+
+<!-- 63 -->
+<section data-menu-title="Why divide by a million">
+  <h2>Why the division by a million</h2>
+  <p class="small">Boardings are hundreds of thousands. Dividing by
+  <code>1e6</code> puts every value near the interval $[0,1]$, which is where
+  the default weight initialisation and the default learning rate expect to
+  find their inputs.</p>
+  <div class="panel">
+    This is scaling, and it is exactly the scaling of the first application
+    &mdash; with one difference worth noticing. Dividing by a fixed constant
+    learns <strong>nothing</strong> from the data, so it cannot leak. Compare
+    <code>StandardScaler</code>, which learns a mean.
+  </div>
+  <p class="small muted">The metric is reported back in passengers by
+  multiplying the error by the same constant.</p>
+</section>
+
+<!-- 64 -->
+<section data-menu-title="Why 56">
+  <h2>Why eight weeks</h2>
+  <ul class="tight small">
+    <li>It is a whole number of seven-day cycles, so every position in the window
+        sees the same phase of the week</li>
+    <li>It is long enough to contain a slow change in level</li>
+    <li>It is short enough that 1,247 days still yield 1,191 rows</li>
+  </ul>
+  <p class="small">Longer windows cost rows: with a 365-day window this pool
+  gives 882 rows instead of 1,191, and the model has more to learn from less.</p>
+  <p class="small muted">It is a hyperparameter. Tune it &mdash; but tune it
+  after you can measure it honestly, which is not yet.</p>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="One more consequence">
+  <h2>One consequence of $\rho_k$ we have not used yet</h2>
+  <p class="lead">$\rho_7 = 0.831$ says that any two days a week apart are
+  strongly dependent.</p>
+  <p class="lead">Cross-validation assumes the held-out rows are
+  <strong>independent</strong> of the rows the model was fitted on.</p>
+  <p class="fail lead">Those two sentences cannot both be acted on.</p>
+  <aside class="notes">Pause here. Let the room get there before the next
+  slide.</aside>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="Our own rule">
+  <h2>Read line 3 again</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">From Lecture 2, and repeated in every deck since</span>
+    &ldquo;Fixed seeds everywhere; <code>KFold(shuffle=True, random_state=42)</code>
+    rather than the default unshuffled split, so two students with differently
+    ordered frames get the same folds.&rdquo;
+  </div>
+  <p class="small">That rule was correct. It solved a real problem: a frame
+  sorted differently gave different folds and nobody could see why.</p>
+  <p class="lead fail">Here it is the bug.</p>
+  <p class="small muted">A rule you cannot say the <em>reason</em> for is a rule
+  you will apply where it does not hold. This is the clearest example the course
+  contains.</p>
+</section>
+
+<!-- 67 -->
+<section class="figslide" data-menu-title="◆ The two splits">
+  <h2>What the two protocols actually do</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/d-timesplit.svg"
+         alt="Two rows of day cells. In the upper row, held-out days are scattered among training days, with arrows from one held-out day to the training days immediately before and after it. In the lower row a single cut separates all earlier days, used for fitting, from all later days, used for scoring.">
+  </figure>
+  <p class="takeaway fail">The upper protocol asks the model to fill a gap. The
+  lower one asks it to forecast. Only one of those is the job.</p>
+</section>
+
+<!-- 68 -->
+<section data-menu-title="The argument">
+  <h2>The argument, stated properly</h2>
+  <p class="small">Cross-validation estimates the risk</p>
+  <div class="eqn-box">
+    $$R(f) \;=\; \mathbb{E}_{(X,Y)}\left[\ell\!\left(f_{\mathcal{D}}(X),\, Y\right)\right],
+      \qquad (X,Y) \perp \mathcal{D}$$
+  </div>
+  <p class="small">It is unbiased for $R$ under two conditions:</p>
+  <ol class="tight small">
+    <li>the held-out rows are <strong>independent</strong> of the training rows</li>
+    <li>the held-out rows are drawn from the distribution the model will meet
+        <strong>in deployment</strong></li>
+  </ol>
+  <p class="fail">A shuffled split of a time series satisfies neither.</p>
+</section>
+
+<!-- 69 -->
+<section data-menu-title="Condition 1">
+  <h2>Condition 1 fails, and $\rho_k$ says by how much</h2>
+  <p class="small">$\operatorname{Cov}(y_t, y_{t+k}) = \sigma^2\rho_k$, which is
+  $0.83\,\sigma^2$ at $k=7$ and never near zero for $|k| \le 56$. The rows are
+  dependent by construction.</p>
+  <div class="panel panel-math">
+    Conditioning on neighbours reduces the variance of what remains to be
+    predicted. With $\rho_k > 0$, a model that has been fitted on rows
+    <em>surrounding</em> a held-out row faces a smaller conditional variance
+    than one fitted only on rows before it.
+  </div>
+  <p class="small">Smaller conditional variance means smaller achievable loss,
+  so the estimate is biased <strong>downwards</strong>. Positive autocorrelation
+  fixes the direction of the bias: optimistic in the overwhelming majority of
+  cases.</p>
+  <p class="small fix">Not &ldquo;always&rdquo;. That would be a theorem, and we
+  have not proved one &mdash; the argument above is a heuristic about
+  conditional variance, not a bound. What we have is a measurement: on this
+  series, <strong>9&ndash;10%</strong> after matching training size, test size
+  and the baseline.</p>
+  <aside class="note">Which is precisely why the next three slides control for
+  those alternatives rather than asserting the direction. A lecture whose
+  subject is not asserting things should not assert this one either.</aside>
+</section>
+
+<!-- 70 -->
+<section data-menu-title="Condition 2">
+  <h2>Condition 2 fails, and it is not subtle</h2>
+  <p class="lead">In deployment, <em>every</em> training day precedes
+  <em>every</em> day being forecast.</p>
+  <p class="lead">Under a shuffled split, four training days in five come
+  <strong>after</strong> the day being scored.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">The name of this lecture</span>
+    The model is not forecasting. It is being handed the shape of the series
+    around the point it is asked about, and interpolating. That is a different
+    and much easier problem, and nobody is paying for it.
+  </div>
+</section>
+
+<!-- 71 -->
+<section data-menu-title="Re-measure">
+  <h2>So measure it the other way &mdash; one word changed</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-6|3">from sklearn.model_selection import TimeSeriesSplit, cross_val_score
+
+cv = TimeSeriesSplit(n_splits=5)          # was KFold(shuffle=True)
+folds = -cross_val_score(model, X, y, cv=cv,
+                         scoring="neg_mean_absolute_error")
+print(f"MAE {folds.mean():,.0f}   folds {folds.round(0)}")
+</code></pre>
+  <p class="small">Same model, same rows, same seed, same metric. One argument
+  is different.</p>
+  <table class="smaller">
+    <tr><th>Splitter</th><th class="num">Linear model, MAE</th></tr>
+    <tr><td><code>KFold(shuffle=True)</code></td><td class="num">44,925</td></tr>
+    <tr><td><code>TimeSeriesSplit(5)</code></td><td class="num fail">51,880</td></tr>
+  </table>
+</section>
+
+<!-- 72 -->
+<section data-menu-title="The deployment split">
+  <h2>And the split the system will actually face</h2>
+  <p class="small">Fit on everything up to the end of 2018; forecast the five
+  months that follow, one day at a time, never seeing any of them.</p>
+  <table class="smaller">
+    <tr><th>Model</th><th class="num">Random split</th><th class="num">Forecasting forward</th><th class="num">Gap</th></tr>
+    <tr><td>Linear, 56 lags</td><td class="num">44,925</td><td class="num fail">56,446</td><td class="num">+25.6%</td></tr>
+    <tr><td>Simple RNN, 32 units</td><td class="num">38,224</td><td class="num fail">49,073</td><td class="num">+28.4%</td></tr>
+  </table>
+  <p class="big-num bad">+10,848</p>
+  <p class="small">Riders per day, on the number you wrote on paper.</p>
+</section>
+
+<!-- 73 -->
+<section data-menu-title="Do not stop here">
+  <h2>Now do the thing this course exists for</h2>
+  <p class="lead">We have a gap of 28%. <strong>How much of it is the
+  split?</strong></p>
+  <p class="small">Three other things changed when we changed protocols, and each
+  of them moves the number on its own:</p>
+  <ol class="tight small">
+    <li>The rows being scored are different rows</li>
+    <li>The training set is smaller, and older</li>
+    <li>The folds have a spread, and we are comparing two means</li>
+  </ol>
+  <p class="fail small">Quote 28% without checking those and you have made the
+  same mistake in the other direction.</p>
+</section>
+
+<!-- 74 -->
+<section data-menu-title="Confound 1">
+  <h2>Confound 1 &middot; The test rows are harder</h2>
+  <p class="small">Copying last week needs no fitting, so its error measures only
+  how difficult a set of days is. Measure it on both sets of rows:</p>
+  <table class="smaller">
+    <tr><th>Rows scored</th><th class="num">Copy last week, MAE</th></tr>
+    <tr><td>the shuffled folds</td><td class="num">55,385</td></tr>
+    <tr><td>the five months after the cut</td><td class="num fail">64,815</td></tr>
+  </table>
+  <p class="small">The forecast period is <strong>17% harder</strong> before any
+  model is involved &mdash; it contains the winter holidays. A good part of our
+  28% is that, not leakage.</p>
+  <p class="fix small">This is the &ldquo;we dropped the capped districts&rdquo;
+  slide from Lecture 2, returning: <em>any time a number moves, ask first
+  whether the evaluation set moved.</em></p>
+</section>
+
+<!-- 75 -->
+<section class="figslide" data-menu-title="◆ Three protocols">
+  <h2>So put the baseline beside every protocol</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l20-protocols.svg"
+         alt="Three pairs of horizontal bars. For each evaluation protocol the grey bar is the naive forecast on the same rows and the coloured bar is the linear model, with the percentage improvement annotated: 18.9 percent under the random split, 14.7 percent under a rolling backtest, and 12.9 percent forecasting forward.">
+  </figure>
+  <p class="takeaway">The margin over doing nothing falls from
+  <strong>18.9%</strong> to <strong>12.9%</strong> as the protocol becomes
+  honest. That comparison is immune to the test period.</p>
+</section>
+
+<!-- 76 -->
+<section data-menu-title="Confound 2">
+  <h2>Confound 2 &middot; The training set changed size</h2>
+  <p class="small"><code>TimeSeriesSplit</code>'s first fold fits on a fifth of
+  the rows. Its score, 80,506, is not a statement about the protocol; it is a
+  statement about having 238 rows.</p>
+  <pre><code class="language-text" data-trim>
+TimeSeriesSplit(5) folds:  80506  38448  44838  37991  57615
+                           ^^^^^ 238 training rows
+  </code></pre>
+  <p class="fix small">Repair: a rolling-origin backtest with a
+  <strong>fixed</strong> training window &mdash; 700 rows for every origin, five
+  origins, 98 days scored each time. Now the folds differ only in <em>when</em>
+  they are.</p>
+</section>
+
+<!-- 77 -->
+<section class="figslide" data-menu-title="◆ Backtesting">
+  <h2>Rolling-origin backtesting</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-backtest.svg"
+         alt="Four horizontal bars representing the record in date order; in each the fitted region grows from the left, a scored block follows immediately after it, and the remainder is marked as not yet available.">
+  </figure>
+  <p class="takeaway">Four refits, four out-of-sample scores, and a spread you
+  could not get from a single cut.</p>
+</section>
+
+<!-- 78 -->
+<section data-menu-title="Confound 3">
+  <h2>Confound 3 &middot; The folds have a spread</h2>
+  <figure class="fig fig-inset">
+    <img src="../assets/figures/l20-folds.svg"
+         alt="Two rows of dots showing the five per-fold MAE values under a random split and under a rolling-origin backtest, with the mean of each marked by a vertical bar.">
+  </figure>
+  <p class="small">The random folds span 39,538 to 51,096; the backtest folds
+  span more. A difference in means smaller than that spread is not a
+  difference &mdash; the paired-comparison lesson from Lecture 2, unchanged.</p>
+</section>
+
+<!-- 79 -->
+<section data-menu-title="The controlled comparison">
+  <h2>The comparison with every confound removed</h2>
+  <p class="small">Same training size (700 rows), same test size (98 rows), same
+  model. Only the <em>arrangement</em> differs. Score each against copying last
+  week <strong>on its own rows</strong>, which cancels the difficulty of the
+  period:</p>
+  <table class="smaller">
+    <tr><th>Protocol</th><th class="num">Model</th><th class="num">Naive</th><th class="num">Ratio</th></tr>
+    <tr><td>random draws of 98 rows, 20 of them</td><td class="num">48,093</td><td class="num">61,461</td><td class="num fail">0.782</td></tr>
+    <tr><td>rolling origin, 5 origins</td><td class="num">47,212</td><td class="num">55,371</td><td class="num hit">0.853</td></tr>
+  </table>
+  <p class="lead">The random split reports the model as <strong>9.0%</strong>
+  more skilful than it is.</p>
+</section>
+
+<!-- 80 -->
+<section data-menu-title="The honest verdict">
+  <h2>The honest verdict, in three numbers</h2>
+  <ul class="tight small">
+    <li><strong>28%</strong> &mdash; the raw gap on the number you committed.
+        This is what you would have been wrong by, and it is real</li>
+    <li><strong>17%</strong> of that is the forecast period genuinely being
+        harder; the baseline moves too</li>
+    <li><strong>9 to 10%</strong> is the protocol itself, and it survives every
+        control we could apply: matched training size, matched test size, and
+        the baseline computed on the identical rows</li>
+  </ul>
+  <p class="small">Both the recurrent network (9.7%) and the linear model (7.4%)
+  are overstated by roughly the same amount, which is what you would expect if
+  the cause is the split rather than the model.</p>
+</section>
+
+<!-- 81 -->
+<section class="figslide" data-menu-title="◆ The margin">
+  <h2>Put it in the terms the stakeholder will hear</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l20-margin.svg"
+         alt="Two horizontal bars comparing the recurrent model's improvement over copying last week: 31.0 percent as reported under a random split against 24.3 percent when measured by forecasting forward, with the difference marked.">
+  </figure>
+  <p class="takeaway fail">We told them the model was 31% better than doing
+  nothing. It is 24% better. <strong>A fifth of the case for building it was an
+  artefact of the evaluation.</strong></p>
+</section>
+
+<!-- 82 -->
+<section data-menu-title="Compare with lecture 1">
+  <h2>Compare with the first leak we measured</h2>
+  <table class="smaller">
+    <tr><th></th><th>Scaling before the split</th><th>Random split on a series</th></tr>
+    <tr><td>Diagnosed in</td><td>Lecture 2</td><td>here</td></tr>
+    <tr><td>Cost, measured</td><td class="hit">about one dollar</td><td class="fail">a fifth of the model's value</td></tr>
+    <tr><td>Why that size</td><td>an invertible affine map, an equivariant estimator, 20,640 rows</td><td>$\rho_k$ large at every lag inside the window</td></tr>
+  </table>
+  <p class="fix small">Same procedural rule, two orders of magnitude apart in
+  consequence. <strong>You cannot tell which case you are in from the
+  number</strong> &mdash; only from the structure. That is why the rule is
+  procedural.</p>
+  <aside class="notes">This is the single most important slide in the
+  application. It is the pair that makes the course's argument.</aside>
+</section>
+
+<!-- 83 -->
+<section class="divider" data-menu-title="◆ The linear model">
+  <p class="kicker">Model one</p>
+  <h1>Fifty-six weights</h1>
+  <p class="clock">10 minutes</p>
+</section>
+
+<!-- 84 -->
+<section data-menu-title="The linear model">
+  <h2>The simplest thing that could work</h2>
+  <div class="eqn-box">
+    $$\hat{y}_{t+1} \;=\; b + \sum_{k=0}^{55} w_k\, y_{t-k}$$
+  </div>
+  <p class="small">Fifty-six weights and a bias. If the model learns
+  $w_6 = 1$ and every other weight zero, it has reinvented
+  <em>copy last week</em>.</p>
+  <p class="fix small">That is a useful thing to know before you start: the
+  linear model <strong>contains</strong> the baseline. It cannot do worse unless
+  we fit it badly.</p>
+</section>
+
+<!-- 85 -->
+<section data-menu-title="Linear code">
+  <h2>In code</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import KFold, cross_val_score
+
+Xflat = X.reshape(len(X), -1)          # (1191, 56)
+
+cv = KFold(n_splits=5, shuffle=True, random_state=42)
+folds = -cross_val_score(LinearRegression(), Xflat, y.ravel(), cv=cv,
+                         scoring="neg_mean_absolute_error")
+print(f"MAE {1e6 * folds.mean():,.0f}   per fold {1e6 * folds}")
+  </code></pre>
+  <p class="small">Five folds, shuffled, fixed seed &mdash; the standing
+  constraint from the second lecture, applied without modification.</p>
+</section>
+
+<!-- 86 -->
+<section data-menu-title="Linear result">
+  <h2>The linear model, measured</h2>
+  <p class="big-num good">44,925</p>
+  <p class="lead">Against <strong>55,399</strong> for copying last week.</p>
+  <p class="small"><strong>18.9%</strong> better, and the five folds run from
+  39,538 to 51,096. Over twenty different shuffles the mean moves by about 300,
+  so the improvement is far larger than the noise in the estimate.</p>
+  <aside class="notes">This is the moment the room relaxes. Let them. Do not
+  hint.</aside>
+</section>
+
+<!-- 87 -->
+<section data-menu-title="What it learned">
+  <h2>What did those fifty-six weights learn?</h2>
+  <ul class="tight small">
+    <li>The single largest weight is at lag 1, at $+0.45$ &mdash; the day before
+        still carries the level</li>
+    <li>After that, the next four largest are at lags 35, 7, 14 and 28. All
+        seven multiples of seven have a <strong>positive</strong> weight; no
+        other lag does so consistently</li>
+    <li>The weights sum to 0.86 and the intercept is about 90,000 riders, so the
+        model shrinks gently towards the mean</li>
+  </ul>
+  <p class="fix small">It rediscovered the seven-day cycle from the data. Nobody
+  told it that a week has seven days.</p>
+</section>
+
+<!-- 88 -->
+<section class="figslide" data-menu-title="◆ The weights">
+  <h2>Fifty-six weights, and where they went</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l19-weights.svg"
+         alt="Bar chart of the fifty-six fitted weights by lag: a tall bar at lag one, and a positive red bar at every multiple of seven, with the remaining lags scattered near zero.">
+  </figure>
+  <p class="takeaway">Every red bar is a multiple of seven, and every red bar is
+  positive. That is the weekly cycle, learned rather than supplied.</p>
+</section>
+
+<!-- 89 -->
+<section data-menu-title="The ground rule">
+  <h2>From here on, one ground rule</h2>
+  <div class="panel panel-fix">
+    Every number for the rest of this lecture is a forecast of the five months
+    after 31 December 2018, produced by a model that never saw a single one of
+    those days.
+  </div>
+  <p class="small">Where a hyperparameter had to be chosen &mdash; the optimiser,
+  in our case &mdash; it was chosen on the second half of 2018, which is inside
+  the training period. The forecast period was touched once, at the end, per
+  model.</p>
+  <p class="small muted">Say what you selected on. Every time.</p>
+</section>
+
+<!-- 90 -->
+<section data-menu-title="Purging">
+  <h2>One refinement, named but not used</h2>
+  <p class="small">Even a clean cut leaks a little: the last training window
+  overlaps the first scored day's history. The repair is to leave a gap &mdash;
+  <strong>purging</strong> the overlapping rows and adding an
+  <strong>embargo</strong> of a window length after the cut.</p>
+  <div class="panel">
+    On this data the effect is small, because the overlap is 56 rows out of
+    1,040. On a dataset where windows are long relative to the record, it is not.
+  </div>
+  <p class="smaller muted">Purging and embargo are standard practice in financial
+  backtesting and are <strong>outside the book</strong>; not examinable. The idea
+  &mdash; that adjacency itself is a channel &mdash; is examinable, because we
+  derived it.</p>
+</section>
+
+<!-- 91 -->
+<section data-menu-title="ARMA, for context">
+  <h2>Where this sits in the older literature</h2>
+  <table class="smaller">
+    <tr><th>Model</th><th>What it says</th></tr>
+    <tr><td>AR(<em>p</em>)</td><td>today is a weighted sum of the last <em>p</em> days, plus noise</td></tr>
+    <tr><td>MA(<em>q</em>)</td><td>today is a weighted sum of the last <em>q</em> shocks</td></tr>
+    <tr><td>ARMA(<em>p</em>,<em>q</em>)</td><td>both</td></tr>
+    <tr><td>ARIMA(<em>p</em>,<em>d</em>,<em>q</em>)</td><td>both, after differencing <em>d</em> times &mdash; which is where today&rsquo;s derivation enters</td></tr>
+    <tr><td>SARIMA</td><td>and seasonal differencing on top</td></tr>
+  </table>
+  <p class="small">A linear model on lagged features, which is what we fitted,
+  <em>is</em> an AR model &mdash; fitted by least squares rather than by the
+  Yule&ndash;Walker equations, and with whatever extra features you care to add.</p>
+  <p class="small muted"><span class="scope scope-context">beyond the syllabus,
+  for context</span> The vocabulary is worth recognising; the estimation theory
+  is not examinable here.</p>
+</section>
+
+<!-- 92 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight smaller">
+    <li>Saw that ordered, autocorrelated rows break the assumption every
+        previous lecture rested on</li>
+    <li>Defined stationarity, strict and weak, and why models depend on it</li>
+    <li>Differenced: once removes a linear trend, <em>d</em> times removes a
+        degree-<em>d</em> polynomial, and seasonal differencing removes a period</li>
+    <li>Computed the autocorrelation, and used it to predict &mdash; before
+        measuring &mdash; that the naive forecast would be hard to beat</li>
+    <li>Measured the optimism of a random split on autocorrelated data, and
+        replaced it with backtesting on a rolling origin</li>
+    <li>Fitted a linear model on lagged features, which is an AR model by
+        another name</li>
+  </ol>
+</section>
+
+<!-- 93 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 16 &middot; G&eacute;ron Ch. 13</p>
+  <h1>Recurrent networks</h1>
+  <p class="small">
+    Recurrent cells, unrolling, and backpropagation through time<br>
+    Why it is unstable, and what LSTM and GRU gates do about it<br>
+    Forecasting several steps ahead: recursive, direct and sequence-to-sequence
+  </p>
+  <p class="clock">Run the Lecture 15 notebook first</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 15
+  <span class="sep">&middot;</span> Time series
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>
