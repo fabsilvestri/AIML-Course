@@ -105,8 +105,8 @@ else:
     device = "cpu"
 print(f"\\ndevice       {device}")
 if device == "cpu":
-    print("no accelerator found. Everything runs; it is slower.")
-    print("In Colab: Runtime -> Change runtime type -> T4 GPU.")
+    print("running on CPU, which is what this notebook is sized for.")
+    print("An accelerator, if present, is used and is faster; nothing needs one.")
 '''),
 
         md("""

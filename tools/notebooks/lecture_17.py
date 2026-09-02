@@ -47,8 +47,8 @@ each runs the broken version beside the correct one and prices the difference.
 Runs on CPU. Nothing here needs an accelerator.
 
 **Scale.** The lecture's numbers come from 20,000 training reviews and four
-epochs — about ten minutes per run on a GPU. Here we use **5,000 reviews and
-two epochs** so the whole notebook finishes in a few minutes. The accuracies are
+epochs. Here we use **5,000 reviews and two epochs** so the whole notebook
+finishes on a CPU in a few minutes. The accuracies are
 lower than the deck's; the *ordering* of the four configurations is the same,
 and the ordering is the point.
 """
@@ -63,7 +63,7 @@ def build() -> list:
             label="setup",
             input="nothing",
             output="versions, seeds, device",
-            constraint="say what to do if there is no accelerator — the GRU cells here are the slowest in the course on CPU",
+            constraint="report the device rather than demanding one — this notebook is sized for CPU, and the GRU cells are the slowest thing in the course there",
             check="when a notebook is deliberately smaller than the deck, say by how much and say what is preserved. 'The ordering is the point' is a claim you can check."),
         code('''
 # Not examinable, and only needed on some machines: PyTorch, numpy and
@@ -104,8 +104,8 @@ else:
     device = "cpu"
 print(f"\\ndevice        {device}")
 if device == "cpu":
-    print("No accelerator. Everything below still runs; the GRU cells are slow.")
-    print("In Colab: Runtime -> Change runtime type -> T4 GPU.")
+    print("running on CPU, which is what this notebook is sized for.")
+    print("An accelerator, if present, is used and is faster; nothing needs one.")
 '''),
 
         md("""
@@ -704,7 +704,8 @@ print(f"{sum(p.numel() for p in _m.parameters()):,} parameters")
 The training loop is Lecture 12's five lines, unchanged. Nothing about text
 changes the loop.
 
-⏱ **about 40–90 seconds per run** on a GPU, several minutes on a CPU.
+⏱ **a few minutes per run on CPU.** The recurrent cells are the slowest thing
+in the course on a CPU, which is why the corpus is subsampled.
 """),
         prompt(
             label="the loop, with early stopping",

@@ -609,8 +609,8 @@ the evaluation, which we *can* measure.
         md("""
 ## 5 · The derivation, part 3 — average precision
 
-⏱ **1 to 2 minutes** on a GPU or MPS, several minutes on CPU: the same
-detector as last lecture, over the same 128 images.
+⏱ **a few minutes on CPU**: the same detector as last lecture, over the same
+128 images.
 """),
         prompt(
             label="⏱ 1-2 min — the same detector, the same images",
@@ -974,13 +974,14 @@ print("on all 5,000 val2017 images:", weights.meta["_metrics"])
         md("""
 ### 5.1 · Run it
 
-⏱ **1 to 2 minutes** on a GPU or an Apple Silicon MPS backend, and several
-minutes on a CPU-only runtime. It varies with what else the machine is doing:
-the same loop took 39 s on an idle laptop and 102 s on a busy one. No output
-does not mean it has hung.
+⏱ **a few minutes on CPU.** How many depends on what else the machine is
+doing — the same loop took roughly 40 s on an idle laptop and roughly 100 s on
+a busy one, which is why this notebook reports times to one significant figure
+and never puts two of them in a column inviting a comparison. No output does
+not mean it has hung.
 """),
         prompt(
-            label="⏱ 1-2 min on GPU, longer on CPU — run it",
+            label="⏱ a few min on CPU — run it",
             input="the 128 images",
             output="predictions per image, and the wall clock per image",
             constraint="`torch.inference_mode()` — no graph and no gradients, which matters here because a detector's intermediate tensors are large",

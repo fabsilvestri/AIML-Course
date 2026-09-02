@@ -203,10 +203,10 @@ architecture. Nothing here is a bug.
 Retrain the from-scratch network briefly so this notebook has its own baseline
 to compare against.
 
-⏱ **about 30 seconds on a GPU or MPS.** 20 epochs.
+⏱ **a minute or so on CPU.** 20 epochs.
 """),
         prompt(
-            label="⏱ 30 s — the from-scratch baseline, rebuilt here",
+            label="⏱ ~1 min — the from-scratch baseline, rebuilt here",
             input="the previous lecture's network, 20 epochs",
             output="train, validation and test accuracy, the wall clock, and the gap",
             constraint="retrain it IN THIS NOTEBOOK, so the comparison below is between two runs on the same machine",
@@ -443,8 +443,9 @@ print("the label is the same in all eight — that is the only thing that makes 
 '''),
 
         md("""
-⏱ **about 90 seconds on a GPU or MPS.** 8 epochs of fine-tuning at 224 × 224,
-plus a validation pass each epoch.
+⏱ **a few minutes on CPU.** 8 epochs of fine-tuning at 224 × 224, plus a
+validation pass each epoch. Most of the backbone is frozen, which is what keeps
+this affordable without an accelerator.
 
 Three things happen in this cell that did not happen before, and each one is a
 line you should be able to defend:

@@ -212,7 +212,7 @@ print(f"fit batch {tuple(Xf.shape)}")
             constraint="identical seeds and identical everything else — the only difference is one `torch.softmax` before the loss",
             check="the loss is FLOORED near −log(0.731) ≈ 0.313. That is the tell, and it is visible in the training output long before the accuracy comparison."),
         code('''
-# ⏱ about 1-3 minutes for the two runs together, on a GPU.
+# ⏱ a few minutes for the two runs together, on CPU.
 @torch.no_grad()
 def accuracy(net, X, L, y, batch=256):
     net.eval()
@@ -297,7 +297,8 @@ Our GRU saw 5,000 reviews. A pretrained language model saw billions of words —
 and needed no labels at all to do it, because its task was predicting missing
 words.
 
-⏱ **about 1–3 minutes** to fine-tune, on a GPU.
+⏱ **a few minutes** to fine-tune, on CPU. The model is small and the corpus is
+subsampled, which is what makes that possible.
 """),
         prompt(
             label="⏱ 1-3 min — borrow the whole model",
