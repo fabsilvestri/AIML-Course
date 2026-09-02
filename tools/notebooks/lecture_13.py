@@ -190,8 +190,9 @@ def accuracy(model, X_u8, y, norm, bs=64):
         right += (model(xb).argmax(1).cpu() == y[k:k + bs]).sum().item()
     return right / len(X_u8)
 
-assert sum(p.numel() for p in make_net().parameters()) == 4_807_494
-print("architecture matches the previous lecture")
+n_scratch = sum(p.numel() for p in make_net().parameters())
+assert n_scratch == 4_807_494
+print(f"architecture matches the previous lecture: {n_scratch:,} parameters")
 '''),
 
         md("""
@@ -240,6 +241,25 @@ print(f"val   {VAL_ACC:.2%}")
 print(f"test  {SCRATCH_TEST:.2%}   in {SCRATCH_SECONDS:.0f} s")
 print(f"\\ngap: {100*(TRAIN_ACC - VAL_ACC):.0f} points")
 '''),
+        prompt(
+            label="what weight sharing bought, in weights",
+            input="the first convolution's shape, and the dense layer it replaced",
+            output="both weight counts and the ratio",
+            constraint="count the DENSE layer that would produce the same output map — 128x128x3 inputs to 128x128x32 outputs — rather than an arbitrary dense layer, so the comparison is between two ways of computing the same thing",
+            check="the ratio is the whole argument for convolution and it is one division. Compute it rather than quoting it."),
+        code('''
+H, W, C_IN, C_OUT, K = 128, 128, 3, 32, 7
+
+n_in  = H * W * C_IN
+n_out = H * W * C_OUT
+dense_weights = n_in * n_out                 # every input to every output
+conv_weights  = C_OUT * C_IN * K * K         # one kernel, reused everywhere
+
+print(f"a dense layer doing the same job: {dense_weights:,} weights")
+print(f"the convolution:                  {conv_weights:,} weights")
+print(f"ratio:                            {dense_weights / conv_weights:,.0f}x")
+'''),
+
         md("""
 A persistent gap between two plateaus is **variance** — Lecture 6. Its two
 cures are more data and more constraint. We cannot buy labels, so the
@@ -268,6 +288,11 @@ weights are a download.
 weights = ResNet18_Weights.DEFAULT
 print(weights.transforms())
 print(f"\\nparameters: {sum(p.numel() for p in resnet18().parameters()):,}")
+
+first = resnet18(weights=weights).conv1.weight
+print(f"first layer: {first.shape[0]} filters of {first.shape[1]}x"
+      f"{first.shape[2]}x{first.shape[3]} = {first.numel():,} numbers")
+print("every one of them a fact about photographs, not about flowers")
 '''),
         md("""
 **The weights come with their own preprocessing.** Use those statistics, not
@@ -477,6 +502,10 @@ for p in ft.layer4.parameters():
     p.requires_grad = True
 for p in ft.fc.parameters():
     p.requires_grad = True
+
+n_ft_train = sum(p.numel() for p in ft.parameters() if p.requires_grad)
+n_ft_froz  = sum(p.numel() for p in ft.parameters() if not p.requires_grad)
+print(f"fine-tuning: {n_ft_froz:,} parameters never move, {n_ft_train:,} do")
 
 opt = torch.optim.Adam([
     {"params": ft.layer4.parameters(), "lr": 1e-4},   # already good
