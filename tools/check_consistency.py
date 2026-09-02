@@ -107,6 +107,21 @@ NAMESPACES: dict[int, tuple[str, ...]] = {
     6:  ("l07", "app04"),            # old 7, CoverType
     7:  ("app04",),                  # old 8, CoverType (no l08_* keys exist)
     8:  ("l09", "l10"),              # old 9 + 10, Olivetti
+    9:  ("l11",),                   # old 11, Fashion-MNIST
+    10: ("l12",),                   # old 12, Fashion-MNIST / PyTorch
+    11: ("l13", "l14"),            # old 13 + 14, CIFAR-10
+    12: ("l15",),                   # old 15, Flowers102
+    13: ("l16",),                   # old 16, Flowers102 / transfer
+    14: ("l17", "l18"),            # old 17 + 18, COCO detection
+    15: ("app10",),                  # old 19 + 20, Chicago transit
+    16: ("app10",),                  # old 20, recurrent networks
+    17: ("l21",),                   # old 21, IMDb
+    18: ("l22",),                   # old 22, IMDb / transformers
+    # 19-22 are Part V and own no keys yet -- their figures do not exist.
+    # Left OUT deliberately so they are skipped loudly rather than checked
+    # against an empty pool, which would pass and mean nothing.
+    23: ("l23",),                   # old 23, COCO multimodal
+    24: ("l24",),                   # old 24, RAG and closing
 }
 
 
