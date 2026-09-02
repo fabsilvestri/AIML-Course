@@ -137,18 +137,26 @@ evaluation, which is why it survived as a default.
             input="the interaction table, sorted by time",
             output="one held-out interaction per user, under each rule",
             constraint="hold out exactly one per user under both rules, so the two protocols differ in WHICH interaction and in nothing else",
-            check="assert both held-out sets have one row per user, and that they are not the same set. If they were identical the comparison would be vacuous."),
+            check="assert one row per user WITH POSITIVES, not per user — a user who never gave a 4 or a 5 has nothing to hold out, and asserting against the full user count fails on exactly that."),
         code('''
 last   = imp.groupby("u").tail(1)[["u", "i"]]
 rand   = (imp.groupby("u")
              .apply(lambda g: g.iloc[rng.integers(len(g))], include_groups=False)
              .reset_index()[["u", "i"]])
 
-assert len(last) == len(rand) == n_u
+# Not every user survives the threshold: a user who never gave a 4 or a 5 has
+# no positive interactions and so cannot be evaluated at all. Assert against
+# the users we actually have, and report how many the binarisation dropped --
+# that is a property of the filtering step, and it belongs in the protocol.
+n_eval = imp["u"].nunique()
+assert len(last) == len(rand) == n_eval
+
 overlap = len(set(map(tuple, last.values)) & set(map(tuple, rand.values)))
-print(f"held out per user        1")
-print(f"users                    {n_u:,}")
-print(f"same interaction in both {overlap:,}  ({100*overlap/n_u:.1f}%)")
+print(f"users in the dataset        {n_u:,}")
+print(f"users with any positive     {n_eval:,}")
+print(f"dropped by the threshold    {n_u - n_eval:,}")
+print(f"held out per user           1")
+print(f"same interaction in both    {overlap:,}  ({100*overlap/n_eval:.1f}%)")
 '''),
         prompt(
             label="build the training matrix for a protocol",

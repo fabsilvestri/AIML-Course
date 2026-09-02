@@ -213,34 +213,6 @@ print(tok(claim_tok))
 '''),
     ]
 
-    cells += [
-        md("""
-### What we are not doing: stemming
-
-Our tokeniser treats `infect`, `infects`, `infection` and `infected` as four
-unrelated terms. A stemmer would merge them, pooling their evidence — and would
-also merge things that should not be merged, with a net effect that is
-corpus-dependent and usually small.
-
-We leave it out because every unexplained step between the text and the number
-is somewhere a result can hide, and because the mismatch it half-solves has a
-better answer in Lecture 20.
-"""),
-        prompt(
-            label="what a stemmer would merge",
-            input="two families of word forms",
-            output="the document frequency of each form",
-            constraint="use the index built above rather than re-scanning, and report the forms separately — the point is how differently the evidence is spread",
-            check="compare the rarest form against the commonest in each family. That ratio is what a query for the rare form is giving up."),
-        code('''
-for family in (("cell", "cells", "cellular"),
-               ("infect", "infects", "infection", "infected")):
-    print("  " + "   ".join(f"{t}: {len(post.get(t, [])):,}" for t in family))
-print()
-print("A query for 'infect' matches only the abstracts using that exact form.")
-'''),
-    ]
-
     # ------------------------------------------------------------------ 3
     cells += [
         md("""
@@ -282,6 +254,31 @@ print(f"postings are {100*postings/dense:.1f}% of the dense matrix")
         code('''
 for t in dict.fromkeys(tok(claim_tok)):
     print(f"  {t:<14} {len(post.get(t, [])):>6,} abstracts")
+'''),
+        md("""
+### What we are not doing: stemming
+
+Our tokeniser treats `infect`, `infects`, `infection` and `infected` as four
+unrelated terms. A stemmer would merge them, pooling their evidence — and would
+also merge things that should not be merged, with a net effect that is
+corpus-dependent and usually small.
+
+We leave it out because every unexplained step between the text and the number
+is somewhere a result can hide, and because the mismatch it half-solves has a
+better answer in Lecture 20.
+"""),
+        prompt(
+            label="what a stemmer would merge",
+            input="two families of word forms",
+            output="the document frequency of each form",
+            constraint="use the index built above rather than re-scanning, and report the forms separately — the point is how differently the evidence is spread",
+            check="compare the rarest form against the commonest in each family. That ratio is what a query for the rare form is giving up."),
+        code('''
+for family in (("cell", "cells", "cellular"),
+               ("infect", "infects", "infection", "infected")):
+    print("  " + "   ".join(f"{t}: {len(post.get(t, [])):,}" for t in family))
+print()
+print("A query for 'infect' matches only the abstracts using that exact form.")
 '''),
         prompt(
             label="Boolean retrieval, measured",
