@@ -66,6 +66,28 @@ BOLD, RED, GREEN, YELLOW, DIM, OFF = (
 
 # A number, with optional thousands separators and decimals.
 NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
+# Figures a notebook deliberately does not reproduce, because the deck reports a
+# run the notebook is not sized to repeat. Every notebook that appears here says
+# so in its own header, in a "Scale." paragraph naming both numbers.
+#
+# This list is the same contract as ALLOWED in check_provenance.py: adding to it
+# is fine, adding to it WITHOUT A REASON is how the check stops meaning anything.
+# It is never the right home for "the notebook computes a different number" —
+# that is the defect this tool exists to find. It is only for "the notebook
+# computes the same quantity on less data, on purpose, and says so."
+#
+# Exempted figures are listed in the output rather than skipped silently.
+SCALE_ONLY: dict[str, str] = {
+    "l22_errors_scratch":
+        "L18 deck scores all 25,000 test reviews; the notebook scores 3,000 so "
+        "it finishes on a CPU. It prints its own error counts at its own scale.",
+    "l22_errors_finetuned":
+        "same slide, same reason.",
+    "l22_clusters":
+        "L18 deck clusters all 12,500 negative reviews; the notebook clusters "
+        "2,000. The cluster sizes therefore differ; the themes do not.",
+}
+
 # Units that make a figure a duration rather than a result.
 DURATION = re.compile(
     r"\b(s|sec|secs|second|seconds|ms|min|mins|minute|minutes|h|hour|hours)\b"
@@ -313,9 +335,13 @@ def main() -> int:
             continue
         printed = printed_numbers(run)
         stated = stated_facts(deck, facts(n))
-        seen, uniq = set(), []
+        seen, uniq, excused = set(), [], set()
         for line, v, key, ctx in stated:
             if matches(v, printed) or v in seen:
+                continue
+            root = key.lstrip("/").split("/")[0].split("[")[0]
+            if root in SCALE_ONLY:
+                excused.add(root)
                 continue
             seen.add(v)
             uniq.append((line, v, key, ctx))
@@ -331,6 +357,8 @@ def main() -> int:
         else:
             print(f"{GREEN}ok{OFF}    lecture {n:02d} — every stated figure is "
                   f"printed by its notebook")
+        for root in sorted(excused):
+            print(f"        {DIM}scale-exempt: {root} — {SCALE_ONLY[root]}{OFF}")
         if a.verbose:
             print(f"        {DIM}{len(stated)} figures.json values stated on "
                   f"the deck; {len(printed)} numbers printed by the notebook{OFF}")

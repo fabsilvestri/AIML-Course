@@ -157,7 +157,9 @@ assert X_val.shape   == (1020, 3, IMG, IMG), X_val.shape
 assert X_test.shape  == (6149, 3, IMG, IMG), X_test.shape
 assert X_train.dtype == torch.uint8
 assert int(y_train.max()) == N_CLASSES - 1 and int(y_train.min()) == 0
+n_total = len(X_train) + len(X_val) + len(X_test)
 print(f"train {len(X_train):,}   val {len(X_val):,}   test {len(X_test):,}")
+print(f"{n_total:,} photographs of {N_CLASSES} species in total")
 '''),
 
         md("""

@@ -583,7 +583,7 @@ all_x = list(train_x) + list(test_x)
 all_y = np.concatenate([train_y, test_y])
 
 def leak_experiment(n_docs, seeds):
-    gaps = []
+    gaps, vocab = [], []
     for s in range(seeds):
         r   = np.random.default_rng(RANDOM_STATE + s)
         idx = r.choice(len(all_x), size=n_docs, replace=False)
@@ -606,13 +606,19 @@ def leak_experiment(n_docs, seeds):
                   == y[te]).mean()
 
         assert Z.shape[1] >= Ztr.shape[1], "the leaky vocabulary must be larger"
+        vocab.append((Z.shape[1], Ztr.shape[1]))
         gaps.append(leaky - honest)
-    return np.array(gaps)
+    return np.array(gaps), vocab
 
 # ⏱ about a minute.
-small = leak_experiment(400, 20)
+small, small_vocab = leak_experiment(400, 20)
 print(f"400 docs, 20 seeds:  {100 * small.mean():+.2f} points "
       f"(sd {100 * small.std():.2f}), leak wins on {(small > 0).sum()}/20")
+
+# The sizes, because the whole puzzle of the next slide is that the leaky
+# vocabulary really IS bigger and buys almost nothing anyway.
+print(f"vocabulary, leaky:   {small_vocab[0][0]:,} columns")
+print(f"vocabulary, honest:  {small_vocab[0][1]:,} columns")
 '''),
         prompt(
             label="the same leak at full size",
@@ -622,7 +628,7 @@ print(f"400 docs, 20 seeds:  {100 * small.mean():+.2f} points "
             check="the decision rule: fit the vectoriser inside the pipeline always — not because the damage is always large, but because it scales with the reciprocal of your corpus size, and the corpus is smallest exactly when the project starts."),
         code('''
 # ⏱ about a minute: five seeds at the full corpus size.
-full = leak_experiment(25_000, 3)
+full, _ = leak_experiment(25_000, 3)
 print(f"25,000 docs, 3 seeds: {100 * full.mean():+.2f} points "
       f"(sd {100 * full.std():.2f})")
 
