@@ -23,6 +23,7 @@ Nothing in a notebook is wrong on purpose.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -1224,6 +1225,15 @@ def _discover() -> None:
     if str(mod_dir) not in sys.path:
         sys.path.insert(0, str(mod_dir))
     for path in sorted(mod_dir.glob("lecture_*.py")):
+        # EXACTLY lecture_NN.py. A draft parked at lecture_11_NEW.py used to
+        # parse to 11 -- split("_")[1] stops at the first underscore -- so as
+        # soon as the real lecture_11.py was renamed out of the way during a
+        # renumber, the draft became the only file claiming 11 and silently
+        # overwrote notebooks/lecture-11.ipynb. Merges are built at -NEW by
+        # design while their slot is occupied, so this happens whenever two
+        # agents work adjacent numbers.
+        if not re.fullmatch(r"lecture_\d{2}", path.stem):
+            continue
         n = int(path.stem.split("_")[1])
         if n in LECTURES:
             continue
