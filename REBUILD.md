@@ -75,6 +75,34 @@ random id per cell per build, so regenerating an unchanged notebook still
 produced a diff touching every cell — which buried the one line that had
 actually changed. If you see id-only churn again, that helper has regressed.
 
+### Parallel drafting (in progress, 2026-09-01)
+
+Three agents are drafting the CPU block in parallel, working from
+`tools/AGENT_BRIEF.md`. Units are **coupled pairs**, not single lectures: the
+Titanic pair cross-references itself 11 and 9 times, CoverType 6 and 5, so
+splitting a pair means each half writes references to content it cannot see.
+
+| agent | drafts | from | target files |
+|---|---|---|---|
+| L4-L5-Titanic | L4, L5 | old 05, 06 | `lecture-04/05.html`, `lecture_04/05.py` |
+| L6-L7-CoverType | L6, L7 | old 07, 08 | `lecture-06/07.html`, `lecture_06/07.py` |
+| L8-Olivetti | L8 (merge) | old 09 + 10 | `lecture-08-NEW.html`, `lecture_08_NEW.py` |
+
+**L8 builds at a temporary path on purpose:** `slides/lecture-08.html` still
+holds old lecture 8 until the CoverType agent moves it to `lecture-07.html`.
+The integrator renames L8 into place afterwards.
+
+Agents draft deck and notebook only. They do not touch `make_site.py`,
+`REBUILD.md`, `index.html` or `make_nb_index.py`, and they do not commit. The
+integrator runs the full routine on every draft — execute cold, diff every
+printed figure against `figures.json`, audit lecture numbers against
+`LECTURES.md`, check overflow — before it lands. Realistic gain is ~2-2.5x, not
+3x: notebook execution is CPU-bound on 16 shared cores and does not
+parallelise, only the authoring does.
+
+If this file is being read after a crash and the table above still says "in
+progress", check `git status` for drafted-but-uncommitted decks and modules.
+
 ### Renumbering: the source modules are keyed by OLD lecture numbers
 
 `tools/notebooks/lecture_NN.py` and `slides/lecture-NN.html` still carry the old
