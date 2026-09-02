@@ -55,35 +55,16 @@ run it again, until it is clean. See §7 of AUTHORING.md.
 
 **Verification loop, state at last checkpoint:**
 
-| lecture | first run | after fixes | status |
+| lecture | consistency | deck | notebook |
 |---|---|---|---|
-| 1 | 4 | **0** | clean |
-| 2 | 28 → 24 → 9 → 3 | **0** | clean |
-| 3 | 1 | **0** | clean |
-| 4 | 0 | — | clean, first try |
-| 5 | 0 | — | clean, first try |
-| 6 | 0 | — | clean, first try |
-| 7 | 0 | — | clean, first try |
-| 8 | 0 | — | clean, first try |
-| 9 | 0 | — | clean |
-| 10 | 3 | **0** | clean |
-| 11 | deck + notebook built (merge of old 13+14) | | to check |
-| 12 | deck + notebook built | | checking |
-| 13 | deck + notebook built | | to check |
-| 14–24 | not begun | | |
-
-**Decks on the new design: 13 of 24.** Old 9, 10, 13, 14 and 16 are deleted,
-their content merged into new 8, 11 and 13. Remaining old-numbered files: 17,
-18, 19, 20, 21, 22, 23, 24.
-
-**Lecture 12's derivation had to be moved between lectures.** `LECTURES.md`
-assigns *weight sharing, equivariance and memory* to Lecture 12, but the whole
-33-slide development of it lived in old lecture 16 — new Lecture 13 — because
-under the old design the mathematics opened the *Fix* lecture, and the Fix
-lecture was transfer learning. The derivation therefore sat one lecture *after*
-the method it justifies. Expect this wherever the new plan assigns a derivation
-to what used to be a Build lecture: **check whether the mathematics is in the
-next old deck rather than this one.**
+| 1 | **clean** | done | done |
+| 2 | **clean** | done | done |
+| 3 | **clean** | done | done |
+| 4–8 | **clean** (first run) | done | done |
+| 9, 10 | **clean** | done | done |
+| 11–18 | not yet run | **done** | done |
+| 19–22 | — | **not begun** | not begun |
+| 23, 24 | not yet run | **done** | done |
 
 **Lectures 4-8 passed the consistency check on the first run, with no
 intervention.** All five were agent-drafted against `tools/AGENT_BRIEF.md`.
