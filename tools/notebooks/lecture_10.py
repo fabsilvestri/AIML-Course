@@ -1,12 +1,14 @@
 """
-Lecture 12 — Rebuilding it in PyTorch.
+Lecture 10 — PyTorch. Géron Chapter 10.
 
-Thread 6: backpropagation as reverse-mode automatic differentiation.
+Derivation: backpropagation as reverse-mode automatic differentiation.
 
 Exports build() -> list[nbformat cell]. Self-contained: it reloads and re-splits
-the data rather than assuming Lecture 11's kernel is still alive. A notebook
-that only runs because a previous one left variables in memory is not
-reproducible.
+the data rather than assuming Lecture 9's kernel is still alive. A notebook that
+only runs because a previous one left variables in memory is not reproducible.
+
+Runs on CPU throughout. The device check is kept because knowing how to ask is
+part of the lecture, but nothing here needs an accelerator.
 """
 
 from __future__ import annotations
@@ -24,21 +26,25 @@ def code(text: str) -> nbf.NotebookNode:
 
 
 HEADER = """
-# Rebuilding it in PyTorch
+# PyTorch
 
-**Lecture 12 · Fix** · Géron, Chapters 9–10 · *Mathematical thread:
-backpropagation as reverse-mode automatic differentiation*
+**Lecture 10** · Géron, Chapter 10
 
 Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
 
 ---
 
-**How to use this notebook.** Read before you run. Cells marked
-**⚠ read before running** contain a defect on purpose — two of them are the
-defects this lecture exists to teach, and neither raises an exception.
+**How to use this notebook.** Read before you run. Every code cell is preceded
+by the specification that would produce it — input, output, constraint, check.
 
-As in the previous lecture, we train on 12,000 images so that a free Colab
-runtime finishes inside the hour. The deck quotes the full 55,000.
+Three sections marked **⚠** deliberately run *broken* code, and say so in their
+heading before you reach them. They are not traps: they are the only way to see
+what a bug that raises no exception actually does to a loss curve. Each one runs
+the broken version and the correct version side by side and prices the
+difference.
+
+Trains on 12,000 images so that a free Colab CPU runtime finishes in a few
+minutes.
 """
 
 
@@ -52,7 +58,8 @@ def build() -> list:
             input="nothing",
             output="versions, seeds, and the device this notebook will use",
             constraint="pick the device by ASKING — cuda, then mps, then cpu — and print which one won",
-            check="print the device and say what to do if it is cpu. A student whose runtime silently has no accelerator will otherwise conclude PyTorch is slow."),
+            check="print the device and say what to do if it is cpu. A student whose runtime silently has no accelerator will otherwise conclude PyTorch is slow.",
+            **{"try": "force `device = \"cpu\"` and re-run the notebook end to end. Everything works and the wall clock barely moves — which is the measured claim behind this course running on a free tier."}),
         code('''
 # --- setup -------------------------------------------------------------------
 import sys, time, warnings
@@ -80,7 +87,7 @@ else:
 print(f"\\ndevice       {device}")
 if device == "cpu":
     print("no accelerator found. Everything below still runs; it is slower.")
-    print("In Colab: Runtime -> Change runtime type -> T4 GPU.")
+    print("CPU is expected here: nothing in this notebook needs more.")
 '''),
 
         md("""
@@ -94,7 +101,8 @@ lecture's by one image, none of the comparisons below mean anything.
             input="Fashion MNIST again",
             output="the identical fit / validation / test split as the previous lecture",
             constraint="reload and re-split from the same seed rather than inheriting — if your split differs from the previous lecture's by one image, none of the comparisons below mean anything",
-            check="assert the sizes and the shapes. Two notebooks that compare numbers must rebuild the same split from the same seed, and assert the sizes. That assert is the only thing standing between you and an invalid comparison."),
+            check="assert the sizes and the shapes. Two notebooks that compare numbers must rebuild the same split from the same seed, and assert the sizes. That assert is the only thing standing between you and an invalid comparison.",
+            **{"try": "raise the subsample from 12,000 to 20,000 images. Every accuracy rises a little and every timing rises a lot; decide which of the two you would trade."}),
         code('''
 train_ds = torchvision.datasets.FashionMNIST("datasets", train=True, download=True)
 test_ds  = torchvision.datasets.FashionMNIST("datasets", train=False, download=True)
@@ -124,7 +132,7 @@ print(f"fit {len(X_fit):,} (of {len(X_fit_full):,})   "
 '''),
 
         md("""
-## 3 · Thread 6 — the chain rule has two directions
+## 3 · The chain rule has two directions
 
 Take a composition $L = f_3(f_2(f_1(\\theta)))$. The chain rule gives
 
@@ -144,7 +152,8 @@ Same answer. Verify that first, on a function you can differentiate by hand.
             input="L = w², w = xy + sin x, at x=2, y=3",
             output="both partial derivatives, from autograd and by hand",
             constraint="float64 — at float32 the agreement is only to about 1e-7 and the 1e-12 assert would be measuring precision rather than correctness",
-            check="assert agreement to 1e-12, which is machine precision for doubles. That summation over outgoing edges is the entire bookkeeping of reverse-mode autodiff. There is nothing else in it."),
+            check="assert agreement to 1e-12, which is machine precision for doubles. That summation over outgoing edges is the entire bookkeeping of reverse-mode autodiff. There is nothing else in it.",
+            **{"try": "change the function and redo the hand derivative. If autograd and your algebra disagree, one of you is wrong and it is worth ten minutes to find out which."}),
         code('''
 # L = w^2,  w = x*y + sin(x),  at x = 2, y = 3
 x = torch.tensor(2.0, dtype=torch.float64, requires_grad=True)
@@ -204,7 +213,8 @@ Measure it. `torch.func` exposes both directly.
             input="tiny networks with 2 to 16 hidden units",
             output="the wall clock for the whole gradient in reverse mode against P passes in forward mode",
             constraint="assert the two modes AGREE before comparing their costs — a speed comparison between a right answer and a wrong one is not a comparison",
-            check="reverse mode is flat in P and forward mode is linear in it. The ratio column is the whole reason every deep learning framework you will ever use is built around the reverse mode."),
+            check="reverse mode is flat in P and forward mode is linear in it. The ratio column is the whole reason every deep learning framework you will ever use is built around the reverse mode.",
+            **{"try": "swap the input and output dimensions. The two modes trade places, which is the whole content of the cost table."}),
         code('''
 from torch.func import jvp, vjp, functional_call
 
@@ -255,7 +265,8 @@ parameter count into that ratio.
             input="the actual 784-300-100-10 network",
             output="the measured reverse-mode gradient time, the measured cost of ONE forward direction, and the projected cost of all of them",
             constraint="do NOT run the projected figure — measure two per-pass costs and multiply, and say in the output that it is projected",
-            check="label projected numbers as projected, in the output itself. A reader cannot tell from a printed float which of your numbers came from a clock."),
+            check="label projected numbers as projected, in the output itself. A reader cannot tell from a printed float which of your numbers came from a clock.",
+            **{"try": "work the ratio out for a network with a hundred outputs instead of one. Forward mode is still hopeless, and now you can say by how much."}),
         code('''
 big = nn.Sequential(nn.Linear(784, 300), nn.ReLU(),
                     nn.Linear(300, 100), nn.ReLU(), nn.Linear(100, 10))
@@ -284,7 +295,7 @@ you can check.
 """),
 
         md("""
-## 4 · Diagnose — what the previous lecture could not do
+## 4 · What the previous lecture could not do
 
 Time the Scikit-Learn model on this machine, as the control.
 
@@ -295,7 +306,8 @@ Time the Scikit-Learn model on this machine, as the control.
             input="the same architecture, optimiser, batch size, learning rate and epochs",
             output="scikit-learn's wall clock and validation accuracy on THIS machine",
             constraint="time it here rather than quoting the previous lecture — the speed-up claimed below is a ratio, and both halves have to come from the same box",
-            check="when you claim a speed-up, measure both halves in the same cell run, on the same data, with the same hyperparameters."),
+            check="when you claim a speed-up, measure both halves in the same cell run, on the same data, with the same hyperparameters.",
+            **{"try": "run it twice without changing the seed. Identical. Then change the seed and see how much of any later difference was ever real."}),
         code('''
 from sklearn.neural_network import MLPClassifier
 
@@ -325,7 +337,8 @@ device it is on, and whether to record what is done to it.
             input="a small tensor",
             output="its dtype, device and requires_grad, then the same tensor moved to the accelerator, and a deliberate shape error",
             constraint="show `.to(device)` returning a NEW tensor — it does not move in place, and a discarded return value is a silent no-op",
-            check="a shape error in PyTorch is loud, unlike almost everything else this course diagnoses. Take the ones you are given."),
+            check="a shape error in PyTorch is loud, unlike almost everything else this course diagnoses. Take the ones you are given.",
+            **{"try": "call `.numpy()` on a tensor that still requires grad. It refuses, and the error names exactly the reason."}),
         code('''
 a = torch.tensor([[1., 2.], [3., 4.]])
 print(a, a.dtype, a.device, a.requires_grad, sep="\\n")
@@ -358,7 +371,8 @@ You can look at the record.
             input="a small chain of operations",
             output="the `grad_fn` of each intermediate, and the parents of the last one",
             constraint="print `grad_fn`, not the values — the record IS the thing being demonstrated",
-            check="`torch.no_grad()` builds no record, which is why evaluation code is wrapped in it: less memory and no graph. Show the `None` rather than asserting the saving."),
+            check="`torch.no_grad()` builds no record, which is why evaluation code is wrapped in it: less memory and no graph. Show the `None` rather than asserting the saving.",
+            **{"try": "set `requires_grad=False` on one input and re-run. Its `.grad` stays None — the graph simply does not reach it."}),
         code('''
 u = torch.tensor(2.0, requires_grad=True)
 v = torch.tensor(3.0, requires_grad=True)
@@ -386,7 +400,8 @@ Five lines, and every one of them is yours.
             input="the data on the device, and the architecture",
             output="a trained network, its history, and the wall clock beside scikit-learn's",
             constraint="zero_grad, forward, loss, backward, step — in that order, inside the BATCH loop, with the permutation drawn from a seeded generator",
-            check="assert the rebuild lands within a few points of scikit-learn — it should reproduce the model, not replace it. The assert comparing the two implementations. A rebuild that scores very differently has a bug, and without the assert you will read the difference as a finding."),
+            check="assert the rebuild lands within a few points of scikit-learn — it should reproduce the model, not replace it. The assert comparing the two implementations. A rebuild that scores very differently has a bug, and without the assert you will read the difference as a finding.",
+            **{"try": "reorder the five lines so the step comes before backward. Nothing raises, and the model does not learn."}),
         code('''
 def make_net(dropout=0.0):
     layers = [nn.Linear(784, 300), nn.ReLU()]
@@ -441,6 +456,16 @@ print(f"{n_params:,} parameters")
 print(f"PyTorch on {device}: {pt_seconds:.1f} s for {EPOCHS} epochs, "
       f"validation accuracy {hist['val_acc'][-1]:.4f}")
 print(f"Scikit-Learn on CPU: {sk_seconds:.1f} s, {sk_val:.4f}")
+
+# The deck's crossover table quotes a parameter count per architecture. The
+# timings in it are durations and belong to whichever machine measured them
+# (AUTHORING 3.2a); the parameter counts are arithmetic and belong to everyone,
+# so compute them here rather than reading them off a slide.
+print()
+for hidden in ((100,), (300, 100), (1000, 1000), (2000, 2000)):
+    sizes = (784, *hidden, 10)
+    total = sum(sizes[i] * sizes[i + 1] + sizes[i + 1] for i in range(len(sizes) - 1))
+    print(f"hidden {str(hidden):<14s} {total:>10,} parameters")
 print(f"\\nspeed-up {sk_seconds / pt_seconds:.1f}x for the same architecture, "
       f"same optimiser, same epochs")
 assert abs(hist["val_acc"][-1] - sk_val) < 0.05, \\
@@ -467,7 +492,8 @@ the curves will do, then run it.
             input="two runs, identical except for one line",
             output="both loss curves and both accuracy curves",
             constraint="log scale on the loss panel — without zero_grad the loss goes somewhere a linear axis cannot show alongside the healthy run",
-            check="predict what the curves will do before you run it. If you cannot, you have not understood the accumulation, and reading the answer off the plot will not teach it to you."),
+            check="predict what the curves will do before you run it. If you cannot, you have not understood the accumulation, and reading the answer off the plot will not teach it to you.",
+            **{"try": "move `zero_grad()` outside the batch loop, into the epoch loop. It is a much quieter bug than removing it — the curves look nearly right."}),
         code('''
 net_ok,  hist_ok,  _ = train(zero_grad=True)
 net_bad, hist_bad, _ = train(zero_grad=False)
@@ -493,7 +519,8 @@ print(f"cost of one missing line: {cost:.2f} accuracy points, silently")
             input="three backward passes with no zeroing anywhere",
             output="the gradient norm after each, then after zero_grad, then with set_to_none=False",
             constraint="use a tiny probe module — four inputs and one output, so the norm is a number you can follow",
-            check="three lines and a print is enough to make an accumulation bug visible. Build the smallest thing that shows the mechanism rather than reasoning about the big one."),
+            check="three lines and a print is enough to make an accumulation bug visible. Build the smallest thing that shows the mechanism rather than reasoning about the big one.",
+            **{"try": "print the gradient norm each step rather than the loss. The accumulation is arithmetic, and the norm shows it growing linearly."}),
         code('''
 # why: watch the gradient of one weight accumulate across three backward passes
 probe = nn.Linear(4, 1)
@@ -570,7 +597,8 @@ shuffling, batching and (optionally) parallel loading.
             input="the training tensors",
             output="a shuffling loader, its batch count, and the size of the last batch",
             constraint="seed the loader's generator — an unseeded shuffle makes every run of the notebook a different experiment",
-            check="assert the loader yields every row, so nothing was silently dropped. Indexing a big tensor by hand works while the data fits in memory. It stops working the moment it does not, which is three lectures from here."),
+            check="assert the loader yields every row, so nothing was silently dropped. Indexing a big tensor by hand works while the data fits in memory. It stops working the moment it does not, which is three lectures from here.",
+            **{"try": "set `shuffle=False`. On a corpus ordered by class the loss curve becomes a sawtooth, one tooth per class."}),
         code('''
 from torch.utils.data import TensorDataset, DataLoader
 
@@ -600,7 +628,8 @@ same size — and the last one never is.
             input="the test set, batched",
             output="the accuracy counted over the set, and the mean of the per-batch accuracies",
             constraint="compute BOTH in the same pass, so the difference cannot be attributed to anything else",
-            check="weight by the batch size, or count over the set. Never take a plain mean of per-batch metrics — you cannot tell from the number whether it mattered."),
+            check="weight by the batch size, or count over the set. Never take a plain mean of per-batch metrics — you cannot tell from the number whether it mattered.",
+            **{"try": "make the batch size divide the corpus exactly. The bug vanishes, which is why it survives so long in code that was tested on a round number."}),
         code('''
 def acc_two_ways(net, X, y, batch=384):
     net.eval(); per_batch, hits = [], 0
@@ -640,7 +669,8 @@ parameter registration, `.to(device)`, `state_dict` — comes for free.
             input="the same architecture, written as a subclass",
             output="the module's repr and its parameter count",
             constraint="`nn.ModuleList`, not a plain Python list — a list of layers is not registered, so its parameters never reach the optimiser and never move with `.to(device)`",
-            check="assert the parameter count matches the Sequential version exactly — same model, written differently. Assert the parameter count against a known-good implementation. An unregistered layer is invisible in the repr and in the loss, and visible immediately in the count."),
+            check="assert the parameter count matches the Sequential version exactly — same model, written differently. Assert the parameter count against a known-good implementation. An unregistered layer is invisible in the repr and in the loss, and visible immediately in the count.",
+            **{"try": "add a second hidden layer by editing the module rather than a constructor argument. That edit is the thing Lecture 9 could not do."}),
         code('''
 class Sorter(nn.Module):
     def __init__(self, widths=(300, 100), n_in=784, n_out=10, dropout=0.0):
@@ -678,7 +708,8 @@ the book — but it is what you will actually use.
             input="nothing",
             output="the optuna version, or an explanation and the install command",
             constraint="degrade gracefully — a missing optional package must not stop the notebook, and the fallback branch has to say what the thing WOULD have done",
-            check="if a cell can fail for an environmental reason, catch it and print the remedy. A traceback is not instructions."),
+            check="if a cell can fail for an environmental reason, catch it and print the remedy. A traceback is not instructions.",
+            **{"try": "skip the install and run the cell anyway. It says what is missing and why, rather than failing sixty lines later."}),
         code('''
 try:
     import optuna
@@ -695,7 +726,8 @@ except ImportError:
             input="learning rate on a log scale and dropout on a grid, 8 trials",
             output="the best configuration found, beside the hand-tuned baseline",
             constraint="`log=True` on the learning rate — it lives on a multiplicative scale, and a uniform sampler spends most of its trials between 0.005 and 0.01",
-            check="seed the sampler. An unseeded search gives a different answer every time and you cannot tell improvement from resampling."),
+            check="seed the sampler. An unseeded search gives a different answer every time and you cannot tell improvement from resampling.",
+            **{"try": "run it again with `sampler=optuna.samplers.RandomSampler()`. Same budget, worse best value — the sampler is doing real work."}),
         code('''
 if HAVE_OPTUNA:
     optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -730,7 +762,8 @@ has moved.
             input="the trained network",
             output="a checkpoint on disk, reloaded into a fresh network and checked",
             constraint="`state_dict()` — the TENSORS, not the class. Saving the whole object pickles your source file with it, and the file will not load next term when the class has moved",
-            check="assert the reloaded model gives EXACTLY the same accuracy — identical, not close. An exact equality assert is available here because loading weights is deterministic. Assert it, do not eyeball it."),
+            check="assert the reloaded model gives EXACTLY the same accuracy — identical, not close. An exact equality assert is available here because loading weights is deterministic. Assert it, do not eyeball it.",
+            **{"try": "reload into a model whose architecture differs by one layer. It refuses, and the message names the mismatched keys."}),
         code('''
 from pathlib import Path
 
@@ -758,7 +791,8 @@ Compare with the sheet of paper from the previous lecture.
             input="everything measured",
             output="baseline, both validation numbers with their wall clocks, and the test accuracy",
             constraint="label the test number as the one you report, and say that the test set has now been touched once",
-            check="compare with the sheet of paper from the previous lecture. A prediction you can silently revise is not a prediction."),
+            check="compare with the sheet of paper from the previous lecture. A prediction you can silently revise is not a prediction.",
+            **{"try": "compare against the Lecture 9 accuracy. The gain is real but small; the point of this lecture was never the accuracy."}),
         code('''
 final_test = accuracy(net, Xt, yt)
 print(f"baseline (majority class)   0.1000")
@@ -770,22 +804,28 @@ print("\\nThe test set has now been touched once. Do not tune against it.")
 '''),
 
         md("""
-## 16 · Red-team
+## 16 · Where we are
 
-Swap notebooks with the team beside you. Ten minutes. The five questions, plus
-three that are new from today:
+- Reverse-mode differentiation costs one sweep per **output**, and training has
+  one output — a scalar loss — and millions of inputs. That asymmetry is the
+  whole reason training is affordable.
+- You wrote the loop: forward, loss, `backward()`, step. Nothing in it is
+  hidden any more.
+- Then you replaced its parts with `DataLoader`, a custom `Module` and a proper
+  evaluation path — knowing, this time, what each replaced.
 
-1. What touched the test set?
-2. What was fitted, and on what?
-3. What is the shape here?
-4. What was dropped — rows, columns, NaNs? Count them.
-5. What is the default I did not ask for?
-6. **Is `opt.zero_grad()` inside the batch loop?** (Inside the *epoch* loop is
-   a different, quieter bug.)
-7. **Is there a `model.eval()` before every evaluation, and a `model.train()`
-   back before training resumes?**
-8. **Is any metric a plain mean of per-batch values?**
+**Three questions to ask of any training loop**, yours or anyone else's. All
+three failures are silent, and you have now watched each one happen:
 
-Report what you **found**, not what you would have done differently.
+1. Is `opt.zero_grad()` inside the **batch** loop? Inside the *epoch* loop is a
+   different and much quieter bug.
+2. Is there a `model.eval()` before every evaluation, and a `model.train()`
+   before training resumes?
+3. Is any reported metric a plain mean of per-batch values? The last batch is
+   usually short, so that mean is weighted wrongly.
+
+**Before the next lecture:** run this notebook top to bottom. Then make the
+network four times deeper and re-run the training loop. It trains far worse than
+its size suggests it should — and Lecture 11 derives why, and repairs it.
 """),
     ]
