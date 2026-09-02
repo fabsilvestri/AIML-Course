@@ -678,7 +678,297 @@ print("statistics provenance check passes")
 '''),
 
         md("""
-## 11 · Where we are
+## 11 · The derivation, part one — the parameter count
+
+Fix the input and the output shape so the comparison is between two ways of
+computing *the same sized thing*: a `3 × 128 × 128` input and a
+`32 × 128 × 128` output.
+"""),
+        prompt(
+            label="thread 8 — the parameter count",
+            input="a 3×128×128 input and a 32×128×128 output",
+            output="the weight count for a dense layer and for a convolution computing the same sized thing",
+            constraint="fix the input AND output shapes so the comparison is between two ways of computing the SAME object",
+            check="assert the convolutional count is exactly 32·3·7·7, and that the ratio exceeds five million. Print the dense layer's size in gigabytes. 25 GB of float32 for one layer is the kind of number that ends an argument."),
+        code('''
+H = W = IMG
+n_in, n_out = 3 * H * W, 32 * H * W
+
+dense_weights = n_in * n_out                 # every output to every input
+conv_weights  = 32 * 3 * 7 * 7               # one 7x7x3 kernel per filter
+
+print(f"inputs                {n_in:>18,}")
+print(f"outputs               {n_out:>18,}")
+print(f"dense layer weights   {dense_weights:>18,}")
+print(f"conv layer weights    {conv_weights:>18,}")
+print(f"\\nratio                 {dense_weights / conv_weights:>18,.0f}")
+print(f"dense layer, float32  {dense_weights * 4 / 2**30:>18,.0f} GB")
+
+# the conv count does not contain H or W. That is the whole point.
+assert conv_weights == 32 * 3 * 7 * 7
+assert dense_weights // conv_weights > 5_000_000
+'''),
+        md("""
+`H` and `W` do not appear in the convolutional count. That is not an
+approximation — the image size is genuinely absent.
+
+**What the saving is not:** it is not a saving in arithmetic. The convolution
+still computes `C_out · H · W` outputs, each a sum over `C_in · k²` terms.
+What shrank is the number of *distinct numbers that have to be stored and
+learned*.
+"""),
+
+        md("""
+## 12 · The derivation, part two — equivariance, measured
+
+Let `T_v` shift an image by `v`. A map `f` is **equivariant** when
+`f(T_v x) = T_v f(x)`: shift then compute, or compute then shift, gives the
+same answer.
+
+Convolution satisfies this because the kernel does not depend on position —
+which is exactly what weight sharing is. Untie the weights and the proof's
+middle step fails.
+
+We check it on a randomly initialised convolution, because the property is of
+the *operation* and not of the training.
+"""),
+        prompt(
+            label="equivariance, measured",
+            input="one image and the same image shifted by 16 pixels",
+            output="the largest difference between shift-then-convolve and convolve-then-shift, on the interior",
+            constraint="drop the border before comparing — zero padding invents input that was not there, and `roll` wraps, so both edges violate the identity for reasons that are not about equivariance",
+            check="assert the relative difference is below 1e-5. The residue that survives is float32 rounding, not mathematics. Say which one you are looking at, and give the relative figure rather than the absolute."),
+        code('''
+torch.manual_seed(RANDOM_STATE)
+conv = nn.Conv2d(3, 32, 7, padding=3, bias=False).eval()
+
+x  = normalise(X_test[:1])
+SHIFT = 16
+xs = torch.roll(x, SHIFT, dims=3)
+
+with torch.no_grad():
+    y_of_shift = conv(xs)                      # f(T x)
+    shift_of_y = torch.roll(conv(x), SHIFT, dims=3)   # T f(x)
+
+# drop the border, where zero padding invents input, and the wrap seam
+m = SHIFT + 8
+a = y_of_shift[..., m:-m, m:-m]
+b = shift_of_y[..., m:-m, m:-m]
+
+print(f"largest |f(Tx) - Tf(x)| on the interior  {(a - b).abs().max():.3e}")
+print(f"largest activation there                {b.abs().max():.3f}")
+print(f"relative                                "
+      f"{(a - b).abs().max() / b.abs().max():.3e}")
+
+assert (a - b).abs().max() / b.abs().max() < 1e-5, "not equivariant"
+print("\\nthat residue is float32 rounding, not mathematics")
+'''),
+        md("""
+The equality is exact on the interior and **not** at the border: zero padding
+invents input that was not there, so a shift moves real content into invented
+content. Check that too, rather than taking the caveat on trust.
+"""),
+        prompt(
+            label="and the border, where it fails",
+            input="the same two tensors, at the corner",
+            output="the difference there",
+            constraint="check the caveat rather than stating it — the previous cell's assert is only meaningful if the excluded region really is different",
+            check="when an identity holds only on part of the domain, measure it on the other part too. Orders of magnitude larger is the evidence that your exclusion was necessary rather than convenient."),
+        code('''
+edge_a = y_of_shift[..., :4, :4]
+edge_b = shift_of_y[..., :4, :4]
+print(f"largest difference at the border         "
+      f"{(edge_a - edge_b).abs().max():.3e}")
+print("orders of magnitude larger — the identity is an interior statement")
+'''),
+
+        md("""
+## 13 · The derivation, part three — invariance is not equivariance
+
+A map `g` is **invariant** when `g(T_v x) = g(x)`: the output does not change
+at all. Invariance is strictly stronger and strictly lossier — it is what you
+get by *discarding* the equivariant structure.
+
+Pooling is what performs the discarding. Measure both representations of the
+same shifted image.
+"""),
+        prompt(
+            label="invariance is not equivariance",
+            input="the feature maps of an image and its shift, before and after global pooling",
+            output="the cosine similarity of each pair",
+            constraint="compare the SAME quantity before and after pooling — cosine similarity on flattened maps and on the pooled vectors",
+            check="assert pooling increased the similarity, which is what buying invariance means. A cosine similarity of 0.98 and one of 0.999 sound alike. Print 1 − cos as a percentage and they do not."),
+        code('''
+with torch.no_grad():
+    maps      = F.relu(conv(x))
+    maps_s    = F.relu(conv(xs))
+    pooled    = F.adaptive_max_pool2d(maps,   1).flatten()
+    pooled_s  = F.adaptive_max_pool2d(maps_s, 1).flatten()
+
+cos_maps   = F.cosine_similarity(maps.flatten(), maps_s.flatten(), dim=0).item()
+cos_pooled = F.cosine_similarity(pooled, pooled_s, dim=0).item()
+
+print(f"cosine similarity, spatial maps   {cos_maps:.4f}")
+print(f"cosine similarity, global pooled  {cos_pooled:.4f}")
+print(f"\\nthe map changed by    {100*(1-cos_maps):.1f}%")
+print(f"the pooled vector by  {100*(1-cos_pooled):.2f}%")
+
+assert cos_pooled > cos_maps, "pooling did not buy invariance"
+'''),
+        md("""
+**Why classification wants this.** "This is a sunflower" is true wherever the
+sunflower is, so a representation that still carries the position is carrying a
+nuisance variable.
+
+**Why per-pixel prediction cannot afford it.** Segmentation asks *for every
+pixel, which class is it?* — the answer **is** the position.
+"""),
+        prompt(
+            label="what pooling costs in resolution",
+            input="the network and a dummy input",
+            output="the last feature map size, and how many input pixels one cell answers for",
+            constraint="find the last pooling output by walking the network, not by arithmetic — four MaxPool2d layers is easy to miscount",
+            check="assert the final grid is IMG // 16. Express it as input pixels per output cell. '256x resolution lost' is abstract; 'one cell answers for 256 pixels' is not."),
+        code('''
+net = make_net()
+z = torch.zeros(1, 3, IMG, IMG)
+for m_ in net:
+    z = m_(z)
+    if isinstance(m_, nn.MaxPool2d):
+        last = z.shape[-1]
+
+print(f"input grid          {IMG} x {IMG}")
+print(f"last feature map    {last} x {last}")
+print(f"one cell answers for {(IMG // last) ** 2} input pixels")
+print(f"spatial resolution lost: {(IMG * IMG) / (last * last):.0f}x")
+assert last == IMG // 16
+'''),
+        md("""
+Two flower boundaries fifteen pixels apart are the same cell. Lecture 18 has to
+put that resolution back, and the whole of its architecture is about how.
+"""),
+
+        md("""
+## 14 · The derivation, part four — where the memory goes
+
+Your network has 4,807,494 parameters and your session died with `out of
+memory`. **Which of those two facts caused the other?**
+
+Commit to an answer before running the next cell.
+"""),
+        prompt(
+            label="where the memory goes",
+            input="the network and a batch of 32",
+            output="parameter memory, optimiser memory, and activation memory",
+            constraint="count FOUR float32 arrays per parameter — weights, gradients, and Adam's two moments — and every module output, which stays alive from the moment it is computed until the backward pass reaches it",
+            check="assert activations exceed everything parameter-shaped, since the whole section depends on that being true. When a run runs out of memory, halve the batch, not the model. In order: smaller batch, then smaller resolution (quadratic), then gradient checkpointing, then mixed precision."),
+        code('''
+BATCH = 32
+net = make_net()
+
+n_par = sum(p.numel() for p in net.parameters())
+par_mb = n_par * 4 / 2**20
+
+# weights + gradients + Adam's two moments: four float32 arrays per parameter
+opt_mb = 4 * par_mb
+
+# every module output stays alive from the moment it is computed until the
+# backward pass reaches it — that is what reverse-mode autodiff is
+z, act_per_image = torch.zeros(1, 3, IMG, IMG), 0
+for m_ in net:
+    z = m_(z)
+    act_per_image += z.numel()
+
+act_mb = act_per_image * BATCH * 4 / 2**20
+
+print(f"parameters                       {n_par:>12,}   {par_mb:8.1f} MB")
+print(f"+ gradients + Adam state                        {opt_mb:8.1f} MB")
+print(f"activations, per image           {act_per_image:>12,}   "
+      f"{act_per_image * 4 / 2**20:8.1f} MB")
+print(f"activations, batch of {BATCH}                        {act_mb:8.1f} MB")
+print(f"\\nactivations / parameters              {act_mb / par_mb:8.1f}x")
+print(f"activations / everything parameter-shaped {act_mb / opt_mb:8.1f}x")
+
+assert act_mb > opt_mb, "the arithmetic says parameters dominate — check it"
+'''),
+        md("""
+### It is not spread evenly either
+
+The activation cost of a layer is `C × H × W`. Channels double as the map
+quarters, so the total halves at every pooling stage — and the expensive layers
+are the ones nearest the image, which are the ones with almost no parameters.
+"""),
+        prompt(
+            label="and it is not spread evenly",
+            input="every convolution's output shape",
+            output="the activation memory of each",
+            constraint="report the share held by the first two convolutions",
+            check="parameters and activations are anti-correlated across a convolutional stack. Any intuition transferred from dense networks points the wrong way."),
+        code('''
+z, rows = torch.zeros(1, 3, IMG, IMG), []
+for i, m_ in enumerate(net):
+    z = m_(z)
+    if isinstance(m_, nn.Conv2d):
+        rows.append((i, tuple(z.shape[1:]), z.numel() * BATCH * 4 / 2**20))
+
+for i, shape, mb in rows:
+    print(f"conv at index {i:2d}  {str(shape):>18s}  {mb:7.1f} MB")
+
+conv_total = sum(mb for _, _, mb in rows)
+print(f"\\nfirst two convolutions: {100*(rows[0][2]+rows[1][2])/conv_total:.0f}%"
+      f" of the convolutional activation memory")
+'''),
+        md("""
+### Check the arithmetic against the allocator
+
+A prediction nobody checks is a claim.
+"""),
+        prompt(
+            label="check the arithmetic against the allocator",
+            input="one real forward pass on the accelerator",
+            output="the predicted activation memory beside the measured one",
+            constraint="take ONE optimiser step first, so Adam's state exists and is in the baseline rather than appearing as activation memory",
+            check="a prediction nobody checks is a claim. This is four lines and it converts the whole section from arithmetic into a measurement."),
+        code('''
+net_d = make_net().to(device)
+opt_d = torch.optim.Adam(net_d.parameters(), lr=3e-4)
+xb = torch.randn(BATCH, 3, IMG, IMG, device=device)
+yb = torch.randint(0, N_CLASSES, (BATCH,), device=device)
+lossf = nn.CrossEntropyLoss()
+
+# one step first, so Adam's state exists and is in the baseline
+opt_d.zero_grad(); lossf(net_d(xb), yb).backward(); opt_d.step()
+
+if device == "cuda":
+    torch.cuda.synchronize(); torch.cuda.empty_cache()
+    base = torch.cuda.memory_allocated()
+    out = net_d(xb); torch.cuda.synchronize()
+    measured = (torch.cuda.memory_allocated() - base) / 2**20
+elif device == "mps":
+    torch.mps.synchronize(); torch.mps.empty_cache()
+    base = torch.mps.current_allocated_memory()
+    out = net_d(xb); torch.mps.synchronize()
+    measured = (torch.mps.current_allocated_memory() - base) / 2**20
+else:
+    measured = float("nan")
+    print("no accelerator counter on CPU; the arithmetic above still holds")
+
+print(f"predicted, by counting outputs  {act_mb:8.1f} MB")
+print(f"measured, by the backend        {measured:8.1f} MB")
+'''),
+        md("""
+### The rule that follows
+
+**When a run runs out of memory, halve the batch, not the model.** Activation
+memory is linear in the batch size; parameter memory does not move at all.
+
+In order: smaller batch, then smaller input resolution (quadratic), then
+gradient checkpointing, then mixed precision. Reducing the parameter count is
+near the bottom of the list.
+"""),
+
+        md("""
+## 15 · Where we are
 
 | | Test accuracy |
 |---|---|
