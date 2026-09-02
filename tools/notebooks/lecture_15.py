@@ -1,16 +1,15 @@
+#!/usr/bin/env python3
 """
-Lecture 20 — When the past does not repeat  (Break → Fix)
+Lecture 15 — Time series. Chicago transit ridership, Géron Chapter 13.
 
-Application 10, second half. It reproduces Lecture 19's broken measurement
-first, so the two numbers sit side by side, then repairs the protocol, then
-spends what is left of the honest margin on models that earn it: multivariate
-input, gates, and a fourteen-day horizon.
+Derivation: stationarity, differencing and autocorrelation.
 
-Exports build() -> list[nbformat cell]. Self-contained.
+Old lecture 19's data and baselines with old lecture 20's derivation and
+backtesting argument, because the new plan puts the mathematics and the honest
+protocol in the same lecture as the series they are about. The recurrent
+architectures move to Lecture 16.
 
-The thread is stationarity, and it is not decoration: it is what explains why
-copying last week is so hard to beat, and why the first difference of this
-series has a *larger* standard deviation than the series itself.
+Runs on CPU throughout; the series is small.
 """
 
 from __future__ import annotations
@@ -29,26 +28,31 @@ def code(text: str) -> nbf.NotebookNode:
 
 
 HEADER = """
-# When the past does not repeat
+# Time series
 
-**Lecture 20 · Break → Fix** · Géron, Chapter 15
+**Lecture 15** · Géron, Chapter 15
 
 Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
 
 ---
 
-**This notebook reproduces the broken measurement first.** Both numbers are
-printed side by side before anything is repaired, because the point is not that
-one of them is wrong — it is that nothing in the output of the wrong one tells
-you so.
+**How to use this notebook.** Read before you run. Every code cell is preceded
+by the specification that would produce it — input, output, constraint, check.
 
-**A CPU runtime is enough**, and for sequences this short it is faster than the
-GPU: the models are small enough that moving the data costs more than the
-arithmetic saves.
+Cells marked **⚠** deliberately run code that is wrong, and say so in the
+heading before you reach them. They are the failures this lecture is about;
+each runs the broken version beside the correct one and prices the difference.
+
+Runs on CPU. Nothing here needs an accelerator.
+
+**A CPU runtime is enough.** The largest model here has a few thousand
+parameters. If Colab offers you a GPU, decline it — for sequences this short the
+transfers cost more than the arithmetic saves.
 """
 
 SETUP = '''
 # --- setup -------------------------------------------------------------------
+# Not examinable: this is engineering hygiene, not machine learning.
 import sys
 from pathlib import Path
 import tarfile, urllib.request
@@ -60,48 +64,161 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 
 print(f"python  {sys.version.split()[0]}")
+print(f"pandas  {pd.__version__}")
 print(f"torch   {torch.__version__}")
 
-RANDOM_STATE = 42
+RANDOM_STATE = 42                  # one seed, used everywhere
 np.random.seed(RANDOM_STATE)
 torch.manual_seed(RANDOM_STATE)
+
+# A time series is plotted more often than anything else in this lecture, so it
+# is worth setting the defaults once.
 plt.rcParams.update({"figure.figsize": (11, 3.2), "axes.grid": True,
                      "grid.alpha": 0.3, "font.size": 11})
+'''
 
+LOADER = '''
+# --- the data ----------------------------------------------------------------
 def load_ridership():
+    """Daily boarding totals for the Chicago Transit Authority."""
     tarball = Path("datasets/ridership.tgz")
     if not tarball.is_file():
         Path("datasets").mkdir(parents=True, exist_ok=True)
-        urllib.request.urlretrieve(
-            "https://github.com/ageron/data/raw/main/ridership.tgz", tarball)
+        url = "https://github.com/ageron/data/raw/main/ridership.tgz"
+        urllib.request.urlretrieve(url, tarball)
         with tarfile.open(tarball) as t:
             t.extractall(path="datasets", filter="data")
     return pd.read_csv(
         "datasets/ridership/CTA_-_Ridership_-_Daily_Boarding_Totals.csv",
         parse_dates=["service_date"])
 
-df = load_ridership()
-df.columns = ["date", "day_type", "bus", "rail", "total"]
-df = df.sort_values("date").set_index("date").drop("total", axis=1)
-df = df.drop_duplicates()
-
-WINDOW = 56
-pool = df["rail"]["2016-01":"2019-05"]
-print(f"{len(df):,} days on file; {len(pool):,} in the pool we model")
+raw = load_ridership()
+print(f"{len(raw):,} rows as published")
 '''
 
 
 def build() -> list:
-    cells: list = [md(HEADER), md("## 1 · Setup and the same data"),prompt(
-                                                                           input="the same CTA file as the previous lecture",
-                                                                           output="the tidied frame and the 2016-2019 pool, ready to model",
-                                                                           constraint="identical preparation to Lecture 19, so any difference in the numbers is the protocol and not the data",
-                                                                           check="print the day count and confirm it matches. Print the pool length and date range and compare with Lecture 19's 1,247  days, 2016-01-01 to 2019-05-31. If either differs, stop here — nothing  downstream is comparable until it matches."),
-                                                                     code(SETUP)]
+    cells: list = [
+        md(HEADER), md("## 1 · Setup"),
+        prompt(output="library versions printed, one seed set everywhere, plot "
+                      "defaults fixed once",
+               constraint="not examinable — engineering hygiene, kept out of "
+                          "the way of the argument"),
+        code(SETUP)]
 
     cells += [
         md("""
-## 2 · Thread 10 — stationarity
+## 2 · The data
+
+The Chicago Transit Authority publishes one row per day: how many people
+boarded a bus, how many boarded a train, and what kind of day it was.
+"""),
+        prompt(input="the CTA daily-boardings CSV, fetched once and cached",
+               output="one row a day: date, day type, bus and rail counts",
+               constraint="download only if the file is not already on disk, so "
+                          "the notebook is re-runnable offline",
+               check="print the row count and compare it with what the "
+                     "publisher states"),
+        code(LOADER),
+        md("""
+### Tidying, and one line that matters
+
+Four operations. Three are housekeeping and one is a decision:
+
+* rename the columns, because `service_date` is long and we will type it often
+* sort by date and index by it — a series with an unsorted index is a trap
+* drop `total`, which is exactly `bus + rail` and so carries nothing
+* **drop duplicate rows.** The published file repeats some days.
+
+Count the duplicates rather than assuming there are none.
+"""),
+        prompt(
+               input="the raw frame, one row a day, columns as published",
+               output="a frame indexed by date with bus and rail only",
+               constraint="drop `total` — it is exactly bus + rail — and drop duplicate rows, reporting how many",
+               check="print the count removed and the date range that survives"),
+        code('''
+df = raw.copy()
+df.columns = ["date", "day_type", "bus", "rail", "total"]
+df = df.sort_values("date").set_index("date")
+df = df.drop("total", axis=1)          # it is just bus + rail
+
+before = len(df)
+df = df.drop_duplicates()
+print(f"{before - len(df)} duplicate rows removed, {len(df):,} days left")
+print(f"from {df.index.min().date()} to {df.index.max().date()}")
+df.head(3)
+'''),
+        md("""
+### `day_type`
+
+Three values: `W` for a weekday, `A` for a Saturday, `U` for a Sunday **or a
+public holiday**. That last word is why the column is worth having — the model
+cannot see a calendar, and the fourth of July behaves like a Sunday whatever the
+date says.
+"""),
+        prompt(
+               input="the tidied frame",
+               output="how many days of each type, and the three days around Memorial Day 2019",
+               constraint="do not assume U means Sunday — show a case where it is a public holiday on a Monday",
+               check="the three printed values are A, U, U"),
+        code('''
+print(df["day_type"].value_counts().to_string())
+
+# Memorial Day 2019 fell on a Monday, and the data knows it
+print(list(df.loc["2019-05-25":"2019-05-27"]["day_type"]))
+'''),
+    ]
+    cells += [
+        md("""
+## 3 · Look at it before you model it
+
+Twenty-one years, then ten weeks, then a single year. Three time scales, three
+different facts, and none of them is visible at the other two scales.
+"""),
+        prompt(
+               input="the rail series, all twenty-one years",
+               output="one line plot, rail boardings against date",
+               constraint="thin line, no markers — the shape is the point, not the individual days",
+               check="the 2020 cliff is visible without being pointed at"),
+        code('''
+fig, ax = plt.subplots(figsize=(11, 3.2))
+df["rail"].plot(ax=ax, lw=0.6, color="#0b3d62")
+ax.set_ylabel("rail boardings")
+ax.set_title("Twenty-one years — and one event that ends the series we know")
+plt.show()
+'''),
+        md("""
+**What the plot says.** A slow decline through the 2010s, and then in March 2020
+a cliff. Everything after that cliff is a different process. We are not going to
+model across it: this notebook works on **2016-01 to 2019-05**, and Lecture 16
+returns to the cliff to ask what a model owes you when the world changes.
+"""),
+        prompt(
+               input="bus and rail over ten weeks of 2019",
+               output="both series on one axis, with markers",
+               constraint="a window short enough that individual days are distinguishable",
+               check="every week shows a weekend trough; some weeks show a third"),
+        code('''
+fig, ax = plt.subplots(figsize=(11, 3.2))
+df.loc["2019-03":"2019-05", ["bus", "rail"]].plot(ax=ax, marker=".", ms=4)
+ax.set_ylabel("boardings")
+ax.set_title("Ten weeks — the shape that actually matters")
+plt.show()
+'''),
+        md("""
+**Weekly seasonality, and a second trough.** Every week has a deep weekend
+trough. Some weeks have a third dip in the middle, and those are the public
+holidays — which is exactly what `day_type` marks and what a bare day-of-week
+feature would miss.
+
+Whatever we build has to know what day of the week it is. The cheapest way to
+tell it is to show it the last week, or the last eight.
+"""),
+    ]
+    cells += [
+        md("""
+## 4 · The derivation — stationarity, differencing, autocorrelation
 
 A series is **strictly stationary** if the joint distribution of
 $(X_{t_1},\\dots,X_{t_k})$ is unchanged when every index is shifted by the same
@@ -222,10 +339,204 @@ ax.legend(); ax.set_title("Where the structure is")
 plt.show()
 '''),
     ]
-
     cells += [
         md("""
-## 3 · The broken measurement, reproduced
+## 5 · Choose a metric, and the baseline to beat
+
+Before a single model. Three candidates:
+
+| Metric | What it says | Why not |
+|---|---|---|
+| **MAE** | average error in boardings | — |
+| RMSE | punishes large errors more | one strike day dominates the score |
+| MAPE | average error as a percentage | division by a small denominator |
+
+**The MAPE trap.** MAPE divides by the truth. Christmas Day has about a tenth of
+a Tuesday's ridership, so a 20,000-boarding error on Christmas counts for as much
+as a 200,000-boarding error on a Tuesday. The metric would spend the model's
+capacity on the days nobody is planning staffing for.
+
+We use **MAE, in boardings**. It is in the units the operations team already
+thinks in, and one unit of it is one person.
+"""),
+        prompt(
+               input="two aligned series, either of which may have gaps",
+               output="mean absolute error, in boardings",
+               constraint="ignore days where either side is missing rather than filling them",
+               check="mae(x, x) is 0, and a series against a shifted copy of itself is not"),
+        code('''
+def mae(truth, forecast):
+    """Mean absolute error, ignoring days where either side is missing."""
+    truth, forecast = pd.Series(truth), pd.Series(forecast)
+    mask = truth.notna() & forecast.notna()
+    return float((truth[mask] - forecast[mask]).abs().mean())
+
+# The pool we will work on, and the days we will be scored on. The first 56 days
+# are consumed by the window the models need, so they cannot be targets.
+WINDOW = 56
+pool = df["rail"]["2016-01":"2019-05"]
+target = pool[WINDOW:]
+
+print(f"pool   {len(pool):,} days, {pool.index.min().date()} to {pool.index.max().date()}")
+print(f"scored {len(target):,} days, from {target.index.min().date()}")
+'''),
+        md("""
+### The baselines
+
+A number is only good or bad next to another number. Three forecasts that
+require no fitting at all:
+"""),
+        prompt(
+               input="the 2016-01 to 2019-05 rail pool",
+               output="MAE for four forecasts that require no fitting",
+               constraint="every forecast scored on exactly the same days, so they are comparable",
+               check="copying last week beats copying yesterday — if not, the alignment is wrong"),
+        code('''
+baselines = {
+    "a constant (the mean)":  pd.Series(pool[:"2018-12"].mean(), index=target.index),
+    "copy the day before":    pool.shift(1)[WINDOW:],
+    "copy last week":         pool.shift(7)[WINDOW:],
+    "copy two weeks back":    pool.shift(14)[WINDOW:],
+}
+for name, forecast in baselines.items():
+    print(f"{name:24s} MAE {mae(target, forecast):>10,.0f}")
+'''),
+        md("""
+**Read that table before going on.** Copying the same weekday one week ago is
+about **2.4 times better** than copying yesterday, and roughly three times better
+than the mean. It costs nothing, it has no parameters, it cannot overfit, and it
+already knows about weekends and — by accident — about most public holidays.
+
+That is the number to beat. Not the mean. Not zero.
+
+### The number to beat
+
+Everything below is measured against it, including the parts that disappoint.
+"""),
+        prompt(
+               input="the naive-forecast MAE",
+               output="the target MAE, stated before any model is fitted",
+               constraint="state the target BEFORE fitting, so it cannot be chosen afterwards to fit the result",
+               check="the target is printed, so it cannot be quietly revised"),
+        code('''
+NAIVE_MAE = mae(target, pool.shift(7)[WINDOW:])
+
+# ---------------------------------------------------------------------------
+# MY COMMITMENT
+# ---------------------------------------------------------------------------
+# Beating the naive forecast by less than this is not worth deploying:
+TARGET_IMPROVEMENT = 0.10          # ← change it if you disagree, but change it NOW
+
+TARGET_MAE = NAIVE_MAE * (1 - TARGET_IMPROVEMENT)
+print(f"naive  MAE {NAIVE_MAE:>10,.0f}")
+print(f"target MAE {TARGET_MAE:>10,.0f}   ({TARGET_IMPROVEMENT:.0%} better)")
+'''),
+    ]
+    cells += [
+        md("""
+## 6 · Turning a series into a table
+
+Supervised learning wants rows. A series is not rows, so we cut it into
+overlapping windows: 56 days in, the 57th day out.
+
+Why 56? Eight whole weeks. Any multiple of seven lets a model line up the same
+weekday; eight of them give it enough repetitions to average over. And why divide
+by a million — because the numbers are around 600,000 and a network initialised
+in the usual way expects inputs near 1.
+"""),
+        prompt(
+               input="a series as a tensor, and a window length",
+               output="a Dataset yielding (window, next step) pairs",
+               constraint="the target must be the step AFTER the window and never inside it — an off-by-one leaks one day and nothing later complains",
+               check="length is len(series) - window_length"),
+        code('''
+class TimeSeriesDataset(torch.utils.data.Dataset):
+    """Every window of `window_length` steps, and the step that follows it."""
+
+    def __init__(self, series, window_length):
+        self.series, self.window_length = series, window_length
+
+    def __len__(self):
+        return len(self.series) - self.window_length
+
+    def __getitem__(self, idx):
+        end = idx + self.window_length     # first index after the window
+        return self.series[idx:end], self.series[end]
+'''),
+        md("""
+### Test the class before trusting it
+
+Six numbers, a window of three. Read the output and check by eye that the target
+is the step *after* the window and never inside it. Off-by-one here would be a
+leak of exactly one day, and no later cell would complain.
+"""),
+        prompt(
+               input="six integers and a window of three",
+               output="every window printed with the value that follows it",
+               constraint="test the class on data small enough to check by eye before trusting it",
+               check="read the output and confirm the target is never inside the window"),
+        code('''
+toy = torch.tensor([[0], [1], [2], [3], [4], [5]])
+for window, t in TimeSeriesDataset(toy, window_length=3):
+    print(window.flatten().tolist(), "->", t.item())
+'''),
+        prompt(
+               input="the rail pool, scaled by a million",
+               output="X of shape (rows, 56, 1) and y of shape (rows, 1)",
+               constraint="assert the shapes rather than printing them, so a wrong shape stops the notebook",
+               check="rows equals len(pool) - 56"),
+        code('''
+series = torch.tensor(pool.values / 1e6, dtype=torch.float32).unsqueeze(1)
+dataset = TimeSeriesDataset(series, WINDOW)
+
+X = torch.stack([w for w, _ in dataset])       # [rows, time, series]
+y = torch.stack([t for _, t in dataset])
+
+assert X.shape == (len(pool) - WINDOW, WINDOW, 1), X.shape
+assert y.shape == (len(pool) - WINDOW, 1), y.shape
+print(f"X {tuple(X.shape)}   y {tuple(y.shape)}")
+print("rows =", len(pool), "days -", WINDOW, "consumed by the first window")
+'''),
+    ]
+    cells += [
+        md("""
+## 7 · What the linear model learned
+
+56 lags in, one number out — 57 parameters. Plot the coefficient on each lag
+against the lag, and the model tells you what it found, in a language you can
+check against the data.
+"""),
+        prompt(
+               input="the fitted linear model's 56 coefficients",
+               output="coefficient against lag, with whole weeks marked",
+               constraint="lag 1 on the right, so the axis reads as time running backwards from today",
+               check="print the mean weight on weekly lags against all others rather than eyeballing"),
+        code('''
+lags = np.arange(WINDOW, 0, -1)             # lag 56 first, lag 1 last
+fig, ax = plt.subplots(figsize=(11, 3.2))
+ax.bar(lags, lin.coef_.ravel(), color="#0b3d62", width=0.8)
+for k in (7, 14, 21, 28, 35, 42, 49, 56):
+    ax.axvline(k, color="#c0392b", lw=1, ls="--", alpha=0.6)
+ax.invert_xaxis()
+ax.set_xlabel("lag, in days")
+ax.set_ylabel("coefficient")
+ax.set_title("Dashed lines mark whole weeks — nobody told it about weeks")
+plt.show()
+
+week = lin.coef_.ravel()[[WINDOW - k for k in (7, 14, 21, 28)]]
+print(f"mean coefficient on the weekly lags   {week.mean():+.4f}")
+print(f"mean coefficient on all other lags    "
+      f"{np.delete(lin.coef_.ravel(), [WINDOW - k for k in (7,14,21,28)]).mean():+.4f}")
+'''),
+        md("""
+The weight lands on lags 7, 14, 21 and 28. We never mentioned weeks; the model
+found them because they are in the data. This is the pleasant version of a linear
+model being interpretable — the coefficients say something you can go and check.
+"""),
+    ]
+    cells += [
+        md("""
+## 8 · A random split on a series, measured
 
 Exactly the cell from the previous lecture. Run it and look at the folds: they
 agree with one another, which is what a stable measurement looks like.
@@ -351,204 +662,9 @@ print(f"{100 * (claimed - real) / claimed:.0f}% of the claimed margin "
       f"was the protocol, not the model")
 '''),
     ]
-
     cells += [
         md("""
-### Which of those four is "the" number?
-
-The lecture quotes the **single forward hold-out**, because it is the protocol
-that matches how the model would actually be used: fit once on everything up to
-a date, forecast forward from there. The purged five-fold is stricter still, and
-its margin is smaller again — mostly because its first fold trains on a couple of
-hundred days and is scored anyway.
-
-The useful discipline is not picking the smallest number. It is **saying which
-protocol produced the one you quote**, so that a reader can reproduce it and a
-colleague can disagree with it. A margin without a protocol attached is not a
-result.
-
-## 4 · Spending what is left
-
-The honest margin is smaller, so the improvements have to be real. Three, in
-order of how much they buy.
-
-### Improvement 1 — more series, not more layers
-
-Stacking three recurrent layers is the reflex, and on 1,191 windows it overfits.
-What actually helps is giving the model something it does not already have: bus
-ridership, and **tomorrow's day type**, which is known in advance from a calendar
-and is therefore not a leak.
-"""),
-prompt(
-       input="rail, bus, and tomorrow's day type from the calendar",
-       output="a five-column frame, day type one-hot encoded",
-       constraint="shift(-1) on the CALENDAR is legitimate and shift(-1) on the target is a leak — the test is whether the value is knowable at prediction time",
-       check="assert the column names, so a silent change in encoding stops the notebook. For each shifted column ask: would I know this value at 6pm the day  before? If yes it is a feature, if no it is the answer. That question is  the whole of leak detection and it takes five seconds a column."),
-        code('''
-mulvar = df[["rail", "bus"]] / 1e6
-mulvar["next_day_type"] = df["day_type"].shift(-1)   # known in advance
-mulvar = pd.get_dummies(mulvar, dtype=float)         # 5 columns
-
-assert list(mulvar.columns) == ["rail", "bus", "next_day_type_A",
-                                "next_day_type_U", "next_day_type_W"], \\
-    list(mulvar.columns)
-mulvar = mulvar["2016-01":"2019-05"].dropna()
-print(mulvar.shape, list(mulvar.columns))
-mulvar.head(3)
-'''),
-        md("""
-**`shift(-1)` again — and this time it is legitimate.** In Lecture 19 a
-`shift(-1)` on the *target* was a leak. Here it is applied to the calendar, and
-the difference is not the sign: it is whether the value would be available at
-the moment of the forecast. Tomorrow's day type is on a wall planner. Tomorrow's
-ridership is not.
-
-State the rule you are using, every time, in one line: *would I know this number
-when I have to make the prediction?*
-"""),
-prompt(
-       input="the multivariate frame, a window and a horizon",
-       output="windows over all series, with rail alone as the target",
-       constraint="one windowing function used for every model below, so the comparison is like for like",
-       check="print the shapes and the train/test split sizes. Run it on a tiny array with distinct values and read the pairs by eye, as  Lecture 19 did with six integers. Shapes agreeing is not the same as  contents aligning, and only one of the two is checkable at scale."),
-        code('''
-from torch.utils.data import DataLoader, TensorDataset
-
-def make_windows(frame, window=WINDOW, horizon=1):
-    """Windows over several series; the target is `rail` only."""
-    arr = torch.tensor(frame.values, dtype=torch.float32)
-    rail = arr[:, 0]
-    n = len(arr) - window - horizon + 1
-    Xs = torch.stack([arr[i:i + window] for i in range(n)])
-    ys = torch.stack([rail[i + window:i + window + horizon] for i in range(n)])
-    return Xs, ys
-
-Xm, ym = make_windows(mulvar)
-cut = int(len(Xm) * 0.8)
-print(f"X {tuple(Xm.shape)}   y {tuple(ym.shape)}   train {cut}, test {len(Xm) - cut}")
-'''),
-        md("""
-### Improvement 2 — gates
-
-A simple RNN multiplies by the same recurrent matrix at every step, so gradients
-over 56 steps either vanish or explode — Lecture 13's thread, in a new place. A
-**GRU** adds two gates: an update gate that decides how much of the old state to
-keep, and a reset gate that decides how much of it to use. Keeping is now
-addition rather than repeated multiplication, so a gradient can travel.
-"""),
-prompt(
-       input="windows of five series",
-       output="a trained GRU and its held-out MAE",
-       constraint="gates rather than a plain RNN, because a 56-step recurrence multiplies by the same matrix every step",
-       check="watch the held-out MAE as it trains rather than reading only the final number. The held-out MAE must fall and then flatten. If it rises, say so and  report the final epoch, not the best one you saw. Lecture 19's RNN rose at  epoch 160 and the honest number was the one at 200."),
-        code('''
-class GruModel(nn.Module):
-    def __init__(self, input_size=5, hidden_size=32, output_size=1):
-        super().__init__()
-        self.rnn = nn.GRU(input_size, hidden_size, batch_first=True)
-        self.head = nn.Linear(hidden_size, output_size)
-
-    def forward(self, X):
-        outputs, _state = self.rnn(X)
-        return self.head(outputs[:, -1])
-
-def train(model, Xtr, ytr, Xte, yte, epochs=120, lr=0.005, quiet=False):
-    loss_fn = nn.HuberLoss(delta=0.05)
-    opt = torch.optim.Adam(model.parameters(), lr=lr)
-    loader = DataLoader(TensorDataset(Xtr, ytr), batch_size=32, shuffle=True)
-    for epoch in range(epochs):
-        model.train()
-        for Xb, yb in loader:
-            opt.zero_grad()
-            loss_fn(model(Xb), yb).backward()
-            opt.step()
-        if not quiet and ((epoch + 1) % 30 == 0 or epoch == 0):
-            model.eval()
-            with torch.no_grad():
-                v = 1e6 * (model(Xte) - yte).abs().mean().item()
-            print(f"  epoch {epoch + 1:>3d}   held-out MAE {v:>10,.0f}")
-    model.eval()
-    with torch.no_grad():
-        return 1e6 * (model(Xte) - yte).abs().mean().item()
-
-torch.manual_seed(RANDOM_STATE)
-print("GRU on five series:")
-gru_mae = train(GruModel(input_size=5), Xm[:cut], ym[:cut], Xm[cut:], ym[cut:])
-'''),
-prompt(
-       input="the same GRU, on rail alone",
-       output="its held-out MAE, beside the five-series version",
-       constraint="change ONE thing — two changes at once is not an experiment",
-       check="the table separates 'gates helped' from 'more series helped'. You should be able to name, in one sentence, the single difference between  this run and the previous one. If the sentence needs an 'and', it is two  experiments and it answers neither."),
-        code('''
-# The same model on rail alone, to separate "gates helped" from "more series
-# helped". Two changes at once is not an experiment.
-torch.manual_seed(RANDOM_STATE)
-Xr, yr = make_windows(mulvar[["rail"]])
-print("GRU on rail alone:")
-gru_rail = train(GruModel(input_size=1), Xr[:cut], yr[:cut], Xr[cut:], yr[cut:],
-                 quiet=True)
-
-print()
-print(f"{'model':34s}{'MAE':>12s}{'vs naive':>11s}")
-for name, score in [("copy last week", NAIVE_MAE),
-                    ("linear, forward + purge", folds_gap.mean()),
-                    ("GRU, rail only", gru_rail),
-                    ("GRU, five series", gru_mae)]:
-    print(f"{name:34s}{score:>12,.0f}{(NAIVE_MAE - score) / NAIVE_MAE:>10.1%}")
-'''),
-    ]
-
-    cells += [
-        md("""
-### Improvement 3 — forecast a fortnight, not a day
-
-A staffing decision needs more than tomorrow. Two changes: the target becomes 14
-values instead of 1, and the head produces 14 numbers.
-"""),
-prompt(
-       input="the same windows, with a fourteen-day target",
-       output="MAE at each horizon, plotted against the naive baseline",
-       constraint="one head producing fourteen numbers, not fourteen models",
-       check="read the SHAPE — a single average would hide that day 14 is no better than copying last week. Error must grow with horizon. If day 14 is predicted as accurately as day  1, you have leaked the future in: check that the target window starts  after the input window ends, not at it."),
-        code('''
-HORIZON = 14
-Xh, yh = make_windows(mulvar, horizon=HORIZON)
-cut_h = int(len(Xh) * 0.8)
-
-torch.manual_seed(RANDOM_STATE)
-horizon_model = GruModel(input_size=5, output_size=HORIZON)
-h_mae = train(horizon_model, Xh[:cut_h], yh[:cut_h], Xh[cut_h:], yh[cut_h:],
-              quiet=True)
-
-horizon_model.eval()
-with torch.no_grad():
-    pred = horizon_model(Xh[cut_h:])
-per_step = 1e6 * (pred - yh[cut_h:]).abs().mean(dim=0).numpy()
-
-fig, ax = plt.subplots(figsize=(11, 3.2))
-ax.plot(range(1, HORIZON + 1), per_step, marker="o", color="#0b3d62",
-        label="the model")
-ax.axhline(NAIVE_MAE, color="#c0392b", ls="--", label="copy last week")
-ax.set_xlabel("days ahead"); ax.set_ylabel("MAE")
-ax.set_title("Error against horizon — the margin is spent by about day 7")
-ax.legend(); plt.show()
-
-for k in (1, 7, 14):
-    print(f"{k:>2d} days ahead   MAE {per_step[k - 1]:>10,.0f}"
-          f"   vs naive {(NAIVE_MAE - per_step[k - 1]) / NAIVE_MAE:>7.1%}")
-'''),
-        md("""
-**Read the shape, not the average.** One number for "the fourteen-day forecast"
-would hide that day 1 is good and day 14 is no better than copying last week.
-Report the curve. If a decision only needs three days, say so and be judged on
-three.
-"""),
-    ]
-
-    cells += [
-        md("""
-## 5 · Regime change
+## 9 · Regime change
 
 Everything above stops at May 2019. The series does not — in March 2020 the
 level falls by roughly three quarters and never returns to where it was.
@@ -579,15 +695,14 @@ plt.show()
 '''),
         md("""
 **What to do about it** is a monitoring question, not a modelling one: measure
-the live error against the committed number, and have a rule that says when to
+the live error against the target, and have a rule that says when to
 stop trusting the model. A model that is never re-measured after deployment is
 an assumption wearing a number's clothes.
 """),
     ]
-
     cells += [
         md("""
-## 6 · The temporal checklist
+## 10 · The temporal checklist
 
 Take this to any dataset with a timestamp in it:
 
@@ -610,7 +725,7 @@ The claimed margin, the honest margin, and the difference between them. That
 difference is the most useful number in this application: it is the size of the
 mistake that nothing in the output complained about.
 
-### Red-team your own notebook
+### Five questions to ask of any forecast
 
 * Set `gap=0` in `TimeSeriesSplit`. How much of the margin comes back? That
   amount was adjacency.
@@ -618,6 +733,33 @@ mistake that nothing in the output complained about.
   moves — explain why that is worse, not better.
 * Train on 2016–2019, test on 2020. Then argue, in two sentences, whether the
   model was wrong or the question was.
+"""),
+    ]
+    cells += [
+        md("""
+## 11 · Where we are
+
+- Ordered, autocorrelated rows break the assumption every earlier lecture
+  rested on: a random split puts a point's own near-future in the training set.
+- Differencing once removes a linear trend, `d` times a degree-`d` polynomial,
+  and seasonal differencing removes a period.
+- The autocorrelation predicts, before any model is fitted, that the
+  seasonal-naive forecast will be hard to beat — and it was.
+- Backtesting on a rolling origin is the protocol; a random split is optimistic
+  by a margin you measured here.
+
+**Five questions to ask of any forecasting result:**
+
+1. At what horizon? One step ahead is a different problem from seven.
+2. Against which baseline? Naive and seasonal-naive, not the mean.
+3. On what protocol — rolling origin, how many folds, anything purged at the
+   boundary?
+4. In what units — differenced or not, scaled or not?
+5. With what spread across origins? One origin is one sample.
+
+**Before the next lecture:** run this notebook top to bottom. Then shuffle the
+rows before splitting and re-run the evaluation. The score improves and nothing
+warns you — that improvement is the whole argument of this lecture.
 """),
     ]
     return cells

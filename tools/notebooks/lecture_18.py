@@ -27,18 +27,23 @@ def code(text: str) -> nbf.NotebookNode:
 
 
 HEADER = """
-# Reusing what someone else learned
+# Attention and transformers
 
-**Lecture 22 · Fix** · Géron, Chapters 14–15 · *Mathematical thread:
+**Lecture 18** · Géron, Chapters 14–15 · *Mathematical thread:
 cross-entropy, softmax and logits*
 
 Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
 
 ---
 
-**How to use this notebook.** Read before you run. Cells marked
-**⚠ read before running** contain a defect on purpose, and neither of today's
-two defects raises an exception.
+**How to use this notebook.** Read before you run. Every code cell is preceded
+by the specification that would produce it — input, output, constraint, check.
+
+Cells marked **⚠** deliberately run code that is wrong, and say so in the
+heading before you reach them. They are the failures this lecture is about;
+each runs the broken version beside the correct one and prices the difference.
+
+Runs on CPU. Nothing here needs an accelerator.
 
 **Scale.** The deck fine-tunes on 20,000 reviews and scores on all 25,000 test
 reviews. Here we fine-tune on **2,000** and score on **3,000** so the notebook
@@ -140,245 +145,7 @@ print("same split as the previous lecture — the seed guarantees it")
 '''),
 
         md("""
-## 2 · Thread 11 — softmax, and the shift that changes nothing
-
-$$\\sigma(\\mathbf{z})_k = \\frac{e^{z_k}}{\\sum_j e^{z_j}}$$
-
-Adding a constant to every logit multiplies numerator and denominator by the
-same $e^{c}$, so
-
-$$\\sigma(\\mathbf{z} + c\\mathbf{1}) = \\sigma(\\mathbf{z}).$$
-
-The **function** ignores the shift. `float32` does not.
-"""),
-        prompt(
-            label="softmax, and the shift that changes nothing",
-            input="three logits near 1000",
-            output="the naive softmax, and the same thing with the max subtracted",
-            constraint="suppress the overflow warnings deliberately with `np.errstate` — the overflow is the demonstration, not an accident, and an unsuppressed warning reads as a bug in the notebook",
-            check="print where exp overflows float32. It is about 88.7, which is a much smaller number than people expect."),
-        code('''
-z = np.array([1000., 1001., 1002.], dtype=np.float32)
-
-with np.errstate(over="ignore", invalid="ignore"):
-    print("exp(z)                 ", np.exp(z))
-    print("exp(z) / exp(z).sum()  ", np.exp(z) / np.exp(z).sum())
-
-m = z.max()
-print("with the max subtracted", np.exp(z - m) / np.exp(z - m).sum())
-print(f"\\nexp overflows float32 past x = {np.log(np.finfo(np.float32).max):.2f}")
-'''),
-        prompt(
-            label="the invariance itself",
-            input="three small logits, shifted by 50",
-            output="both softmaxes",
-            constraint="use values that do NOT overflow, so the invariance is demonstrated separately from the numerical failure",
-            check="assert the two agree to 1e-6. When a property holds mathematically and fails numerically, demonstrate each on its own inputs."),
-        code('''
-# and the invariance itself, on values that do not overflow
-a = np.array([1., 2., 3.], dtype=np.float32)
-p1 = np.exp(a) / np.exp(a).sum()
-p2 = np.exp(a + 50) / np.exp(a + 50).sum()
-print(p1, p2, sep="\\n")
-assert np.abs(p1 - p2).max() < 1e-6, "softmax is not shift invariant here"
-print(f"\\nlargest difference: {np.abs(p1 - p2).max():.2e}")
-'''),
-
-        md("""
-## 3 · Cross-entropy, and its gradient with respect to the logits
-
-For a one-hot target every term of $-\\sum_k y_k \\log p_k$ dies but one:
-
-$$L = -\\log p_c = -\\log \\frac{e^{z_c}}{\\sum_j e^{z_j}}
-    = -z_c + \\log\\sum_j e^{z_j}$$
-
-**The exponential of the true class has cancelled.** Differentiating: the first
-term contributes $-y_k$, and the derivative of the log-sum-exp is softmax, so
-
-$$\\frac{\\partial L}{\\partial \\mathbf{z}} = \\mathbf{p} - \\mathbf{y}.$$
-
-Three lines, no chain rule through the softmax. Verify it rather than believing
-it.
-"""),
-        prompt(
-            label="the gradient, derived and verified",
-            input="random logits and targets",
-            output="autograd's gradient beside the analytic p − y",
-            constraint="`reduction='sum'` — the mean would divide every gradient by the batch size, and the assertion would then fail for a reason that has nothing to do with the mathematics",
-            check="assert agreement to 1e-10, that each row of the gradient sums to zero, and that every component is in [−1, 1]. The row-sum assert is the interesting one. The gradient has no component along the all-ones direction, which is the derivative form of the shift invariance above."),
-        code('''
-torch.manual_seed(RANDOM_STATE)
-z = torch.randn(7, 5, dtype=torch.float64, requires_grad=True)
-y = torch.randint(0, 5, (7,))
-
-# reduction="sum": the mean would divide every gradient by the batch size, and
-# then the assertion fails for a reason that has nothing to do with the maths.
-loss = nn.CrossEntropyLoss(reduction="sum")(z, y)
-loss.backward()
-
-p        = torch.softmax(z.detach(), dim=1)
-onehot   = torch.zeros_like(p).scatter_(1, y[:, None], 1.0)
-analytic = p - onehot
-
-err = (z.grad - analytic).abs().max().item()
-print(f"|autograd - (p - y)| = {err:.3e}")
-assert err < 1e-10, "the derivation and the library disagree"
-
-print(f"each row of the gradient sums to "
-      f"{analytic.sum(1).abs().max().item():.2e} — no component along 1")
-assert analytic.abs().max() <= 1.0, "p - y must lie in [-1, 1]"
-'''),
-
-        md("""
-## 4 · Why the loss consumes logits
-
-Two ways to compute the same number in `float32`, scored against `float64`.
-"""),
-        md("""
-Sweep **how wrong the row is**, not the scale of the logits: the naive form has
-to represent $e^{-\\text{loss}}$ as a `float32`, so the loss is the quantity the
-failure depends on. Sweeping the standard deviation instead buries the effect,
-because most rows then have a loss near zero where both forms agree trivially.
-"""),
-        prompt(
-            label="why the loss consumes logits",
-            input="2,000 rows at each of ten loss levels",
-            output="the non-finite rate and median relative error of the naive form against the combined one",
-            constraint="sweep HOW WRONG THE ROW IS, not the scale of the logits — the naive form has to represent e^(−loss) as a float32, so the loss is the quantity the failure depends on",
-            check="assert the stable form never fails, at either end of the sweep. Score against float64 rather than against each other. Two float32 computations agreeing tells you nothing about either."),
-        code('''
-K, N = 10, 2_000
-idx = np.arange(N)
-rng32 = np.random.default_rng(RANDOM_STATE)
-lse = lambda v: v.max(1) + np.log(np.exp(v - v.max(1, keepdims=True)).sum(1))
-
-rows = []
-for gap in (1, 5, 10, 20, 40, 60, 80, 90, 100, 110):
-    z64 = rng32.normal(0, 1.0, size=(N, K))
-    yy  = rng32.integers(0, K, size=N)
-    z64[idx, yy] = z64.max(1) - gap        # true class `gap` below the largest
-    z32 = z64.astype(np.float32)
-    ref = -(z64[idx, yy] - lse(z64))       # >= gap, so relative error is safe
-
-    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-        e     = np.exp(z32)
-        p32   = e / e.sum(1, keepdims=True)
-        naive = -np.log(p32[idx, yy])
-    stable = -(z32[idx, yy] - lse(z32))
-
-    def score(a):
-        a = a.astype(np.float64)
-        ok = np.isfinite(a)
-        return (1 - ok.mean(),
-                np.median(np.abs(a[ok] - ref[ok]) / ref[ok]) if ok.any() else np.nan)
-
-    nb, ne = score(naive)
-    sb, se = score(stable)
-    rows.append((gap, nb, ne, sb, se))
-    print(f"loss {gap:>3}   naive: {nb:6.1%} non-finite, median err {ne:.2e}   "
-          f"stable: {sb:6.1%}, {se:.2e}")
-
-assert rows[0][3] == 0.0 and rows[-1][3] == 0.0, "the stable form should never fail"
-'''),
-        prompt(
-            label="the two failure modes, drawn",
-            input="the sweep",
-            output="median relative error on a log axis, and the non-finite rate as a percentage",
-            constraint="two panels, because the two failures are different kinds — silent inaccuracy and outright inf/nan — and one axis cannot show both",
-            check="clamp the log-axis values away from zero before plotting. A median error of exactly 0.0 is not plottable on a log scale and matplotlib's response is to drop the point silently."),
-        code('''
-g = np.array([r[0] for r in rows], dtype=float)
-fig, ax = plt.subplots(1, 2, figsize=(10, 3))
-ax[0].semilogy(g, np.maximum([r[2] for r in rows], 1e-9), "o-", label="naive")
-ax[0].semilogy(g, np.maximum([r[4] for r in rows], 1e-9), "s-", label="combined")
-ax[0].set_xlabel("true loss of the row, in nats")
-ax[0].set_ylabel("median relative error"); ax[0].legend()
-ax[1].plot(g, [100 * r[1] for r in rows], "o-", label="naive")
-ax[1].plot(g, [100 * r[3] for r in rows], "s-", label="combined")
-ax[1].set_xlabel("true loss of the row, in nats")
-ax[1].set_ylabel("rows returning inf or nan, %"); ax[1].legend()
-plt.tight_layout(); plt.show()
-'''),
-        md("""
-### Two rows, small enough to check by hand
-
-The first failure is loud. The second is the one that ships.
-"""),
-        prompt(
-            label="two rows small enough to check by hand",
-            input="[100, 0, −100] and [0, 0, −100], target class 2",
-            output="the naive, combined, float64 and PyTorch values for each",
-            constraint="show the LOUD failure and the QUIET one, in that order — the first overflows and the second returns a finite, plausible, wrong number",
-            check="assert the first is non-finite and the second is off by more than 1e-3, so both failures are pinned. Print PyTorch's answer beside your own. It agrees with the combined form, which is evidence that the combined form is what the library does."),
-        code('''
-lse1 = lambda v: v.max() + np.log(np.exp(v - v.max()).sum())
-
-def both_ways(logits, tgt=2):
-    z = np.array(logits, dtype=np.float32)
-    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-        e = np.exp(z)
-        p = e / e.sum()
-        naive = -np.log(p[tgt])
-    stable = -(z[tgt] - lse1(z))
-    z64    = z.astype(np.float64)
-    exact  = -(z64[tgt] - lse1(z64))
-    torch_ = float(nn.CrossEntropyLoss()(torch.tensor(z)[None, :],
-                                         torch.tensor([tgt])))
-    print(f"z = {list(logits)}")
-    print(f"  p(true class) {p[tgt]:.4e}   denominator {e.sum():.4e}")
-    print(f"  naive    {naive}")
-    print(f"  combined {stable}")
-    print(f"  float64  {exact}")
-    print(f"  PyTorch  {torch_}")
-    return float(naive), float(stable), float(exact), torch_
-
-print("--- the loud failure ---")
-n1, s1, e1, t1 = both_ways([100., 0., -100.])
-print("\\n--- the quiet failure ---")
-n2, s2, e2, t2 = both_ways([0., 0., -100.])
-print(f"\\nnaive is off by {abs(n2 - e2):.4f} — finite, plausible, and wrong")
-
-assert not np.isfinite(n1), "expected the naive form to overflow here"
-assert abs(s1 - e1) < 1e-3 and abs(t1 - e1) < 1e-3
-assert abs(n2 - e2) > 1e-3, "expected the naive form to lose precision here"
-assert abs(s2 - e2) < 1e-4, "the combined form should be exact here"
-'''),
-
-        md("""
-## 5 · Cross-entropy and KL divergence
-
-$$H(\\mathbf{y}, \\mathbf{p}) = H(\\mathbf{y})
-  + D_{\\mathrm{KL}}(\\mathbf{y} \\Vert \\mathbf{p})$$
-
-Add and subtract $\\sum_k y_k \\log y_k$; that is the whole proof. For a
-**one-hot** target $H(\\mathbf{y}) = 0$, so minimising cross-entropy *is*
-minimising the KL divergence to the label.
-"""),
-        prompt(
-            label="cross-entropy and KL divergence",
-            input="a random distribution, against a one-hot and a label-smoothed target",
-            output="entropy, KL, their sum, and the cross-entropy",
-            constraint="test with BOTH targets — for a one-hot target the entropy is zero and the identity is invisible",
-            check="assert H + KL equals CE to 1e-12 for both, and that the one-hot entropy is exactly zero. Guard the logs against zeros with a mask on p > 0. 0·log 0 is 0 by convention and nan in floating point."),
-        code('''
-rngk = np.random.default_rng(RANDOM_STATE)
-q      = rngk.dirichlet(np.ones(5))
-onehot = np.eye(5)[2]
-smooth = np.full(5, 0.1 / 4); smooth[2] = 0.9
-
-H  = lambda p: float(-(p[p > 0] * np.log(p[p > 0])).sum())
-CE = lambda p, q: float(-(p * np.log(q)).sum())
-KL = lambda p, q: float((p[p > 0] * np.log(p[p > 0] / q[p > 0])).sum())
-
-for name, p in (("one-hot", onehot), ("label-smoothed", smooth)):
-    print(f"{name:15s} H {H(p):.4f}   KL {KL(p, q):.4f}   "
-          f"H+KL {H(p) + KL(p, q):.4f}   CE {CE(p, q):.4f}")
-    assert abs(CE(p, q) - H(p) - KL(p, q)) < 1e-12
-assert H(onehot) == 0.0, "a one-hot distribution has zero entropy"
-'''),
-
-        md("""
-## 6 · ⚠ Read before running — an assistant "improves" the model
+## 2 · ⚠ Read before running — an assistant "improves" the model
 
 > *"The model returns raw numbers. Add a softmax to the output so it returns
 > probabilities, and keep the training loop working."*
@@ -524,7 +291,7 @@ assert abs(l0 - np.log(2)) < 0.05, "the head or the targets are wrong"
 '''),
 
         md("""
-## 7 · Borrow the whole model
+## 3 · Borrow the whole model
 
 Our GRU saw 5,000 reviews. A pretrained language model saw billions of words —
 and needed no labels at all to do it, because its task was predicting missing
@@ -645,7 +412,7 @@ assert ft_acc > 0.75, f"fine-tuning failed ({ft_acc:.3f}) — check the learning
 '''),
 
         md("""
-## 8 · Past classification: one vector per review
+## 4 · Past classification: one vector per review
 
 The desk asked for two more things — *"find me the ones like this one"* and
 *"tell me what people keep complaining about"*. Neither is classification, and
@@ -739,7 +506,7 @@ it on your own queries before deploying it.
 """),
 
         md("""
-## 9 · Grouping the complaints
+## 5 · Grouping the complaints
 
 Lecture 9, unchanged: k-means, with $k$ chosen by silhouette rather than by eye.
 """),
@@ -789,7 +556,7 @@ for size, terms in sorted(groups, reverse=True):
 '''),
 
         md("""
-## 10 · Red-team — ⚠ read before running
+## 6 · Where we are
 
 > *"Build a scikit-learn pipeline that vectorises the reviews with tf-idf and
 > classifies them with logistic regression, and report the test accuracy."*
@@ -952,7 +719,7 @@ above. **The object fitted wrongly cost less than the rows split wrongly.**
 """),
 
         md("""
-## 11 · Red-team a peer's notebook
+## 7 · Where we are
 
 Swap with the team beside you. Ten minutes. Nine questions:
 
@@ -966,6 +733,5 @@ Swap with the team beside you. Ten minutes. Nine questions:
 8. Is padding excluded from every pooling and every mean?
 9. Are there duplicate documents across the split? Count them.
 
-Report what you **found**, not what you would have done differently.
-"""),
-    ]
+Each has a specific answer in this lecture, and each failure is silent.
+""")]

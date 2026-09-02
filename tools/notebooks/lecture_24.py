@@ -29,18 +29,23 @@ def code(text: str) -> nbf.NotebookNode:
 
 
 HEADER = """
-# Closing the loop, and closing the course
+# Generation, retrieval-augmented systems, and where this leaves you
 
-**Lecture 24 · Fix** · Géron, Chapters 15–16 · *Mathematical thread: the
+**Lecture 24** · Géron, Chapters 15–16 · *Mathematical thread: the
 contrastive objective and its temperature*
 
 Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
 
 ---
 
-**How to use this notebook.** Read before you run. The cell marked
-**⚠ read before running** contains the defect this lecture is about, and it does
-not raise an exception.
+**How to use this notebook.** Read before you run. Every code cell is preceded
+by the specification that would produce it — input, output, constraint, check.
+
+Cells marked **⚠** deliberately run code that is wrong, and say so in the
+heading before you reach them. They are the failures this lecture is about;
+each runs the broken version beside the correct one and prices the difference.
+
+Runs on CPU. Nothing here needs an accelerator.
 
 **What it downloads.** The same 200-entry catalogue as the previous lecture
 (cached), plus two more checkpoints: a captioner (about 1 GB) and a small
@@ -186,217 +191,6 @@ print(f"embeddings {I.shape}, shared dimension d = {d}")
 '''),
 
         md("""
-## 2 · Thread 12, part one — why the sphere
-
-The unnormalised inner product factorises as
-`<a, b> = ||a|| ||b|| cos(theta)`. Two quantities are mixed: **which direction**
-the encoder chose, and **how loudly** it said it. Only the direction carries the
-semantics; the length is whatever the last linear layer happened to scale to.
-"""),
-        prompt(
-            label="why the sphere",
-            input="the raw embedding lengths",
-            output="their range, for images and for text",
-            constraint="report the RATIO of longest to shortest, not just the extremes",
-            check="four lines, and they are the setup for the entire assistant failure. Measure the thing you are about to claim matters."),
-        code('''
-norms = np.linalg.norm(I_raw, axis=1)
-print(f"image embedding lengths: min {norms.min():.2f}   max {norms.max():.2f}"
-      f"   ratio {norms.max() / norms.min():.2f}x")
-print(f"text  embedding lengths: min {np.linalg.norm(Q_raw, axis=1).min():.2f}"
-      f"   max {np.linalg.norm(Q_raw, axis=1).max():.2f}")
-'''),
-
-        md("""
-## 3 · Thread 12, part two — what should an *unrelated* pair score?
-
-Most rooms vote for **−1**: opposite meaning, opposite vector. It is the wrong
-answer, and the reason is the concentration result from Lecture 10.
-
-For a fixed unit vector there is **exactly one** point at cosine −1. Asking 200
-unrelated captions all to sit there is asking for a configuration that does not
-exist. The right question is not "what is the most different?" but "what does a
-pair with *no relationship at all* look like?" — and that is a question about a
-random vector.
-
-Fix `u = e1` by rotational symmetry and write `v = z / ||z||` with
-`z ~ N(0, I_d)`. Then `u.v = z1 / ||z||`, whose expectation is zero by the
-symmetry `v -> -v`, and whose second moment is `1/d` because the *d* coordinates
-share the total equally. So the standard deviation is exactly `1 / sqrt(d)`.
-"""),
-        prompt(
-            label="what should an unrelated pair score",
-            input="random unit vectors at six dimensionalities",
-            output="the measured sd of the cosine against 1/√d, and how often |cos| exceeds 0.5",
-            constraint="sweep the DIMENSION — the effect is entirely about d, and a single dimensionality shows a number rather than a law",
-            check="in high dimensions two unrelated things are ORTHOGONAL, not opposite. That is why the contrastive loss targets zero for a non-matching pair, and it is the concentration result from application 5 in a new costume."),
-        code('''
-rng = np.random.default_rng(SEED)
-
-print(f"{'d':>6}  {'sd measured':>12}  {'1/sqrt(d)':>10}  {'|cos| > 0.5':>12}")
-for dim in [2, 8, 32, 128, 512, 2048]:
-    A = unit(rng.normal(size=(4000, dim)))
-    B = unit(rng.normal(size=(4000, dim)))
-    c = (A * B).sum(1)
-    print(f"{dim:6d}  {c.std(ddof=1):12.4f}  {1 / np.sqrt(dim):10.4f}"
-          f"  {(np.abs(c) > 0.5).mean():11.1%}")
-
-A = unit(rng.normal(size=(20000, d)))
-B = unit(rng.normal(size=(20000, d)))
-c = (A * B).sum(1)
-print(f"\\nat d = {d}, over 20,000 pairs:")
-print(f"  mean          {c.mean():+.5f}")
-print(f"  sd            {c.std(ddof=1):.4f}   (1/sqrt(d) = {1 / np.sqrt(d):.4f})")
-print(f"  most negative {c.min():+.3f}   — nothing is anywhere near -1")
-'''),
-
-        md("""
-**In high dimensions two unrelated things are orthogonal, not opposite.** That
-is why the contrastive loss targets zero for a non-matching pair, and it is the
-Lecture 10 concentration result arriving in a new costume seven applications
-later.
-
-Now the same measurement on the trained embeddings themselves.
-"""),
-        prompt(
-            label="the same measurement on the trained embeddings",
-            input="the CLIP features",
-            output="mean, sd and minimum for image-image, image-unrelated-caption and matched pairs, plus the distance between the two centroids",
-            constraint="report the MINIMUM as well as the mean — the claim is that nothing is anywhere near −1, and only the minimum tests it",
-            check="why the gap exists is an open research question, outside the book and not examinable. THAT it exists is measurable in four lines and is on the exam."),
-        code('''
-off = ~np.eye(N_CATALOGUE, dtype=bool)
-ii, it = I @ I.T, I @ Q.T
-
-print(f"{'pairs':38s} {'mean':>8} {'sd':>8} {'min':>8}")
-for name, v in [("two unrelated images", ii[off]),
-                ("an image and an unrelated caption", it[off]),
-                ("an image and its own caption", np.diag(it))]:
-    print(f"{name:38s} {v.mean():+8.3f} {v.std(ddof=1):8.3f} {v.min():+8.3f}")
-
-gap = np.linalg.norm(I.mean(0) - Q.mean(0))
-print(f"\\ndistance between the two centroids (the modality gap): {gap:.3f}")
-print(f"fraction of unrelated image/caption pairs below zero: "
-      f"{(it[off] < 0).mean():.1%}")
-'''),
-
-        md("""
-Unrelated pairs sit near zero and nowhere near −1, exactly as the geometry says.
-But they are not *at* zero either: images occupy one region of the sphere and
-captions another. Only the ranking within a row is trained, so adding a constant
-offset to every image embedding changes no ranking and no loss — the objective
-has no reason to remove the gap, and it does not.
-
-**Consequence you can be caught by:** an absolute cosine threshold tuned on
-image–image pairs is meaningless for image–text pairs. Why the gap exists is an
-open research question, outside Chapters 1–16 and not examinable. That it exists
-is measurable and is on the exam.
-
-## 4 · Thread 12, part three — the temperature
-
-Thread 11 gave us the machinery. Row *i* of the similarity matrix is a *B*-class
-problem whose correct answer is column *i*:
-
-`L = -mean_i log( exp(S_ii / tau) / sum_j exp(S_ij / tau) )`
-
-Everything is familiar except `tau`. Set it to 1 and watch.
-"""),
-        prompt(
-            label="the temperature",
-            input="the similarity matrix at six temperatures",
-            output="the loss, p(correct), p(hardest wrong) and top-1 at each",
-            constraint="print log B beside the table — a contrastive loss is measured against a batch-dependent ceiling and is meaningless without it",
-            check="from thread 11, ∂L/∂S_ij = (p_ij − 1[j=i])/τ, so a small τ concentrates the push on the few hardest negatives. That is what the temperature is for."),
-        code('''
-def infonce(sim, tau):
-    """Symmetric InfoNCE on a matrix of cosines. Returns a dict of diagnostics."""
-    B = sim.shape[0]
-    logits = sim / tau
-    p = torch.softmax(torch.tensor(logits), dim=1).numpy()
-    q = torch.softmax(torch.tensor(logits), dim=0).numpy()
-    diag = np.arange(B)
-    loss = 0.5 * (-np.log(p[diag, diag]).mean() - np.log(q[diag, diag]).mean())
-    offd = p.copy()
-    offd[diag, diag] = 0.0
-    return {"loss": float(loss),
-            "p_positive": float(p[diag, diag].mean()),
-            "p_hardest_neg": float(offd.max(axis=1).mean()),
-            "accuracy": float((logits.argmax(1) == diag).mean())}
-
-
-sim = I @ Q.T
-print(f"a scorer that knows nothing would sit at log {N_CATALOGUE} = "
-      f"{np.log(N_CATALOGUE):.3f}\\n")
-print(f"{'tau':>8} {'loss':>8} {'p(correct)':>12} {'p(hardest wrong)':>18} {'top-1':>8}")
-for tau in [1.0, 0.3, 0.1, 0.03, 0.01, 0.003]:
-    r = infonce(sim, tau)
-    print(f"{tau:8.3f} {r['loss']:8.3f} {r['p_positive']:12.4f}"
-          f" {r['p_hardest_neg']:18.4f} {r['accuracy']:8.1%}")
-'''),
-
-        md("""
-Two things to read off that table.
-
-* At `tau = 1` the logits are cosines, so the whole spread of a row is at most 2.
-  `exp` of a range of 2 is a ratio of at most 7.4 across 200 competitors, the
-  softmax is nearly uniform whatever the model says, and the loss sits near
-  `log B`.
-* **The top-1 column does not move.** `tau` cannot change which column is
-  largest, so it cannot change the accuracy of a fixed model. What it changes is
-  where the gradient goes: from thread 11, `dL/dS_ij = (p_ij - 1[j=i]) / tau`, so
-  a small `tau` concentrates the push on the few hardest negatives.
-
-The temperature is not a hyperparameter anybody tunes by hand. The model stores
-`log(1/tau)` and learns it by gradient descent, clamped from above.
-"""),
-        prompt(
-            label="the temperature the model learned",
-            input="CLIP's own logit_scale parameter",
-            output="1/τ, τ, and the loss at that temperature",
-            constraint="read it OUT OF THE MODEL rather than choosing one — it is not a hyperparameter anybody tunes by hand",
-            check="when a model has learned a hyperparameter, ask it. `clip.logit_scale` is one attribute access and it is the correct value by construction."),
-        code('''
-scale = clip.logit_scale.exp().item()
-print(f"learned logit scale 1/tau = {scale:.2f}")
-print(f"learned temperature   tau = {1 / scale:.5f}")
-r = infonce(sim, 1 / scale)
-print(f"\\nat the learned temperature: loss {r['loss']:.3f}   "
-      f"p(correct) {r['p_positive']:.3f}   top-1 {r['accuracy']:.1%}")
-'''),
-
-        md("""
-## 5 · Thread 12, part four — the negatives, and the batch size
-
-The loss needs, for each image, a set of captions it should *not* match. Nobody
-labels those: they are the other members of the batch, free and correct with high
-probability on a large corpus.
-
-So **the batch is the label set**. The batch size is not a memory setting; it is
-the number of classes in the problem you are solving, and the chance level is
-`1/B`.
-"""),
-        prompt(
-            label="the batch IS the label set",
-            input="batches of 2, 8, 32, 128 and 200",
-            output="top-1 and loss at each, beside chance 1/B and the ceiling log B",
-            constraint="average over many random batches at each size — a single draw at B=2 is one coin flip",
-            check="a contrastive loss value is not comparable across papers. It is measured against a batch-dependent ceiling of log B, and almost nobody states their B beside it."),
-        code('''
-tau = 1 / scale
-print(f"{'B':>5} {'top-1':>8} {'chance 1/B':>12} {'loss':>8} {'log B':>8}")
-for B in [2, 8, 32, 128, N_CATALOGUE]:
-    reps = 1 if B == N_CATALOGUE else 200
-    accs, losses = [], []
-    for _ in range(reps):
-        idx = rng.choice(N_CATALOGUE, size=B, replace=False)
-        r = infonce(I[idx] @ Q[idx].T, tau)
-        accs.append(r["accuracy"])
-        losses.append(r["loss"])
-    print(f"{B:5d} {np.mean(accs):8.1%} {1 / B:12.1%} {np.mean(losses):8.3f}"
-          f" {np.log(B):8.3f}")
-'''),
-
-        md("""
 Accuracy falls with *B* and chance falls faster, so the gap — the learning signal
 — widens. That is the whole argument for a large batch, and it has two
 consequences worth carrying away:
@@ -407,7 +201,7 @@ consequences worth carrying away:
    why these models are trained with batches in the tens of thousands, across
    many devices. That engineering is outside Chapters 1–16.
 
-## 6 · ⚠ Read before running — the assistant failure
+## 2 · ⚠ Read before running — the assistant failure
 
 **The prompt:** *"Write the symmetric contrastive loss for a batch of image and
 text embeddings, with a temperature of 0.01."*
@@ -477,7 +271,7 @@ print(f"one image took {wins.max()} of {N_CATALOGUE} queries; "
 The assertion is the part that would have caught it in silence. Two lines, and
 the bug becomes a crash.
 
-## 7 · Repair 1 — entries with no description
+## 3 · Repair 1 — entries with no description
 
 Sixty of the two hundred entries have no description, so they score exactly zero
 on the text route. Use a model built for *generating* text from an image and
@@ -594,7 +388,7 @@ friendly test. The failure mode to watch for is an auto-caption that is *wrong*,
 making an entry findable under the wrong query — worse than unfindable, and
 nothing measured here detects it.
 
-## 8 · Repair 2 — queries with no single right answer
+## 4 · Repair 2 — queries with no single right answer
 
 Customers do not type captions. They type "something to sit on". A ranked list of
 pictures is a poor answer, because the customer wants a shortlist **with
@@ -694,9 +488,9 @@ What this does **not** fix:
 Evaluating generated answers — faithfulness, attribution, judging with another
 model — is a live research area, outside Chapters 1–16 and not examinable.
 
-## 9 · Red-team, and the end
+## 5 · Where we are
 
-Swap notebooks. Four questions for *this* notebook:
+Four questions to ask of any retrieval-augmented system:
 
 1. Are the embeddings on both sides unit vectors? Assert it, do not read it.
 2. Is every recall reported with its candidate-set size?
@@ -721,5 +515,4 @@ once.
 
 You will forget most of the syntax. Keep the five reviewer questions, the four
 rules, and the habit of writing the number down first.
-"""),
-    ]
+""")]
