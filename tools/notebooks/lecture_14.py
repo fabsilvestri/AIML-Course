@@ -1,15 +1,15 @@
+#!/usr/bin/env python3
 """
-Lecture 18 — Scoring a box, scoring a detector.  (Fix)
+Lecture 14 — Detection and segmentation. COCO, Géron Chapter 12.
 
-Thread 9: IoU's vanishing gradient, and mAP as a mean of a mean.
+Derivation: IoU's vanishing gradient, and mAP as a mean of a mean.
 
-Exports build() -> list[nbformat cell]. Self-contained: it reloads the corpus
-and re-runs the detector rather than assuming Lecture 17's kernel is still
-alive. A notebook that only runs because a previous one left variables in
-memory is not reproducible.
+Merges the old lectures 17 and 18, which ran a detector and then, a lecture
+later, derived a way to score it. Here the derivation comes first, because a
+box has no notion of correct until IoU exists.
 
-Everything scored here is scored on 128 images of COCO val2017 and the
-notebook says so beside every number.
+Exports build() -> list[nbformat cell]. Runs on CPU: 128 COCO images and a
+pretrained detector, inference only. Nothing is trained.
 """
 
 from __future__ import annotations
@@ -27,40 +27,47 @@ def code(text: str) -> nbf.NotebookNode:
 
 
 HEADER = """
-# Scoring a box, scoring a detector
+# Detection and segmentation
 
-**Lecture 18 · Fix** · Géron, Chapter 12 · *Mathematical thread: IoU's
-vanishing gradient, and mAP as a mean of a mean*
+**Lecture 14** · Géron, Chapter 12
 
 Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
 
 ---
 
-**How to use this notebook.** Read before you run. The cell marked
-**⚠ read before running** contains the defect this lecture is about: an IoU
-function that reports two boxes 200 pixels apart as a perfect match.
+**How to use this notebook.** Read before you run. Every code cell is preceded
+by the specification that would produce it — input, output, constraint, check.
 
-**The corpus is 128 images** of COCO's 5,000-image `val2017` split. Every mAP
-below is a measurement on 128 images. torchvision reports 37.0 box mAP for the
-same weights on all 5,000, and we compare against it at the end — because a
-score without its sample size is not a score.
+Two cells marked **⚠** deliberately run code that is wrong, and say so in the
+heading above them. They are the two failures this lecture is about: an IoU
+that is silently wrong for disjoint boxes, and a mean taken over images where
+it should be taken over instances. Both run, both print believable numbers, and
+neither raises. Seeing what they print is the only way to learn to distrust
+them.
+
+**The corpus is 128 images.** COCO's `val2017` split is 5,000 images and the
+full release is about 20 GB. Neither is downloaded here. Every number this
+notebook prints is a measurement on 128 images, and you are expected to say
+"128 images" whenever you quote one.
 """
 
 SETUP = '''
 # --- setup -------------------------------------------------------------------
-import sys, json, time, itertools, urllib.request, zipfile, io, collections
+# Not examinable: this is engineering hygiene, not machine learning.
+import sys, json, time, itertools, urllib.request, zipfile, io
 from pathlib import Path
 
 import numpy as np
 import torch, torchvision
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 from PIL import Image
 
 print(f"python       {sys.version.split()[0]}")
 print(f"torch        {torch.__version__}")
 print(f"torchvision  {torchvision.__version__}")
 
-RANDOM_STATE = 42
+RANDOM_STATE = 42                  # one seed, used everywhere
 np.random.seed(RANDOM_STATE)
 torch.manual_seed(RANDOM_STATE)
 
@@ -68,15 +75,18 @@ DEVICE = ("cuda" if torch.cuda.is_available()
           else "mps" if torch.backends.mps.is_available() else "cpu")
 print(f"device       {DEVICE}")
 
-N_IMAGES = 128
+N_IMAGES = 128                     # the corpus. Say it out loud every time.
 DATA = Path("datasets/coco")
 DATA.mkdir(parents=True, exist_ok=True)
 '''
 
-RELOAD = '''
-# --- the same corpus as the previous lecture ---------------------------------
-# Reloaded from scratch. The seed and the "128 lowest ids" rule guarantee the
-# same 128 images, so the numbers below are comparable with Lecture 17's.
+DOWNLOAD = '''
+# --- the data ----------------------------------------------------------------
+# Two downloads. The annotation file is the larger of them and it is the only
+# way to have real ground-truth boxes at all; the images are 128 JPEGs, not
+# 5,000 and certainly not the 20 GB training split.
+#
+# ⏱ about 60-90 seconds the first time, instant afterwards.
 ANN = DATA / "instances_val2017.json"
 IMG_DIR = DATA / "images"
 IMG_DIR.mkdir(exist_ok=True)
@@ -84,65 +94,200 @@ IMG_DIR.mkdir(exist_ok=True)
 if not ANN.is_file():
     url = ("http://images.cocodataset.org/annotations/"
            "annotations_trainval2017.zip")
-    print(f"downloading annotations (~241 MB)")     # ⏱ 60-90 s, once
+    print(f"downloading annotations (~241 MB) from {url}")
     blob = urllib.request.urlopen(url).read()
     with zipfile.ZipFile(io.BytesIO(blob)) as z:
         ANN.write_bytes(z.read("annotations/instances_val2017.json"))
 
 raw = json.loads(ANN.read_text())
+print(f"{len(raw['images']):,} images in val2017, "
+      f"{len(raw['categories'])} categories")
+
+# The 128 numerically lowest image ids. A rule, not a selection: nobody chose
+# which images make the detector look good.
 images = sorted(raw["images"], key=lambda i: i["id"])[:N_IMAGES]
 ids = {im["id"] for im in images}
-cat_name = {c["id"]: c["name"] for c in raw["categories"]}
+assert len(images) == N_IMAGES
 
 for im in images:
     p = IMG_DIR / im["file_name"]
     if not p.is_file():
         urllib.request.urlretrieve(
             "http://images.cocodataset.org/val2017/" + im["file_name"], p)
+print(f"{len(list(IMG_DIR.glob('*.jpg')))} images on disk")
+'''
 
-gt, n_crowd = {i: {"boxes": [], "labels": []} for i in ids}, 0
+GROUND_TRUTH = '''
+# --- ground truth, converted once, at the edge --------------------------------
+# COCO stores [x, y, w, h]. torchvision emits [x1, y1, x2, y2]. Mixing them is
+# the commonest bug in this material, so the conversion happens HERE and
+# nowhere else; from this cell on, every box in memory is corners.
+cat_name = {c["id"]: c["name"] for c in raw["categories"]}
+
+gt = {i: {"boxes": [], "labels": []} for i in ids}
+n_crowd = 0
 for a in raw["annotations"]:
     if a["image_id"] not in ids:
         continue
     if a["iscrowd"]:
+        # One polygon drawn around many instances. Not one object, not n
+        # objects — a refusal to decide. COCO's own evaluator ignores them.
         n_crowd += 1
         continue
-    x, y, w, h = a["bbox"]                       # COCO is x, y, w, h
+    x, y, w, h = a["bbox"]
     gt[a["image_id"]]["boxes"].append([x, y, x + w, y + h])
     gt[a["image_id"]]["labels"].append(a["category_id"])
 
-for g in gt.values():
+for iid, g in gt.items():
     g["boxes"] = np.asarray(g["boxes"], dtype=float).reshape(-1, 4)
     g["labels"] = np.asarray(g["labels"], dtype=np.int64)
 
+# assert, do not hope
+for iid, g in gt.items():
+    assert (g["boxes"][:, 2] >= g["boxes"][:, 0]).all(), "x2 < x1: w read as x2"
+    assert (g["boxes"][:, 3] >= g["boxes"][:, 1]).all(), "y2 < y1: same bug"
+
 n_true = np.array([len(gt[im["id"]]["labels"]) for im in images])
-assert len(gt) == N_IMAGES and n_true.sum() == 898, n_true.sum()
-print(f"{N_IMAGES} images, {n_true.sum()} objects, {n_crowd} crowd regions "
-      f"dropped — identical to the previous lecture")
+assert n_true.shape == (N_IMAGES,)
+print(f"{N_IMAGES} images, {n_true.sum()} objects, "
+      f"{n_crowd} crowd regions dropped")
+print(f"objects per image: mean {n_true.mean():.2f}  median "
+      f"{np.median(n_true):.0f}  range {n_true.min()}-{n_true.max()}")
 '''
+
 
 
 def build() -> list:
     return [
         md(HEADER),
+
         md("## 1 · Setup"),prompt(
                                   label="setup",
                                   input="nothing",
-                                  output="versions, seed, device, and N_IMAGES = 128",
-                                  constraint="the same constants as the previous lecture, so the numbers below are comparable",
-                                  check="`N_IMAGES` as a named constant rather than a literal 128 in a slice. It then travels into every printed line that uses it."),
+                                  output="versions, one seed, the device, and the corpus size as a named constant",
+                                  constraint="`N_IMAGES = 128` as a NAMED constant with a comment saying to say it out loud — every number this notebook prints is a measurement on 128 images",
+                                  check="when a notebook works on a subset, put the subset size in a constant with a name, not a literal in a slice. It then appears in every printout that uses it."),
                             code(SETUP),
-        md("## 2 · The same 128 images"),prompt(
-                                                label="⏱ 60-90 s first time — the same 128 images",
-                                                input="COCO's annotations and the same selection rule",
-                                                output="the identical corpus and ground truth as the previous lecture",
-                                                constraint="rebuild from the RULE — the 128 lowest ids — rather than inheriting anything from the other notebook",
-                                                check="assert 898 objects, which is the exact count the previous lecture reported. When two notebooks must agree, assert an exact total rather than a shape. Shapes agree under a great many wrong reloads."),
-                                          code(RELOAD),
-
-        # ------------------------------------------------ thread, part 1
+        md("## 2 · The corpus, and exactly how big it is"),prompt(
+                                                                  label="⏱ 60-90 s — the corpus, and exactly how big it is",
+                                                                  input="COCO's annotation file and 128 JPEGs",
+                                                                  output="the annotation blob, the 128 chosen images, and the files on disk",
+                                                                  constraint="choose the images by a RULE — the 128 numerically lowest image ids — so that nobody chose which images make the detector look good",
+                                                                  check="assert exactly N_IMAGES were selected. A selection rule you can state in one sentence is a selection rule somebody can check. 'The lowest 128 ids' is; 'a representative sample' is not."),
+                                                            code(DOWNLOAD),
         md("""
-## 3 · Thread 9, part 1 — intersection over union
+### 2.1 · Ground truth
+
+Two things to notice in the next cell, both of which cost people an afternoon
+the first time:
+
+1. COCO stores a box as `[x, y, w, h]`; torchvision returns `[x1, y1, x2, y2]`.
+   Convert once, at the edge of the program.
+2. `iscrowd = 1` means the annotator drew one region around many instances
+   rather than boxing them separately. Dropping those is a *choice*, it changes
+   every count below, and this is where it is recorded.
+"""),
+        prompt(
+            label="ground truth, converted once at the edge",
+            input="COCO's annotations for the 128 images",
+            output="corner-form boxes and labels per image, with the crowd regions counted and dropped",
+            constraint="COCO stores [x, y, w, h] and torchvision emits [x1, y1, x2, y2]. Convert HERE and nowhere else — from this cell on, every box in memory is corners",
+            check="assert x2 ≥ x1 and y2 ≥ y1 on every box, which is exactly the assertion that fires if w was read as x2. Convert at the boundary of your program, assert the invariant immediately, and never carry two conventions in the same variable name."),
+        code(GROUND_TRUTH),
+
+        md("""
+### 2.2 · What is in it
+
+`person` dominates. Remember that: in the next lecture we start averaging over
+categories, and a mean over categories does not care that one of them is 39% of
+the corpus.
+"""),
+        prompt(
+            label="what is in it",
+            input="the ground-truth labels",
+            output="how many categories appear, and the eight commonest",
+            constraint="print `person` as a SHARE of every annotated object, not just as a count",
+            check="only some of the 80 categories appear in 128 images. Any per-category metric will have empty categories in it, and what you do about those changes the mean."),
+        code('''
+import collections
+
+freq = collections.Counter()
+for g in gt.values():
+    for c in g["labels"]:
+        freq[cat_name[int(c)]] += 1
+
+print(f"{len(freq)} of 80 categories appear in these {N_IMAGES} images\\n")
+for name, k in freq.most_common(8):
+    print(f"  {name:14s} {k:4d}")
+print(f"\\nperson is {freq['person'] / n_true.sum():.1%} of every "
+      f"annotated object")
+'''),
+
+        md("""
+## 3 · A metric, and the baseline that kills the obvious one
+
+The obvious metric is: *a detection is correct when its box overlaps the true
+box.* It is computable, unambiguous and parameter-free.
+
+Before adopting any metric, this course computes what the stupidest possible
+system scores under it. For detection, the stupidest possible system is
+**one box per image, covering the whole image**.
+"""),
+        prompt(
+            label="the baseline that kills the obvious metric",
+            input="one box per image, covering the whole image",
+            output="how many true objects it overlaps",
+            constraint="test the OBVIOUS metric — a detection is correct when its box overlaps the true box — against the stupidest possible system before adopting it",
+            check="assert it hits every object, which also verifies no annotated box lies outside its own image. Compute what the stupidest possible system scores under any metric BEFORE adopting it. Here that takes six lines and rules out the obvious choice."),
+        code('''
+def overlaps(a, b):
+    """Do two corner-form boxes share any area at all?"""
+    lt = np.maximum(a[:2], b[:2])
+    rb = np.minimum(a[2:], b[2:])
+    wh = np.clip(rb - lt, 0.0, None)
+    return bool(wh[0] * wh[1] > 0)
+
+hits = total = 0
+for im in images:
+    whole = np.array([0.0, 0.0, float(im["width"]), float(im["height"])])
+    for b in gt[im["id"]]["boxes"]:
+        hits += overlaps(whole, b)
+        total += 1
+
+print(f"the whole-image box overlaps {hits} of {total} true objects "
+      f"= {hits / total:.1%}")
+assert hits == total, "if this ever fails, a box lies outside its own image"
+'''),
+        md("""
+**100%.** A system with no weights, no data and no idea scores perfectly under
+the proposed metric. That metric is dead: it rewards a box for being enormous,
+and nothing in it punishes size.
+
+So today's metric is the one thing left that the whole-image box loses at:
+**counting**.
+"""),
+        prompt(
+            label="the metric we can defend",
+            input="predicted and true object counts",
+            output="the mean absolute error, and two trivial baselines",
+            constraint="assert the two arrays have the same shape — a count vector of the wrong length broadcasts silently and gives a plausible number",
+            check="a system that never opens the image scores 6.02. Every number below has to be read against that."),
+        code('''
+def count_mae(pred_counts, true_counts):
+    pred_counts = np.asarray(pred_counts)
+    assert pred_counts.shape == true_counts.shape
+    return float(np.abs(pred_counts - true_counts).mean())
+
+one_box   = count_mae(np.ones(N_IMAGES), n_true)
+mean_box  = count_mae(np.full(N_IMAGES, round(n_true.mean())), n_true)
+
+print(f"one box per image           MAE {one_box:.2f}")
+print(f"predict the corpus mean     MAE {mean_box:.2f}")
+print(f"perfect                     MAE 0.00")
+'''),
+
+        md("""
+## 3 · The derivation, part 1 — intersection over union
 
 Last time you were asked for a number that says how right a box is. It has to
 
@@ -200,14 +345,17 @@ for name, other in [("identical",        box),
 > *"Write a NumPy function that takes two bounding boxes in `[x1, y1, x2, y2]`
 > format and returns their intersection over union."*
 
-**⚠ Read before running.** Format specified, library specified, return value
-specified — a better prompt than most. One thing is missing.
+**⚠ Read before running.** The implementation below is the one almost everyone
+writes first: it handles overlapping boxes correctly and it is silently wrong
+for disjoint ones, because the intersection width and height go negative and
+their product goes positive again. Test it only on overlapping pairs and it
+looks right.
 """),
         prompt(
-            label="⚠ what the assistant returns",
+            label="⚠ the IoU almost everyone writes first",
             input="'write a NumPy function taking two boxes in [x1,y1,x2,y2] and returning their intersection over union'",
             output="the IoU of two overlapping pairs",
-            constraint="test it only on OVERLAPPING boxes, which is what a reasonable person writes first — and both answers are correct",
+            constraint="test it on OVERLAPPING boxes only, deliberately — that is the test suite this bug survives",
             check="a test suite made only of the cases you thought of tests the cases you thought of. Ask what input would make the output meaningless."),
         code('''
 def iou_broken(a, b):
@@ -313,7 +461,7 @@ except AssertionError:
 
         # ------------------------------------------------ vanishing gradient
         md("""
-## 4 · Thread 9, part 2 — the gradient that is not there
+## 4 · The derivation, part 2 — the gradient that is not there
 
 IoU does three jobs: matching, suppression, and serving as a loss. Only the
 third needs a derivative, and that is the one that breaks.
@@ -450,7 +598,7 @@ the evaluation, which we *can* measure.
 
         # ------------------------------------------------ AP
         md("""
-## 5 · Thread 9, part 3 — average precision
+## 5 · The derivation, part 3 — average precision
 
 ⏱ **1 to 2 minutes** on a GPU or MPS, several minutes on CPU: the same
 detector as last lecture, over the same 128 images.
@@ -685,7 +833,7 @@ plt.tight_layout(); plt.show()
 
         # ------------------------------------------------ mAP
         md("""
-## 6 · Thread 9, part 4 — mAP, a mean of a mean
+## 6 · The derivation, part 4 — mAP, a mean of a mean
 
 ⏱ **about 60 seconds**: 73 classes × 10 IoU thresholds.
 """),
@@ -779,7 +927,188 @@ print("One number in the middle stands for both.")
 
         # ------------------------------------------------ second failure
         md("""
-## 7 · The second silent failure: per-image averaging
+## 7 · The detector
+
+Nothing is trained here. These are the weights torchvision ships, trained on
+COCO's training split by someone else, and this lecture is about evaluating
+them rather than fitting them.
+
+⏱ the weights are about 167 MB; the download happens once.
+"""),
+        prompt(
+            label="the detector — nothing is trained here",
+            input="torchvision's COCO-trained weights",
+            output="the model in eval mode, its preprocessing, and its category names",
+            constraint="assert that the model's label integers ARE COCO's category_ids — the comparison further down is only legitimate if they agree",
+            check="the name-agreement assert, plus `names[1] == 'person'`. Print the weights' own reported metrics on the full 5,000 images. Your 128-image number should be read next to it, not instead of it."),
+        code('''
+from torchvision.models.detection import (
+    fasterrcnn_resnet50_fpn, FasterRCNN_ResNet50_FPN_Weights)
+
+weights = FasterRCNN_ResNet50_FPN_Weights.COCO_V1
+model = fasterrcnn_resnet50_fpn(weights=weights)
+model.eval().to(DEVICE)              # eval(), every time — Lecture 12
+preprocess = weights.transforms()
+
+names = weights.meta["categories"]
+print(f"{len(names)} label slots for 80 categories")
+print("slot 0 is", names[0], "| slot 12 is", names[12])
+assert names[1] == "person"
+# the integer in `labels` is the same integer as COCO's category_id, which is
+# the only reason the comparison further down is legitimate
+assert all(names[cid] == nm for cid, nm in cat_name.items())
+
+print("\\ntorchvision's own reported score for these weights,")
+print("on all 5,000 val2017 images:", weights.meta["_metrics"])
+'''),
+
+        md("""
+### 5.1 · Run it
+
+⏱ **1 to 2 minutes** on a GPU or an Apple Silicon MPS backend, and several
+minutes on a CPU-only runtime. It varies with what else the machine is doing:
+the same loop took 39 s on an idle laptop and 102 s on a busy one. No output
+does not mean it has hung.
+"""),
+        prompt(
+            label="⏱ 1-2 min on GPU, longer on CPU — run it",
+            input="the 128 images",
+            output="predictions per image, and the wall clock per image",
+            constraint="`torch.inference_mode()` — no graph and no gradients, which matters here because a detector's intermediate tensors are large",
+            check="assert one prediction per image. Move the predictions to CPU numpy inside the loop. Keeping 128 sets of GPU tensors alive is how the next cell fails for a reason that has nothing to do with the next cell."),
+        code('''
+t0 = time.time()
+preds = {}
+with torch.inference_mode():                 # no graph, no gradients
+    for im in images:
+        img = Image.open(IMG_DIR / im["file_name"]).convert("RGB")
+        out = model([preprocess(img).to(DEVICE)])[0]
+        preds[im["id"]] = {k: v.cpu().numpy() for k, v in out.items()}
+elapsed = time.time() - t0
+
+assert len(preds) == N_IMAGES
+print(f"{N_IMAGES} images in {elapsed:.1f} s "
+      f"({elapsed / N_IMAGES:.2f} s per image on {DEVICE})")
+'''),
+        md("""
+### 5.2 · Read the shape before you read the answer
+"""),
+        prompt(
+            label="read the shape before the answer",
+            input="one image's predictions",
+            output="the shape and dtype of every returned array",
+            constraint="assert the three arrays are the same length AND that scores come back sorted descending — everything below relies on both",
+            check="assert the sort order rather than assuming it. Several detection APIs return unsorted boxes, and code that slices the 'top k' silently takes an arbitrary k."),
+        code('''
+p = preds[images[0]["id"]]
+for k, v in p.items():
+    print(f"{k:8s} {v.shape} {v.dtype}")
+
+assert p["boxes"].shape[0] == p["labels"].shape[0] == p["scores"].shape[0]
+assert np.all(np.diff(p["scores"]) <= 0), "not sorted by score"
+print(f"\\nthis image has {len(p['boxes'])} boxes and "
+      f"{len(gt[images[0]['id']]['labels'])} annotated objects")
+'''),
+
+        md("""
+## 8 · The threshold is a knob, and nobody chose it
+
+Sweep it and watch the answer to the stakeholder's question move by a factor of
+ten.
+"""),
+        prompt(
+            label="the threshold is a knob, and nobody chose it",
+            input="nineteen thresholds",
+            output="mean count and MAE at each, with the reported one marked",
+            constraint="mark the value we report, and find the BEST one — then refuse to report the best",
+            check="the answer to the stakeholder's question moves by a factor of ten across this sweep. A single count with no threshold stated is not an answer."),
+        code('''
+ts = np.round(np.arange(0.05, 0.96, 0.05), 2)
+rows = []
+for t in ts:
+    c = np.array([count_objects(preds[im["id"]], t) for im in images])
+    rows.append((t, c.mean(), count_mae(c, n_true)))
+
+print(f"{'thresh':>7s} {'mean/img':>9s} {'MAE':>7s}")
+for t, m, e in rows:
+    mark = "  <- we report this" if abs(t - THRESH) < 1e-9 else ""
+    print(f"{t:7.2f} {m:9.2f} {e:7.2f}{mark}")
+
+best = min(rows, key=lambda r: r[2])
+print(f"\\nlowest MAE is {best[2]:.2f} at threshold {best[0]:.2f}")
+print("We do NOT report that one: it was found on the same 128 images we")
+print("then report on, which is choosing a hyperparameter on the test set.")
+'''),
+
+        md("""
+## 9 · Look at the pictures, not only at the number
+
+Three images with their predicted boxes. Labels are drawn only for confident
+detections, because a crowded image stacks fourteen captions on top of each
+other and an illegible figure teaches nothing.
+"""),
+        prompt(
+            label="look at the pictures, not only at the number",
+            input="three images with their detections",
+            output="boxes drawn, with labels only on confident detections",
+            constraint="label only above a high score — a crowded image stacks fourteen captions on top of each other and an illegible figure teaches nothing",
+            check="try to write down a number for 'how wrong is that box'. You cannot, and neither can a count of objects."),
+        code('''
+def show(iid, thresh=THRESH, label_above=0.90, ax=None):
+    im = next(i for i in images if i["id"] == iid)
+    ax = ax or plt.gca()
+    ax.imshow(Image.open(IMG_DIR / im["file_name"]).convert("RGB"))
+    p = preds[iid]
+    keep = np.flatnonzero(p["scores"] >= thresh)
+    for k in keep:
+        x1, y1, x2, y2 = p["boxes"][k]
+        ax.add_patch(Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False,
+                               edgecolor="#c0392b", linewidth=2))
+        if p["scores"][k] >= label_above:
+            ax.text(x1 + 2, max(y1 - 4, 12),
+                    f"{names[int(p['labels'][k])]} {p['scores'][k]:.2f}",
+                    color="white", fontsize=8,
+                    bbox=dict(fc="#c0392b", ec="none", pad=1.0))
+    ax.set_title(f"{len(keep)} boxes, {len(gt[iid]['labels'])} true",
+                 fontsize=10, loc="left")
+    ax.set_xticks([]); ax.set_yticks([])
+
+fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+for ax, im in zip(axes, images[:3]):
+    show(im["id"], ax=ax)
+plt.tight_layout(); plt.show()
+'''),
+        md("""
+Some of those boxes are visibly wrong: two on one object, one a little too
+large, one confident about nothing at all.
+
+**You have no way to say how wrong.** Try it: write down a number for "how
+wrong is that box". You cannot, and neither can a count of objects.
+"""),
+        prompt(
+            label="two systems the metric cannot tell apart",
+            input="nine true boxes, and the same nine shifted 400 pixels",
+            output="the count error of each",
+            constraint="construct the counterexample rather than describing it — both systems emit nine boxes for an image with nine objects, and one puts them on the objects",
+            check="when you suspect a metric is blind to something, build the pair it cannot separate. If you can, the metric is dead for that purpose."),
+        code('''
+# Two systems your metric cannot tell apart. Both emit nine boxes for an
+# image with nine objects; one puts them on the objects and one does not.
+true_boxes = gt[images[0]["id"]]["boxes"]
+k = min(9, len(true_boxes))
+
+system_a = true_boxes[:k].copy()                  # exactly right
+system_b = true_boxes[:k].copy() + 400.0          # exactly the wrong places
+
+print(f"system A: {len(system_a)} boxes, count error "
+      f"{abs(len(system_a) - k)}")
+print(f"system B: {len(system_b)} boxes, count error "
+      f"{abs(len(system_b) - k)}")
+print("\\nA count of objects scores both of them perfect.")
+'''),
+
+        md("""
+## 10 · Per-image averaging
 
 An assistant asked to *"report mAP over the dataset"* will sometimes compute AP
 for each image and average those. It runs, and it is worth a great deal of free
@@ -828,7 +1157,7 @@ other.
 
         # ------------------------------------------------ NMS
         md("""
-## 8 · Non-maximum suppression
+## 11 · Non-maximum suppression
 
 The detector you ran had already thrown away nine tenths of its own output
 before you saw it, using IoU, at a threshold you did not set.
@@ -895,7 +1224,7 @@ print("Too high and every object keeps its duplicates. It is another knob.")
 
         # ------------------------------------------------ segmentation
         md("""
-## 9 · Per-pixel prediction
+## 12 · Per-pixel prediction
 
 A box was always an approximation: a bicycle's box is mostly not bicycle. Ask
 instead for a label on every pixel.
@@ -997,41 +1326,32 @@ print("lecture is measured against the annotator's decision.")
 '''),
 
         md("""
-## 10 · Where we ended up
+## 13 · Where we are
 
-| Application 9, 128 images of COCO val2017 | Value |
-|---|---|
-| Count MAE, the metric we committed to | 3.00 |
-| mAP at IoU 0.50 | **0.659** |
-| mAP averaged 0.50 to 0.95 | **0.439** |
-| The same weights on all 5,000 images | 0.370 |
+- A label is not an answer when the question is *where* and *how many*.
+- IoU is exactly zero for every pair of disjoint boxes, so as a loss it gives
+  no gradient however far apart they are. GIoU and CIoU add a term that keeps
+  moving.
+- Average precision is defined with a **maximum** in it, and that maximum
+  exists to repair the non-monotonicity of precision proved in Lecture 3. You
+  computed both the sawtooth and its running maximum here.
+- mAP is a mean over classes of a mean over IoU thresholds. Two averagings, and
+  each hides something the one below it showed.
 
-The first row is not wrong; it is blind. The last row is the one that keeps the
-other two honest: our number is **6.9 points higher for an identical model**,
-and the difference is the sample rather than the detector.
+**Five questions to ask of any detection result:**
 
-## 11 · Red-team
+1. At what IoU threshold? A number without one is not a number.
+2. At what score cut-off, and who chose it?
+3. Was non-maximum suppression applied, and at what overlap?
+4. Is the mean over images or over instances? They differ, and the difference
+   grows with how unevenly the objects are distributed.
+5. How many images? 128 is enough to see a shape and not enough to quote a
+   figure to three decimals.
 
-Swap notebooks. Fifteen minutes. Five questions:
-
-1. What touched the test set? *(was any threshold chosen by looking at the
-   128?)*
-2. What was fitted, and on what?
-3. What is the shape here? *(`masks` is `(N, 1, H, W)`; indexing it as
-   `(N, H, W)` silently gives you the first object)*
-4. What was dropped — rows, columns, NaNs? Count them. *(8 crowd regions, and
-   every detection below the score cut-off)*
-5. What is the default I did not ask for? *(score 0.05, NMS 0.5, 100 detections
-   per image, IoU 0.5 for matching)*
-
-Three bugs to hunt for by name:
-
-* **The missing clamp.** Feed their IoU function two boxes separated
-  diagonally. Eight seconds.
-* **Per-image AP.** A loop over images with an `np.mean` at the end.
-* **Corner against size.** Assert `x2 >= x1` on every box in the notebook.
-
-All three run. All three produce a plausible number. Two of the three make the
-score look better.
+**Before the next lecture:** run this notebook top to bottom. Then move one
+predicted box steadily away from its match and print IoU at each step. It sits
+at exactly zero the whole way — the flat region the derivation predicts, and
+the reason a plain IoU loss cannot train a detector.
 """),
     ]
+    return cells
