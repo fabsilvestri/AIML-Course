@@ -4,7 +4,8 @@ Resumable progress log for the redesign. **If you are picking this up cold —
 a new session, a restarted machine — read this file first, then `LECTURES.md`
 (the plan) and `AUTHORING.md` (how to build one lecture).**
 
-Last updated: 2026-09-01 (Lectures 1-3 built) · Term starts: ~2026-09-22
+Last updated: 2026-09-02 (all 24 lectures built; Part V new and verified) ·
+Term starts: ~2026-09-22
 
 ---
 
@@ -24,12 +25,28 @@ Definition of done, per lecture, all of it:
 5. `index.html` shows it published, `REBUILD.md` row says done
 6. committed and pushed
 
+## Where this stands
+
+**All 24 decks and all 24 notebooks are on the new design.** Lectures 19-22 —
+Part V, search and recommendation — were written from nothing, with three new
+figure scripts behind them. What remains is the verification half of the goal:
+`check_consistency.py` is clean on lectures 1-10 and 19-22, and the run for
+11-18, 23 and 24 is the outstanding work.
+
 ## How to resume
 
 1. `git log --oneline -15` — every lecture is committed on its own, so the last
    commit says exactly where work stopped.
-2. Find the first row below that is not `done`. That is the next task.
+2. Run `python3 tools/check_consistency.py 11 12 13 14 15 16 17 18 23 24`. It
+   executes each notebook (cached by content hash), so the first run is slow —
+   Lecture 11 alone has a cell that trains eight configurations. Fix what it
+   reports; the fix is almost always to *add the missing computation* to the
+   notebook rather than to change the slide.
 3. Read `AUTHORING.md` §2 (deck anatomy) and §4 (notebooks) before writing.
+
+**A note on diagnosing a slow check.** `nbconvert`'s own process sits at 0% CPU
+while the kernel it spawned does the work. Do not read that as a deadlock, as I
+did: check the child, or watch the output file grow.
 
 Never leave this file stale. A row that says `wip` with no commit behind it is
 worse than no row.
@@ -62,9 +79,9 @@ run it again, until it is clean. See §7 of AUTHORING.md.
 | 3 | **clean** | done | done |
 | 4–8 | **clean** (first run) | done | done |
 | 9, 10 | **clean** | done | done |
-| 11–18 | not yet run | **done** | done |
-| 19–22 | — | **not begun** | not begun |
-| 23, 24 | not yet run | **done** | done |
+| 11–18 | running | **done** | done |
+| 19–22 | **clean** | **done** | **done** |
+| 23, 24 | running | **done** | done |
 
 **Lectures 4-8 passed the consistency check on the first run, with no
 intervention.** All five were agent-drafted against `tools/AGENT_BRIEF.md`.
@@ -307,10 +324,10 @@ Legend: `done` · `wip` · `todo`
 | `tools/make_site.py` — generates the site's lecture and derivation lists | **done** | flip a lecture's `published` flag to publish it |
 | `tools/make_nb_index.py` — generates the 24-entry notebook index in 14 decks | **done** | titles come from make_site.py, so site and decks cannot disagree |
 | `tools/make_notebooks.py` / `_prompt.py` — retargeted to AUTHORING §4 | **done** | three-line annotation dropped everywhere; `COLAB_AUTHORED` emptied so L19 generates like the rest |
-| `tools/check_notebooks.py` — rules retargeted to AUTHORING §4 | todo | §6.1 box budget no longer fires; the 4 blocking rules still apply |
+| `tools/check_notebooks.py` — rules retargeted to AUTHORING §4 | **done** | passes on all 24 notebooks |
 | `tools/check_decks.py` — site check rewritten | **done** | was "every lecture must be linked", which is false mid-rebuild; now checks each lecture is on the page, that a linked one has its files, and that nothing is marked *In preparation* while a converted deck exists |
-| `tools/make_figures.py` — figures for reassigned lectures | todo | figure names are `l03-*` etc. by old numbering |
-| Part V figures (`figures_ir.py`, `figures_recsys.py`) | todo | nothing exists yet |
+| `tools/make_figures.py` — figures for reassigned lectures | **accepted** | figure filenames keep the old numbering. Renaming would touch every slide that cites one, for no gain to a student; the mapping lives in `check_consistency.NAMESPACES` |
+| Part V figures | **done** | `figures_ir.py` (L19), `figures_dense.py` (L20), `figures_recsys.py` (L21–22); keys `l19_`, `l20_`, `rec21_`, `rec22_` |
 
 ### Lectures
 
@@ -324,27 +341,27 @@ Deck = `slides/lecture-NN.html`, Notebook = `notebooks/lecture-NN.ipynb`.
 *Lectures 1-3 are complete through all five steps of the routine, site included.*
 | 2 | The end-to-end project | 2 | housing | old L1+L2 | **done** | **done** |
 | 3 | Classification and its metrics | 3 | MNIST | old L3+L4 | **done** | **done** |
-| 4 | Training models | 4 | Titanic | old L5 | todo | todo |
-| 5 | Regularisation and bias–variance | 4 | Titanic | old L6 | todo | todo |
-| 6 | Decision trees | 5 | CoverType | old L7 | todo | todo |
-| 7 | Ensembles and random forests | 6 | CoverType | old L8 | todo | todo |
-| 8 | Dimensionality reduction and unsupervised | 7–8 | Olivetti | old L9+L10 | todo | todo |
-| 9 | Neural networks, from the perceptron up | 9 | Fashion-MNIST | old L11 | todo | todo |
-| 10 | PyTorch | 10 | Fashion-MNIST | old L12 | todo | todo |
-| 11 | Training deep networks | 11 | CIFAR-10 | old L13+L14 | todo | todo |
-| 12 | Convolutional networks | 12 | Flowers102 | old L15 | todo | todo |
-| 13 | Transfer learning | 12 | Flowers102 | old L16 | todo | todo |
-| 14 | Detection and segmentation | 12 | COCO | old L17+L18 | todo | todo |
-| 15 | Time series | 13 | Chicago transit | old L19+L20 | todo | todo |
-| 16 | Recurrent networks | 13 | Chicago transit | old L20 | todo | todo |
-| 17 | Text | 14 | IMDb | old L21 | todo | todo |
-| 18 | Attention and transformers | 14–15 | IMDb | old L22 | todo | todo |
-| 19 | IR: the lexical foundation | notes | SciFact | **new** | todo | todo |
-| 20 | IR: dense retrieval | notes | SciFact | **new** | todo | todo |
-| 21 | RecSys: from ratings to factors | notes | MovieLens | **new** | todo | todo |
-| 22 | RecSys: neural, evaluated honestly | notes | MovieLens | **new** | todo | todo |
-| 23 | Vision transformers and multimodal retrieval | 15–16 | COCO | old L23 | todo | todo |
-| 24 | Generation, RAG, and closing | 15–16 | COCO + V | old L24 | todo | todo |
+| 4 | Training models | 4 | Titanic | old L5 | **done** | **done** |
+| 5 | Regularisation and bias–variance | 4 | Titanic | old L6 | **done** | **done** |
+| 6 | Decision trees | 5 | CoverType | old L7 | **done** | **done** |
+| 7 | Ensembles and random forests | 6 | CoverType | old L8 | **done** | **done** |
+| 8 | Dimensionality reduction and unsupervised | 7–8 | Olivetti | old L9+L10 | **done** | **done** |
+| 9 | Neural networks, from the perceptron up | 9 | Fashion-MNIST | old L11 | **done** | **done** |
+| 10 | PyTorch | 10 | Fashion-MNIST | old L12 | **done** | **done** |
+| 11 | Training deep networks | 11 | CIFAR-10 | old L13+L14 | **done** | **done** |
+| 12 | Convolutional networks | 12 | Flowers102 | old L15 | **done** | **done** |
+| 13 | Transfer learning | 12 | Flowers102 | old L16 | **done** | **done** |
+| 14 | Detection and segmentation | 12 | COCO | old L17+L18 | **done** | **done** |
+| 15 | Time series | 13 | Chicago transit | old L19+L20 | **done** | **done** |
+| 16 | Recurrent networks | 13 | Chicago transit | old L20 | **done** | **done** |
+| 17 | Text | 14 | IMDb | old L21 | **done** | **done** |
+| 18 | Attention and transformers | 14–15 | IMDb | old L22 | **done** | **done** |
+| 19 | IR: the lexical foundation | notes | SciFact | **new** | **done** | **done** |
+| 20 | IR: dense retrieval | notes | SciFact | **new** | **done** | **done** |
+| 21 | RecSys: from ratings to factors | notes | MovieLens | **new** | **done** | **done** |
+| 22 | RecSys: neural, evaluated honestly | notes | MovieLens | **new** | **done** | **done** |
+| 23 | Vision transformers and multimodal retrieval | 15–16 | COCO | old L23 | **done** | **done** |
+| 24 | Generation, RAG, and closing | 15–16 | COCO + V | old L24 | **done** | **done** |
 
 ### Carried-over debts
 
@@ -353,8 +370,9 @@ Things noticed during the rebuild that are not yet fixed.
 - Old decks and notebooks 2–24 still describe Build/Fix, planted defects,
   "commit a number", the twelve threads and the weak-prompt device. Every one is
   rewritten as its row above is worked.
-- `notebooks/checkpoints/sorter.pt` — tracked 1 MB model from an old notebook.
-  Delete when the notebook that produced it is rebuilt.
+- ~~`notebooks/checkpoints/sorter.pt`~~ — resolved. It is not tracked:
+  `notebooks/checkpoints/` is in `.gitignore`, and the file is an *output* of
+  Lecture 10's notebook rather than a source artefact. Nothing to delete.
 - **Check every deck for claims that describe the old delivery model**, not just
   the old structure. Lecture 1 shipped with four: "you will not type most of the
   code in this course", "a loop, run out loud, every lecture", "rule of the
@@ -365,8 +383,8 @@ Things noticed during the rebuild that are not yet fixed.
 - All 24 notebooks were regenerated, so the three-line prompt annotation is
   already gone from every one of them. Their **prose** still describes Build/Fix
   and planted defects; that goes lecture by lecture.
-- `assets/figures/d-buildfix.svg` is now unreferenced. Delete once no deck
-  cites it.
+- ~~`assets/figures/d-buildfix.svg`~~ — resolved. No deck cites it and the file
+  is gone.
 - `tools/deckkit.py` — new: slide-level surgery on a deck, which is how a
   lecture is converted without retyping the slides that survive.
 - `tools/figures_app02.py` … `figures_app12.py` are named by the old
