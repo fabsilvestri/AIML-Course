@@ -42,9 +42,10 @@ run it again, until it is clean. See §7 of AUTHORING.md.
 | lecture | first run | after fixes | status |
 |---|---|---|---|
 | 1 | 4 | **0** | clean |
-| 2 | 28 → 24 → 9 | in progress | fixing |
+| 2 | 28 → 24 → 9 → 3 | **0** | clean |
 | 3 | not yet run | | |
-| 8 | not yet run (draft at `lecture-08-NEW`) | | |
+| 4–7 | drafted by agent; namespaces now mapped | | |
+| 8 | draft at `lecture-08-NEW`; rename before checking | | |
 
 The fixes are almost never "correct a wrong number". They are "the notebook
 never computed this at all" — a slide asserting something no cell produces. So
