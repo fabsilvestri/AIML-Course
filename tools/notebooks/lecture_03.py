@@ -800,9 +800,14 @@ print(f"{'ROC AUC':28s}{roc_auc_score(y_train_5, y_scores):>10.4f}"
       f"{roc_auc_score(y_train_5, f_scores):>10.4f}")
 print(f"{'average precision':28s}{average_precision_score(y_train_5, y_scores):>10.4f}"
       f"{average_precision_score(y_train_5, f_scores):>10.4f}")
-print(f"{'recall at 90% precision':28s}"
-      f"{recalls[(precisions >= 0.90).argmax()]:>10.4f}"
-      f"{f_rec[(f_prec >= 0.90).argmax()]:>10.4f}")
+sgd_at90    = recalls[(precisions >= 0.90).argmax()]
+forest_at90 = f_rec[(f_prec >= 0.90).argmax()]
+print(f"{'recall at 90% precision':28s}{sgd_at90:>10.4f}{forest_at90:>10.4f}")
+
+# The row the brief is about, so state the gap rather than leaving it to be
+# eyeballed. Computed from the two numbers just printed -- never typed in.
+print(f"\\nrecall at 90% precision improves by "
+      f"{100 * (forest_at90 - sgd_at90):.2f} points")
 '''),
         md("""
 Accuracy would call that a 1.87-point improvement, which reads as polish. The

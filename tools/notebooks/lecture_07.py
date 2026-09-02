@@ -1,13 +1,24 @@
 #!/usr/bin/env python3
 """
-Lecture 8 — Retrain it and watch it change. Fix, CoverType, Géron Ch. 5–6.
+Lecture 7 — Ensembles and random forests. CoverType, Géron Ch. 6.
 
 Exports build() -> list[cell]; tools/make_notebooks.py wraps it.
 
-Structure mirrors the deck: thread -> diagnosis -> repair -> re-measure ->
-red-team. Every import this notebook needs is in its own setup cell: a notebook
-that only runs because the previous one is still in the kernel is not
-reproducible.
+Structure mirrors the deck: rebuild the previous lecture's tree from the seed ->
+check the variance formula on synthetic predictors -> build the four ensembles
+-> measure rho on twenty disjoint training sets and hold the formula to it ->
+count what it cost -> feature importance, with a control -> boosting and
+stacking.
+
+Every quantity this notebook prints that also appears on a slide is computed on
+the same rows, with the same seed, at the same scale as tools/figures_app04.py:
+200-member pools on the 48,000 training rows, and 20 disjoint training sets of
+20,000 rows with 20 members each against a shared 12,000-row test set. A smaller
+version of that experiment would land near the slide numbers without matching
+them, which is worse than either.
+
+Every import this notebook needs is in its own setup cell: a notebook that only
+runs because the previous one is still in the kernel is not reproducible.
 """
 
 from __future__ import annotations
@@ -34,15 +45,16 @@ import matplotlib.pyplot as plt
 
 COVER_NAMES = ["Spruce/Fir", "Lodgepole Pine", "Ponderosa Pine",
                "Cottonwood/Willow", "Aspen", "Douglas-fir", "Krummholz"]
+AUDITABLE_LEAF = 20            # the previous lecture's brief, not a tuned value
 
 cover = fetch_covtype(as_frame=True)              # ~5 s from the local cache
 X, _, y, _ = train_test_split(cover.data, cover.target, train_size=60_000,
                               stratify=cover.target, random_state=RANDOM_STATE)
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, stratify=y, random_state=RANDOM_STATE)
-del cover
+del cover, X, y
 
-tree = DecisionTreeClassifier(max_depth=8, min_samples_leaf=1,
+tree = DecisionTreeClassifier(max_depth=8, min_samples_leaf=AUDITABLE_LEAF,
                               random_state=RANDOM_STATE).fit(X_train, y_train)
 tree_acc = tree.score(X_test, y_test)
 baseline = DummyClassifier(strategy="most_frequent").fit(
@@ -55,129 +67,123 @@ print(f"depth-8 tree {tree_acc:.1%}   constant baseline {baseline:.1%}")
 
 
 def build() -> list:
-    cells = header(
-        8, "Retrain it and watch it change", "fix", "Chapters 5 & 6",
-        thread="impurity, and why averaging reduces variance")
+    cells = header(7, "Ensembles and random forests", "", "Chapter 6")
 
     cells += [
-        md("## 1 · Setup and where we left off"), SETUP_PROMPT, SETUP, prompt(
-                                                                label="rebuild the previous lecture's state",
-                                                                input="the same dataset, the same seed",
-                                                                output="the identical 48,000 / 12,000 split, the depth-8 tree, and the constant baseline",
-                                                                constraint="reproduce the split from the SEED, not by loading anything the previous notebook saved",
-                                                                check="assert the two sizes — if the split differs, every comparison in this notebook is against a different model. `del cover` after splitting. 250 MB held for no reason is how a free runtime dies three cells later, blaming the wrong cell."),
-                                                         REBUILD,
+        md("""
+Everything on Lecture 7's slides, on the same rows and with the same seed as the
+figures: four 200-member ensembles on the 48,000 training patches, twenty
+disjoint training sets of 20,000 rows for the correlation experiment, and the
+decoy column that exposes what impurity importance is measuring.
+
+The derivation is checked twice — once on synthetic predictors with a $\\rho$ you
+choose, and once against the four real ensembles, where the formula has to
+predict a variance it was never fitted to.
+
+Runs on free CPU. It rebuilds the previous lecture's split from the seed, so
+nothing has to be carried across. The whole notebook is roughly eight minutes on
+Colab's two cores; the slow cells say so, and the numbers they report are one
+machine's and will not be yours.
+"""),
+
+        md("## 1 · Setup and where we left off"), SETUP_PROMPT, SETUP,
+        prompt(
+            label="rebuild the previous lecture's state",
+            input="the same dataset, the same seed",
+            output="the identical 48,000 / 12,000 split, the depth-8 tree with a "
+                   "minimum leaf of 20, and the constant baseline",
+            constraint="reproduce the split from the SEED, not by loading "
+                       "anything the previous notebook saved",
+            check="assert the two sizes — if the split differs, every comparison "
+                  "in this notebook is against a different model. The tree "
+                  "accuracy must reproduce the previous lecture's to the last "
+                  "decimal; if it does not, stop here",
+            **{"try": "change `RANDOM_STATE` to 0. Every number in this notebook "
+                      "moves by a few tenths of a point, and none of them can be "
+                      "compared with the slides any more"}),
+        REBUILD,
 
         md("""
-## 2 · Thread 4, part one — Gini and entropy
+## 2 · The result we are carrying forward
 
-CART minimises **Gini impurity**, $G = 1 - \\sum_k p_k^2$. Scikit-Learn offers
-**entropy**, $H = -\\sum_k p_k \\log_2 p_k$, instead. Both are zero exactly at
-purity and maximal at uniformity. Géron says the choice usually makes little
-difference.
+The previous lecture ended by refitting that tree on twenty different 90%
+subsamples of the same training rows. Reproduce it here in one cell, because the
+whole of today is a response to it — and because we will run the same
+measurement on an ensemble at the end.
 
-That is a claim about behaviour, and we have a dataset. Plot the two first.
+⏱ **about 30 seconds** — twenty fits on 43,200 rows each.
 """),
         prompt(
-            label="Gini and entropy, drawn before they are compared",
-            input="p from 0 to 1",
-            output="both impurity curves, entropy halved to put them on one scale, and their difference",
-            constraint="stop short of 0 and 1 — `log2(0)` is a warning and a NaN, and the NaN then silently propagates into the difference plot",
-            check="when two quantities are on different scales, rescale before comparing shapes and say what you divided by. The `/2` here is in the legend for exactly that reason."),
+            label="⏱ 30 s — the instability, reproduced",
+            input="twenty 90% subsamples of the training rows",
+            output="the spread of the accuracy, and the pairwise disagreement "
+                   "over all 190 pairs of prediction vectors",
+            constraint="the SAME twenty seeds the previous lecture used, so the "
+                       "two notebooks are measuring the same twenty trees",
+            check="20 choose 2 is 190 pairs. Expect the accuracy to move by a "
+                  "fraction of a point and the predictions by an order of "
+                  "magnitude more — a stable metric over an unstable model",
+            **{"try": "compare the accuracies pairwise instead of the "
+                      "predictions. The spread is under a point and tells you "
+                      "nothing about the substitutions underneath it"}),
         code('''
-p = np.linspace(1e-9, 1 - 1e-9, 400)
-gini = 2 * p * (1 - p)
-ent = -(p * np.log2(p) + (1 - p) * np.log2(1 - p))
+tree_preds = []
+for seed in range(20):
+    Xs, _, ys, _ = train_test_split(X_train, y_train, train_size=0.9,
+                                    stratify=y_train, random_state=1000 + seed)
+    t20 = DecisionTreeClassifier(max_depth=8, min_samples_leaf=AUDITABLE_LEAF,
+                                 random_state=RANDOM_STATE).fit(Xs, ys)
+    tree_preds.append(t20.predict(X_test))
 
-fig, ax = plt.subplots(1, 2, figsize=(11, 3.4))
-ax[0].plot(p, gini, label="Gini  2p(1-p)")
-ax[0].plot(p, ent, label="entropy  H(p), bits")
-ax[0].plot(p, ent / 2, "--", label="entropy / 2")
-ax[0].set_xlabel("p"); ax[0].set_ylabel("impurity"); ax[0].legend(fontsize=8)
-ax[1].plot(p, ent / 2 - gini, color="firebrick")
-ax[1].axhline(0, lw=1, color="grey")
-ax[1].set_xlabel("p"); ax[1].set_ylabel("entropy/2 - Gini")
-plt.tight_layout(); plt.show()
+P = np.array(tree_preds)
+tree_disagree = np.array([(P[i] != P[j]).mean()
+                          for i in range(20) for j in range(i + 1, 20)])
+assert len(tree_disagree) == 190
 
-gap = (ent / 2 - gini)
-print(f"largest gap {gap.max():.4f} at p = {p[gap.argmax()]:.3f}")
+print(f"single tree, pairwise disagreement  {tree_disagree.mean():.1%}")
+print(f"patches all 20 trees agree on       {(P == P[0]).all(axis=0).mean():.1%}")
 '''),
         md("""
-Same zeros, same maximum, different shoulders: entropy penalises a nearly-pure
-node more heavily. Now measure whether that changes anything, **paired** — both
-criteria on the same resample each time, so the resample-to-resample noise
-cancels.
-
-⏱ **about 40 seconds** — twenty fits.
-"""),
-        prompt(
-            label="⏱ 40 s — does the criterion matter",
-            input="ten resamples of the training set",
-            output="how often the root feature agrees, how often the predictions agree, and the paired accuracy difference",
-            constraint="PAIRED — both criteria on the same resample each time, so the resample-to-resample noise cancels",
-            check="'statistically detectable' and 'worth acting on' are different claims needing different evidence. Report the effect size beside the sign count, always."),
-        code('''
-rows = []
-for seed in range(10):
-    Xs, _, ys, _ = train_test_split(X_train, y_train, train_size=0.8,
-                                    stratify=y_train, random_state=seed)
-    rec = {}
-    for crit in ("gini", "entropy"):
-        t = DecisionTreeClassifier(criterion=crit, max_depth=8,
-                                   random_state=RANDOM_STATE).fit(Xs, ys)
-        rec[crit] = t.score(X_test, y_test)
-        rec[crit + "_root"] = int(t.tree_.feature[0])
-        rec[crit + "_pred"] = t.predict(X_test)
-    rec["agree"] = float((rec["gini_pred"] == rec["entropy_pred"]).mean())
-    rows.append(rec)
-
-diff = np.array([r["entropy"] - r["gini"] for r in rows]) * 100
-same_root = sum(r["gini_root"] == r["entropy_root"] for r in rows)
-
-print(f"same root feature      {same_root} of {len(rows)} resamples")
-print(f"predictions agreeing   {np.mean([r['agree'] for r in rows]):.1%}")
-print(f"entropy - gini         {diff.mean():+.2f} +/- {diff.std():.2f} points")
-print(f"resamples entropy won  {(diff > 0).sum()} of {len(rows)}")
-'''),
-        md("""
-Three statements, all true, and only the third is a recommendation:
-
-1. The effect is **real** — the sign is consistent, and gini wins on 8 of the
-   10 resamples.
-2. The effect is **tiny** — a fraction of a point, against the several points
-   `max_depth` was worth in the previous lecture.
-3. So **do not spend your tuning budget here.** Leave the default.
-
-"Statistically detectable" and "worth acting on" are different claims and need
-different evidence.
+That is **variance** in the sense of the bias–variance decomposition: sensitivity
+of the fitted function to the particular training sample. The rest of this
+notebook is one question — what does averaging do to variance? — answered first
+on paper and then on this dataset.
 """),
 
         md("""
-## 3 · Thread 4, part two — the variance of an average
+## 3 · The mathematics — the variance of an average
 
-Forget trees for ten minutes. You have $n$ predictors of the same quantity, each
-with variance $\\sigma^2$, and you average them. Almost everyone answers
-$\\sigma^2/n$, and that is only valid when they are uncorrelated.
+You have $n$ predictors of the same quantity, each with variance $\\sigma^2$, and
+you average them. Almost everyone answers $\\sigma^2/n$, and that step is valid
+only when they are uncorrelated.
 
 For **identically distributed** predictors with common pairwise correlation
-$\\rho$:
+$\\rho$, expand the variance of the sum as a double sum of covariances. It has
+$n$ diagonal terms of $\\sigma^2$ and $n(n-1)$ off-diagonal terms of
+$\\rho\\sigma^2$, so
 
 $$\\operatorname{Var}\\!\\left(\\frac{1}{n}\\sum_t f_t\\right)
   = \\frac{1}{n^2}\\Big[n\\sigma^2 + n(n-1)\\rho\\sigma^2\\Big]
-  = \\rho\\sigma^2 + \\frac{(1-\\rho)\\sigma^2}{n}$$
-
-There are $n$ diagonal terms of $\\sigma^2$ and $n(n-1)$ off-diagonal terms of
-$\\rho\\sigma^2$ in the double sum; that is the whole derivation.
+  = \\rho\\sigma^2 + \\frac{(1-\\rho)\\sigma^2}{n}.$$
 
 **Averaging destroys the independent component and leaves the correlated one
 completely untouched.** Check it numerically before believing it.
 """),
         prompt(
             label="the variance of an average, checked numerically",
-            input="n predictors with unit variance and common pairwise correlation ρ",
-            output="the measured variance of their average, beside ρ + (1−ρ)/n",
-            constraint="build the correlation from a SHARED component plus an independent one — √ρ·shared + √(1−ρ)·own gives exactly the structure the formula assumes",
-            check="assert measured and predicted agree to within 0.02, at every ρ and every n. Anything that lowers ρ by making individual members worse is a trade, not a free lunch — σ² appears in BOTH terms of the formula."),
+            input="n predictors with unit variance and common pairwise "
+                  "correlation rho",
+            output="the measured variance of their average, beside "
+                   "rho + (1-rho)/n",
+            constraint="build the correlation from a SHARED component plus an "
+                       "independent one — sqrt(rho)*shared + sqrt(1-rho)*own has "
+                       "exactly the covariance structure the formula assumes, "
+                       "and nothing else does",
+            check="at rho = 0 the measured variance must fall like 1/n; at any "
+                  "rho > 0 it must flatten onto rho. Work out the n = 1 column "
+                  "before running: it is 1.0 for every rho",
+            **{"try": "rho = 1.0 with n = 50. The measured variance stays at 1 — "
+                      "fifty identical predictors are one predictor"}),
         code('''
 def correlated(n, rho, draws, rng):
     """n predictors, unit variance, common pairwise correlation rho."""
@@ -211,146 +217,72 @@ trade, not a free lunch: $\\sigma^2$ appears in both terms.
 """),
 
         md("""
-## 4 · Diagnose — the question from the end of the last lecture
-
-Your neighbour fitted the same model, same hyperparameters, same seed, to
-*almost* the same training set. How similar are the two sets of rules?
-
-Twenty trees, each on 90% of the same training set, so any two share about 80%
-of their rows.
-
-⏱ **about 30 seconds.**
-"""),
-        prompt(
-            label="⏱ 30 s — twenty nearly-identical training sets",
-            input="twenty 90% subsamples of the same training rows",
-            output="the accuracy of each tree",
-            constraint="same hyperparameters and same estimator seed every time — only the ROWS change, so any difference is attributable to the data",
-            check="assert twenty prediction vectors of 12,000 each before anything is compared. A spread of about a point across twenty refits. Watching only the headline you would conclude the model is completely stable, and this is the flattering half of the answer."),
-        code('''
-trees, preds, roots, accs = [], [], [], []
-for seed in range(20):
-    Xs, _, ys, _ = train_test_split(X_train, y_train, train_size=0.9,
-                                    stratify=y_train, random_state=1000 + seed)
-    t = DecisionTreeClassifier(max_depth=8, min_samples_leaf=1,
-                               random_state=RANDOM_STATE).fit(Xs, ys)
-    trees.append(t)
-    preds.append(t.predict(X_test))
-    roots.append((int(t.tree_.feature[0]), round(float(t.tree_.threshold[0]), 1)))
-    accs.append(t.score(X_test, y_test))
-
-accs = np.array(accs)
-assert len(preds) == 20 and all(len(p) == 12_000 for p in preds)
-print(f"accuracy  mean {accs.mean():.2%}  sd {accs.std():.2%}  "
-      f"({accs.min():.2%} - {accs.max():.2%})")
-'''),
-        md("""
-A spread of about a point across twenty refits. Watching only the headline
-number, you would conclude the model is completely stable.
-
-That is the flattering half. Now the other one.
-"""),
-        prompt(
-            label="the other half of the answer",
-            input="the twenty prediction vectors",
-            output="pairwise disagreement across all 190 pairs, and the share of patches all twenty agree on",
-            constraint="compare PREDICTIONS, not accuracies — two models with identical accuracy can disagree on one patch in eleven",
-            check="a stable metric is not a stable model — it is evidence you measured the wrong thing. If you make per-instance claims, test per-instance stability."),
-        code('''
-P = np.array(preds)
-disagree = np.array([(P[i] != P[j]).mean()
-                     for i in range(20) for j in range(i + 1, 20)])
-unanimous = (P == P[0]).all(axis=0).mean()
-
-print(f"pairwise disagreement  {disagree.mean():.1%}  "
-      f"({disagree.min():.1%} - {disagree.max():.1%}) over "
-      f"{len(disagree)} pairs")
-print(f"patches all 20 agree on  {unanimous:.1%}")
-'''),
-        prompt(
-            label="what is stable and what is not",
-            input="the twenty trees",
-            output="the root feature, the number of distinct root thresholds, the leaf counts and the columns consulted",
-            constraint="separate the root FEATURE from the root THRESHOLD — the feature is the same every time and the threshold is not",
-            check="report stability at the level at which you make claims. Stable roots justify a statement about elevation; they justify nothing about a parcel."),
-        code('''
-from collections import Counter
-
-print("root feature:", {X_train.columns[f]: c
-                        for (f, _), c in Counter(roots).items()})
-print("distinct root thresholds:", len({thr for _, thr in roots}))
-print("leaves per tree:", min(t.get_n_leaves() for t in trees), "-",
-      max(t.get_n_leaves() for t in trees))
-print("columns consulted:",
-      min(len({int(f) for f in t.tree_.feature if f >= 0}) for t in trees), "-",
-      max(len({int(f) for f in t.tree_.feature if f >= 0}) for t in trees))
-'''),
-        md("""
-### The diagnosis
-
-The part you put on a slide is stable — the root is the same feature every time.
-The part that decides is not: two trees with the same accuracy disagree about one
-prediction in eleven.
-
-Both results are consistent. A tree is a **hierarchy**: the root split is chosen
-from 48,000 patches and wins by a wide margin, but a node eight levels down was
-chosen from a few hundred, where two candidates are often separated by a hair.
-Change one row and everything below that node is a different tree. Accuracy is an
-average over 12,000 patches, and averages hide substitutions.
-
-**A stable metric is not a stable model. It is evidence that you measured the
-wrong thing.**
-
-This is *variance* in the sense of the bias–variance decomposition, and the
-thread tells us exactly what to do about variance: average.
-"""),
-
-        md("""
-## 5 · Fix — bagging
+## 4 · Bagging, and a validation set for nothing
 
 Draw rows with replacement, fit a tree, repeat. Each bootstrap sample contains
-about 63% of the distinct rows. The members are **unconstrained** trees: we want
-low bias from each and we are about to average the variance away.
+about 63% of the distinct rows, because a given row is missed by all $m$ draws
+with probability $(1-1/m)^m \\to e^{-1} \\approx 0.368$.
 
-⏱ **about 40 seconds** — 100 unconstrained trees on 48,000 rows.
+The members are **unconstrained** trees. Averaging cannot touch bias, so the
+members must not have any to spare — which is the opposite of the previous
+lecture's advice and follows from the same formula.
+
+⏱ **about 40 seconds** — 200 unconstrained trees on 48,000 rows.
 """),
         prompt(
-            label="⏱ 40 s — bagging",
-            input="100 unconstrained trees, each on a bootstrap sample",
+            label="⏱ 40 s — bagging, with out-of-bag scoring",
+            input="200 unconstrained trees, each on a bootstrap sample",
             output="the out-of-bag score and the test score",
-            constraint="the members are UNCONSTRAINED — we want low bias from each and we are about to average the variance away",
-            check="oob and test should be close. If oob is much better, something in the pipeline saw the out-of-bag rows anyway."),
+            constraint="the members are UNCONSTRAINED — no `max_depth`, no "
+                       "`min_samples_leaf` — because we want low bias from each "
+                       "and are about to average the variance away",
+            check="out-of-bag and test should agree to within a few tenths of a "
+                  "point. If out-of-bag is much BETTER, something in the "
+                  "pipeline saw the out-of-bag rows anyway, and the gap is a "
+                  "leakage detector you got for free",
+            **{"try": "`bootstrap=False`. `oob_score=True` then raises, because "
+                      "with no bootstrap there are no out-of-bag rows at all"}),
         code('''
 bag = BaggingClassifier(DecisionTreeClassifier(random_state=RANDOM_STATE),
-                        n_estimators=100, bootstrap=True, oob_score=True,
-                        random_state=RANDOM_STATE, n_jobs=-1).fit(X_train, y_train)
+                        n_estimators=200, max_features=1.0, bootstrap=True,
+                        oob_score=True, random_state=RANDOM_STATE,
+                        n_jobs=-1).fit(X_train, y_train)
 
 print(f"out-of-bag  {bag.oob_score_:.1%}")
 print(f"test        {bag.score(X_test, y_test):.1%}")
+print(f"one tree    {tree_acc:.1%}   constant {baseline:.1%}")
 '''),
-        md("""
-A given row is missed by one draw with probability $1 - 1/m$, so by all $m$ draws
-with probability $(1-1/m)^m \\to e^{-1} \\approx 0.368$. Those out-of-bag rows give
-a generalisation estimate with no validation split and no extra fits. It replaces
-the *validation* set, not the test set.
 
+        md("""
 ### One trap, worth ten minutes of your life
 
-⚠ **Read before running.** This is the shape question, and it costs an afternoon
-the first time.
+Every ensemble in scikit-learn re-encodes `y` as positions `0..k-1` before handing
+it to its members, so a member's `predict` returns **positions**, not cover types.
+Comparing them with `y_test` directly gives a plausible-looking small number
+rather than an exception.
 """),
         prompt(
-            label="⚠ the trap that costs an afternoon",
+            label="the trap that costs an afternoon",
             input="one member of the ensemble and the test set",
-            output="that member's accuracy computed naively, and again mapped through `classes_`",
-            constraint="show the WRONG number first — it is plausible and small rather than an exception, which is what makes it expensive",
-            check="assert the mapped score beats the naive one, so the rescue is demonstrated rather than asserted. Reviewer question 5 — what is the default you did not ask for. Print `ensemble.classes_` beside `member.classes_` any time you reach inside an ensemble."),
+            output="that member's accuracy computed naively, and again mapped "
+                   "through `classes_`",
+            constraint="show the WRONG number first — it is plausible and small "
+                       "rather than an exception, which is what makes it "
+                       "expensive",
+            check="the labels are 1..7 and the positions 0..6, so a naive "
+                  "comparison is right only where a patch's class happens to sit "
+                  "one below its own index — about one time in seven by chance. "
+                  "Predict roughly 8% before running",
+            **{"try": "print `bag.classes_[bag.estimators_[0].predict(...)]` "
+                      "beside the raw output for ten patches. The two differ by "
+                      "exactly one, everywhere"}),
         code('''
 member = bag.estimators_[0]
+Xte_arr = X_test.to_numpy()          # members were fitted on arrays, not frames
+
 print("ensemble labels:", bag.classes_)
 print("member labels:  ", member.classes_)
 
-Xte_arr = X_test.to_numpy()
 naive = (member.predict(Xte_arr) == y_test).mean()
 mapped = (bag.classes_[member.predict(Xte_arr).astype(int)] == y_test).mean()
 
@@ -358,64 +290,76 @@ print(f"\\ncompared directly with y_test: {naive:.1%}   <- looks like a bad mode
 print(f"mapped through classes_:       {mapped:.1%}   <- the truth")
 assert mapped > naive, "the mapping should rescue the score"
 '''),
-        md("""
-Every ensemble in Scikit-Learn re-encodes `y` as positions `0..k-1` before
-handing it to its members, so a member's `predict` returns **positions**, not
-cover types. Comparing them with `y_test` directly gives a plausible-looking
-small number rather than an exception.
-
-Reviewer question 5: *what is the default I did not ask for?* This one.
-"""),
 
         md("""
-## 6 · Random forests and extra-trees
+## 5 · Three ways to decorrelate the members
 
 Bagging randomises the **rows**. A random forest also randomises the
-**columns**: at every node, only $\\lfloor\\sqrt{54}\\rfloor = 7$ features are
-considered. Extra-trees also randomises the **thresholds** — drawn at random
-rather than searched for.
+**columns**: at every node only $\\lfloor\\sqrt{54}\\rfloor = 7$ features are
+considered. Extra-trees also randomises the **thresholds**, drawn at random
+rather than searched for — and scikit-learn's default turns the bootstrap
+*off* when it does, so the thresholds replace it rather than joining it.
 
 All three exist to reduce one quantity: $\\rho$.
 
-⏱ **about 40 seconds for the three.**
+⏱ **about 90 seconds** for the four pools together.
 """),
         prompt(
-            label="⏱ 40 s — three ways to decorrelate",
-            input="bagging, random forest, extra-trees with and without the bootstrap",
-            output="each ensemble's accuracy, and the accuracy of ONE of its members",
-            constraint="report the member column too — every mechanism that makes members less alike also makes each of them worse, and that is the trade the formula warned about",
-            check="bagging randomises ROWS, forests also randomise COLUMNS, extra-trees also randomises THRESHOLDS. All three exist to reduce one quantity."),
+            label="⏱ 90 s — four pools of 200 members",
+            input="bagging, random forest, extra-trees with and without the "
+                  "bootstrap",
+            output="each ensemble's accuracy at 1, 10 and 200 members, and the "
+                   "accuracy of ONE of its members",
+            constraint="accumulate the members' predicted probabilities so the "
+                       "accuracy at 10 and at 200 come from the SAME fitted "
+                       "pool — refitting a 10-member ensemble separately would "
+                       "be a different experiment",
+            check="a member's probability columns are a subset of the "
+                  "ensemble's, because a bootstrap can drop a rare class "
+                  "entirely from one member. Index by `est.classes_`, not by "
+                  "position, or the columns silently misalign",
+            **{"try": "read the member column against the ensemble column. Every "
+                      "mechanism that makes members less alike also makes each "
+                      "one worse — that is the trade the formula warned about"}),
         code('''
-ensembles = {
-    "bagging": bag,
-    "forest": RandomForestClassifier(n_estimators=100, max_features="sqrt",
-                                     random_state=RANDOM_STATE, n_jobs=-1),
-    "extra": ExtraTreesClassifier(n_estimators=100, max_features="sqrt",
-                                  bootstrap=False, random_state=RANDOM_STATE,
-                                  n_jobs=-1),
-    "extra_bs": ExtraTreesClassifier(n_estimators=100, max_features="sqrt",
-                                     bootstrap=True, random_state=RANDOM_STATE,
-                                     n_jobs=-1),
-}
-for name, m in ensembles.items():
-    if name != "bagging":
-        m.fit(X_train, y_train)
-    member_acc = (m.classes_[m.estimators_[0].predict(X_test.to_numpy()).astype(int)]
-                  == y_test).mean()
-    print(f"{name:10s} ensemble {m.score(X_test, y_test):.1%}   "
-          f"one member {member_acc:.1%}")
+def make_ensemble(kind, n, seed):
+    """One ensemble of `n` members. `kind` names what it randomises."""
+    if kind == "bagging":
+        return BaggingClassifier(DecisionTreeClassifier(random_state=seed),
+                                 n_estimators=n, max_features=1.0,
+                                 bootstrap=True, random_state=seed, n_jobs=-1)
+    if kind == "forest":
+        return RandomForestClassifier(n_estimators=n, max_features="sqrt",
+                                      random_state=seed, n_jobs=-1)
+    # sklearn's extra-trees default is bootstrap=False; "extra_bs" turns it back
+    # on, and the pair separates the thresholds from the bootstrap
+    return ExtraTreesClassifier(n_estimators=n, max_features="sqrt",
+                                bootstrap=(kind == "extra_bs"),
+                                random_state=seed, n_jobs=-1)
+
+
+KINDS = ["bagging", "forest", "extra", "extra_bs"]
+pools, acc_at = {}, {}
+
+for kind in KINDS:
+    m = bag if kind == "bagging" else make_ensemble(kind, 200,
+                                                    RANDOM_STATE).fit(X_train,
+                                                                      y_train)
+    classes = m.classes_
+    votes = np.zeros((len(y_test), len(classes)))
+    at = {}
+    for i, est in enumerate(m.estimators_):
+        cols = np.asarray(est.classes_).astype(int)   # a subset, not a range
+        votes[:, cols] += est.predict_proba(Xte_arr)
+        if i + 1 in (1, 10, 200):
+            at[i + 1] = float((classes[votes.argmax(axis=1)] == y_test).mean())
+    pools[kind], acc_at[kind] = m, at
+    print(f"{kind:9s} one member {at[1]:.1%}   10 members {at[10]:.1%}   "
+          f"200 members {at[200]:.1%}")
 '''),
-        md("""
-Note the second column. Every mechanism that makes the members less alike also
-makes each of them **worse**. That is the trade the formula warned about.
-
-Scikit-Learn's default for extra-trees is `bootstrap=False` — the random
-thresholds *replace* the bootstrap rather than joining it. `extra_bs` turns it
-back on, and the pair is what separates the two effects.
-"""),
 
         md("""
-## 7 · Measuring $\\rho$ needs something we do not have
+## 6 · Measuring $\\rho$ needs something we do not have
 
 $\\rho$ is the correlation between two members over the randomness of the **whole
 procedure**, which includes which training set you were handed. Conditional on
@@ -423,58 +367,74 @@ one dataset the members are independent by construction, and $\\rho$ would
 measure as zero.
 
 So the experiment needs several *independent* training sets. CoverType has
-581,012 rows, so we can cut disjoint ones and never reuse a row.
+581,012 rows, so we can cut **20 disjoint sets of 20,000 rows** — 400,000 rows,
+no row reused — and keep 12,000 aside as a shared test set.
 
-⏱ **about 90 seconds.** The lecture's figure uses 20 training sets of 20,000
-rows and 20 members; this is a smaller version of the same experiment, so the
-numbers will be close but not identical.
+⏱ **about 3 minutes** — 4 ensemble kinds x 20 training sets x 20 members.
 """),
         prompt(
-            label="⏱ 90 s — the setup for measuring ρ",
-            input="ten DISJOINT training sets of 15,000 rows and one held-out set",
-            output="a function that fits an ensemble per training set and records every member's correctness on every test patch",
-            constraint="the training sets must be disjoint AND disjoint from the test set — ρ is a correlation over the randomness of the whole procedure, including which training set you were handed",
-            check="assert the pool is exactly K×N_Z rows and shares nothing with the test indices. The disjointness assert. If the training pools overlap, the between-group variance is contaminated and ρ comes out too high for a reason you will not find by reading the formula."),
+            label="⏱ 3 min — twenty disjoint training sets",
+            input="twenty DISJOINT training sets of 20,000 rows and one shared "
+                  "12,000-row test set",
+            output="for each ensemble kind, an array recording whether every "
+                   "member of every ensemble was right about every test patch",
+            constraint="the training sets must be disjoint from each other AND "
+                       "from the test set — rho is a correlation over the "
+                       "randomness of the whole procedure, including which "
+                       "training set you were handed",
+            check="assert the pool is exactly 20 x 20,000 rows and shares no "
+                  "index with the test set, and print both against the 581,012 "
+                  "rows CoverType has. If the pools overlap, the between-group "
+                  "variance is contaminated and rho comes out too high for a "
+                  "reason no amount of reading the formula will find",
+            **{"try": "reuse one training set for all twenty ensembles. tau^2 "
+                      "collapses towards zero and rho with it — which is exactly "
+                      "the mistake this design exists to avoid"}),
         code('''
-K, M, N_Z, N_TE = 10, 10, 15_000, 6_000
+K, M, N_Z, N_TE = 20, 20, 20_000, 12_000
 
-full = fetch_covtype(as_frame=False)
+full = fetch_covtype(as_frame=False)               # arrays: 581,012 x 54
 rng = np.random.default_rng(RANDOM_STATE)
 perm = rng.permutation(len(full.target))
 te, pool = perm[:N_TE], perm[N_TE:N_TE + K * N_Z]
-Xte, yte = full.data[te], full.target[te]
+Xte_big, yte_big = full.data[te], full.target[te]
 
-assert len(pool) == K * N_Z and len(set(pool) & set(te)) == 0
+assert len(pool) == K * N_Z
+assert len(set(pool.tolist()) & set(te.tolist())) == 0, "train and test overlap"
 
-
-def make(kind, n, seed):
-    if kind == "bagging":
-        return BaggingClassifier(DecisionTreeClassifier(random_state=seed),
-                                 n_estimators=n, bootstrap=True,
-                                 random_state=seed, n_jobs=-1)
-    if kind == "forest":
-        return RandomForestClassifier(n_estimators=n, max_features="sqrt",
-                                      random_state=seed, n_jobs=-1)
-    return ExtraTreesClassifier(n_estimators=n, max_features="sqrt",
-                                bootstrap=(kind == "extra_bs"),
-                                random_state=seed, n_jobs=-1)
+print(f"{len(full.target):,} rows available")
+print(f"{K} disjoint training sets x {N_Z:,} rows = {K * N_Z:,}, "
+      f"plus {N_TE:,} held out")
 
 
 def experiment(kind):
+    """S[k, j, i] = 1 when member j of ensemble k is right about patch i."""
     S = np.zeros((K, M, N_TE), dtype=np.float32)
     for k in range(K):
         idx = pool[k * N_Z:(k + 1) * N_Z]
-        m = make(kind, M, 1000 + k).fit(full.data[idx], full.target[idx])
+        m = make_ensemble(kind, M, 1000 + k).fit(full.data[idx],
+                                                 full.target[idx])
         for j, est in enumerate(m.estimators_):
-            S[k, j] = (m.classes_[est.predict(Xte).astype(int)] == yte)
+            S[k, j] = (m.classes_[est.predict(Xte_big).astype(int)] == yte_big)
     return S
 '''),
         prompt(
-            label="ρ, σ², and the prediction",
-            input="the correctness array, ten training sets by ten members by test patches",
-            output="ρ, σ², the measured variance at n=1 and n=10, and the formula's prediction at n=10",
-            constraint="use the ANOVA estimator — between-group variance minus within-group over M — and clamp it at zero, since an unbiased variance estimate can come out negative on small samples",
-            check="the mechanisms are NOT additive. Feature subsampling does most of the work; random thresholds are largely a substitute for the bootstrap. And nothing gets ρ near zero, because all four ensembles ultimately saw the same rows."),
+            label="rho, sigma squared, and the prediction",
+            input="the correctness array, 20 training sets by 20 members by "
+                  "12,000 test patches",
+            output="rho, sigma^2, the measured variance at n = 1 and n = 20, and "
+                   "the formula's prediction at n = 20",
+            constraint="use the ANOVA estimator — between-group variance minus "
+                       "within-group over M — and clamp it at zero, since an "
+                       "unbiased variance estimate can come out negative on "
+                       "small samples",
+            check="measured and predicted must agree in the third decimal place, "
+                  "on all four ensembles, with nothing fitted to make them. That "
+                  "agreement is the whole lecture; if it fails, the design is "
+                  "wrong before the formula is",
+            **{"try": "drop the `- within / M_` correction. tau^2 comes out "
+                      "systematically too large, because the group means are "
+                      "themselves noisy estimates"}),
         code('''
 def decompose(S):
     """Split one member's variance into the part its training set explains."""
@@ -484,28 +444,31 @@ def decompose(S):
     tau2 = np.maximum(between - within / M_, 0.0)      # ANOVA estimator
     sigma2 = tau2 + within
     curve = {n: float(S[:, :n].mean(axis=1).var(axis=0, ddof=1).mean())
-             for n in (1, 2, 5, 10)}
+             for n in (1, 2, 3, 5, 10, 20)}
     return dict(rho=float(tau2.mean() / sigma2.mean()),
                 sigma2=float(sigma2.mean()), tau2=float(tau2.mean()),
                 within=float(within.mean()), curve=curve)
 
 
-dec = {}
-for kind in ("bagging", "forest", "extra", "extra_bs"):
-    dec[kind] = decompose(experiment(kind))
+dec = {kind: decompose(experiment(kind)) for kind in KINDS}
 
-print(f"{'':10s} {'rho':>7s} {'sigma^2':>9s} {'V(1)':>9s} {'V(10)':>9s} "
-      f"{'predicted':>10s}")
+print(f"{'':10s} {'rho':>7s} {'sigma^2':>9s} {'V(1)':>9s} {'V(20)':>9s} "
+      f"{'predicted':>10s} {'removed':>9s} {'floor':>9s}")
 for kind, d in dec.items():
-    pred = d["tau2"] + d["within"] / 10
+    pred = d["tau2"] + d["within"] / 20
+    removed = 1 - d["curve"][20] / d["curve"][1]
     print(f"{kind:10s} {d['rho']:7.3f} {d['sigma2']:9.4f} "
-          f"{d['curve'][1]:9.4f} {d['curve'][10]:9.4f} {pred:10.4f}")
+          f"{d['curve'][1]:9.5f} {d['curve'][20]:9.5f} {pred:10.5f} "
+          f"{removed:9.1%} {d['tau2']:9.5f}")
+
+del full                                   # 250 MB we no longer need
 '''),
         md("""
-The last two columns are the point of the whole lecture: the variance of an
-average of ten members, measured, against
-$\\rho\\sigma^2 + (1-\\rho)\\sigma^2/n$ evaluated at $n = 10$. Nothing was fitted
-to make them agree.
+The last three columns are the point of the whole lecture: the variance of an
+average of twenty members, measured, against
+$\\rho\\sigma^2 + (1-\\rho)\\sigma^2/n$ evaluated at $n = 20$, and the floor
+$\\rho\\sigma^2$ that no amount of averaging reaches below. Nothing was fitted to
+make them agree.
 
 Read the $\\rho$ column carefully. Every variant is below bagging, so the claim
 survives — but the mechanisms are **not additive**. Feature subsampling does most
@@ -520,109 +483,142 @@ given*.
         prompt(
             label="the curve and its floor",
             input="the four decompositions",
-            output="measured variance against n, the fitted curve, and each ρσ² floor",
-            constraint="log y-axis, and draw the floor as a horizontal line per variant — the point of the picture is that the curves flatten onto different floors rather than towards zero",
-            check="plot the measured points and the predicted curve on the same axes. Agreement between two independently computed things is the strongest evidence a notebook can offer."),
+            output="measured variance against n, the predicted curve, and each "
+                   "rho*sigma^2 floor",
+            constraint="log y-axis, and draw the floor as a horizontal line per "
+                       "variant — the point of the picture is that the curves "
+                       "flatten onto different floors rather than towards zero",
+            check="plot the measured points and the predicted curve on the same "
+                  "axes. Agreement between two independently computed things is "
+                  "the strongest evidence a notebook can offer, and it only "
+                  "counts if both are visible",
+            **{"try": "a linear y-axis. The four floors become indistinguishable "
+                      "from zero and the figure stops making its point"}),
         code('''
 fig, ax = plt.subplots(figsize=(7, 3.6))
 for kind, d in dec.items():
     ns = sorted(d["curve"])
     ax.plot(ns, [d["curve"][n] for n in ns], "o", label=kind)
-    nn = np.linspace(1, 10, 60)
+    nn = np.linspace(1, 20, 80)
     ax.plot(nn, d["tau2"] + d["within"] / nn, lw=1.5, alpha=0.7)
     ax.axhline(d["tau2"], ls=":", lw=1)
 ax.set_xlabel("n, members averaged"); ax.set_ylabel("variance of the average")
 ax.set_yscale("log"); ax.legend(fontsize=8)
 plt.tight_layout(); plt.show()
 '''),
+        prompt(
+            label="the uncomfortable table",
+            input="the four decompositions and the four pools",
+            output="rho, one member's accuracy and the ensemble's accuracy, in "
+                   "one table",
+            constraint="sort by rho so the ordering is visible, and put the "
+                       "member accuracy beside it — the point is a "
+                       "correlation the formula does NOT predict",
+            check="the lowest-rho ensemble should NOT be the most accurate. The "
+                  "formula is about variance and says nothing about bias, and "
+                  "every mechanism that lowers rho does so by handicapping the "
+                  "members",
+            **{"try": "add a column of `1 - member_accuracy`. It tracks rho "
+                      "almost exactly, which is the trade stated as a number"}),
+        code('''
+print(f"{'':10s} {'rho':>7s} {'one member':>12s} {'ensemble':>10s}")
+for kind in sorted(KINDS, key=lambda k: -dec[k]["rho"]):
+    print(f"{kind:10s} {dec[kind]['rho']:7.3f} {acc_at[kind][1]:12.1%} "
+          f"{acc_at[kind][200]:10.1%}")
+
+print("\\nThe ensemble with the HIGHEST rho is the most accurate. That is not a")
+print("contradiction: the formula is about variance, accuracy depends on bias")
+print("too, and sigma^2 appears in both of its terms.")
+'''),
 
         md("""
-## 8 · Now the bill
+## 7 · Now the bill
 
-We fixed the variance. Ask what happened to the thing we were hired to deliver.
+We removed the variance. Ask what happened to the thing the agency asked for: a
+human-readable justification for every individual prediction.
 """),
         prompt(
             label="now the bill",
-            input="the forest and the depth-8 tree",
+            input="the 200-tree forest and the depth-8 tree",
             output="total leaves and accuracy for each",
-            constraint="count leaves across ALL 100 members — the justification for one prediction is now 100 decision paths and a vote",
-            check="when a fix improves the metric, check what it did to the REQUIREMENT. They are different objects and only one of them was written down by the customer."),
+            constraint="count leaves across ALL 200 members — the justification "
+                       "for one prediction is now 200 decision paths and a vote",
+            check="the previous lecture's tree has 163 leaves. Divide the "
+                  "forest's total by that before running the cell and you have "
+                  "predicted the order of magnitude: four",
+            **{"try": "count the DISTINCT questions asked across the forest "
+                      "instead. It is smaller than the leaf count and still far "
+                      "beyond anything a person reads"}),
         code('''
-rnd = ensembles["forest"]
+rnd = pools["forest"]
 total_leaves = sum(t.get_n_leaves() for t in rnd.estimators_)
 
-print(f"depth-8 tree     {tree.get_n_leaves():>10,d} leaves   "
-      f"{tree_acc:.1%}")
-print(f"100-tree forest  {total_leaves:>10,d} leaves   "
-      f"{rnd.score(X_test, y_test):.1%}")
-print("\\nThe justification for one prediction is now 100 decision paths "
-      "and a vote.")
+print(f"depth-8 tree     {tree.get_n_leaves():>10,d} leaves   {tree_acc:.1%}")
+print(f"200-tree forest  {total_leaves:>10,d} leaves   "
+      f"{acc_at['forest'][200]:.1%}")
+print(f"\\nbought {100 * (acc_at['forest'][200] - tree_acc):.1f} points of "
+      f"accuracy with {total_leaves // tree.get_n_leaves():,}x the model")
 '''),
         md("""
-There is no technical fix for this. The regulator asked for a model whose every
+There is no technical fix for this. The agency asked for a model whose every
 prediction comes with a human-readable justification, and we have built one that
 is far more accurate and **cannot supply one**. What follows recovers something,
 and it is genuinely less than what was lost.
 """),
 
         md("""
-## 9 · An assistant explains the forest
+## 8 · Feature importance, and the control that exposes it
 
-> *"The forest replaced our decision tree. Show me which features it relies on,
-> so I can put that in the report to the regulator."*
+`feature_importances_` sums, over every node that split on a feature, the
+weighted impurity reduction that split achieved — the $\\Delta I$ of the previous
+lecture, accumulated. It runs, it is fast, and the top of the list is entirely
+sensible.
 
-**⚠ Read before running.** It runs, it is fast, and the top of the list is
-entirely sensible.
+Before trusting any ranking, ask what it would look like on a variable you *know*
+carries no information. Add a column of uniform random numbers and find out.
+Guess where it ranks among the 55 before running the cell.
+
+⏱ **about 30 seconds.**
 """),
         prompt(
-            label="⚠ what the assistant returns",
-            input="'show me which features the forest relies on, for the regulator'",
-            output="the eight largest impurity importances",
-            constraint="print it as returned — it runs, it is fast, and the top of the list is entirely sensible",
-            check="before trusting any ranking, ask what it would look like on a variable you KNOW carries no information. If you cannot answer, add one and find out."),
+            label="⏱ 30 s — the control column",
+            input="the same training and test data plus one column of uniform "
+                  "random numbers",
+            output="the top of the impurity ranking, and where the decoy lands "
+                   "among the 55 columns",
+            constraint="add the decoy to BOTH train and test, and refit — a "
+                       "control added to only one side is not a control, it is a "
+                       "distribution shift",
+            check="the decoy carries no information, so the honest answer is "
+                  "55th. Predict that, then read what impurity importance "
+                  "actually says",
+            **{"try": "make the decoy a 0/1 coin flip instead of a uniform draw. "
+                      "It falls a long way down the ranking — the bias is about "
+                      "how many candidate thresholds a column offers"}),
         code('''
-imp = pd.Series(rnd.feature_importances_, index=X_train.columns)
-print("The measurements the model relies on:")
-print(imp.sort_values(ascending=False).head(8).round(3))
-'''),
-        md("""
-### The review question: what would the answer look like if it were wrong?
-
-Add a **control**. A column of uniform random numbers cannot possibly carry
-information about which trees grow where. Guess where it ranks among the 55
-before running the cell.
-
-⏱ **about 20 seconds.**
-"""),
-        prompt(
-            label="⏱ 20 s — the control",
-            input="the same data plus one column of uniform random numbers",
-            output="where the decoy ranks among the 55 columns",
-            constraint="add the decoy to BOTH train and test, and refit — a control added to only one side is not a control",
-            check="assert the decoy ranks absurdly high, which is the finding rather than a sanity check. A control column costs one line and turns an unfalsifiable ranking into a measurement. Add one to every importance table you produce."),
-        code('''
-rng = np.random.default_rng(RANDOM_STATE)
-X_tr2 = X_train.assign(random_decoy=rng.random(len(X_train)))
-X_te2 = X_test.assign(random_decoy=rng.random(len(X_test)))
+decoy_rng = np.random.default_rng(RANDOM_STATE)
+X_tr2 = X_train.assign(random_decoy=decoy_rng.random(len(X_train)))
+X_te2 = X_test.assign(random_decoy=decoy_rng.random(len(X_test)))
 
 rnd2 = RandomForestClassifier(n_estimators=100, max_features="sqrt",
                               random_state=RANDOM_STATE,
                               n_jobs=-1).fit(X_tr2, y_train)
 
-imp2 = pd.Series(rnd2.feature_importances_, index=X_tr2.columns)
-order = imp2.sort_values(ascending=False)
+imp = pd.Series(rnd2.feature_importances_, index=X_tr2.columns)
+order = imp.sort_values(ascending=False)
 rank = list(order.index).index("random_decoy") + 1
 
-print(f"random_decoy ranks {rank} of {len(imp2)}  "
-      f"(importance {imp2['random_decoy']:.4f})")
-print(f"{(imp2 < imp2['random_decoy']).sum()} real columns rank below it")
+print(order.head(6).round(4).to_string())
+print(f"\\nrandom_decoy ranks {rank} of {len(imp)}  "
+      f"(importance {imp['random_decoy']:.4f})")
+print(f"{(imp < imp['random_decoy']).sum()} real columns rank below it")
+print(f"forest accuracy with the decoy: {rnd2.score(X_te2, y_test):.1%}")
 assert rank < 30, "expected the decoy to rank absurdly high"
 '''),
         md("""
 ### Why impurity importance does that
 
-`feature_importances_` sums, over every node that split on a feature, the
-weighted impurity reduction that split achieved. Two biases follow directly:
+Two biases, both structural:
 
 - **It is measured on the training data.** A split that reduces impurity on the
   rows that chose it will do so whether or not the feature is informative.
@@ -641,46 +637,65 @@ measurement.)*
 """),
         prompt(
             label="⏱ 60 s — the repair",
-            input="the fitted forest and 3,000 HELD-OUT rows",
-            output="permutation importance with its standard deviation",
-            constraint="permute on HELD-OUT data — the whole defect of the impurity version is that it is measured on the rows that chose the splits",
-            check="report the standard deviation. An importance of 0.002 ± 0.004 is zero, and without the second number it reads as a small positive effect."),
+            input="the fitted forest and 4,000 HELD-OUT rows",
+            output="permutation importance with its standard deviation, for the "
+                   "decoy and for the strongest real column",
+            constraint="permute on HELD-OUT data — the whole defect of the "
+                       "impurity version is that it is measured on the rows that "
+                       "chose the splits",
+            check="report the standard deviation. An importance of 0.001 +/- "
+                  "0.002 is zero, and without the second number it reads as a "
+                  "small positive effect. The decoy must land within about half "
+                  "a standard deviation of zero",
+            **{"try": "`n_repeats=1`. The standard deviation is no longer "
+                      "defined and the decoy's single draw is as likely to be "
+                      "positive as negative — the repeats are the measurement, "
+                      "not a refinement of it"}),
         code('''
-sub = slice(0, 3000)
+sub = slice(0, 4000)
 perm = permutation_importance(rnd2, X_te2.iloc[sub], y_test.iloc[sub],
-                              n_repeats=3, random_state=RANDOM_STATE, n_jobs=-1)
+                              n_repeats=5, random_state=RANDOM_STATE, n_jobs=-1)
 
 pi = pd.DataFrame({"mean": perm.importances_mean, "sd": perm.importances_std},
                   index=X_te2.columns).sort_values("mean", ascending=False)
-print(pi.head(8).round(4))
+print(pi.head(6).round(4).to_string())
 print()
-print("random_decoy:")
-print(pi.loc[["random_decoy"]].round(5))
+print("random_decoy, both ways:")
+print(f"  impurity     {imp['random_decoy']:.4f}   (rank {rank} of {len(imp)})")
+print(f"  permutation  {pi.loc['random_decoy', 'mean']:+.5f} +/- "
+      f"{pi.loc['random_decoy', 'sd']:.5f}   (rank "
+      f"{list(pi.index).index('random_decoy') + 1} of {len(pi)})")
 '''),
         prompt(
             label="the two rankings, side by side",
             input="both importance measures on the same twelve columns",
             output="two horizontal bar charts, the decoy coloured differently",
-            constraint="same columns, same order, shared y-axis — the comparison is the figure, and re-sorting each panel independently would destroy it",
-            check="error bars on the right panel. They are what let a reader see that the decoy's bar is not small but absent."),
+            constraint="same columns, same order, shared y-axis — the comparison "
+                       "IS the figure, and re-sorting each panel independently "
+                       "would destroy it",
+            check="error bars on the right panel. They are what let a reader see "
+                  "that the decoy's bar is not small but absent",
+            **{"try": "sort the right panel by its own values. The decoy moves "
+                      "and the two panels can no longer be read across, which is "
+                      "the whole content of the figure"}),
         code('''
 top = order.head(12).index
 fig, ax = plt.subplots(1, 2, figsize=(11, 3.6), sharey=True)
 colours = ["firebrick" if c == "random_decoy" else "steelblue" for c in top]
-ax[0].barh(range(len(top))[::-1], imp2[top], color=colours)
+ax[0].barh(range(len(top))[::-1], imp[top], color=colours)
 ax[0].set_yticks(range(len(top))[::-1], top, fontsize=7)
-ax[0].set_xlabel("impurity importance")
+ax[0].set_xlabel("impurity importance (training data)")
 ax[1].barh(range(len(top))[::-1], pi.loc[top, "mean"], color=colours,
            xerr=pi.loc[top, "sd"])
 ax[1].axvline(0, lw=1, color="grey")
-ax[1].set_xlabel("permutation importance, held out")
+ax[1].set_xlabel("permutation importance (held out)")
 plt.tight_layout(); plt.show()
 '''),
         md("""
 Same model, same columns, same row order. The decoy is near the top on the left
 and indistinguishable from zero on the right.
 
-### What importance can and cannot tell a regulator
+### What importance can and cannot tell the agency
 
 | Question | Can importance answer it? |
 |---|---|
@@ -689,100 +704,125 @@ and indistinguishable from zero on the right.
 | Why was *this* parcel refused? | **no** |
 | Would removing this column hurt? | no — remove it, refit, and measure |
 
-Row three is the regulator's actual question.
+Row three is the agency's actual question.
 """),
 
         md("""
-## 10 · The rest of Chapter 6, briefly
+## 9 · Boosting, and what practitioners reach for
 
 Everything above trains members **in parallel** and averages them. **Boosting**
-trains them in sequence, each correcting its predecessor — so today's formula
-does not apply to it, and it reduces *bias* rather than variance.
+trains them in sequence, each correcting its predecessor — so the members are
+neither identically distributed nor exchangeable, today's formula does not apply
+to it, and it reduces *bias* rather than variance.
 
-⏱ **about 60 seconds.**
+`AdaBoost` reweights the misclassified instances. Gradient boosting fits each new
+member to the ensemble's residual errors. `HistGradientBoostingClassifier` bins
+each feature into at most 255 buckets first, which makes a split search cost
+$O(\\text{bins})$ rather than $O(m)$ — it is the algorithm LightGBM and XGBoost
+implement, and on tabular data it is the usual first choice.
+
+On *this* dataset it is not the winner, and the cell below is where you find that
+out rather than assume it either way.
+
+⏱ **about 2 minutes** — 100 boosting rounds on 48,000 rows and seven classes.
 """),
         prompt(
-            label="⏱ 60 s — boosting, briefly",
-            input="the same training rows",
-            output="its accuracy beside bagging and the legible tree",
-            constraint="early stopping on, and report the iteration count it actually used — `max_iter=100` with early stopping is a ceiling, not a setting",
-            check="stacking trains a blender on cross-validated out-of-fold predictions, and that cross-validation is the only reason stacking is safe. Build it by hand and reviewer question 1 becomes the whole difficulty."),
+            label="⏱ 2 min — histogram gradient boosting",
+            input="the same training rows, 100 boosting rounds at a learning "
+                  "rate of 0.05",
+            output="its training and test accuracy, beside bagging, the forest "
+                   "and the legible tree",
+            constraint="report the TRAINING score too — boosting drives it up "
+                       "monotonically whether or not the test score follows, "
+                       "which is the whole difference from bagging",
+            check="adding members to a BAGGED ensemble can only help, because "
+                  "(1-rho)sigma^2/n falls monotonically and nothing else moves. "
+                  "Adding members to a BOOSTED one eventually hurts. So expect a "
+                  "train-test gap here that the ensembles above did not have",
+            **{"try": "`learning_rate=0.2` with the same 100 rounds. The test "
+                      "score falls by several points — at a high rate the later "
+                      "rounds overshoot, and more boosting makes the model "
+                      "worse rather than better"}),
         code('''
 from sklearn.ensemble import HistGradientBoostingClassifier
 
-hgb = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.2,
-                                     early_stopping=True, n_iter_no_change=10,
-                                     random_state=RANDOM_STATE)
-hgb.fit(X_train, y_train)
+hgb = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.05,
+                                     early_stopping=False,
+                                     random_state=RANDOM_STATE).fit(X_train,
+                                                                    y_train)
 
-print(f"histogram gradient boosting  {hgb.score(X_test, y_test):.1%}  "
-      f"({hgb.n_iter_} iterations, early stopping)")
-print(f"bagging                      {bag.score(X_test, y_test):.1%}")
-print(f"the legible depth-8 tree     {tree_acc:.1%}")
+print(f"histogram gradient boosting  train {hgb.score(X_train, y_train):.1%}   "
+      f"test {hgb.score(X_test, y_test):.1%}")
+print(f"bagging, 200 trees           {'':11s}test {acc_at['bagging'][200]:.1%}")
+print(f"random forest, 200 trees     {'':11s}test {acc_at['forest'][200]:.1%}")
+print(f"the legible depth-8 tree     {'':11s}test {tree_acc:.1%}")
+print("\\nThe usual first choice for tabular data, and on this dataset it loses")
+print("to a bag of unconstrained trees. Usual is not always — which is why the")
+print("comparison is a cell rather than a sentence.")
 '''),
         md("""
-`AdaBoost` reweights the misclassified instances; gradient boosting fits each
-new member to the ensemble's residual errors; `StackingClassifier` trains a
-*blender* on cross-validated out-of-fold predictions — and that cross-validation
-is the only reason stacking is safe. Build it by hand and reviewer question 1
-becomes the whole difficulty: what touched the data the blender learns from?
+`StackingClassifier` trains a *blender* on cross-validated out-of-fold
+predictions, and that cross-validation is the only reason stacking is safe. Build
+it by hand and the blender sees in-sample predictions, learns to trust whichever
+base learner overfits hardest, and the ensemble ends up worse than its best
+member — with no error and no warning.
 """),
 
         md("""
-## 11 · Re-measure, and score your sheet
+## 10 · Did the averaging fix what we diagnosed?
 
-| Reality | Test accuracy |
-|---|---|
-| always "Lodgepole Pine" | 48.8% |
-| the legible depth-8 tree | 73.3% |
-| bagged, 200 unconstrained trees | 89.8% |
-
-The diagnosis was instability, not inaccuracy — so test the thing we diagnosed.
-Repeat the twenty-subsample experiment on a forest and predict the answer before
-you run it.
+The diagnosis was *instability*, not inaccuracy. So test the thing that was
+diagnosed. Repeat section 2's experiment on forests and **predict the answer
+before you run it**.
 
 ⏱ **about 2 minutes** — twenty forests of 30 trees.
 """),
         prompt(
             label="⏱ 2 min — test the thing we diagnosed",
             input="the same twenty 90% subsamples, forests of 30 trees",
-            output="pairwise disagreement, beside the single tree's",
-            constraint="the SAME twenty seeds as the single-tree experiment — a stability comparison across different subsamples is not a comparison",
-            check="predict the answer before running it. A repair whose effect you can predict is a repair you understood; one that surprises you is worth another hour."),
+            output="pairwise disagreement and unanimity, beside the single "
+                   "tree's",
+            constraint="the SAME twenty seeds as section 2 — a stability "
+                       "comparison across different subsamples is not a "
+                       "comparison",
+            check="the formula says twenty members remove about nine tenths of a "
+                  "member's variance, so predict a disagreement several times "
+                  "smaller than the tree's. A repair whose effect you can "
+                  "predict is a repair you understood",
+            **{"try": "`n_estimators=3`. The disagreement lands between the two "
+                      "— most of the available reduction really does arrive in "
+                      "the first few members"}),
         code('''
 fpreds = []
 for seed in range(20):
     Xs, _, ys, _ = train_test_split(X_train, y_train, train_size=0.9,
                                     stratify=y_train, random_state=1000 + seed)
-    f = RandomForestClassifier(n_estimators=30, max_features="sqrt",
-                               random_state=RANDOM_STATE,
-                               n_jobs=-1).fit(Xs, ys)
-    fpreds.append(f.predict(X_test))
+    f30 = RandomForestClassifier(n_estimators=30, max_features="sqrt",
+                                 random_state=RANDOM_STATE,
+                                 n_jobs=-1).fit(Xs, ys)
+    fpreds.append(f30.predict(X_test))
 
 F = np.array(fpreds)
 fdis = np.array([(F[i] != F[j]).mean()
                  for i in range(20) for j in range(i + 1, 20)])
 
-print(f"single tree, pairwise disagreement  {disagree.mean():.1%}")
+print(f"single tree, pairwise disagreement  {tree_disagree.mean():.1%}")
 print(f"30-tree forest                      {fdis.mean():.1%}")
+print(f"patches all 20 trees agree on       {(P == P[0]).all(axis=0).mean():.1%}")
 print(f"patches all 20 forests agree on     {(F == F[0]).all(axis=0).mean():.1%}")
 '''),
 
         md("""
-## 12 · Red-team
+## 11 · Where we are
 
-Swap notebooks with the team beside you. Eight minutes, five questions:
+The report the agency needs says three things, and the third is the one that is
+not a machine learning judgement:
 
-1. What touched the test set? Was any hyperparameter chosen by looking at it?
-2. What was fitted, and on what? Check where `permutation_importance` was
-   computed.
-3. What is the shape here? Check every comparison between a member's output and
-   `y_test`.
-4. What was dropped — rows, columns, classes? Count them.
-5. What is the default you did not ask for? Find `bootstrap`, `max_features` and
-   `oob_score` in their code and say what each is set to.
-
-Report what you **found**, not what you would have done differently.
+1. The legible tree is 73.0% accurate, and its rules reproduce only to within
+   about one prediction in eleven.
+2. The ensemble is far more accurate and cannot justify a single decision.
+3. **The choice between them is the agency's**, and here are both numbers with
+   the experiments that produced them.
 
 ### The standing constraint, extended
 
@@ -791,6 +831,15 @@ Report what you **found**, not what you would have done differently.
 > path. Fixed seeds. Per-fold scores, not just the mean. **Any importance or
 > explanation is computed on held-out data and reported with a control. Any
 > per-instance claim is checked for stability under refitting.**"
+
+Both clauses come from a measurement in this notebook rather than from a
+principle: the decoy's rank among the 55 columns, and the disagreement in
+section 2.
+
+**What to change before the next lecture.** Set `max_features=None` on the random
+forest in section 5, which turns it back into bagging. Watch $\\rho$ rise in
+section 6, each member get better, and the ensemble accuracy rise with it — the
+trade of the whole lecture, in one keyword.
 """),
     ]
     return cells

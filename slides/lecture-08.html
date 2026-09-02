@@ -1,0 +1,1706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 8 — Dimensionality reduction and unsupervised learning</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Dimensionality reduction<br>and unsupervised learning</h1>
+  <p class="subtitle">Olivetti faces &middot; four hundred photographs, no labels</p>
+  <p><span class="badge badge-lec">Lecture 8</span>
+     <span class="badge badge-ch">Géron Ch. 7 &amp; 8</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">The derivation is the spine of this lecture and it is
+  40% of the paper. Do not let the twenty minutes become fifteen because the
+  faces are more fun to talk about.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Seven lectures, and every one of them was handed the
+  answers:</p>
+  <table class="smaller">
+    <tr><th>Lecture</th><th>What the data came with</th></tr>
+    <tr><td>1&ndash;2 &middot; California housing</td><td>a price for every district</td></tr>
+    <tr><td>3 &middot; MNIST</td><td>a digit for every image</td></tr>
+    <tr><td>4&ndash;5 &middot; Titanic</td><td>a survivor flag for every passenger</td></tr>
+    <tr><td>6&ndash;7 &middot; CoverType</td><td>a cover type for every plot</td></tr>
+    <tr><td><strong>8 &middot; Olivetti faces</strong></td><td class="fail"><strong>nothing</strong></td></tr>
+  </table>
+  <p class="small">Today there is no target column. That changes what a metric
+  can be, what a baseline is, and how you find out you were wrong.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>Four hundred points in four thousand dimensions, and what that costs
+        <span class="muted small">(10 min)</span></li>
+    <li><strong>The mathematics</strong> &mdash; PCA as the SVD of the centred
+        data, and the Johnson&ndash;Lindenstrauss bound
+        <span class="muted small">(20 min)</span></li>
+    <li><strong>Reducing the dimension</strong> &mdash; four methods, timed and
+        scored <span class="muted small">(25 min)</span></li>
+    <li><strong>Clustering</strong> &mdash; k-means, and how to choose $k$
+        <span class="muted small">(20 min)</span></li>
+    <li>Beyond k-means: density, mixtures, anomalies, forty labels
+        <span class="muted small">(15 min)</span></li>
+  </ol>
+  <p class="small muted">Chapters 7 and 8 together, because the second one does
+  not work on this data until the first one has been applied to it.</p>
+</section>
+
+<!-- 4 -->
+<section class="divider" data-menu-title="◆ The problem">
+  <p class="kicker">First ten minutes</p>
+  <h1>Four hundred points in<br>four thousand dimensions</h1>
+  <p class="clock">10 minutes</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="The stakeholder">
+  <h2>The brief</h2>
+  <div class="panel">
+    <span class="panel-title">The request</span>
+    &ldquo;We have a photographic archive. We do not know how many distinct
+    people are in it. Group the photographs by person, so that a human can name
+    a <em>group</em> instead of naming every photograph.&rdquo;
+  </div>
+  <ul class="tight small">
+    <li>The archive is not annotated, and nobody remembers who is in it</li>
+    <li>A trained annotator costs money and time per photograph</li>
+    <li>We are funded for <strong>forty</strong> labels. That is all</li>
+  </ul>
+  <p class="small muted">This is the ordinary situation outside a benchmark:
+  data is cheap, labels are not.</p>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="A different kind of problem">
+  <h2>Why this is a different kind of problem</h2>
+  <div class="cols">
+    <div>
+      <p><strong>Supervised</strong></p>
+      <ul class="tight smaller">
+        <li>You are given $(\mathbf{x}^{(i)}, y^{(i)})$</li>
+        <li>The metric compares prediction to truth</li>
+        <li>The baseline is &ldquo;predict the majority&rdquo;</li>
+        <li>You know when you are wrong</li>
+      </ul>
+    </div>
+    <div>
+      <p><strong>Unsupervised</strong></p>
+      <ul class="tight smaller">
+        <li>You are given $\mathbf{x}^{(i)}$ only</li>
+        <li>The metric compares the grouping to <em>itself</em></li>
+        <li>The baseline is &ldquo;group at random&rdquo;</li>
+        <li>You find out you were wrong when someone looks</li>
+      </ul>
+    </div>
+  </div>
+  <div class="panel panel-when">
+    <span class="panel-title">The consequence for the rest of the hour</span>
+    Every number computed today is a statement about <strong>geometry</strong>,
+    not about people. Whether the geometry <em>is</em> the people is a separate
+    question, and it is answered by looking.
+  </div>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="The book's taxonomy">
+  <h2>Where this sits in the book</h2>
+  <table class="smaller">
+    <tr><th>Task</th><th>What it produces</th><th>Chapter</th></tr>
+    <tr><td>Dimensionality reduction</td><td>a shorter description of the same instance</td><td>7</td></tr>
+    <tr><td>Clustering</td><td>a group for every instance</td><td>8</td></tr>
+    <tr><td>Density estimation</td><td>a probability density over the space</td><td>8</td></tr>
+    <tr><td>Anomaly detection</td><td>a score for how unusual an instance is</td><td>8</td></tr>
+  </table>
+  <p class="small">All four appear today, in that order, and the order is not
+  arbitrary: three of them are unusable on this data until the first has been
+  applied.</p>
+  <p class="small muted">Clustering is also used for customer segmentation,
+  search-result grouping, image segmentation, and &mdash; as here &mdash; as a
+  preprocessing step for a supervised model that cannot afford labels.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="The corpus">
+  <h2>The corpus, and a photograph as a point</h2>
+  <div class="cols cols-60-40">
+    <div>
+      <table class="smaller">
+        <tr><th>Quantity</th><th class="num">Value</th></tr>
+        <tr><td>Photographs</td><td class="num">400</td></tr>
+        <tr><td>Distinct people</td><td class="num">40</td></tr>
+        <tr><td>Photographs per person</td><td class="num">10</td></tr>
+        <tr><td>Pixels per photograph</td><td class="num">4,096</td></tr>
+        <tr><td>The whole corpus in memory</td><td class="num">6.6 MB</td></tr>
+      </table>
+    </div>
+    <div>
+      <div class="eqn-box">
+        $$\mathbf{x}^{(i)} \in \mathbb{R}^{4096},\qquad x_j \in [0,1]$$
+      </div>
+    </div>
+  </div>
+  <p class="small">Flatten the 64 &times; 64 grid and a photograph is a vector.
+  Every method today measures a distance between two of them.</p>
+  <p class="small fail"><strong>Ten times more dimensions than points.</strong>
+  Four hundred points cannot fill four thousand dimensions, and the first block
+  of this lecture is about what follows from that.</p>
+</section>
+
+<!-- 9 -->
+<section class="figslide" data-menu-title="◆ Forty people">
+  <h2>Forty people</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l09-corpus.png"
+         alt="A grid of forty greyscale portrait photographs, four rows of ten, each a different person, all cropped tightly to the face on a dark background.">
+  </figure>
+  <p class="takeaway muted">Same crop, same lighting rig, same background. What
+  varies between rows is the person &mdash; and, as much, the lamp.</p>
+</section>
+
+<!-- 10 -->
+<section class="figslide" data-menu-title="◆ One person, ten times">
+  <h2>What &ldquo;the same person&rdquo; looks like</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l09-one-person.png"
+         alt="Two rows of ten greyscale portraits. Each row is the same person photographed ten times: glasses on and off, eyes open and shut, head turned, lit from either side.">
+  </figure>
+  <p class="takeaway muted">Glasses on and off, eyes shut, head turned, lit from
+  either side. All twenty of these must end up in exactly two groups.</p>
+  <aside class="notes">Ask which two photographs in the top row look least alike.
+  Then ask whether they would look alike to a Euclidean distance.</aside>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="y exists, and we use it twice">
+  <h2><code>y</code> exists. The brief does not have it</h2>
+  <p>Olivetti is a benchmark, so it ships with the identity of every
+  photograph. The archive we are pretending to hold does not.</p>
+  <div class="panel">
+    <span class="panel-title">The rule, kept for the whole lecture</span>
+    <code>y</code> is used in exactly two ways, both announced on the slide
+    where they happen: as the <em>forty labels we paid for</em>, and as an
+    <strong>audit</strong>, to find out what those forty could not have told us.
+  </div>
+  <p class="small">Any other use of <code>y</code> is the same error as scoring
+  on the test set, wearing different clothes. Slides marked <em>audit</em> are
+  results the project itself could not have computed.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="Distance is not identity">
+  <h2>Before anything is fitted: can this work at all?</h2>
+  <p class="small">k-means groups points that are close in Euclidean distance.
+  So one measurement decides whether the hour is worth spending
+  <span class="muted">(an audit &mdash; it uses the hidden labels)</span>:</p>
+  <p class="lead">Are two photographs of the same person closer than two
+  photographs of different people?</p>
+  <table class="smaller">
+    <tr><th>Euclidean distance, raw pixels</th><th class="num">Pairs</th><th class="num">Mean</th><th class="num">Median</th></tr>
+    <tr><td>Same person</td><td class="num">1,800</td><td class="num">8.38</td><td class="num">8.15</td></tr>
+    <tr><td>Different people</td><td class="num">78,000</td><td class="num">12.41</td><td class="num">12.15</td></tr>
+  </table>
+</section>
+
+<!-- 13 -->
+<section class="figslide" data-menu-title="◆ Distance is not identity">
+  <h2>The gap is real, and it is small</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l09-distances.svg"
+         alt="Two overlapping histograms of Euclidean distance between pairs of faces. The grey different-people distribution and the red same-person distribution overlap over most of their range, with the same-person one shifted only slightly left.">
+  </figure>
+  <p class="takeaway fail"><strong>6%</strong> of same-person pairs sit further
+  apart than the <em>median</em> different-person pair. Pixel distance is partly
+  identity and partly lighting.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="The ceiling">
+  <h2>What that predicts, before we build anything</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">A failure condition, stated in advance</span>
+    No method that groups by Euclidean distance in <strong>raw pixels</strong>
+    will recover the forty people cleanly. Not because the method is bad
+    &mdash; because the representation puts a lamp and a nose on the same axis,
+    with the same weight.
+  </div>
+  <p class="small">Moving the light source changes hundreds of pixel values by a
+  large amount. Changing the person changes a few dozen by a small one.
+  Euclidean distance adds them all up equally.</p>
+  <p class="small fix">Measuring this costs one cell and tells you whether you
+  are about to tune or about to hope.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="What 4,096 dimensions cost">
+  <h2>And it is not free to work there</h2>
+  <p class="small">One model-selection sweep &mdash; k-means at every
+  $k$ from 2 to 60, ten restarts each, scored by silhouette:</p>
+  <table class="smaller">
+    <tr><th>Step</th><th class="num">Seconds</th><th>Cost model</th></tr>
+    <tr><td>590 runs of Lloyd&rsquo;s algorithm</td><td class="num">77</td><td>$O(\text{iterations} \times m\,k\,n)$</td></tr>
+    <tr><td>59 silhouette scores</td><td class="num">2</td><td>$O(m^{2}n)$</td></tr>
+    <tr><td>One sweep, total</td><td class="num fail">78</td><td>two threads, one machine</td></tr>
+  </table>
+  <p class="small">Both cost models are <strong>linear in $n$</strong>, the
+  number of features. Two of the three factors are properties of the problem.
+  The third is a property of the <em>representation</em>.</p>
+  <p class="small fix">So: how many of those 4,096 numbers are doing work
+  &mdash; and what exactly do you lose by throwing the rest away?</p>
+</section>
+
+<!-- 16 -->
+<section class="divider" data-menu-title="◆ The mathematics">
+  <p class="kicker">The mathematics</p>
+  <h1>PCA via the SVD, and<br>Johnson&ndash;Lindenstrauss</h1>
+  <p class="clock">20 minutes &middot; examinable</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="The two questions">
+  <h2>Two questions, two answers</h2>
+  <ol class="tight">
+    <li>Among all $d$-dimensional subspaces, which one loses the least when you
+        project onto it &mdash; and <em>how much</em> does it lose?</li>
+    <li>If all you need is that <strong>distances</strong> survive, how small
+        can $d$ be?</li>
+  </ol>
+  <div class="panel panel-math">
+    <span class="panel-title">Why you need both</span>
+    The first is a theorem about the optimal subspace and it names the price
+    exactly. The second is a bound whose answer does not mention the dimension
+    you started in &mdash; which is the fact worth carrying out of this lecture.
+  </div>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="Notation">
+  <h2>Notation, fixed for the whole derivation</h2>
+  <ul class="tight small">
+    <li>$\mathbf{X} \in \mathbb{R}^{m \times n}$ &mdash; one photograph per
+        <em>row</em>: $m = 400$ rows, $n = 4096$ columns</li>
+    <li>$\bar{\mathbf{x}}$ &mdash; the column means; $\tilde{\mathbf{X}} =
+        \mathbf{X} - \mathbf{1}\bar{\mathbf{x}}^{\intercal}$ the centred data</li>
+    <li>$\mathbf{W} = [\mathbf{w}_1 \cdots \mathbf{w}_d] \in \mathbb{R}^{n\times d}$
+        with $\mathbf{W}^{\intercal}\mathbf{W} = \mathbf{I}_d$ &mdash; an
+        orthonormal basis of the subspace we are choosing</li>
+    <li>$\mathbf{P} = \mathbf{W}\mathbf{W}^{\intercal}$ &mdash; the orthogonal
+        projector onto it</li>
+    <li>$\lVert \mathbf{A}\rVert_F^2 = \sum_{ij} a_{ij}^2 =
+        \operatorname{tr}(\mathbf{A}^{\intercal}\mathbf{A})$</li>
+  </ul>
+  <p class="small muted">Everything below is linear algebra on $\tilde{\mathbf{X}}$.
+  There is no probability in this derivation and none is needed.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="Centre first">
+  <h2>Centre first, and say why</h2>
+  <div class="eqn-box">
+    $$\tilde{\mathbf{X}} = \mathbf{X} - \mathbf{1}\bar{\mathbf{x}}^{\intercal}$$
+  </div>
+  <p class="small">Without centring, the direction of largest
+  $\sum_i \lVert\mathbf{w}^{\intercal}\mathbf{x}^{(i)}\rVert^2$ is essentially
+  $\bar{\mathbf{x}}$ itself, and the first component describes nothing but
+  &ldquo;this is a photograph of a face&rdquo;.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">When this bites</span>
+    Scikit-Learn&rsquo;s <code>PCA</code> centres for you. If you write the SVD
+    by hand it does not, and the result is a plausible-looking first component
+    and no error message. It is the commonest silent bug in a hand-rolled PCA.
+  </div>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="Step 1 — the objective">
+  <h2>Step 1 &middot; what we are minimising</h2>
+  <p class="small">Project each centred face onto the subspace and measure how
+  far it had to move:</p>
+  <div class="eqn-box">
+    $$E(\mathbf{W}) \;=\; \sum_{i=1}^{m}\bigl\lVert \tilde{\mathbf{x}}^{(i)} - \mathbf{W}\mathbf{W}^{\intercal}\tilde{\mathbf{x}}^{(i)} \bigr\rVert_2^{2}
+      \;=\; \bigl\lVert \tilde{\mathbf{X}} - \tilde{\mathbf{X}}\mathbf{W}\mathbf{W}^{\intercal} \bigr\rVert_F^{2}$$
+  </div>
+  <p class="derive-step">The sum of squared distances from each point to the
+  subspace. Minimise it over all $\mathbf{W}$ with
+  $\mathbf{W}^{\intercal}\mathbf{W} = \mathbf{I}_d$.</p>
+  <p class="small muted">Note what this is not: it is not a regression, there is
+  no $y$, and nothing here is being predicted.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Step 2 — Pythagoras">
+  <h2>Step 2 &middot; Pythagoras splits it in two</h2>
+  <p class="small">$\mathbf{P} = \mathbf{W}\mathbf{W}^{\intercal}$ is an
+  orthogonal projector, so kept and lost are orthogonal:</p>
+  <div class="eqn-box">
+    $$\lVert \tilde{\mathbf{x}}\rVert^{2} \;=\; \lVert \mathbf{W}^{\intercal}\tilde{\mathbf{x}}\rVert^{2} \;+\; \lVert \tilde{\mathbf{x}} - \mathbf{P}\tilde{\mathbf{x}}\rVert^{2}$$
+  </div>
+  <p class="derive-step small">Summing over the $m$ faces, and noting that
+  $\lVert\tilde{\mathbf{X}}\rVert_F^{2}$ does not depend on $\mathbf{W}$:</p>
+  <div class="eqn-box">
+    $$E(\mathbf{W}) \;=\; \lVert\tilde{\mathbf{X}}\rVert_F^{2} \;-\; \lVert \tilde{\mathbf{X}}\mathbf{W}\rVert_F^{2}$$
+  </div>
+  <p class="fix small"><strong>Minimising the error is maximising the projected
+  variance.</strong> They are the same problem, not two related ones.</p>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Step 3 — as a trace">
+  <h2>Step 3 &middot; write the surviving part as a trace</h2>
+  <div class="eqn-box">
+    $$\lVert \tilde{\mathbf{X}}\mathbf{W} \rVert_F^{2} \;=\; \operatorname{tr}\!\left(\mathbf{W}^{\intercal}\,\tilde{\mathbf{X}}^{\intercal}\tilde{\mathbf{X}}\,\mathbf{W}\right) \;=\; \sum_{j=1}^{d} \mathbf{w}_j^{\intercal}\,\mathbf{C}\,\mathbf{w}_j,
+      \qquad \mathbf{C} = \tilde{\mathbf{X}}^{\intercal}\tilde{\mathbf{X}}$$
+  </div>
+  <p class="derive-step">$\mathbf{C}$ is $n \times n$, symmetric and positive
+  semi-definite; it is $m-1$ times the sample covariance matrix.</p>
+  <p>So the whole problem is: <strong>choose $d$ orthonormal directions
+  maximising $\operatorname{tr}(\mathbf{W}^{\intercal}\mathbf{C}\mathbf{W})$.</strong></p>
+  <p class="small muted">Every remaining step is about that one quantity.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="Step 4 — the SVD">
+  <h2>Step 4 &middot; the singular value decomposition diagonalises $\mathbf{C}$</h2>
+  <div class="eqn-box">
+    $$\tilde{\mathbf{X}} \;=\; \mathbf{U}\boldsymbol\Sigma\mathbf{V}^{\intercal},
+      \qquad \sigma_1 \ge \sigma_2 \ge \cdots \ge 0$$
+  </div>
+  <p class="derive-step">$\mathbf{U}$ and $\mathbf{V}$ orthogonal,
+  $\boldsymbol\Sigma$ diagonal. Every real matrix has one, which is why this
+  works on any dataset rather than on well-behaved ones. Then</p>
+  <div class="eqn-box">
+    $$\mathbf{C} \;=\; \tilde{\mathbf{X}}^{\intercal}\tilde{\mathbf{X}} \;=\; \mathbf{V}\boldsymbol\Sigma^{\intercal}\mathbf{U}^{\intercal}\mathbf{U}\boldsymbol\Sigma\mathbf{V}^{\intercal} \;=\; \mathbf{V}\,\boldsymbol\Sigma^{2}\,\mathbf{V}^{\intercal}$$
+  </div>
+  <p class="small">The columns of $\mathbf{V}$ are the eigenvectors of
+  $\mathbf{C}$, with eigenvalues $\sigma_j^{2}$. They are the
+  <strong>principal components</strong>.</p>
+  <p class="small muted">$\mathbf{C}$ is also the matrix Lecture 2&rsquo;s normal
+  equation had to invert, and this decomposition says exactly when it cannot be:
+  when some $\sigma_j = 0$.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Step 5 — rotate into V">
+  <h2>Step 5 &middot; rotate the unknown into the $\mathbf{V}$ basis</h2>
+  <p class="small">$\mathbf{V}$ is an orthogonal basis of $\mathbb{R}^n$, so any
+  $\mathbf{W}$ can be written $\mathbf{W} = \mathbf{V}\mathbf{A}$ with
+  $\mathbf{A}^{\intercal}\mathbf{A} = \mathbf{I}_d$. Then</p>
+  <div class="eqn-box">
+    $$\operatorname{tr}(\mathbf{W}^{\intercal}\mathbf{C}\mathbf{W}) \;=\; \operatorname{tr}(\mathbf{A}^{\intercal}\boldsymbol\Sigma^{2}\mathbf{A}) \;=\; \sum_{j=1}^{n} \sigma_j^{2}\,h_j$$
+  </div>
+  <p class="derive-step small">where $h_j$ is the squared norm of row $j$ of
+  $\mathbf{A}$. Orthonormal columns constrain those weights to
+  $0 \le h_j \le 1$ with $\sum_{j} h_j = d$. The problem has become a weighted
+  sum with exactly $d$ units of weight to spend.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Step 6 — the maximum">
+  <h2>Step 6 &middot; a weighted sum with $d$ units of weight to spend</h2>
+  <p>Maximise $\sum_j \sigma_j^{2} h_j$ subject to $0 \le h_j \le 1$ and
+  $\sum_j h_j = d$. The $\sigma_j^{2}$ are sorted, so the answer is immediate:</p>
+  <div class="eqn-box">
+    $$\max_{\mathbf{W}^{\intercal}\mathbf{W}=\mathbf{I}_d} \operatorname{tr}(\mathbf{W}^{\intercal}\mathbf{C}\mathbf{W}) \;=\; \sum_{j=1}^{d}\sigma_j^{2}$$
+  </div>
+  <p class="derive-step">Put a full unit of weight on each of the $d$ largest
+  $\sigma_j^2$ and nothing on the rest &mdash; that is
+  $\mathbf{A} = \begin{bsmallmatrix}\mathbf{I}_d\\ \mathbf{0}\end{bsmallmatrix}$,
+  which is $\mathbf{W} = \mathbf{V}_d$, the first $d$ columns of $\mathbf{V}$.</p>
+  <p class="small muted">Any other allocation moves weight from a larger
+  $\sigma_j^2$ to a smaller one, so the maximum is attained and no other
+  subspace can beat it.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Step 7 — the result">
+  <h2>Step 7 &middot; the error that is left</h2>
+  <p class="small">Substituting into step 2, and using
+  $\lVert\tilde{\mathbf{X}}\rVert_F^2 = \operatorname{tr}(\mathbf{C}) = \sum_j \sigma_j^2$:</p>
+  <div class="eqn-box">
+    $$\min_{\mathbf{W}} E(\mathbf{W}) \;=\; \sum_{j}\sigma_j^{2} \;-\; \sum_{j\le d}\sigma_j^{2} \;=\; \sum_{j > d}\sigma_j^{2}$$
+  </div>
+  <p class="eqn-label">Eckart&ndash;Young&ndash;Mirsky, in the Frobenius norm</p>
+  <p class="fix">&ldquo;PCA minimises reconstruction error&rdquo; is a
+  <strong>theorem</strong>, not a slogan &mdash; and the theorem also tells you
+  the price in advance: the tail of the spectrum, which you can read off before
+  choosing $d$.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="The derivation, in seven lines">
+  <h2>The derivation, in seven lines</h2>
+  <p class="small muted"><span class="scope scope-exam">examinable</span>
+  Reproduce this from the statement of the problem.</p>
+  <!-- Each step is wrapped in one <div>. .derivation > li is a two-column
+       grid: ::before takes column 1, and without the wrapper the .why span
+       becomes a third grid item and wraps into the 2.1em number column. -->
+  <ol class="derivation smaller">
+    <li><div>$E(\mathbf{W}) = \lVert \tilde{\mathbf{X}} - \tilde{\mathbf{X}}\mathbf{W}\mathbf{W}^{\intercal}\rVert_F^2$
+        <span class="why">the objective: squared distance to the subspace</span></div></li>
+    <li><div>$E(\mathbf{W}) = \lVert\tilde{\mathbf{X}}\rVert_F^2 - \lVert\tilde{\mathbf{X}}\mathbf{W}\rVert_F^2$
+        <span class="why">Pythagoras; the first term is free of $\mathbf{W}$</span></div></li>
+    <li><div>$\lVert\tilde{\mathbf{X}}\mathbf{W}\rVert_F^2 = \operatorname{tr}(\mathbf{W}^{\intercal}\mathbf{C}\mathbf{W})$
+        <span class="why">the Frobenius norm as a trace, with $\mathbf{C}=\tilde{\mathbf{X}}^{\intercal}\tilde{\mathbf{X}}$</span></div></li>
+    <li><div>$\mathbf{C} = \mathbf{V}\boldsymbol\Sigma^2\mathbf{V}^{\intercal}$
+        <span class="why">from the SVD $\tilde{\mathbf{X}} = \mathbf{U}\boldsymbol\Sigma\mathbf{V}^{\intercal}$</span></div></li>
+    <li><div>$\operatorname{tr}(\mathbf{W}^{\intercal}\mathbf{C}\mathbf{W}) = \sum_j \sigma_j^2 h_j$, with $0\le h_j\le 1$ and $\sum_j h_j = d$
+        <span class="why">write $\mathbf{W} = \mathbf{V}\mathbf{A}$; $h_j$ is a squared row norm of $\mathbf{A}$</span></div></li>
+    <li><div>the maximum is $\sum_{j\le d}\sigma_j^2$, at $\mathbf{W} = \mathbf{V}_d$
+        <span class="why">spend all $d$ units of weight on the largest $\sigma_j^2$</span></div></li>
+    <li class="result"><div>$\min_{\mathbf{W}} E(\mathbf{W}) = \sum_{j>d}\sigma_j^{2}$
+        <span class="why">the error PCA leaves is exactly the tail of the spectrum</span></div></li>
+  </ol>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Verify it">
+  <h2>A theorem you can check to machine precision</h2>
+  <pre><code class="language-python" data-trim>
+U, S, Vt = np.linalg.svd(X - X.mean(axis=0), full_matrices=False)
+
+d   = 100
+Xd  = U[:, :d] * S[:d] @ Vt[:d]          # the rank-d truncation
+lhs = ((X_centred - Xd) ** 2).sum()      # ‖X̃ − X̃_d‖²_F
+rhs = (S[d:] ** 2).sum()                 # Σ_{j&gt;d} σ_j²
+
+assert abs(lhs - rhs) / rhs &lt; 1e-5
+  </code></pre>
+  <p class="small">Two sides computed by entirely different routes, agreeing to
+  eleven significant figures. When a theorem hands you an identity, assert the
+  identity: it is the cheapest possible test that your code is the theorem.</p>
+  <p class="small muted">In scikit-learn the projection and the re-embedding are
+  <code>transform</code> and <code>inverse_transform</code>. The second is not
+  an inverse; it is the best re-embedding of a projection, and step 7 is what
+  &ldquo;best&rdquo; means there.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Explained variance ratio">
+  <h2>Choosing $d$ without guessing: the explained variance ratio</h2>
+  <div class="eqn-box">
+    $$r_j \;=\; \frac{\sigma_j^{2}}{\sum_{i}\sigma_i^{2}}
+      \qquad\qquad
+      \text{cumulate, and read off } d$$
+  </div>
+  <p class="small">By step 7, the fraction of squared error <em>removed</em> by
+  keeping $d$ components is exactly $\sum_{j\le d} r_j$. The ratio is not a
+  heuristic; it is the theorem, normalised.</p>
+  <table class="smaller">
+    <tr><th>Cumulative variance explained by the first&hellip;</th><th class="num">&nbsp;</th></tr>
+    <tr><td>component alone</td><td class="num">23.8%</td></tr>
+    <tr><td>ten components</td><td class="num">65.6%</td></tr>
+    <tr><td>fifty components</td><td class="num">87.4%</td></tr>
+  </table>
+  <p class="small">Cumulate to a target and read $d$ off it: <strong>66</strong>
+  components reach 90%, <strong>123</strong> reach 95%, <strong>260</strong>
+  reach 99%. The rest of this lecture runs at 123.</p>
+</section>
+
+<!-- 30 -->
+<section class="figslide" data-menu-title="◆ Scree and cumulative">
+  <h2>How many components you actually need</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l10-scree.svg"
+         alt="Two panels. Left: variance explained by each of the first fifty components, falling steeply from a large first value. Right: cumulative variance rising to a plateau, with dashed lines marking ninety-five percent and the component count where it is reached.">
+  </figure>
+  <p class="takeaway muted">123 components hold 95% of the variance of 4,096
+  pixels &mdash; a factor of 33 fewer numbers per photograph.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="The other way to reduce">
+  <h2>The second question: what if you only need <em>distances</em>?</h2>
+  <p class="small">PCA looks at the data and spends an SVD finding the best
+  subspace. The alternative is to <strong>not look at the data at all</strong>:
+  draw a random $\mathbf{R} \in \mathbb{R}^{n \times d}$ with independent
+  Gaussian entries and set</p>
+  <div class="eqn-box">
+    $$\mathbf{Z} \;=\; \tfrac{1}{\sqrt{d}}\,\mathbf{X}\mathbf{R}$$
+  </div>
+  <p>This sounds absurd. It is not, and the reason is a theorem &mdash; one that
+  says nothing whatever about the subspace being good.</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Johnson–Lindenstrauss">
+  <h2>The Johnson&ndash;Lindenstrauss lemma</h2>
+  <p class="small">For any $0 &lt; \varepsilon &lt; 1$ and any set of $m$ points
+  in $\mathbb{R}^{n}$, there is a linear map $f$ into $\mathbb{R}^{d}$ with</p>
+  <div class="eqn-box">
+    $$d \;\ge\; \frac{4\log m}{\varepsilon^{2}/2 \;-\; \varepsilon^{3}/3}$$
+  </div>
+  <p class="small">such that for every pair of points $\mathbf{u},\mathbf{v}$,</p>
+  <div class="eqn-box">
+    $$(1-\varepsilon)\lVert \mathbf{u}-\mathbf{v}\rVert^{2} \;\le\; \lVert f(\mathbf{u})-f(\mathbf{v})\rVert^{2} \;\le\; (1+\varepsilon)\lVert \mathbf{u}-\mathbf{v}\rVert^{2}$$
+  </div>
+  <p class="small muted">The tolerance is on <strong>squared</strong> distances.
+  Quoting $\varepsilon$ against unsquared ones understates the distortion by
+  about a factor of two.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="Read the formula again">
+  <h2>Read the formula again. What is missing?</h2>
+  <div class="eqn-box">
+    $$d \;\ge\; \frac{4\log m}{\varepsilon^{2}/2 - \varepsilon^{3}/3}$$
+  </div>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>In the formula</strong></p>
+      <ul class="tight smaller">
+        <li>$m$, the number of points &mdash; logarithmically</li>
+        <li>$\varepsilon$, the tolerance</li>
+      </ul>
+    </div>
+    <div>
+      <p class="small"><strong>Not in the formula</strong></p>
+      <p class="lead fail">$n$</p>
+      <p class="smaller">The dimension you are starting from.</p>
+    </div>
+  </div>
+  <p class="fix">400 points need the same target dimension whether they live in
+  4,096 dimensions or in four million.</p>
+  <aside class="notes">Stop here. Ask the room to say what is missing before
+  advancing. Most will look for n and not find it, which is the moment.</aside>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="The bound, evaluated">
+  <h2>The bound, evaluated</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.random_projection import johnson_lindenstrauss_min_dim
+johnson_lindenstrauss_min_dim(400, eps=0.2)          # 1382
+  </code></pre>
+  <table class="smaller">
+    <tr><th>$\varepsilon$</th><th class="num">400 points</th><th class="num">One million points</th></tr>
+    <tr><td>0.1</td><td class="num fail">5,135</td><td class="num">11,841</td></tr>
+    <tr><td>0.2</td><td class="num">1,382</td><td class="num">3,188</td></tr>
+    <tr><td>0.3</td><td class="num">665</td><td class="num">1,535</td></tr>
+    <tr><td>0.5</td><td class="num">287</td><td class="num">663</td></tr>
+  </table>
+  <p class="small">Two and a half thousand times as many points costs about
+  <em>twice</em> the dimension. That is the $\log m$, and it is why the theorem
+  is interesting at all.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="The bound is vacuous here">
+  <h2>And be honest about the top-left cell</h2>
+  <p class="big-num bad">5,135</p>
+  <p>dimensions, to hold every pairwise distance among 400 faces to within 10%
+  &mdash; which is <strong>more</strong> than the 4,096 we started with.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">The bound is a worst case over all point sets</span>
+    It has to work for the nastiest configuration of 400 points anyone can
+    construct. A photographic archive is not that. So the bound is
+    <em>sufficient</em>, never <em>necessary</em> &mdash; and the reason to
+    teach it is not the constant.
+  </div>
+</section>
+
+<!-- 36 -->
+<section class="figslide" data-menu-title="◆ The JL bound">
+  <h2>The bound, drawn</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l10-jl.svg"
+         alt="Required dimension plotted against the number of points on a logarithmic x-axis, for three tolerances. All three curves rise slowly and almost linearly in log n. A dashed horizontal line marks 4096, crossed only by the tightest tolerance.">
+  </figure>
+  <p class="takeaway muted">Neither axis is the original dimension. The dashed
+  line at 4,096 is drawn only to show that the bound never asks about it.</p>
+</section>
+
+<!-- 37 -->
+<section class="figslide" data-menu-title="◆ Measured distortion">
+  <h2>So measure what actually happens to our distances</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l10-jl-measured.svg"
+         alt="Relative distortion of squared pairwise distances after Gaussian random projection, plotted against projected dimension on a logarithmic x-axis. Three falling curves for the worst pair, the 95th percentile and the mean, all well below a dashed line at 0.2 by about a thousand dimensions.">
+  </figure>
+  <p class="takeaway muted">At the bound&rsquo;s own $d = 1{,}382$ the worst of
+  the 79,800 pairs is distorted by 0.17 &mdash; inside the 0.2 it promises, and
+  not by much. The bound is loose, and not absurdly so.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="What the mathematics buys you">
+  <h2>What the mathematics buys you</h2>
+  <ul class="tight small">
+    <li>PCA is the SVD of the <strong>centred</strong> data; the components are
+        the eigenvectors of $\tilde{\mathbf{X}}^{\intercal}\tilde{\mathbf{X}}$
+        with eigenvalues $\sigma_j^{2}$</li>
+    <li>The principal subspace minimises squared reconstruction error exactly,
+        and the error it leaves is $\sum_{j>d}\sigma_j^{2}$</li>
+    <li>Minimising error and maximising projected variance are the same problem,
+        by Pythagoras</li>
+    <li>The explained variance ratio therefore chooses $d$ against a stated
+        target rather than by eye</li>
+    <li>Distances can be preserved by a map whose target dimension depends on
+        the number of points and the tolerance, and <strong>not</strong> on the
+        dimension you start in</li>
+  </ul>
+  <p class="small muted">The last point returns in Lecture 23, where the same
+  concentration argument explains why unrelated embeddings on a
+  high-dimensional sphere are very nearly orthogonal.</p>
+</section>
+
+<!-- 39 -->
+<section class="divider" data-menu-title="◆ Reducing">
+  <p class="kicker">The method, part one</p>
+  <h1>Reducing the dimension</h1>
+  <p class="clock">25 minutes &middot; examinable</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="PCA in one line">
+  <h2>The theorem, in one line of code</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-4|3">from sklearn.decomposition import PCA
+
+Z = PCA(n_components=0.95, random_state=42).fit_transform(X)
+print(Z.shape)                            # (400, 123)
+</code></pre>
+  <p class="small"><code>n_components=0.95</code> &mdash; a float between 0 and
+  1 is read as a <strong>variance target</strong> rather than a component count,
+  and scikit-learn chooses $d$ for you from the cumulative ratio. Here it
+  chooses 123.</p>
+  <p class="small fix">An integer means &ldquo;this many components&rdquo;; a
+  float means &ldquo;this much variance&rdquo;. One character apart, and
+  <code>n_components=1</code> and <code>n_components=1.0</code> do completely
+  different things.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="Components are images">
+  <h2>The components live in the same space as the data</h2>
+  <p>A principal component is a vector in $\mathbb{R}^{4096}$. Reshape it to
+  64 &times; 64 and it is an image.</p>
+  <div class="panel panel-math">
+    <span class="panel-title">Why they have a name</span>
+    The principal components of a face dataset are called
+    <strong>eigenfaces</strong>, because they are the eigenvectors of
+    $\tilde{\mathbf{X}}^{\intercal}\tilde{\mathbf{X}}$ and they look like faces.
+    Every photograph in the corpus is the mean face plus a weighted sum of them.
+  </div>
+  <p class="small muted">This is not a property of faces. It is a property of
+  PCA: the components are directions in the input space, so whatever an input
+  looks like, a component looks like too.</p>
+</section>
+
+<!-- 42 -->
+<section class="figslide" data-menu-title="◆ Eigenfaces">
+  <h2>The mean face, then the first fifteen components</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l10-eigenfaces.png"
+         alt="A grid of sixteen greyscale images. The first is a blurred average face; the rest are ghostly face-like patterns of light and dark, the earliest ones dominated by left-right and top-bottom lighting gradients, the later ones showing finer facial structure.">
+  </figure>
+  <p class="takeaway fail">Look at the first few. They are
+  <strong>lighting</strong> &mdash; which is exactly what the distance histogram
+  predicted would dominate.</p>
+</section>
+
+<!-- 43 -->
+<section class="figslide" data-menu-title="◆ Reconstruction">
+  <h2>The same held-out face, with components taken away</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l10-reconstruction.png"
+         alt="A row of nine greyscale portraits of the same held-out person, labelled 1, 2, 5, 10, 25, 50, 100, 200 and 4096. The first two are unrecognisable blurs; by 25 the face is identifiable; by 100 it is close to the original.">
+  </figure>
+  <p class="takeaway muted">Recognisable well before 123 components. Identity
+  survives a compression that the pixel values do not &mdash; and each PCA here
+  was fitted on the training faces only.</p>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Four ways to reduce">
+  <h2>Four ways to reduce a dimension</h2>
+  <table class="smaller">
+    <tr><th>Method</th><th>What it does</th><th>When</th></tr>
+    <tr><td><code>PCA(svd_solver="full")</code></td><td>the complete SVD, then truncate</td><td>small matrices; exact</td></tr>
+    <tr><td><code>PCA(svd_solver="randomized")</code></td><td>approximates the top $d$ components</td><td>$d \ll \min(m,n)$</td></tr>
+    <tr><td><code>IncrementalPCA</code></td><td>one batch at a time, never holds $\mathbf{X}$</td><td>data larger than memory</td></tr>
+    <tr><td><code>GaussianRandomProjection</code></td><td>draws $\mathbf{R}$; never looks at the data</td><td>$n$ enormous, reconstruction not needed</td></tr>
+  </table>
+  <p class="small muted">The default <code>svd_solver="auto"</code> chooses
+  between the first two by a size rule. That is a default you did not ask for;
+  print <code>pca.svd_solver_</code> if a timing surprises you.</p>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="The four, measured">
+  <h2>Timed and scored, rather than asserted</h2>
+  <p class="small">All four at $d = 123$, fitted on the 280 training faces,
+  reconstruction error measured on the 120 held out. Times are the best of
+  three on one machine at two threads; the <em>error</em> column is the one
+  that reproduces anywhere.</p>
+  <table class="smaller">
+    <tr><th>Method</th><th class="num">Fit time, s</th><th class="num">Held-out error</th></tr>
+    <tr><td>PCA, full SVD</td><td class="num">0.074</td><td class="num">0.00240</td></tr>
+    <tr><td>PCA, randomised</td><td class="num">0.081</td><td class="num">0.00241</td></tr>
+    <tr><td>Incremental PCA, 3 batches</td><td class="num">0.142</td><td class="num">0.00240</td></tr>
+    <tr><td>Random projection</td><td class="num fix">0.006</td><td class="num fail">0.32093</td></tr>
+  </table>
+  <p class="small">Three PCA variants land on the same error at different
+  prices. Random projection is essentially free and pays for it with a
+  reconstruction error <strong>133 times</strong> larger &mdash; a random
+  123-dimensional subspace of $\mathbb{R}^{4096}$ keeps only about
+  $123/4096 = 3.0\%$ of a generic vector&rsquo;s squared norm.</p>
+  <p class="small fix">That is not a bug in random projection. PCA minimises
+  exactly this column by construction; Johnson&ndash;Lindenstrauss promises
+  something else entirely, that <em>relative distances</em> survive. Neither
+  theorem is about the other quantity.</p>
+</section>
+
+<!-- 46 -->
+<section data-menu-title="Choosing between them">
+  <h2>Choosing between them, as a rule</h2>
+  <div class="cols">
+    <div>
+      <div class="panel panel-fix small">
+        <span class="panel-title">Use PCA when</span>
+        you will reconstruct, visualise or interpret the components; when the
+        data fits in memory; when $d$ should be chosen against a variance
+        target.
+      </div>
+    </div>
+    <div>
+      <div class="panel small">
+        <span class="panel-title">Use random projection when</span>
+        the ambient dimension is so large that the SVD itself is the
+        bottleneck, and all you need is that distances survive.
+      </div>
+    </div>
+  </div>
+  <p class="small">So the question is never which is better. It is whether you
+  need the <strong>reconstruction</strong> or only the
+  <strong>distances</strong>.</p>
+  <p class="small fix">Here, PCA. 400 &times; 4,096 is a small matrix, and the
+  components are interpretable images.</p>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="When PCA fails">
+  <h2>When PCA is the wrong tool</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">Three conditions, each of which bites here or nearby</span>
+    <p class="tight small"><strong>1. Variance is not signal.</strong> PCA keeps
+    the directions of largest variance. If the largest variance is a nuisance
+    &mdash; a lamp &mdash; PCA keeps the nuisance first.</p>
+    <p class="tight small"><strong>2. The structure is not linear.</strong> A
+    subspace is flat. Data on a curved manifold needs kernel PCA, LLE or a
+    learned embedding.</p>
+    <p class="tight small"><strong>3. The features are not commensurable.</strong>
+    PCA is not scale-free: change the units of one column and the components
+    change. Standardise first unless, as here, every feature is already the
+    same kind of number.</p>
+  </div>
+  <p class="small">Condition 1 is the one on this data, and no amount of
+  compression repairs it &mdash; measured at the end of the lecture.</p>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="Fitting before the split">
+  <h2>One procedural condition, because it is invisible</h2>
+  <p class="small">A reducer is an estimator: it is <strong>fitted</strong>. Fit
+  it before the split and the held-out faces have helped choose the subspace
+  they are then judged in.</p>
+  <pre><code class="language-python" data-trim data-line-numbers="1-5|1|4">pca = PCA(n_components=0.95).fit(X)          # all 400 photographs
+Z   = pca.transform(X)
+
+Z_tr, Z_te, y_tr, y_te = train_test_split(   # the split comes after
+    Z, y, test_size=0.3, stratify=y, random_state=42)
+</code></pre>
+  <p class="small">The 280 training faces span at most a 280-dimensional
+  subspace of $\mathbb{R}^{4096}$, so adding 120 more points genuinely changes
+  which directions survive. This is not a rounding error.</p>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="What the leak costs">
+  <h2>What it costs, over twenty splits</h2>
+  <table class="smaller">
+    <tr><th>$d = 123$, 20 stratified splits</th><th class="num">Fitted on train</th><th class="num">Fitted on everything</th><th class="num">Leaky wins</th></tr>
+    <tr><td>Reconstruction error, held out</td><td class="num">0.00243</td><td class="num">0.00096</td><td class="num fail">20 of 20</td></tr>
+    <tr><td>Accuracy, held out</td><td class="num">97.4%</td><td class="num">97.4%</td><td class="num">3 of 20</td></tr>
+  </table>
+  <p class="small">The leak makes the reconstruction error look
+  <strong>61%</strong> better and moves the accuracy by nothing measurable.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">The decision rule, and why it is still procedural</span>
+    Fitting an unsupervised step on everything costs you <strong>exactly when
+    that step&rsquo;s own objective is the number you report</strong>.
+    Reconstruction error is that objective; downstream accuracy is not
+    &mdash; and you cannot tell which row you are in without doing the split.
+    So: <code>Pipeline([("pca", PCA(0.95)), ("clf", …)])</code>, which refits
+    the PCA inside every fold and makes the leak structurally impossible rather
+    than merely avoided.
+  </div>
+</section>
+
+<!-- 50 -->
+<section class="divider" data-menu-title="◆ Clustering">
+  <p class="kicker">The method, part two</p>
+  <h1>Clustering, and<br>how to choose $k$</h1>
+  <p class="clock">20 minutes &middot; examinable</p>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="k-means">
+  <h2>k-means, in five lines</h2>
+  <ol class="tight small">
+    <li>Choose $k$ centroids (scikit-learn uses <em>k-means++</em>, which
+        spreads the initial ones out)</li>
+    <li>Assign every point to its nearest centroid</li>
+    <li>Move every centroid to the mean of its assigned points</li>
+    <li>Repeat 2&ndash;3 until no assignment changes</li>
+    <li>Repeat the whole thing <code>n_init</code> times and keep the best</li>
+  </ol>
+  <div class="panel">
+    Step 5 is not optional. Lloyd&rsquo;s algorithm converges &mdash; to a local
+    minimum that depends entirely on where you started. <code>n_init</code>
+    changed its default between scikit-learn versions, so name it.
+  </div>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="What k-means assumes">
+  <h2>What k-means assumes, whether you asked or not</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">Four assumptions, three of them false here</span>
+    <p class="tight small"><strong>Convexity.</strong> The partition is a
+    Voronoi diagram of the centroids, so every cluster is convex.</p>
+    <p class="tight small"><strong>Spherical, equal-sized.</strong> The only
+    quantity is distance to a centre.</p>
+    <p class="tight small"><strong>Total assignment.</strong> Every point
+    belongs to exactly one cluster; there is no &ldquo;none of these&rdquo;.</p>
+    <p class="tight small"><strong>$k$ is given.</strong> Nothing in the
+    algorithm chooses it.</p>
+  </div>
+  <p class="small">The first three are dropped by DBSCAN and by Gaussian
+  mixtures, in the last block of this lecture. The fourth &mdash; choosing $k$
+  &mdash; is what the rest of this section is about.</p>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="Every metric you know needs labels">
+  <h2>Every metric you know needs labels</h2>
+  <table class="smaller">
+    <tr><th>Metric</th><th>Needs</th><th>Available here?</th></tr>
+    <tr><td>RMSE</td><td>a true value per instance</td><td class="miss">no</td></tr>
+    <tr><td>Accuracy, $F_1$, ROC AUC</td><td>a true class per instance</td><td class="miss">no</td></tr>
+    <tr><td>Inertia</td><td>nothing</td><td class="hit">yes</td></tr>
+    <tr><td>Silhouette</td><td>nothing</td><td class="hit">yes</td></tr>
+    <tr><td>Adjusted Rand index</td><td>labels &mdash; a subset is enough</td><td class="hit">on the forty</td></tr>
+  </table>
+  <p class="small">Two of these can <em>choose</em> a model. One of them can be
+  <em>shown to a stakeholder</em>. They are not the same one, and keeping those
+  two jobs apart is the standing rule of this course applied where there is no
+  test set at all.</p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="Inertia">
+  <h2>Inertia, and why it cannot choose $k$</h2>
+  <div class="eqn-box">
+    $$J(k) \;=\; \sum_{i=1}^{m}\bigl\lVert \mathbf{x}^{(i)} - \boldsymbol\mu_{c(i)}\bigr\rVert_2^{2}$$
+  </div>
+  <p class="eqn-label">The sum of squared distances to the assigned centroid &mdash; what k-means minimises</p>
+  <div class="panel panel-when">
+    <span class="panel-title">A property, not an accident</span>
+    $J$ is <strong>non-increasing in $k$</strong> &mdash; refining a partition
+    cannot increase the sum of squared distances to the assigned centre &mdash;
+    and $J(m) = 0$ exactly. There is no interior minimum to find, at any $k$, on
+    any dataset.
+  </div>
+  <p class="small">So &ldquo;minimise inertia&rdquo; selects one cluster per
+  photograph. The elbow rule exists to work around that.</p>
+</section>
+
+<!-- 55 -->
+<section class="figslide" data-menu-title="◆ The elbow that is not there">
+  <h2>Find the elbow</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l09-elbow.svg"
+         alt="Inertia plotted against k from 2 to 60. The curve falls steeply at first and then flattens gradually, with no visible corner. A dashed line marks k equals 40 in the flat region.">
+  </figure>
+  <p class="takeaway muted">A smooth convex curve. The <em>kneedle</em> rule
+  &mdash; furthest below the chord, both axes rescaled &mdash; picks
+  $k = 19$; the archive has 40, and 46% of the inertia at $k=2$ is still
+  present at $k=40$.</p>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="Silhouette">
+  <h2>A criterion that <em>does</em> have an interior maximum</h2>
+  <p class="small fail">The elbow is not a criterion. It is a picture of a
+  criterion that does not exist, and no better heuristic repairs it, because
+  the information is not in $J$. So use one that does.</p>
+  <p class="small">For a point $i$, let $a$ be its mean distance to the other
+  points of <em>its own</em> cluster, and $b$ its mean distance to the points of
+  the <em>nearest other</em> cluster.</p>
+  <div class="eqn-box">
+    $$s_i \;=\; \frac{b - a}{\max(a, b)} \;\in\; [-1, 1]$$
+  </div>
+  <ul class="tight small">
+    <li>$s_i \to +1$: far inside its own cluster &nbsp;&middot;&nbsp;
+        $s_i \approx 0$: on a boundary &nbsp;&middot;&nbsp;
+        $s_i \to -1$: assigned to the <em>wrong</em> cluster</li>
+    <li>The <strong>silhouette score</strong> is the mean of $s_i$. It is
+        penalised for splitting a group <em>and</em> for merging two, so unlike
+        inertia it has an interior maximum</li>
+    <li>It costs $O(m^{2}n)$ &mdash; every pair, over every feature. Both
+        factors matter: the archive is bigger than 400, and $n$ is larger than
+        it needs to be</li>
+  </ul>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="The random anchor">
+  <h2>Before reading any silhouette: what does <em>nothing</em> score?</h2>
+  <p class="small">Put every photograph in a uniformly random group, twenty
+  times, and look at the spread. Both metrics have no natural scale, and a
+  number with no null has no units.</p>
+  <table class="smaller">
+    <tr><th>Random assignment</th><th class="num">Silhouette</th><th class="num">ARI on the forty</th></tr>
+    <tr><td>$k = 10$</td><td class="num">&minus;0.0422 &plusmn; 0.0045</td><td class="num">&minus;0.0040 &plusmn; 0.0205</td></tr>
+    <tr><td>$k = 40$</td><td class="num">&minus;0.1288 &plusmn; 0.0107</td><td class="num">&minus;0.0089 &plusmn; 0.0244</td></tr>
+    <tr><td>$k = 60$</td><td class="num">&minus;0.1805 &plusmn; 0.0124</td><td class="num">&minus;0.0075 &plusmn; 0.0261</td></tr>
+  </table>
+  <p class="fix">Both anchors sit at zero, and now you know the width of the
+  noise around zero. A silhouette of 0.02 is not a discovery.</p>
+</section>
+
+<!-- 58 -->
+<section data-menu-title="Adjusted Rand index">
+  <h2>The number the stakeholder reads: adjusted Rand index</h2>
+  <p class="small">Compare two groupings pair by pair, and count the pairs they
+  agree about &mdash; together in both, or apart in both:</p>
+  <div class="eqn-box">
+    $$\mathrm{RI} = \frac{a + b}{\binom{m}{2}},
+      \qquad
+      \mathrm{ARI} = \frac{\mathrm{RI} - \mathbb{E}[\mathrm{RI}]}{1 - \mathbb{E}[\mathrm{RI}]}$$
+  </div>
+  <p class="small">$\mathrm{RI}$ is high for free at large $k$ &mdash; almost
+  every pair is apart in both groupings. The <em>adjusted</em> index subtracts
+  what chance would give, so random scores 0 in expectation at any $k$, perfect
+  scores 1, and negative is worse than chance.</p>
+  <p class="small fail">We can compute it on the forty labelled photographs only:
+  780 pairs, of which just <strong>22</strong> are the same person. Treat it as a
+  sanity check with a wide interval, never as a ranking.</p>
+</section>
+
+<!-- 59 -->
+<section class="figslide" data-menu-title="◆ Silhouette over k">
+  <h2>Silhouette against $k$, read against the anchor</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l09-silhouette-vs-k.svg"
+         alt="Mean silhouette plotted against k from 2 to 60, a rising then roughly flat curve with a marked maximum, above a dotted line near zero showing random assignment, with a dashed vertical line at k equals 40.">
+  </figure>
+  <p class="takeaway muted">A maximum exists. It is also low, and the curve near
+  it is nearly flat &mdash; so the chosen $k$ is not decisively better than its
+  neighbours.</p>
+</section>
+
+<!-- 60 -->
+<section data-menu-title="What it chose">
+  <h2>What it chose</h2>
+  <table class="smaller">
+    <tr><th></th><th class="num">$k$</th><th class="num">Silhouette</th><th class="num">ARI on the forty</th></tr>
+    <tr><td>Random assignment</td><td class="num">40</td><td class="num">&minus;0.1288</td><td class="num">&minus;0.0089</td></tr>
+    <tr><td>The silhouette&rsquo;s choice</td><td class="num">59</td><td class="num hit">0.1707</td><td class="num">0.3954</td></tr>
+    <tr><td>The true $k$ &mdash; an audit</td><td class="num">40</td><td class="num">0.1465</td><td class="num">0.2978</td></tr>
+  </table>
+  <p class="small">Well above the anchor, so the clustering is doing something.
+  It chose 59 groups for 40 people, and the silhouette at the truth is
+  <em>lower</em> than at its own choice.</p>
+  <p class="small muted">The last row is an audit: on the slide because you
+  should see it, not because the project could have computed it.</p>
+</section>
+
+<!-- 61 -->
+<section class="figslide" data-menu-title="◆ Silhouette diagrams">
+  <h2>The mean hides the shape</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l09-silhouette-diagram.svg"
+         alt="Four silhouette diagrams for k equal to 2, 10, 40 and 60. Each shows one horizontal knife shape per cluster, sorted by coefficient, with a dashed vertical line at the mean. At k equals 2 two very unequal knives; at k equals 40 and 60 many short knives of very different lengths.">
+  </figure>
+  <p class="takeaway muted">One knife per cluster: width is size, length is
+  quality. At larger $k$ they are short and uneven.</p>
+</section>
+
+<!-- 62 -->
+<section data-menu-title="Reading the knives">
+  <h2>How to read a silhouette diagram</h2>
+  <table class="smaller">
+    <tr><th>What you see</th><th>What it means</th></tr>
+    <tr><td>A knife entirely left of the dashed mean</td><td>that cluster is worse than average; consider a different $k$</td></tr>
+    <tr><td>Knives of very unequal width</td><td>the sizes are unbalanced &mdash; one group has swallowed several</td></tr>
+    <tr><td>A knife extending into negative $s_i$</td><td>those points are closer to another cluster than to their own</td></tr>
+    <tr><td>Every knife short</td><td>the clusters overlap; the geometry has no clean gaps</td></tr>
+  </table>
+  <p class="small fail">Ours is the last row, at every $k$ we tried. That is the
+  diagnosis the mean silhouette of 0.1707 does not contain.</p>
+</section>
+
+<!-- 63 -->
+<section class="figslide" data-menu-title="◆ Inside two clusters">
+  <h2>A silhouette of 0.1707 means nothing until you look</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l09-clusters.png"
+         alt="Two rows of ten greyscale faces. The top row shows the same person repeatedly. The bottom row shows several different people, four of them outlined in red, all photographed with similar lighting and head angle.">
+  </figure>
+  <p class="takeaway fail">The cleanest and the worst cluster at $k=40$. The
+  bottom row is not a person. It is a <em>lighting condition</em> &mdash;
+  several different people lit and posed the same way.</p>
+  <aside class="notes">Give them two minutes to look before saying anything.
+  Someone always spots the lighting pattern unprompted; let them say it. Show
+  the worst cluster as well as the best — a montage of the cleanest one is a
+  marketing image.</aside>
+</section>
+
+<!-- 64 -->
+<section data-menu-title="Counting the damage">
+  <h2>Counting it, rather than describing it</h2>
+  <table class="smaller">
+    <tr><th>At $k = 40$, against the hidden identities</th><th class="num">Value</th></tr>
+    <tr><td>Cleanest cluster: 10 photographs, purity</td><td class="num hit">1.00</td></tr>
+    <tr><td>Worst cluster: 24 photographs of 10 people, purity</td><td class="num fail">0.21</td></tr>
+    <tr><td>Mean purity across the forty clusters</td><td class="num">0.74</td></tr>
+    <tr><td>Clusters holding exactly one person</td><td class="num">16</td></tr>
+    <tr><td>Clusters with exactly ten members</td><td class="num">7</td></tr>
+    <tr><td>Cluster sizes, smallest to largest</td><td class="num">4 to 25</td></tr>
+  </table>
+  <p class="small">Every true group has exactly ten members. The failure
+  condition stated at the start of the lecture is now a measurement.</p>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="Which number reports">
+  <h2>A last property of choosing $k$ by a score</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">The maximum of several noisy estimates is biased upwards</span>
+    Sweep $k$, keep the best silhouette, and print it, and the number that
+    <em>chose</em> the model is also the number that <em>reports</em> it. The
+    bias grows with how many candidates you tried, and it does not need labels
+    to exist.
+  </div>
+  <p class="small">Measured: choose $k$ on a random half of the corpus, score
+  the chosen model on the other half, twenty times.</p>
+  <table class="smaller">
+    <tr><th>Silhouette, 20 random halves</th><th class="num">Mean</th><th class="num">sd</th></tr>
+    <tr><td>Reported &mdash; chose and scored on the same half</td><td class="num">0.1777</td><td class="num">0.0123</td></tr>
+    <tr><td>Held out &mdash; had no vote</td><td class="num">0.0878</td><td class="num">0.0154</td></tr>
+    <tr><td>Optimism</td><td class="num fail">0.0899</td><td class="num">0.0229</td></tr>
+  </table>
+  <p class="small fail">Half the reported score, and worse in 20 splits out of
+  20. Report the held-out number, or report both.</p>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="Compress first">
+  <h2>Now put the two halves of the lecture together</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-5|1|3-5">Z = PCA(n_components=0.95, random_state=42).fit_transform(X)   # 123
+
+for k in range(2, 61):
+    km = KMeans(n_clusters=k, n_init=10, random_state=42).fit(Z)
+    sil.append(silhouette_score(Z, km.labels_))
+</code></pre>
+  <p class="small">The clustering code is unchanged. The grid is unchanged, the
+  seed is unchanged, <code>n_init</code> is unchanged. Only <em>what k-means is
+  looking at</em> changed.</p>
+  <p class="small fix">One line, and both cost models lose a factor of 33 in
+  their $n$.</p>
+</section>
+
+<!-- 67 -->
+<section data-menu-title="The trade-off, measured">
+  <h2>The trade-off, measured rather than asserted</h2>
+  <table class="smaller">
+    <tr><th>Dimensions</th><th class="num">Sweep, seconds</th><th class="num">Best $k$</th><th class="num">Silhouette</th><th class="num">ARI, all 400</th></tr>
+    <tr><td>4,096 &mdash; raw pixels</td><td class="num fail">78</td><td class="num">59</td><td class="num">0.171</td><td class="num">0.537</td></tr>
+    <tr><td>20</td><td class="num">1.9</td><td class="num">58</td><td class="num">0.286</td><td class="num">0.540</td></tr>
+    <tr><td>50</td><td class="num">1.7</td><td class="num">59</td><td class="num">0.256</td><td class="num">0.493</td></tr>
+    <tr><td>100</td><td class="num">1.9</td><td class="num">60</td><td class="num">0.218</td><td class="num">0.547</td></tr>
+    <tr><td>123 &mdash; 95% of the variance</td><td class="num fix">2.1</td><td class="num">60</td><td class="num">0.205</td><td class="num">0.524</td></tr>
+    <tr><td>399</td><td class="num">5.8</td><td class="num">59</td><td class="num">0.171</td><td class="num">0.537</td></tr>
+  </table>
+  <p class="small">The sweep is <strong>37 times</strong> faster at 123
+  dimensions, and the agreement with the true identities does not fall. The ARI
+  column is there because a speed-up that quietly costs quality is not a
+  speed-up.</p>
+  <p class="small muted">Every second in that column is a property of one
+  machine at two threads, and so is the ratio: run the notebook and you will
+  measure a different speed-up, because the fixed costs do not shrink with $n$.
+  What is a property of the <em>method</em> is the shape &mdash; an
+  order-of-magnitude saving, bought at no cost in ARI.</p>
+</section>
+
+<!-- 68 -->
+<section data-menu-title="Careful: the silhouette rose">
+  <h2>Careful: the silhouette went <em>up</em></h2>
+  <div class="panel panel-when">
+    <span class="panel-title">This is not evidence that the clustering improved</span>
+    The silhouette is computed in whatever space you hand it. Compressing the
+    data changes every distance, so the criterion is <strong>not
+    comparable</strong> across the rows of that table.
+  </div>
+  <p class="small">Which is exactly why the ARI column is there. It is measured
+  against the identities and does not depend on the representation, so it is the
+  only column whose rows may be compared.</p>
+  <p class="small muted">The general rule: never compare two scores measured on
+  different evaluation sets &mdash; and a different representation is a
+  different evaluation set.</p>
+</section>
+
+<!-- 69 -->
+<section class="divider" data-menu-title="◆ Beyond k-means">
+  <p class="kicker">Further ground</p>
+  <h1>Density, mixtures,<br>anomalies, forty labels</h1>
+  <p class="clock">15 minutes &middot; examinable</p>
+</section>
+
+<!-- 70 -->
+<section data-menu-title="Non-spherical structure">
+  <h2>Compression fixed the clock. It did not fix the geometry</h2>
+  <p class="small">Every k-means cluster is still a convex Voronoi cell, every
+  point still belongs to exactly one, and every group is still assumed to be the
+  same size. Two methods from Chapter 8 that drop those assumptions:</p>
+  <table class="smaller">
+    <tr><th></th><th>DBSCAN</th><th>Gaussian mixture</th></tr>
+    <tr><td>Cluster shape</td><td>any connected dense region</td><td>an ellipsoid</td></tr>
+    <tr><td>Number of clusters</td><td>found, not given</td><td>given</td></tr>
+    <tr><td>Every point assigned?</td><td>no &mdash; there is a noise label</td><td>softly, with a probability</td></tr>
+    <tr><td>Main parameter</td><td><code>eps</code>, a distance</td><td><code>n_components</code></td></tr>
+  </table>
+</section>
+
+<!-- 71 -->
+<section data-menu-title="DBSCAN">
+  <h2>DBSCAN, in three definitions</h2>
+  <ul class="tight small">
+    <li>A point is a <strong>core point</strong> if at least
+        <code>min_samples</code> points lie within <code>eps</code> of it</li>
+    <li>Core points within <code>eps</code> of each other are in the same
+        cluster; so are the non-core points in their neighbourhoods</li>
+    <li>Everything else is <strong>noise</strong>, labelled $-1$</li>
+  </ul>
+  <pre><code class="language-python" data-trim>
+db = DBSCAN(eps=6.0, min_samples=3).fit(Z)
+n_clusters = len(set(db.labels_) - {-1})     # exclude the noise label
+  </code></pre>
+  <p class="small muted"><code>DBSCAN</code> has no <code>predict</code>. It is
+  transductive: to label a new point you fit again, or you train a classifier on
+  its output.</p>
+</section>
+
+<!-- 72 -->
+<section class="figslide" data-menu-title="◆ DBSCAN">
+  <h2>DBSCAN on the compressed faces</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l10-dbscan.svg"
+         alt="Clusters found and faces labelled noise, both plotted against the eps radius. The cluster count rises to a small peak and collapses to one, while the noise count falls from nearly all points to zero. A dotted line at forty clusters is never reached.">
+  </figure>
+  <p class="takeaway muted">At small <code>eps</code> everything is noise; at
+  large <code>eps</code> everything is one cluster. The most it ever finds is
+  50, and never 40.</p>
+</section>
+
+<!-- 73 -->
+<section data-menu-title="A negative result, reported">
+  <h2>Reporting a method that did not work</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">DBSCAN needs one density scale that separates clusters from the gaps</span>
+    Best over the whole grid: ARI <strong>0.133</strong> at
+    <code>eps</code> = 6.0, with 41 clusters and 97 of the 400 faces called
+    noise. Forty groups of ten faces, all lit by the same rig, have no such
+    scale: the gap between two people is about the gap between two photographs
+    of one person.
+  </div>
+  <p class="small fix">This is a real result and it belongs on the slide. A
+  method that fails for a stateable reason is more informative than a method
+  that was never tried.</p>
+</section>
+
+<!-- 74 -->
+<section data-menu-title="Gaussian mixtures">
+  <h2>Gaussian mixtures</h2>
+  <p class="small">Model the data as coming from $k$ Gaussians with unknown
+  means, covariances and weights, fitted by expectation&ndash;maximisation:</p>
+  <div class="eqn-box">
+    $$p(\mathbf{x}) \;=\; \sum_{j=1}^{k}\pi_j\,\mathcal{N}\!\left(\mathbf{x}\,;\,\boldsymbol\mu_j,\,\boldsymbol\Sigma_j\right)$$
+  </div>
+  <ul class="tight small">
+    <li>Clusters are ellipsoids, so they may be elongated and of different sizes</li>
+    <li>Assignment is <em>soft</em>: <code>predict_proba</code> returns a
+        distribution over components</li>
+    <li>It is a <strong>density model</strong>, so it also scores how likely a
+        new point is &mdash; which is anomaly detection, shortly</li>
+  </ul>
+</section>
+
+<!-- 75 -->
+<section data-menu-title="Why not in 4,096 dimensions">
+  <h2>Why this needed the first half of the lecture</h2>
+  <p class="small">A full covariance in $n$ dimensions has $n(n+1)/2$ free
+  parameters.</p>
+  <table class="smaller">
+    <tr><th>Setting</th><th class="num">Free parameters</th></tr>
+    <tr><td>One full covariance in 4,096 dimensions</td><td class="num">8,390,656</td></tr>
+    <tr><td>Forty of them</td><td class="num fail">335,626,240</td></tr>
+    <tr><td>Estimated from</td><td class="num">400 photographs</td></tr>
+    <tr><td>Forty <em>diagonal</em> covariances in 123 dimensions</td><td class="num fix">9,880</td></tr>
+  </table>
+  <p class="fail">The first is not slow. It is undefined: every covariance
+  estimate is singular. This is a question arithmetic settles in one line, and
+  an afternoon of waiting does not.</p>
+  <p class="small muted"><code>covariance_type</code> is <code>"full"</code>,
+  <code>"tied"</code>, <code>"diag"</code> or <code>"spherical"</code>. We use
+  <code>"diag"</code>, and that is a decision, not a default.</p>
+</section>
+
+<!-- 76 -->
+<section class="figslide" data-menu-title="◆ Gaussian mixtures">
+  <h2>What BIC chooses, and what recovers the people</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l10-gmm.svg"
+         alt="Two panels. Left: BIC and AIC against the number of mixture components, with a dotted line at forty. Right: adjusted Rand index against the number of components, rising to a peak and falling.">
+  </figure>
+  <p class="takeaway muted">BIC picks 5 components; the ARI peaks at 55. The
+  criterion you can compute and the answer you want are not the same function.</p>
+</section>
+
+<!-- 77 -->
+<section data-menu-title="BIC and AIC">
+  <h2>BIC and AIC, and what they are for</h2>
+  <div class="eqn-box">
+    $$\mathrm{BIC} = p\log m - 2\log \hat{L}, \qquad \mathrm{AIC} = 2p - 2\log \hat{L}$$
+  </div>
+  <p class="small">$p$ is the number of parameters, $m$ the number of instances,
+  $\hat{L}$ the maximised likelihood. Both penalise complexity; BIC penalises it
+  harder once $\log m &gt; 2$, so it tends to choose fewer components.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">They answer a different question</span>
+    BIC asks which model best explains this data as a <em>density</em>. We are
+    asking which grouping matches the people. Those coincide only when the
+    people really are Gaussian blobs, and here they are not.
+  </div>
+</section>
+
+<!-- 78 -->
+<section data-menu-title="Anomaly detection">
+  <h2>Anomaly detection, two ways</h2>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>By density</strong></p>
+      <p class="smaller">A Gaussian mixture is a density. Score every image and
+      call the lowest few anomalous.</p>
+      <pre><code class="language-python" data-trim>
+d   = gmm.score_samples(Z)
+bad = d &lt; np.percentile(d, 3)
+      </code></pre>
+    </div>
+    <div>
+      <p class="small"><strong>By reconstruction error</strong></p>
+      <p class="smaller">An image the eigenfaces cannot rebuild is unlike the
+      images that built them.</p>
+      <pre><code class="language-python" data-trim>
+R   = pca.inverse_transform(pca.transform(Xa))
+err = ((R - Xa) ** 2).mean(axis=1)
+      </code></pre>
+    </div>
+  </div>
+  <p class="small">Test both by planting twelve corrupted images &mdash; four
+  rotated, four dimmed, four double-exposed &mdash; and counting how many each
+  puts in its top twelve.</p>
+</section>
+
+<!-- 79 -->
+<section class="figslide" data-menu-title="◆ Anomalies">
+  <h2>What each detector found</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l10-anomalies.png"
+         alt="Two rows of ten greyscale images. The top row, ranked by reconstruction error, is dominated by sideways and double-exposed faces outlined in green. The bottom row, ranked by lowest mixture density, contains a mixture of corrupted and ordinary faces.">
+  </figure>
+  <p class="takeaway muted">Reconstruction error caught 12 of the 12 planted
+  images; the mixture density caught 6.</p>
+</section>
+
+<!-- 80 -->
+<section data-menu-title="Why one won">
+  <h2>Why one of them won</h2>
+  <ul class="tight small">
+    <li>A rotated or double-exposed face is <strong>outside the subspace</strong>
+        the eigenfaces span, so its reconstruction error is large &mdash; median
+        0.0017 against 0.0002 for a genuine face</li>
+    <li>The mixture density is estimated <em>inside</em> that subspace, so a
+        corruption that projects onto an ordinary-looking point is invisible to
+        it</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">The decision rule</span>
+    Use the <strong>reconstruction error</strong> when the anomaly is a
+    different <em>kind</em> of object. Use the <strong>density</strong> when it
+    is an ordinary object in an unusual place.
+  </div>
+</section>
+
+<!-- 81 -->
+<section data-menu-title="Spending the forty labels">
+  <h2>Finally: the forty labels</h2>
+  <p class="small">Split the corpus 280 / 120, stratified by identity. We may
+  label forty of the 280 training photographs. Where we spend them turns out to
+  matter more than what we do with them.</p>
+  <ol class="tight small">
+    <li>Forty <strong>at random</strong></li>
+    <li>Forty chosen as the photograph nearest each of forty cluster centroids
+        &mdash; <code>km.transform(Z).argmin(axis=0)</code></li>
+    <li>The representative&rsquo;s label <strong>propagated</strong> to its whole
+        cluster &mdash; 280 labels from 40</li>
+    <li>Propagated only to the 75% of each cluster closest to its centroid</li>
+    <li>All 280 true labels &mdash; the ceiling, which the project cannot buy</li>
+  </ol>
+  <p class="small muted">Same classifier, same held-out faces, twenty splits.
+  The only thing that varies is <em>which</em> forty were labelled.</p>
+</section>
+
+<!-- 82 -->
+<section data-menu-title="The propagation numbers">
+  <h2>The numbers</h2>
+  <table class="smaller">
+    <tr><th>Labels used</th><th class="num">Held-out accuracy</th><th class="num">sd over 20 splits</th></tr>
+    <tr><td>40 at random</td><td class="num">48.1%</td><td class="num">3.8%</td></tr>
+    <tr><td>40, one per cluster</td><td class="num hit">60.5%</td><td class="num">4.9%</td></tr>
+    <tr><td>Propagated to the whole cluster</td><td class="num">55.7%</td><td class="num">4.7%</td></tr>
+    <tr><td>Propagated to the closest 75%</td><td class="num">55.1%</td><td class="num">4.8%</td></tr>
+    <tr><td>All 280 true labels</td><td class="num fix">97.4%</td><td class="num">1.6%</td></tr>
+  </table>
+  <p class="small">Twenty splits, because the differences between the middle
+  three rows are of the same order as their spread &mdash; and a comparison that
+  turns on less than the spread is not a comparison.</p>
+  <p class="small muted">Propagation buys 280 labels from 40 and does
+  <em>worse</em> than the 40 alone, because a wrong propagated label is worse
+  than no label. Report that, do not bury it.</p>
+</section>
+
+<!-- 83 -->
+<section data-menu-title="The lighting repair, measured">
+  <h2>The diagnosis was right. The obvious repair still fails</h2>
+  <p class="small">Lighting dominates the distance. Two one-line repairs, on the
+  same 400 faces, choosing $k$ by silhouette and reporting ARI exactly as
+  before:</p>
+  <table class="smaller">
+    <tr><th>Representation</th><th class="num">Best $k$</th><th class="num">Silhouette</th><th class="num">ARI, all 400</th></tr>
+    <tr><td>PCA to 123 dimensions</td><td class="num">60</td><td class="num">0.205</td><td class="num hit">0.524</td></tr>
+    <tr><td>PCA 123, first 3 components discarded</td><td class="num">60</td><td class="num">0.184</td><td class="num fail">0.508</td></tr>
+    <tr><td>Unit-norm each image, then PCA 123</td><td class="num">58</td><td class="num">0.189</td><td class="num fail">0.464</td></tr>
+  </table>
+  <p class="small">Neither helps. The leading components carry pose and face
+  shape as well as illumination, so removing them throws away signal with the
+  nuisance. The remedy that does work is a face-specific representation, which
+  is Lecture 13.</p>
+  <p class="small fail">Note also what chose $k$. Sweeping $k$ and keeping the
+  best <em>ARI</em> makes both repairs look like gains &mdash; because ARI is
+  computed from the labels this whole lecture is pretending not to have.</p>
+</section>
+
+<!-- 84 -->
+<section data-menu-title="◇ Specimen question">
+  <h2>Specimen exam question</h2>
+  <div class="panel">
+    A team has 5,000 documents represented as 50,000-dimensional vectors. They
+    want to preserve pairwise distances to within 20% while reducing the
+    dimension.
+  </div>
+  <ol class="tight small">
+    <li>Using the Johnson&ndash;Lindenstrauss bound, state the target dimension
+        &mdash; and say which of the two given numbers you did not need</li>
+    <li>They acquire ten times as many documents. By roughly what factor does
+        the required dimension grow?</li>
+    <li>Give one reason to prefer PCA here anyway, and one reason not to</li>
+  </ol>
+  <p class="small muted">Part 1 is two marks: one for the number, one for saying
+  that 50,000 does not enter it.</p>
+</section>
+
+<!-- 85 -->
+<section data-menu-title="◇ Answer">
+  <h2>Specimen answer</h2>
+  <ol class="tight small">
+    <li>$d \ge 4\log(5000) / (0.02 - 0.00267) \approx 1{,}965$. The
+        <strong>50,000 is not used</strong>: the bound contains only the number
+        of points and the tolerance</li>
+    <li>$\log(50{,}000)/\log(5{,}000) \approx 1.27$, so about a
+        <strong>27% increase</strong> &mdash; not ten times</li>
+    <li>For PCA: the components are interpretable, and 5,000 &times; 50,000 is
+        still tractable, and PCA is far better if anything downstream needs the
+        documents reconstructed. Against: it must look at all the data and costs
+        an SVD, and it gives no distance guarantee at all</li>
+  </ol>
+  <p class="small fail">The common wrong answer to 2 is &ldquo;ten times&rdquo;.
+  The bound is logarithmic in the number of points, and that is the only reason
+  it is a useful theorem rather than a curiosity.</p>
+</section>
+
+<!-- 86 -->
+<section data-menu-title="Scope">
+  <h2>What is examinable from today</h2>
+  <ul class="tight small">
+    <li>The derivation of the principal subspace: the objective, Pythagoras, the
+        trace, the SVD, the weighted-sum maximum, and
+        $\min E = \sum_{j>d}\sigma_j^{2}$</li>
+    <li>The explained variance ratio, and choosing $d$ from a variance target</li>
+    <li>The Johnson&ndash;Lindenstrauss bound: stating it, evaluating it, and
+        saying what is <em>not</em> in it</li>
+    <li>k-means and its four assumptions; why inertia cannot choose $k$; the
+        silhouette and its cost; reading a silhouette diagram</li>
+    <li>ARI as a chance-corrected agreement between two groupings</li>
+    <li>DBSCAN and Gaussian mixtures: what each assumes and when each fails;
+        BIC and AIC; anomaly detection by density and by reconstruction error;
+        label propagation from cluster representatives</li>
+  </ul>
+  <p class="small muted"><span class="scope scope-eng">not examinable</span>
+  Colab mechanics, thread pinning, absolute wall-clock timings, and the
+  internals of <code>fetch_olivetti_faces</code>.</p>
+  <p class="small muted"><span class="scope scope-context">for context</span>
+  Also in Chapters 7 and 8 and cut for time: kernel PCA and locally linear
+  embedding; t-SNE and UMAP, which are visualisations rather than feature maps;
+  Bayesian Gaussian mixtures, which drive unneeded components&rsquo; weights to
+  zero and so choose $k$ themselves; and Chapter 8&rsquo;s survey of
+  agglomerative, mean-shift, spectral and BIRCH clustering. Named because a
+  method you did not try is not a method that failed.</p>
+</section>
+
+<!-- 87 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-08.ipynb">Open Lecture 8 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU</strong>, top to bottom, in three to five
+        minutes on Colab. The slowest cell is the 4,096-dimensional sweep, and
+        it says so</li>
+    <li>It verifies the derivation numerically: the components agree with
+        scikit-learn to $10^{-4}$, and Eckart&ndash;Young closes to
+        $10^{-5}$ relative</li>
+    <li>Everything on today&rsquo;s slides &mdash; the distance histogram, both
+        sweeps, the silhouette diagrams, the four reducers, DBSCAN, the mixture,
+        the anomalies, the forty labels and the leak</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change, and what should happen</span>
+    Every prompt box carries a <strong>try</strong> line. The cheapest one:
+    change <code>n_components=0.95</code> to <code>0.99</code>, which takes $d$
+    from 123 to 260. The sweep slows by roughly the ratio of the two, and the
+    ARI barely moves &mdash; which is the whole trade-off in one edit.
+  </div>
+</section>
+
+<!-- 88 -->
+<section data-menu-title="★ All notebooks">
+  <h2>Every notebook in the course</h2>
+  <div class="nb-index">
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-01.ipynb">01 &middot; What machine learning is, and how we will work</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-02.ipynb">02 &middot; The end-to-end project</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-03.ipynb">03 &middot; Classification and its metrics</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-04.ipynb">04 &middot; Training models</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-05.ipynb">05 &middot; Regularisation and the bias–variance trade-off</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-06.ipynb">06 &middot; Decision trees</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-07.ipynb">07 &middot; Ensembles and random forests</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-08.ipynb">08 &middot; Dimensionality reduction and unsupervised learning</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-09.ipynb">09 &middot; Neural networks, from the perceptron up</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">10 &middot; PyTorch</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-11.ipynb">11 &middot; Training deep networks</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-12.ipynb">12 &middot; Convolutional networks</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-13.ipynb">13 &middot; Transfer learning</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-14.ipynb">14 &middot; Detection and segmentation</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-15.ipynb">15 &middot; Time series</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-16.ipynb">16 &middot; Recurrent networks</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-17.ipynb">17 &middot; Text</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-18.ipynb">18 &middot; Attention and transformers</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-19.ipynb">19 &middot; Information retrieval: the lexical foundation</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-20.ipynb">20 &middot; Information retrieval: dense retrieval</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-21.ipynb">21 &middot; Recommender systems: from ratings to factors</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-22.ipynb">22 &middot; Recommender systems: neural, and evaluated honestly</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-23.ipynb">23 &middot; Vision transformers and multimodal retrieval</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-24.ipynb">24 &middot; Generation, retrieval-augmented systems, and where this leaves you</a></p>
+  </div>
+</section>
+
+<!-- 89 -->
+<section data-menu-title="Summary">
+  <h2>What to remember</h2>
+  <ol class="tight smaller">
+    <li>PCA is the SVD of the <strong>centred</strong> data. The principal
+        subspace minimises squared reconstruction error exactly, and the error
+        it leaves is $\sum_{j>d}\sigma_j^{2}$ &mdash; the tail of the spectrum,
+        readable before you choose $d$</li>
+    <li>Minimising that error and maximising the projected variance are the same
+        problem, by Pythagoras. The explained variance ratio is that theorem
+        normalised, and it is how $d$ is chosen: 123 components hold 95% of
+        4,096 pixels</li>
+    <li>Johnson&ndash;Lindenstrauss bounds the target dimension by the
+        <em>number of points</em> and the <em>tolerance</em>, never by the
+        dimension you started in &mdash; and it is a loose worst case, so
+        measure the distortion you actually get</li>
+    <li>Inertia cannot choose $k$: it is monotone in $k$ and zero at $k = m$.
+        The silhouette can, at $O(m^{2}n)$, and must be read against a random
+        anchor &mdash; and the score that chose the model is optimistic by about
+        half, here</li>
+    <li>k-means assumes convex, equal-sized clusters and a known $k$. DBSCAN and
+        Gaussian mixtures drop the first two, and on this data DBSCAN fails for
+        a stateable reason: there is no single density scale</li>
+    <li>Reconstruction error finds anomalies of a different <em>kind</em>;
+        density finds ordinary objects in unusual places</li>
+    <li>Forty labels spent on cluster representatives are worth a quarter more
+        accuracy than forty spent at random. Which forty mattered more than what
+        was done with them</li>
+  </ol>
+</section>
+
+<!-- 90 -->
+<section data-menu-title="References">
+  <h2>In the book</h2>
+  <table class="smaller">
+    <tr><th>Topic</th><th>Chapter</th></tr>
+    <tr><td>The curse of dimensionality; projection and manifolds</td><td>7</td></tr>
+    <tr><td>PCA, explained variance ratio, choosing the number of dimensions</td><td>7</td></tr>
+    <tr><td>Randomised PCA, incremental PCA</td><td>7</td></tr>
+    <tr><td>Random projection and the Johnson&ndash;Lindenstrauss bound</td><td>7</td></tr>
+    <tr><td>Locally linear embedding and other techniques</td><td>7</td></tr>
+    <tr><td>k-means, inertia, the silhouette; limits of k-means; DBSCAN</td><td>8</td></tr>
+    <tr><td>Gaussian mixtures, EM, BIC and AIC, anomaly detection</td><td>8</td></tr>
+    <tr><td>Clustering for semi-supervised learning and label propagation</td><td>8</td></tr>
+  </table>
+</section>
+
+<!-- 91 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 9 &middot; G&eacute;ron Ch. 9</p>
+  <h1>Neural networks, from<br>the perceptron up</h1>
+  <p class="small">
+    The perceptron, what it can and cannot separate<br>
+    The multilayer perceptron, and why a stack of linear layers is a linear model<br>
+    What a layer computes, in matrix form, with the shapes tracked
+  </p>
+  <p class="clock">Run the Lecture 8 notebook first</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 8
+  <span class="sep">&middot;</span> Dimensionality reduction and unsupervised learning
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>
