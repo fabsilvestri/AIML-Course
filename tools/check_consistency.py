@@ -93,11 +93,20 @@ def numbers(text: str) -> set[float]:
 # matched a random-forest standard deviation, and "O'Reilly, 2025" matched a
 # gradient. Keep it in step with REBUILD.md's Source column; a lecture absent
 # from it is skipped with a warning rather than checked against everything.
+# Taken from REBUILD.md's Source column, which is authoritative. Do NOT infer
+# this by looking for which prefix produces the most matches: Lecture 7 scores
+# 15 hits against l06_*, the Titanic keys, purely because accuracies and shares
+# both live in [0, 1] and collide at four significant figures. An inferred map
+# would quietly bless the wrong namespace and then pass.
 NAMESPACES: dict[int, tuple[str, ...]] = {
     1:  ("",),                       # housing, unprefixed
     2:  ("",),                       # housing, unprefixed
     3:  ("l03", "l04", "app02"),     # old 3 + 4, MNIST
-    8:  ("l09", "l10", "app05"),     # old 9 + 10, Olivetti
+    4:  ("l05",),                    # old 5, Titanic
+    5:  ("l06",),                    # old 6, Titanic
+    6:  ("l07", "app04"),            # old 7, CoverType
+    7:  ("app04",),                  # old 8, CoverType (no l08_* keys exist)
+    8:  ("l09", "l10"),              # old 9 + 10, Olivetti
 }
 
 

@@ -55,6 +55,13 @@ paired comparisons, the three imputation strategies, the bootstrap half-width,
 the ten worst predictions, the capped-districts trap and the
 absolute-versus-relative arms).
 
+**`NAMESPACES` must come from the Source column, never from inference.** It is
+tempting to work out which figures.json prefix a deck belongs to by seeing which
+one it matches most. Lecture 7 (CoverType) scores 15 hits against `l06_*`, the
+Titanic keys, because accuracies and class shares both live in [0, 1] and
+collide at four significant figures. An inferred map blesses the wrong namespace
+and then passes.
+
 **A trap in the loop.** Some deck numbers are there to show a procedure that is
 *wrong* — Lecture 2 quotes a test-set pair to say it decides nothing. Computing
 those in the notebook models the bad practice. Compute them, but label the cell
