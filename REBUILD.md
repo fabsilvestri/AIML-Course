@@ -65,9 +65,19 @@ run it again, until it is clean. See §7 of AUTHORING.md.
 | 6 | 0 | — | clean, first try |
 | 7 | 0 | — | clean, first try |
 | 8 | 0 | — | clean, first try |
-| 9 | deck done; notebook next | | |
-| 10, 12 | renamed, not converted | | |
+| 9 | 0 | — | clean |
+| 10 | 3 | **0** | clean |
+| 12 | deck done; notebook next | | |
 | 11, 13–24 | not begun | | |
+
+**Lecture 12's derivation had to be moved between lectures.** `LECTURES.md`
+assigns *weight sharing, equivariance and memory* to Lecture 12, but the whole
+33-slide development of it lived in old lecture 16 — new Lecture 13 — because
+under the old design the mathematics opened the *Fix* lecture, and the Fix
+lecture was transfer learning. The derivation therefore sat one lecture *after*
+the method it justifies. Expect this wherever the new plan assigns a derivation
+to what used to be a Build lecture: **check whether the mathematics is in the
+next old deck rather than this one.**
 
 **Lectures 4-8 passed the consistency check on the first run, with no
 intervention.** All five were agent-drafted against `tools/AGENT_BRIEF.md`.
