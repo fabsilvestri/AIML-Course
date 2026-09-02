@@ -160,8 +160,27 @@ splitting a pair means each half writes references to content it cannot see.
 | L9-L10-Networks | L9, L10 | old 11, 12 | running |
 | L11-DeepTraining | L11 (merge) | old 13 + 14 | running, at `lecture-11-NEW` |
 
-| L12-L13-Vision | L12, L13 | old 15, 16 | running |
-| L14-Detection | L14 (merge) | old 17 + 18 | running, at `lecture-14-NEW` |
+| L12-L13-Vision | L12, L13 | old 15, 16 | **died at the usage limit** |
+| L14-Detection | L14 (merge) | old 17 + 18 | **died at the usage limit**, nothing written |
+
+### The 2026-09-01 usage-limit crash — state left behind
+
+All five running agents failed at once on a shared session limit. What survived,
+verified against `git ls-files` rather than trusted:
+
+* **Lectures 4, 5, 6, 7, 8 are fully converted and committed.** No old badges,
+  no commit slides, `badge-lec` present, titles correct. L4 also passes
+  `check_consistency`.
+* **Lectures 9, 10 and 12 were RENAMED but NOT converted.** `git mv` had run —
+  old 11 → 09, old 12 → 10, old 15 → 12 — so the modules and decks sit at their
+  new numbers holding their old content and old titles. The renames are the
+  fiddly part and they are done; the conversion is not started.
+* **Lectures 11, 13, 14 were not begun.** Old 13, 14, 16, 17, 18 are untouched
+  at their old numbers.
+* No `-NEW` draft was left behind by any of the three merge agents.
+
+Resuming from here means: convert 9, 10 and 12 in place (no rename needed), then
+carry on. Do not re-run the renames — they are committed.
 
 Still unassigned: {L15, L16} from old 19, 20 · {L17, L18} from old 21, 22 ·
 **{L19-L22} from nothing** · {L23, L24} from old 23, 24.
