@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lecture 24 — Closing the loop, and closing the course</title>
+<title>Lecture 24 — Generation, retrieval-augmented systems, and where this leaves you</title>
 
 <link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
 <link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
@@ -18,669 +18,64 @@
 <div class="reveal">
 <div class="slides">
 
-<!-- ==================================================================== -->
-<!-- OPENING                                                              -->
-<!-- ==================================================================== -->
-
 <!-- 1 -->
 <section class="title-slide" data-menu-title="Title">
-  <h1>Closing the loop,<br>and closing the course</h1>
-  <p class="subtitle">Application 12 &middot; the multimodal catalogue</p>
-  <p><span class="badge badge-fix">Lecture 24 &middot; Fix</span>
-     <span class="badge badge-math">Thread 12</span>
-     <span class="badge badge-ch">Géron Ch. 15&ndash;16</span></p>
+  <h1>Generation, retrieval-augmented<br>systems, and where this leaves you</h1>
+  <p class="subtitle">COCO and the Part V corpora</p>
+  <p><span class="badge badge-lec">Lecture 24</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 15&ndash;16</span></p>
   <p class="meta">
     Applications of Machine Learning<br>
     BSc Mathematics of Artificial Intelligence &middot; Third year
   </p>
-  <aside class="notes">Ask for every commitment sheet from the whole semester on
-  the desk, not just the last one. The final block needs them.</aside>
+  <aside class="notes">The last 25 minutes are the course as one argument.
+  Leave time for them; they are the part students remember.</aside>
 </section>
 
 <!-- 2 -->
-<section data-menu-title="Where we left off">
-  <h2>Where we left off</h2>
-  <table>
-    <tr><th>System, text to image</th><th class="num">R@1</th><th class="num">R@10</th></tr>
-    <tr><td>Random ranking (exact)</td><td class="num">0.5%</td><td class="num">5.0%</td></tr>
-    <tr><td>Two separately trained encoders</td><td class="num miss">1.0%</td><td class="num miss">6.0%</td></tr>
-    <tr><td>One jointly trained pair</td><td class="num hit">72.5%</td><td class="num hit">99.5%</td></tr>
-  </table>
-  <p class="small">Over 200 candidates &mdash; always say
-  the number.</p>
-  <p class="lead">One objective turned the middle row into the bottom row. Today
-  we take that objective apart.</p>
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Lecture&nbsp;23 built a catalogue you can search with a
+  sentence. Two weak spots remain, and both are about entries rather than about
+  the model:</p>
+  <ul class="tight small">
+    <li>Some entries have <strong>no usable description</strong> &mdash; nothing
+        for the text tower to encode</li>
+    <li>Some queries are <strong>ambiguous</strong>, and a ranking is a poor
+        answer to a question the user has not finished asking</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">Both are repaired by generation</span>
+    A multimodal model can <em>write</em> the missing description. And a
+    generator with the retriever attached can answer the ambiguous query in
+    words, grounded in what the catalogue actually contains.
+  </div>
 </section>
 
 <!-- 3 -->
 <section data-menu-title="Today">
-  <h2>Today, and then the end</h2>
+  <h2>Today</h2>
   <ol>
-    <li><span class="badge badge-math">Thread 12</span> The contrastive
-        objective and its temperature
+    <li>Captioning: filling the holes in the catalogue
         <span class="muted small">(20 min)</span></li>
-    <li>Diagnose &mdash; score the commitment, find the two weak spots
-        <span class="muted small">(20 min)</span></li>
-    <li>Repair &mdash; automatic captions, and retrieval-augmented answers
+    <li>Retrieval-augmented generation &mdash; Lecture&nbsp;20&rsquo;s retriever
+        joined to Lecture&nbsp;18&rsquo;s generator
         <span class="muted small">(25 min)</span></li>
-    <li>The course, as a single argument
+    <li>Failures that belong to the join rather than to either half
+        <span class="muted small">(15 min)</span></li>
+    <li><strong>The course, as one argument</strong>
         <span class="muted small">(25 min)</span></li>
   </ol>
-  <p class="small muted">The last block is not a revision list. It is the
-  argument the first lecture promised, with the measurements attached.</p>
 </section>
 
-<!-- ==================================================================== -->
-<!-- MATHEMATICAL THREAD 12 (20 min)                                      -->
-<!-- ==================================================================== -->
-
 <!-- 4 -->
-<section class="divider" data-menu-title="◆ Thread 12">
-  <p class="kicker">Mathematical thread 12 &middot; the last one</p>
-  <h1>The contrastive objective<br>and its temperature</h1>
+<section class="divider" data-menu-title="◆ Captioning">
+  <p class="kicker">The first repair</p>
+  <h1>Writing the<br>missing descriptions</h1>
   <p class="clock">20 minutes</p>
 </section>
 
 <!-- 5 -->
-<section data-menu-title="The question">
-  <h2>The question</h2>
-  <p class="lead">Two encoders trained apart gave us
-  1.0%. Two encoders trained together gave us
-  72.5%.</p>
-  <p class="lead"><em>What is the loss that did that?</em></p>
-  <div class="panel panel-math">
-    <span class="panel-title">Four decisions, none of them obvious</span>
-    Where the vectors live; what an unrelated pair should score; how a cosine
-    becomes a logit; and how many wrong answers the loss compares against.
-    Each one is measurable, and we measure all four.
-  </div>
-</section>
-
-<!-- 6 -->
-<section data-menu-title="The setup">
-  <h2>The setup</h2>
-  <p class="small">A batch of $B$ pairs. Image tower $f$, text tower $g$, each
-  ending in a linear map into $\mathbb{R}^{d}$:</p>
-  <div class="eqn-box">
-    $$\mathbf{u}_i = \frac{f(x_i)}{\lVert f(x_i)\rVert}, \qquad
-      \mathbf{v}_j = \frac{g(t_j)}{\lVert g(t_j)\rVert}, \qquad
-      S_{ij} = \mathbf{u}_i^{\top}\mathbf{v}_j$$
-    <div class="eqn-label">a B × B matrix of cosines</div>
-  </div>
-  <p class="small">$S_{ii}$ is a pair that belongs together. Every $S_{ij}$ with
-  $i \neq j$ is a pair that does not. The loss only ever sees this matrix.</p>
-</section>
-
-<!-- 7 -->
-<section data-menu-title="§1 Why the sphere">
-  <h2>1 &middot; Why normalise at all</h2>
-  <p class="small">The unnormalised inner product factorises:</p>
-  <div class="eqn-box">
-    $$\langle a, b\rangle = \lVert a\rVert\,\lVert b\rVert\cos\theta$$
-  </div>
-  <ul class="tight small">
-    <li>Two quantities are mixed: <em>which direction</em> the encoder chose,
-        and <em>how loudly</em> it said it</li>
-    <li>Only the direction carries the semantics. The length is whatever the
-        last linear layer happened to scale to</li>
-    <li>Measured on our catalogue: the longest image embedding is
-        1.32&times; the shortest</li>
-  </ul>
-  <p class="small">Divide both by their norms and $S_{ij}$ is a pure cosine, in
-  $[-1, 1]$, comparable across pairs, models and runs.</p>
-</section>
-
-<!-- 8 -->
-<section data-menu-title="§1 What normalising costs">
-  <h2>What normalising costs, and buys</h2>
-  <div class="cols">
-    <div>
-      <p><strong>Costs</strong></p>
-      <ul class="tight small">
-        <li>One degree of freedom per vector: $d$ numbers describe a point on
-            $S^{d-1}$, which has dimension $d-1$</li>
-        <li>The model can no longer express confidence by shouting</li>
-      </ul>
-    </div>
-    <div>
-      <p><strong>Buys</strong></p>
-      <ul class="tight small">
-        <li>A bounded score, so a single temperature is meaningful for every
-            pair</li>
-        <li>A geometry we can reason about &mdash; and the reasoning is the next
-            section</li>
-      </ul>
-    </div>
-  </div>
-  <p class="small muted">Confidence comes back through the temperature instead,
-  as one number shared by the whole model rather than one per example.</p>
-</section>
-
-<!-- 9 -->
-<section data-menu-title="§2 The naive answer">
-  <h2>2 &middot; What should an <em>unrelated</em> pair score?</h2>
-  <p class="lead">Matching pairs should score 1. Unrelated pairs should
-  score &hellip; ?</p>
-  <div class="panel panel-fail">
-    <span class="panel-title">The answer everybody gives first</span>
-    &minus;1. Opposite meaning, opposite vector. It is the wrong answer, and the
-    reason is geometry you already measured &mdash; in Lecture 10.
-  </div>
-  <aside class="notes">Take the vote. It is usually two-thirds for &minus;1.
-  Write the count on the board and come back to it in four slides.</aside>
-</section>
-
-<!-- 10 -->
-<section data-menu-title="§2 Why not −1">
-  <h2>Why &minus;1 is impossible to ask for</h2>
-  <ul class="tight small">
-    <li>For a given $\mathbf{u}$, there is <strong>exactly one</strong> unit
-        vector at cosine &minus;1: the point $-\mathbf{u}$</li>
-    <li>A catalogue of 200 entries would need all
-        200 of its non-matching captions to sit on that
-        one point &mdash; and then they would all be identical to each other</li>
-    <li>Wanting every unrelated pair at &minus;1 is asking for a configuration
-        that does not exist for more than two items</li>
-  </ul>
-  <div class="panel panel-math">
-    <span class="panel-title">The right question</span>
-    Not &ldquo;what is the most different?&rdquo; but &ldquo;what does a pair
-    with <em>no relationship at all</em> look like?&rdquo; That is a question
-    about a random vector, and Lecture 10 answered it.
-  </div>
-</section>
-
-<!-- 11 -->
-<section data-menu-title="§2 Callback to Lecture 10">
-  <h2>Thread 5, returning</h2>
-  <p class="small">In Lecture 10 the Johnson&ndash;Lindenstrauss bound worked
-  because a random projection nearly preserves inner products. Underneath that
-  is one fact about high dimensions:</p>
-  <div class="panel panel-math">
-    <span class="panel-title">Concentration on the sphere</span>
-    Draw $\mathbf{u}, \mathbf{v}$ uniformly on $S^{d-1}$. Then
-    $\mathbb{E}[\mathbf{u}^{\top}\mathbf{v}] = 0$ and
-    $\operatorname{Var}(\mathbf{u}^{\top}\mathbf{v}) = 1/d$. Almost all of the
-    sphere's area sits within $O(1/\sqrt{d})$ of the equator of any fixed point.
-  </div>
-  <p class="small"><strong>In high dimensions, two unrelated things are
-  orthogonal, not opposite.</strong></p>
-</section>
-
-<!-- 12 -->
-<section data-menu-title="§2 The derivation">
-  <h2>Where the $1/d$ comes from</h2>
-  <p class="small">Fix $\mathbf{u} = e_1$ by rotational symmetry, and write
-  $\mathbf{v} = \mathbf{z}/\lVert \mathbf{z}\rVert$ with
-  $\mathbf{z} \sim \mathcal{N}(0, I_d)$. Then $\mathbf{u}^{\top}\mathbf{v} =
-  z_1/\lVert \mathbf{z}\rVert$, and</p>
-  <div class="eqn-box">
-    $$\mathbb{E}\!\left[\left(\tfrac{z_1}{\lVert \mathbf{z}\rVert}\right)^{2}\right]
-      = \mathbb{E}\!\left[\frac{z_1^2}{\sum_{k} z_k^2}\right]
-      = \frac{1}{d}$$
-    <div class="eqn-label">by symmetry: the d coordinates share the total equally</div>
-  </div>
-  <p class="small">The expectation is zero by the symmetry
-  $\mathbf{v} \mapsto -\mathbf{v}$, so the standard deviation is exactly
-  $1/\sqrt{d}$. No approximation anywhere.</p>
-</section>
-
-<!-- 13 -->
-<section class="figslide" data-menu-title="◆ Concentration">
-  <h2>Measured, over twelve dimensions</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l24-concentration.svg"
-         alt="Left: log-log plot of the measured standard deviation of the cosine between random unit vectors against dimension, lying on the one-over-root-d line. Right: a histogram of those cosines at d = 512, a narrow spike at zero, with the point minus one marked far away and empty.">
-  </figure>
-  <p class="takeaway muted">At $d$ = 512 the measured
-  spread is 0.0439 against a predicted
-  0.0442 &mdash; and over
-  20,000 pairs the most negative cosine seen was
-  -0.177.</p>
-</section>
-
-<!-- 14 -->
-<section data-menu-title="§2 The number that settles it">
-  <h2>The number that settles the vote</h2>
-  <table>
-    <tr><th>Random unit vectors in $\mathbb{R}^{512}$, 20,000 pairs</th><th class="num">Value</th></tr>
-    <tr><td>Mean cosine</td><td class="num">-0.00072</td></tr>
-    <tr><td>Standard deviation, measured</td><td class="num">0.0439</td></tr>
-    <tr><td>Standard deviation, $1/\sqrt{d}$</td><td class="num">0.0442</td></tr>
-    <tr><td>Most negative cosine observed</td><td class="num">-0.177</td></tr>
-    <tr><td>Fraction with $|\cos| > 0.5$</td><td class="num">0.0%</td></tr>
-  </table>
-  <p class="small fail">The most negative cosine in twenty thousand draws was
-  &minus;0.18. Nothing came anywhere near &minus;1, and nothing ever will.
-  That is why the loss targets zero.</p>
-</section>
-
-<!-- 15 -->
-<section data-menu-title="§2 On our own embeddings">
-  <h2>And on the embeddings we actually used</h2>
-  <table>
-    <tr><th>Cosine, in the trained joint space</th><th class="num">Mean</th><th class="num">sd</th></tr>
-    <tr><td>Two unrelated images</td><td class="num">+0.471</td><td class="num">0.086</td></tr>
-    <tr><td>An image and an unrelated caption</td><td class="num">+0.154</td><td class="num">0.040</td></tr>
-    <tr><td class="fix">An image and its own caption</td><td class="num fix">+0.303</td><td class="num">0.033</td></tr>
-    <tr><td>Most negative unrelated pair seen</td><td class="num">-0.007</td><td class="num">&mdash;</td></tr>
-  </table>
-  <p class="small">Unrelated pairs are near zero and nowhere near &minus;1 &mdash;
-  exactly as the geometry says. But they are not <em>at</em> zero either, and
-  that deviation has a name.</p>
-</section>
-
-<!-- 16 -->
-<section class="figslide" data-menu-title="◆ The modality gap">
-  <h2>One space, two cones</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l24-geometry.svg"
-         alt="Left: three overlaid histograms of cosine similarity — random unit vectors centred on zero, unrelated CLIP image-caption pairs shifted right, and unrelated CLIP image-image pairs shifted further right. Right: a two-dimensional projection showing image embeddings and caption embeddings in two separated clouds.">
-  </figure>
-  <p class="takeaway muted">Images occupy one region of the sphere and captions
-  another: the two centroids are 0.83 apart. The
-  objective aligns pairs <em>relatively</em>, and never asks the two clouds to
-  coincide.</p>
-</section>
-
-<!-- 17 -->
-<section data-menu-title="§2 The gap, honestly">
-  <h2>The gap, stated honestly</h2>
-  <ul class="tight small">
-    <li>Only the <em>ranking within a row</em> is trained. Adding the same
-        constant offset to every image embedding changes no ranking and no loss</li>
-    <li>So the loss has no reason to remove the gap, and it does not</li>
-    <li>Consequence you can be caught by: an absolute cosine threshold tuned on
-        image&ndash;image pairs is meaningless for image&ndash;text pairs.
-        Unrelated image pairs average 0.47;
-        unrelated image&ndash;caption pairs average
-        0.15 &mdash; and that difference
-        is there <em>before</em> any semantics</li>
-  </ul>
-  <div class="panel">
-    <span class="panel-title">Where this sits</span>
-    Why the gap exists and what it costs is an open research question, outside
-    Chapters 1&ndash;16 and not examinable. That it exists, and that it makes
-    raw cosines incomparable across modality, is measurable and is on the exam.
-  </div>
-</section>
-
-<!-- 18 -->
-<section data-menu-title="§3 From cosine to logit">
-  <h2>3 &middot; From a cosine to a logit</h2>
-  <p class="small">Thread 11 gave us the machinery: softmax over logits,
-  cross-entropy against the correct index. Row $i$ of $S$ is a
-  $B$-class problem whose correct answer is column $i$:</p>
-  <div class="eqn-box">
-    $$\mathcal{L} = -\frac{1}{B}\sum_{i}\log
-      \frac{\exp(S_{ii}/\tau)}{\sum_{j}\exp(S_{ij}/\tau)}$$
-    <div class="eqn-label">InfoNCE, one direction; the loss is the average of both</div>
-  </div>
-  <p class="small">Everything is familiar except $\tau$. Set it to 1 and see
-  what happens.</p>
-</section>
-
-<!-- 19 -->
-<section data-menu-title="§3 Why τ = 1 fails">
-  <h2>Why $\tau = 1$ cannot work</h2>
-  <ul class="tight small">
-    <li>The logits are cosines, so they live in $[-1, 1]$. The whole spread of
-        the row is at most 2</li>
-    <li>$\exp$ of a range of 2 is a ratio of at most $e^{2} \approx 7.4$,
-        across 200 competitors</li>
-    <li>So the softmax is nearly uniform whatever the model says, the correct
-        answer gets probability near $1/B$, and the loss sits near
-        $\log B$ &mdash; the value for a model that has learned nothing</li>
-  </ul>
-  <table>
-    <tr><th>At $\tau = 1$, on our 200 pairs</th><th class="num">Value</th></tr>
-    <tr><td>Loss</td><td class="num">5.151</td></tr>
-    <tr><td>A scorer that knows nothing: $\log$ 200</td><td class="num">5.298</td></tr>
-    <tr><td>Mean probability on the correct entry</td><td class="num">0.0058</td></tr>
-  </table>
-</section>
-
-<!-- 20 -->
-<section data-menu-title="§3 What τ does">
-  <h2>What dividing by $\tau$ actually does</h2>
-  <div class="eqn-box">
-    $$\frac{\partial \mathcal{L}_i}{\partial S_{ij}}
-      = \frac{1}{\tau}\left(p_{ij} - \mathbf{1}[j = i]\right),
-      \qquad p_{ij} = \operatorname{softmax}_j\!\left(S_{ij}/\tau\right)$$
-    <div class="eqn-label">thread 11's result, prediction minus target, scaled by 1/τ</div>
-  </div>
-  <ul class="tight small">
-    <li>$\tau$ does <strong>not</strong> change which column is largest, so it
-        cannot change the top-1 accuracy of a fixed model</li>
-    <li>It changes <em>where the gradient goes</em>. Small $\tau$ concentrates
-        $p$ on the few hardest negatives; those get almost all the push</li>
-    <li>Too small and the loss is dominated by one negative per row, which may be
-        a mislabelled pair rather than an informative one</li>
-  </ul>
-</section>
-
-<!-- 21 -->
-<section class="figslide" data-menu-title="◆ Temperature">
-  <h2>Twelve temperatures, one set of cosines</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l24-temperature.svg"
-         alt="Left: contrastive loss against temperature on a log axis, falling steeply as the temperature drops, with the learned value marked and a dotted line at log 200. Right: probability mass on the correct answer and on the hardest wrong answer against temperature, with a flat line showing top-1 accuracy unchanged.">
-  </figure>
-  <p class="takeaway muted">The flat line is the point: the temperature moves
-  the loss by orders of magnitude and moves the accuracy of a fixed model not at
-  all.</p>
-</section>
-
-<!-- 22 -->
-<section data-menu-title="§3 The learned temperature">
-  <h2>The temperature is a parameter</h2>
-  <p class="small">It is not a hyperparameter anybody tunes by hand. The model
-  stores $\log(1/\tau)$ and learns it by gradient descent along with everything
-  else, clamped from above so it cannot run away.</p>
-  <pre><code class="language-python" data-trim>scale = model.logit_scale.exp()      # a single learnable scalar
-print(f"logit scale {scale:.2f}   tau = {1 / scale:.5f}")
-</code></pre>
-  <table>
-    <tr><th>Read off the checkpoint</th><th class="num">Value</th></tr>
-    <tr><td>Learned logit scale $1/\tau$</td><td class="num">100.00</td></tr>
-    <tr><td>Learned temperature $\tau$</td><td class="num">0.01000</td></tr>
-    <tr><td>Loss on our batch at that $\tau$</td><td class="num">0.835</td></tr>
-    <tr><td>Mean probability on the correct entry</td><td class="num">0.667</td></tr>
-  </table>
-  <p class="small muted">Read the scale again:
-  100.00, to five significant figures. It
-  is not near its clamp; it is <em>on</em> it. The implementation caps
-  $\log(1/\tau)$ at $\log 100$, and training pushed it there and held it.</p>
-</section>
-
-<!-- 23 -->
-<section data-menu-title="§3 Too cold">
-  <h2>And if you make it colder still</h2>
-  <table>
-    <tr><th>$\tau$</th><th class="num">Loss</th><th class="num">p(correct)</th><th class="num">p(hardest wrong)</th></tr>
-    <tr><td>1</td><td class="num">5.151</td><td class="num">0.0058</td><td class="num">0.0056</td></tr>
-    <tr><td class="fix">0.0100 (learned)</td><td class="num fix">0.835</td><td class="num fix">0.667</td><td class="num">0.208</td></tr>
-    <tr><td>0.002</td><td class="num">2.647</td><td class="num">0.724</td><td class="num">0.252</td></tr>
-  </table>
-  <p class="small">Colder is not simply better. As $\tau \to 0$ the softmax
-  becomes a hard maximum: the gradient sees one negative per row, and any label
-  noise in that one pair is amplified rather than averaged away.</p>
-</section>
-
-<!-- 24 -->
-<section data-menu-title="§4 The negatives">
-  <h2>4 &middot; Where the negatives come from</h2>
-  <p class="lead">Nowhere. That is the elegant part.</p>
-  <p class="small">The loss needs, for each image, a set of captions it should
-  <em>not</em> match. Nobody labels those. They are simply the other members of
-  the batch &mdash; free, and correct with high probability on a large corpus.</p>
-  <div class="panel">
-    <span class="panel-title">The consequence, in one line</span>
-    The batch is the label set. So the batch size is not a memory setting. It
-    is the number of classes in the classification problem you are solving.
-  </div>
-</section>
-
-<!-- 25 -->
-<section class="figslide" data-menu-title="◆ The matrix">
-  <h2>One batch, drawn</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/d-contrastive.svg"
-         alt="A five by five grid of similarity cells with the diagonal picked out in green, an arrow to a note explaining that each row is a five-class classification problem, and two boxes on bigger batches and on failing to normalise.">
-  </figure>
-  <p class="takeaway muted">Each row is a $B$-class problem. Each column is the
-  same problem in the other direction. The loss averages both.</p>
-</section>
-
-<!-- 26 -->
-<section data-menu-title="§4 Batch size measured">
-  <h2>Bigger batch, harder task</h2>
-  <table>
-    <tr><th>Batch size $B$</th><th class="num">In-batch top-1</th><th class="num">Chance, $1/B$</th><th class="num">Loss</th></tr>
-    <tr><td>2</td><td class="num">99.2%</td><td class="num">50.0%</td><td class="num">0.016</td></tr>
-    <tr><td>16</td><td class="num">95.8%</td><td class="num">6.2%</td><td class="num">0.116</td></tr>
-    <tr><td>64</td><td class="num">87.4%</td><td class="num">1.6%</td><td class="num">0.389</td></tr>
-    <tr><td>200</td><td class="num">72.5%</td><td class="num">0.5%</td><td class="num">0.835</td></tr>
-  </table>
-  <p class="small">Same model, same embeddings, same temperature. Only the
-  number of distractors changed.</p>
-</section>
-
-<!-- 27 -->
-<section class="figslide" data-menu-title="◆ Batch size">
-  <h2>The number of negatives <em>is</em> the difficulty</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l24-batch.svg"
-         alt="Left: in-batch top-1 accuracy falling as batch size grows on a log-2 axis, against a much faster falling one-over-B chance line. Right: contrastive loss rising with batch size alongside the log B reference curve.">
-  </figure>
-  <p class="takeaway muted">Accuracy falls with $B$ and chance falls faster, so
-  the gap &mdash; the learning signal &mdash; widens. That is the whole argument
-  for a large batch.</p>
-</section>
-
-<!-- 28 -->
-<section data-menu-title="§4 The consequence">
-  <h2>Two consequences worth carrying away</h2>
-  <ul class="tight small">
-    <li><strong>A contrastive loss value is not comparable across papers.</strong>
-        It is measured against a batch-dependent ceiling of $\log B$. Our own
-        sweep makes the point: the same model, the same embeddings and the same
-        $\tau$ score 0.058 at $B$ = 8 and
-        0.835 at $B$ = 200. Neither number
-        means anything without its batch size</li>
-    <li><strong>Batch size stops being an optimisation detail.</strong> Doubling
-        it changes the task, not just the gradient noise &mdash; which is why
-        these models are trained with batches in the tens of thousands, across
-        many devices</li>
-  </ul>
-  <div class="panel">
-    <span class="panel-title">The engineering, flagged as engineering</span>
-    Gathering embeddings across devices to build one large similarity matrix is
-    real and necessary and outside Chapters 1&ndash;16. Not examinable.
-  </div>
-</section>
-
-<!-- 29 -->
-<section data-menu-title="Thread 12 summary">
-  <h2>Thread 12 &mdash; what to keep</h2>
-  <ol class="tight small">
-    <li>Normalise, because only the direction is semantic and a bounded score
-        makes one temperature meaningful</li>
-    <li>Unrelated pairs target <strong>zero</strong>, because in $d$ dimensions
-        random directions are orthogonal with spread
-        $1/\sqrt{d}$ &mdash; measured at
-        0.0439 for $d$ = 512</li>
-    <li>$\tau$ rescales cosines into usable logits. It cannot change a fixed
-        model's ranking; it decides which negatives the gradient listens to</li>
-    <li>The batch <em>is</em> the label set, so $B$ sets both the difficulty and
-        the chance level $1/B$</li>
-  </ol>
-  <p class="small muted">Thread 5 supplied point 2. Thread 11 supplied points 3
-  and 4. The twelve were meant to be taken in order, and this is why.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- DIAGNOSE (20 min)                                                    -->
-<!-- ==================================================================== -->
-
-<!-- 30 -->
-<section class="divider" data-menu-title="◆ Diagnose">
-  <p class="kicker">Part two</p>
-  <h1>Score the sheet,<br>then find the weak spots</h1>
-  <p class="clock">20 minutes</p>
-</section>
-
-<!-- 31 -->
-<section data-menu-title="★ Your numbers">
-  <h2>Compare with your sheet</h2>
-  <div class="commit">
-    <span class="commit-label">From the previous lecture</span>
-    <p class="small">
-      Recall@1 a good system should reach: <span class="blank"></span><br>
-      Recall@1 I expected from what we built: <span class="blank"></span><br>
-      Best Recall@1 I obtained: <span class="blank"></span>
-    </p>
-  </div>
-  <table>
-    <tr><th>Reality, over 200 candidates</th><th class="num">R@1</th></tr>
-    <tr><td>Shuffle the catalogue</td><td class="num">0.5%</td></tr>
-    <tr><td>Two separately trained encoders</td><td class="num">1.0%</td></tr>
-    <tr><td>One jointly trained pair</td><td class="num hit">72.5%</td></tr>
-  </table>
-</section>
-
-<!-- 32 -->
-<section data-menu-title="The verdict">
-  <h2>The verdict</h2>
-  <p class="small">For the first time in twelve applications, the number you
-  committed to was probably <em>too low</em> rather than too high &mdash;
-  because the failure this time was not in the evaluation. It was in the
-  geometry, and the repair was somebody else&rsquo;s pretraining run.</p>
-  <div class="panel">
-    <span class="panel-title">Still worth checking</span>
-    72.5% over 200 candidates is not
-    72.5% over fifty thousand. Recall rises as the haystack
-    shrinks, and a catalogue is a haystack that grows.
-  </div>
-  <aside class="notes">Do not let the room leave believing this number
-  transfers. Ask what they would expect at n = 50,000 and why.</aside>
-</section>
-
-<!-- 33 -->
-<section data-menu-title="Two weak spots">
-  <h2>Two things we measured and did not fix</h2>
-  <table>
-    <tr><th>#</th><th>Measured last lecture</th><th class="num">Number</th></tr>
-    <tr><td>1</td><td>Text search R@1 on entries with no description</td><td class="num fail">0%</td></tr>
-    <tr><td>2</td><td>Ambiguous queries with a single right answer</td><td class="num fail">none exist</td></tr>
-  </table>
-  <p class="small">The first is a hole in the index. The second is a mismatch
-  between what the customer asked and what a ranked list can say.</p>
-  <p class="small muted">Both are repaired in the next thirty minutes, and both
-  are re-measured before we leave.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- THE WORKED ASSISTANT FAILURE                                         -->
-<!-- ==================================================================== -->
-
-<!-- 34 -->
-<section class="divider" data-menu-title="◇ Assistant failure">
-  <p class="kicker">The worked assistant failure</p>
-  <h1>The loss without<br>the sphere</h1>
-  <p class="clock">the failure this lecture is about</p>
-</section>
-
-<!-- 35 -->
-<section data-menu-title="◇ The prompt">
-  <h2>Beat 1 &mdash; the under-specified prompt</h2>
-  <div class="panel panel-fail">
-    <span class="panel-title">What was typed</span>
-    &ldquo;Write the symmetric contrastive loss for a batch of image and text
-    embeddings, with a temperature of 0.01.&rdquo;
-  </div>
-  <p class="small">One clause missing. It is the clause section 1 of the thread
-  spent five minutes on, which is exactly why this is the failure for this
-  lecture.</p>
-</section>
-
-<!-- 36 -->
-<section data-menu-title="◇ The code">
-  <h2>Beat 2 &mdash; the plausible code it returns</h2>
-  <pre><code class="language-python" data-trim data-line-numbers>import torch, torch.nn.functional as F
-
-def contrastive_loss(img, txt, tau=0.01):
-    """Symmetric InfoNCE over a batch of paired embeddings."""
-    logits = img @ txt.T / tau                 # (B, B)
-    target = torch.arange(len(img), device=img.device)
-    return 0.5 * (F.cross_entropy(logits, target) +
-                  F.cross_entropy(logits.T, target))
-
-I = model.get_image_features(**image_batch)
-T = model.get_text_features(**text_batch)
-print(f"loss {contrastive_loss(I, T).item():.3f}")
-</code></pre>
-  <p class="small">It runs. The docstring is accurate. The shapes are right. The
-  target is right. It even has the factor of one half.</p>
-</section>
-
-<!-- 37 -->
-<section data-menu-title="◇ The review question">
-  <h2>Beat 3 &mdash; the review question</h2>
-  <p class="lead">&ldquo;Is <code>img @ txt.T</code> a cosine?&rdquo;</p>
-  <p class="small">Only if both sides are unit vectors, and
-  <code>get_image_features</code> does not return unit vectors. So the entries
-  are $\lVert a\rVert\lVert b\rVert\cos\theta$, the temperature is dividing a
-  quantity with no fixed scale, and the row-wise softmax is comparing lengths as
-  much as directions.</p>
-  <div class="panel panel-fail">
-    <span class="panel-title">Which of the five questions is this?</span>
-    Number 5 again: <em>what is the default I did not ask for?</em> The default
-    of <code>get_*_features</code> is &ldquo;unnormalised&rdquo;, and no line of
-    that function says so.
-  </div>
-</section>
-
-<!-- 38 -->
-<section class="figslide" data-menu-title="◆ Damage">
-  <h2>Beat 3b &mdash; measure the damage</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l24-normalisation.svg"
-         alt="Left: two bars comparing in-batch top-1 accuracy with normalised and with raw embeddings. Right: a scatter of embedding length against how many queries ranked that image first, drifting upwards.">
-  </figure>
-  <p class="takeaway muted">Top-1 falls
-  21.5 points, from
-  72.5% to
-  51.0% &mdash; and the right panel
-  says why: with the sphere gone, an image&rsquo;s <em>length</em> starts to
-  compete with its direction.</p>
-</section>
-
-<!-- 39 -->
-<section data-menu-title="◇ The damage, tabulated">
-  <h2>Beat 3c &mdash; the numbers</h2>
-  <table>
-    <tr><th>At the same $\tau$ = 0.0100</th><th class="num">On the sphere</th><th class="num">Raw</th></tr>
-    <tr><td>Contrastive loss</td><td class="num">0.84</td><td class="num fail">146.00</td></tr>
-    <tr><td>In-batch top-1</td><td class="num">72.5%</td><td class="num fail">51.0%</td></tr>
-    <tr><td>Images no query ranks first</td><td class="num">48 of 200</td><td class="num fail">61 of 200</td></tr>
-  </table>
-  <p class="small">The loss is
-  175&times; larger, because $\tau$ is now
-  dividing a quantity with no fixed scale rather than a cosine. And the rank
-  correlation between an image&rsquo;s length and how often it wins is
-  <span class="fail">+0.27</span> —
-  not overwhelming, and enough to cost
-  21.5 points.</p>
-</section>
-
-<!-- 40 -->
-<section data-menu-title="◇ The fix">
-  <h2>Beat 4 &mdash; the corrected specification</h2>
-  <div class="panel panel-fix">
-    <span class="panel-title">What to type instead</span>
-    &ldquo;Symmetric InfoNCE. <strong>L2-normalise both embedding sets along the
-    feature axis before the matrix product</strong>, so the logits are cosines
-    divided by $\tau$. Assert that every row of both matrices has unit norm to
-    within 1e-5. Report the loss <em>and</em> the in-batch top-1 accuracy, and
-    print $\log B$ beside the loss.&rdquo;
-  </div>
-  <p class="small muted">The assertion is the part that would have caught it in
-  silence. Two lines, and the bug becomes a crash.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- REPAIR 1 — AUTOMATIC CAPTIONS (12 min)                               -->
-<!-- ==================================================================== -->
-
-<!-- 41 -->
-<section class="divider" data-menu-title="◆ Repair 1">
-  <p class="kicker">Part three, first half</p>
-  <h1>Entries with<br>no description</h1>
-  <p class="clock">12 minutes</p>
-</section>
-
-<!-- 42 -->
 <section data-menu-title="The hole">
   <h2>The hole in the index</h2>
   <p class="small">60 of 200 catalogue
@@ -696,7 +91,7 @@ print(f"loss {contrastive_loss(I, T).item():.3f}")
   </div>
 </section>
 
-<!-- 43 -->
+<!-- 6 -->
 <section data-menu-title="The captioner">
   <h2>The captioner</h2>
   <table>
@@ -711,7 +106,7 @@ print(f"loss {contrastive_loss(I, T).item():.3f}")
   different pair of modalities in the same box.</p>
 </section>
 
-<!-- 44 -->
+<!-- 7 -->
 <section data-menu-title="Captioning code">
   <h2>The repair, in nine lines</h2>
   <pre><code class="language-python" data-trim data-line-numbers>from transformers import BlipForConditionalGeneration, BlipProcessor
@@ -732,7 +127,7 @@ assert len(generated) == len(missing_images)
   beam search. Not instant; run it offline, once, per new entry.</p>
 </section>
 
-<!-- 45 -->
+<!-- 8 -->
 <section data-menu-title="What it writes">
   <h2>What it writes</h2>
   <table class="smaller">
@@ -749,7 +144,7 @@ assert len(generated) == len(missing_images)
   until you say what the query will be.</aside>
 </section>
 
-<!-- 46 -->
+<!-- 9 -->
 <section class="figslide" data-menu-title="◆ Captions measured">
   <h2>Better than nothing, measured</h2>
   <figure class="fig fig-wide">
@@ -763,7 +158,7 @@ assert len(generated) == len(missing_images)
   66.7% if a person had written them.</p>
 </section>
 
-<!-- 47 -->
+<!-- 10 -->
 <section data-menu-title="Captions, tabulated">
   <h2>The whole catalogue, three ways</h2>
   <table>
@@ -777,7 +172,7 @@ assert len(generated) == len(missing_images)
   At rank 10 it is not complete, and that gap is the real finding.</p>
 </section>
 
-<!-- 48 -->
+<!-- 11 -->
 <section data-menu-title="The other route was fine">
   <h2>Meanwhile, the route that never read a description</h2>
   <table>
@@ -794,7 +189,7 @@ assert len(generated) == len(missing_images)
   </div>
 </section>
 
-<!-- 49 -->
+<!-- 12 -->
 <section data-menu-title="Caveats">
   <h2>Three things not to claim</h2>
   <ul class="tight small">
@@ -816,18 +211,210 @@ assert len(generated) == len(missing_images)
   </div>
 </section>
 
-<!-- ==================================================================== -->
-<!-- REPAIR 2 — RAG (13 min)                                              -->
-<!-- ==================================================================== -->
-
-<!-- 50 -->
-<section class="divider" data-menu-title="◆ Repair 2">
-  <p class="kicker">Part three, second half</p>
-  <h1>Queries with no<br>single right answer</h1>
-  <p class="clock">13 minutes</p>
+<!-- 13 -->
+<section data-menu-title="Captioning: what it is, and is not">
+  <h2>Captioning: what it is, and is not</h2>
+  <p class="small">A multimodal model conditioned on an image, generating text.
+  Architecturally it is Lecture&nbsp;18&rsquo;s decoder with cross-attention into
+  Lecture&nbsp;23&rsquo;s image encoder &mdash; nothing new, arranged
+  differently.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">What a generated caption is</span>
+    A <strong>plausible</strong> description, not a true one. It describes what
+    the model expects to see, and it will confidently name objects that are not
+    there. For catalogue entries that had <em>nothing</em>, plausible is an
+    improvement on absent; as a replacement for a real description it is not.
+  </div>
+  <p class="small">So the honest use is narrow and worth stating: fill holes,
+  mark the filled entries as machine-written, and measure retrieval with and
+  without them.</p>
 </section>
 
-<!-- 51 -->
+<!-- 14 -->
+<section data-menu-title="Prompting is a hyperparameter">
+  <h2>Prompting is a hyperparameter</h2>
+  <p class="small">A generator&rsquo;s output depends on how you ask, and the
+  difference is often larger than the difference between models.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Which makes it a choice, with all that implies</span>
+    Trying five prompts and keeping the one with the best test score is choosing
+    a hyperparameter on the test set &mdash; Lecture&nbsp;2&rsquo;s error, in a
+    costume that does not look like modelling at all. It has a validation set
+    like anything else.
+  </div>
+  <p class="small fail">Report the prompt with the result. A number without the
+  prompt that produced it is not reproducible, and prompts are rarely written
+  down because they do not feel like code.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="What generation does not fix">
+  <h2>What generation does not fix</h2>
+  <ul class="tight small">
+    <li><strong>It does not add knowledge.</strong> A caption is a guess from
+        pixels; RAG is a lookup. Neither creates information the system does not
+        have</li>
+    <li><strong>It does not calibrate.</strong> Fluent and confident is the
+        default register regardless of whether the answer is grounded</li>
+    <li><strong>It does not remove the need for evaluation.</strong> It makes it
+        harder: the output is text, and text has no obvious metric</li>
+  </ul>
+  <p class="small">That last point is the honest closing note of the technical
+  half of this course. Every lecture until now had a number. Here you have to
+  <em>construct</em> the number first, and constructing it well is most of the
+  work.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="The verdict">
+  <h2>The verdict</h2>
+  <p class="small">For the first time in twelve applications, the number you
+  committed to was probably <em>too low</em> rather than too high &mdash;
+  because the failure this time was not in the evaluation. It was in the
+  geometry, and the repair was somebody else&rsquo;s pretraining run.</p>
+  <div class="panel">
+    <span class="panel-title">Still worth checking</span>
+    72.5% over 200 candidates is not
+    72.5% over fifty thousand. Recall rises as the haystack
+    shrinks, and a catalogue is a haystack that grows.
+  </div>
+  <aside class="notes">Do not let the room leave believing this number
+  transfers. Ask what they would expect at n = 50,000 and why.</aside>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="Two weak spots">
+  <h2>Two things we measured and did not fix</h2>
+  <table>
+    <tr><th>#</th><th>Measured last lecture</th><th class="num">Number</th></tr>
+    <tr><td>1</td><td>Text search R@1 on entries with no description</td><td class="num fail">0%</td></tr>
+    <tr><td>2</td><td>Ambiguous queries with a single right answer</td><td class="num fail">none exist</td></tr>
+  </table>
+  <p class="small">The first is a hole in the index. The second is a mismatch
+  between what the customer asked and what a ranked list can say.</p>
+  <p class="small muted">Both are repaired in the next thirty minutes, and both
+  are re-measured before we leave.</p>
+</section>
+
+<!-- 18 -->
+<section class="divider" data-menu-title="◆ RAG">
+  <p class="kicker">The second repair</p>
+  <h1>Retrieval-augmented<br>generation</h1>
+  <p class="clock">25 minutes &middot; examinable</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="The join, drawn">
+  <h2>The join, drawn</h2>
+  <ol class="tight small">
+    <li>The user asks a question in words</li>
+    <li>The <strong>retriever</strong> of Lecture&nbsp;20 embeds it and returns
+        the $k$ most similar catalogue entries</li>
+    <li>Those entries are placed in the <strong>generator</strong>&rsquo;s
+        context, with the question</li>
+    <li>The generator answers <em>from what it was given</em>, and cites which
+        entry it used</li>
+  </ol>
+  <div class="panel">
+    <span class="panel-title">Why this is not just a bigger model</span>
+    The knowledge lives in the index, not in the weights. Add a product and it
+    is answerable immediately; remove one and it stops being cited. No
+    retraining, and the system can say <em>where</em> an answer came from
+    &mdash; which is usually the requirement that decides whether it can be
+    deployed at all.
+  </div>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="What each half contributes">
+  <h2>What each half contributes</h2>
+  <table class="smaller">
+    <tr><th></th><th>Good at</th><th>Bad at</th></tr>
+    <tr><td><strong>Retriever</strong></td><td>finding the right entries, fast, over millions</td><td>saying anything; it only ranks</td></tr>
+    <tr><td><strong>Generator</strong></td><td>fluent answers, synthesis across entries</td><td>knowing anything reliably; it will produce a plausible answer regardless</td></tr>
+  </table>
+  <p class="small">Each covers the other&rsquo;s weakness, which is why the
+  combination is worth more than either. It is also why the failures are
+  interesting: they belong to <strong>neither half</strong>.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Failures of the join">
+  <h2>Failures of the join</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">Three, and none is visible from either component</span>
+    <strong>Retrieved but ignored.</strong> The right entry is in the context
+    and the generator answers from its own weights instead.<br><br>
+    <strong>Not retrieved, answered anyway.</strong> The retriever misses, and
+    the generator does not say so &mdash; it produces a fluent answer with
+    nothing behind it.<br><br>
+    <strong>Retrieved and misread.</strong> The entry is present and correct,
+    and the answer misstates it.
+  </div>
+  <p class="small fail">Evaluating the retriever alone (recall@k) and the
+  generator alone (fluency) can both look excellent while the system does all
+  three. The join needs its own measurement.</p>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Chunking, and why it decides everything">
+  <h2>Chunking, and why it decides everything</h2>
+  <p class="small">Before anything is retrieved, the corpus must be cut into
+  units. That choice is upstream of the retriever and of the generator, and it
+  is usually made without measurement.</p>
+  <ul class="tight small">
+    <li><strong>Too small</strong> &mdash; a chunk lacks the context that makes
+        it answerable, and the generator gets a fragment</li>
+    <li><strong>Too large</strong> &mdash; the embedding averages several topics
+        and matches none of them well</li>
+    <li><strong>Split badly</strong> &mdash; a sentence cut in half retrieves
+        for neither of its halves</li>
+  </ul>
+  <p class="small fail">It is a hyperparameter. Treat it as one: vary it, hold
+  everything else fixed, and measure recall@k on the same judgements &mdash;
+  Lecture&nbsp;19&rsquo;s protocol, unchanged.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="How many to retrieve">
+  <h2>How many to retrieve</h2>
+  <p class="small">$k$ trades two failures against each other.</p>
+  <table class="smaller">
+    <tr><th>Small $k$</th><th>Large $k$</th></tr>
+    <tr><td>the right entry may not be there at all</td><td>it is there, buried among distractors</td></tr>
+    <tr><td>the generator cannot recover</td><td>the generator may attend to the wrong one</td></tr>
+  </table>
+  <div class="panel">
+    <span class="panel-title">Why re-ranking earns its cost here</span>
+    Retrieve a generous $k$ with the cheap bi-encoder, then re-rank with the
+    cross-encoder of Lecture&nbsp;20 and pass only the top few on. High recall
+    from the first stage, high precision from the second &mdash; which is the
+    two-stage argument of Part&nbsp;V, arriving where it matters most.
+  </div>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="How to measure the join">
+  <h2>How to measure the join</h2>
+  <ul class="tight small">
+    <li><strong>Groundedness</strong> &mdash; is every claim in the answer
+        supported by a retrieved entry? Check mechanically where you can</li>
+    <li><strong>Attribution</strong> &mdash; does the cited entry actually say
+        it? A citation that does not support its claim is worse than none</li>
+    <li><strong>Abstention</strong> &mdash; when nothing relevant is retrieved,
+        does it decline? Measure this deliberately, with queries whose answer is
+        genuinely absent</li>
+    <li><strong>End to end</strong> &mdash; and only then, is the answer right?</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The closed-book control</span>
+    Run the same questions with the retrieval turned off. Whatever the system
+    still answers correctly, it knew already &mdash; and the difference is what
+    retrieval actually bought. Same shape as every ablation in this course.
+  </div>
+</section>
+
+<!-- 25 -->
 <section data-menu-title="The ambiguous query">
   <h2>What the customer actually types</h2>
   <ul class="tight small">
@@ -843,7 +430,7 @@ assert len(generated) == len(missing_images)
   so is the honest option.</p>
 </section>
 
-<!-- 52 -->
+<!-- 26 -->
 <section data-menu-title="Two bad options">
   <h2>Two options that do not work</h2>
   <div class="cols">
@@ -864,7 +451,7 @@ assert len(generated) == len(missing_images)
   retrieved.</strong></p>
 </section>
 
-<!-- 53 -->
+<!-- 27 -->
 <section data-menu-title="The check must be mechanical">
   <h2>First, decide how you will check it</h2>
   <p class="small">&ldquo;The answer is good&rdquo; is not measurable in a
@@ -881,7 +468,7 @@ assert len(generated) == len(missing_images)
   cheap.</p>
 </section>
 
-<!-- 54 -->
+<!-- 28 -->
 <section data-menu-title="RAG code">
   <h2>Retrieve, then generate</h2>
   <pre><code class="language-python" data-trim data-line-numbers>q = unit(clip_text(["something to sit on"]))      # (1, 512)
@@ -901,7 +488,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
 </code></pre>
 </section>
 
-<!-- 55 -->
+<!-- 29 -->
 <section data-menu-title="Closed book">
   <h2>Closed book &mdash; what it does without retrieval</h2>
   <div class="panel panel-fail">
@@ -916,7 +503,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   one.</p>
 </section>
 
-<!-- 56 -->
+<!-- 30 -->
 <section class="figslide" data-menu-title="◆ RAG measured">
   <h2>With the catalogue in the prompt</h2>
   <figure class="fig fig-wide">
@@ -929,7 +516,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   200-entry catalogue.</p>
 </section>
 
-<!-- 57 -->
+<!-- 31 -->
 <section data-menu-title="RAG tabulated">
   <h2>The numbers</h2>
   <table>
@@ -945,7 +532,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   change the shape of the result.</p>
 </section>
 
-<!-- 58 -->
+<!-- 32 -->
 <section data-menu-title="What RAG does not fix">
   <h2>What this does <span class="fail">not</span> fix</h2>
   <ul class="tight small">
@@ -966,11 +553,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   </div>
 </section>
 
-<!-- ==================================================================== -->
-<!-- RE-MEASURE AND RED TEAM                                              -->
-<!-- ==================================================================== -->
-
-<!-- 59 -->
+<!-- 33 -->
 <section data-menu-title="Re-measure">
   <h2>Everything, re-measured</h2>
   <table>
@@ -984,34 +567,51 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   believable.</p>
 </section>
 
-<!-- 60 -->
-<section data-menu-title="Red team">
-  <h2>Red team &mdash; four questions for this notebook</h2>
-  <ol class="tight small">
-    <li>Are the embeddings on both sides unit vectors? Assert it, do not read it</li>
-    <li>Is the recall reported with its candidate-set size?</li>
-    <li>Were the auto-captions generated for entries that are <em>also</em> in
-        the evaluation queries &mdash; and does that matter here?</li>
-    <li>Does the grounding metric count a SKU cited twice as two citations? What
-        would that do to the percentage?</li>
-  </ol>
-  <aside class="notes">Question 3 is the interesting one: the captioner never
-  saw the query, so this is not leakage, but a student who cannot say why is not
-  yet reading carefully. Let them argue.</aside>
+<!-- 34 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-24.ipynb">Open Lecture 24 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> Small pretrained models, inference
+        only</li>
+    <li>Captions generated for the entries that have none, and the retrieval
+        re-measured with them</li>
+    <li>The closed-book control: the same questions with retrieval off, so what
+        retrieval bought is a number</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Ask a question whose answer is <em>not</em> in the catalogue. A system that
+    answers it anyway has the second failure of the join, and you have just
+    built the test that finds it.
+  </div>
 </section>
 
-<!-- ==================================================================== -->
-<!-- THE COURSE (25 min)                                                  -->
-<!-- ==================================================================== -->
-
-<!-- 61 -->
+<!-- 35 -->
 <section class="divider" data-menu-title="◆ The course">
-  <p class="kicker">Part four &middot; the end</p>
+  <p class="kicker">The last twenty-five minutes</p>
   <h1>The course,<br>as one argument</h1>
   <p class="clock">25 minutes</p>
 </section>
 
-<!-- 62 -->
+<!-- 36 -->
+<section data-menu-title="The argument">
+  <h2>The argument</h2>
+  <p class="lead">Every method in this course arrived because something
+  measurable could not be done without it.</p>
+  <div class="panel">
+    <span class="panel-title">And every lecture had the same shape</span>
+    A quantity that has to be derived before the method makes sense; the method;
+    a worked example with real numbers; and the conditions under which it fails.
+    Eighteen derivations, and they are the part that will still be true when
+    every library in these notebooks has been replaced.
+  </div>
+</section>
+
+<!-- 37 -->
 <section data-menu-title="The promise">
   <h2>What the first lecture promised</h2>
   <div class="panel">
@@ -1023,7 +623,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   <p class="lead">That was a claim, not a plan. Here is the evidence.</p>
 </section>
 
-<!-- 63 -->
+<!-- 38 -->
 <section data-menu-title="The claim">
   <h2>The claim, stated precisely</h2>
   <p class="lead">Every method you met in this course was introduced at the
@@ -1035,7 +635,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   with the measurement attached each time.</p>
 </section>
 
-<!-- 64 -->
+<!-- 39 -->
 <section class="figslide" data-menu-title="◆ The arc">
   <h2>Twelve applications, twelve first failures</h2>
   <figure class="fig fig-wide">
@@ -1046,65 +646,106 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   syllabus &mdash; the chapter order is a consequence of it.</p>
 </section>
 
-<!-- 65 -->
-<section data-menu-title="Applications 1–2">
-  <h2>Applications 1 and 2 &mdash; the two that set the rules</h2>
-  <table>
-    <tr><th>What broke</th><th class="num">Measured</th><th>Method it forced</th></tr>
-    <tr><td>Predict the mean price</td><td class="num"><span class="usd">$115,311</span> RMSE</td><td>a baseline before a model</td></tr>
-    <tr><td>A tree scored zero error</td><td class="num">0</td><td>train error is not generalisation error</td></tr>
-    <tr><td>Honest cross-validated best</td><td class="num"><span class="usd">$48,180</span></td><td>k-fold, pipelines, grid search</td></tr>
-    <tr><td>Never fires, on the rare class</td><td class="num">91.0% accurate</td><td>precision, recall, the threshold</td></tr>
+<!-- 40 -->
+<section data-menu-title="Part I — the ideas everything else reuses">
+  <h2>Part I — the ideas everything else reuses</h2>
+  <table class="smaller">
+    <tr><th>Lecture</th><th>The derivation</th><th>Where it came back</th></tr>
+    <tr><td>2 · end-to-end</td><td>least squares, the normal equation</td><td>ridge in 5; collinearity everywhere</td></tr>
+    <tr><td>3 · classification</td><td>imbalance; precision is not monotone</td><td>the maximum inside AP, Lecture 14</td></tr>
+    <tr><td>4 · training models</td><td>gradient descent</td><td>every network from Lecture 9 on</td></tr>
+    <tr><td>5 · regularisation</td><td>bias&ndash;variance</td><td>every learning curve since</td></tr>
+    <tr><td>6, 7 · trees, ensembles</td><td>impurity; variance of a correlated average</td><td>multi-head attention, Lecture 18</td></tr>
+    <tr><td>8 · PCA</td><td>SVD; Johnson&ndash;Lindenstrauss</td><td>matrix factorisation in 21; the sphere in 23</td></tr>
   </table>
-  <p class="small">Lecture 2 also gave us the one rule everything else rests on:
-  <strong>split before anything is fitted</strong>.</p>
 </section>
 
-<!-- 66 -->
-<section data-menu-title="Applications 3–5">
-  <h2>Applications 3, 4 and 5</h2>
-  <table>
-    <tr><th>What broke</th><th class="num">Measured</th><th>Method it forced</th></tr>
-    <tr><td>96.9% accurate, and it missed</td><td class="num">22.8% of the fives</td><td>the confusion matrix, PR and ROC</td></tr>
-    <tr><td>Degree 5, log loss on held-out data</td><td class="num">1.73</td><td>bias&ndash;variance, learning curves</td></tr>
-    <tr><td>Degree 2, the same measurement</td><td class="num">0.43</td><td>ridge, lasso, early stopping</td></tr>
-    <tr><td>One tree, refit twenty times</td><td class="num">9.0% of predictions changed</td><td>bagging, forests, extra-trees</td></tr>
+<!-- 41 -->
+<section data-menu-title="Parts II–IV — the same three ideas, deeper">
+  <h2>Parts II–IV — the same three ideas, deeper</h2>
+  <table class="smaller">
+    <tr><th>Lecture</th><th>The derivation</th><th>Where it came back</th></tr>
+    <tr><td>9 · networks</td><td>what a layer computes</td><td>everything after it</td></tr>
+    <tr><td>10 · PyTorch</td><td>reverse-mode autodiff</td><td>why training is affordable at all</td></tr>
+    <tr><td>11 · deep training</td><td>variance propagation</td><td>BPTT in 16; residuals in 18</td></tr>
+    <tr><td>12 · convolution</td><td>weight sharing, equivariance, memory</td><td>what a ViT gives up, Lecture 23</td></tr>
+    <tr><td>14 · detection</td><td>IoU; mAP</td><td>ranking metrics in 19</td></tr>
+    <tr><td>15 · time series</td><td>stationarity; autocorrelation</td><td>causal masking in 18</td></tr>
+    <tr><td>17 · text</td><td>softmax, cross-entropy, logits</td><td>attention's softmax in 18; the contrastive loss in 23</td></tr>
+    <tr><td>18 · attention</td><td>scaled dot-product attention</td><td>Part V's encoders, and 23</td></tr>
   </table>
-  <p class="small muted">Application 4&rsquo;s thread &mdash; variance falls when
-  you average uncorrelated predictors &mdash; is the reason all three ensemble
-  variants exist and differ.</p>
 </section>
 
-<!-- 67 -->
-<section data-menu-title="Applications 5–6">
-  <h2>Applications 5 and 6</h2>
-  <table>
-    <tr><th>What broke</th><th class="num">Measured</th><th>Method it forced</th></tr>
-    <tr><td>Clustering 400 faces in 4,096 dimensions</td><td class="num">65 s per sweep</td><td>SVD, PCA, random projection</td></tr>
-    <tr><td>The same sweep after compressing</td><td class="num">21&times; faster</td><td>Johnson&ndash;Lindenstrauss</td></tr>
-    <tr><td>A network fitted by Scikit-Learn</td><td class="num">125 s, and unmodifiable</td><td>PyTorch, autograd, the explicit loop</td></tr>
-    <tr><td>Forgetting <code>zero_grad()</code></td><td class="num">77 points of accuracy</td><td>reading a loop you wrote</td></tr>
+<!-- 42 -->
+<section data-menu-title="Part V — where the embeddings earned their living">
+  <h2>Part V — where the embeddings earned their living</h2>
+  <table class="smaller">
+    <tr><th>Lecture</th><th>The derivation</th><th>The point</th></tr>
+    <tr><td>19 · lexical IR</td><td>MRR, AP, NDCG</td><td>a ranking is not a classification, and needs its own metrics</td></tr>
+    <tr><td>20 · dense IR</td><td>&mdash;</td><td>two encoders and an inner product; the negatives are most of the work</td></tr>
+    <tr><td>21 · matrix factorisation</td><td>low rank, and its relation to the SVD</td><td>Lecture 8, with missing entries</td></tr>
+    <tr><td>22 · neural recsys</td><td>&mdash;</td><td>the two-tower model IS the bi-encoder; and offline evaluation is where recsys is usually wrong</td></tr>
+    <tr><td>23 · multimodal</td><td>contrastive objective, temperature</td><td>the same two towers, different modalities</td></tr>
   </table>
-  <p class="small fail">That last one raised no exception, printed a loss every
-  epoch, and finished successfully.</p>
+  <p class="small">Lectures 20, 22 and 23 are three uses of one object. That is
+  the strongest single thread in the course, and it is why Part&nbsp;V sits
+  after transformers rather than before.</p>
 </section>
 
-<!-- 68 -->
-<section data-menu-title="Applications 7–10">
-  <h2>Applications 7 to 10</h2>
-  <table>
-    <tr><th>What broke</th><th>Method it forced</th></tr>
-    <tr><td>Twenty layers, and the loss barely moved</td><td>initialisation, batch norm, better optimisers</td></tr>
-    <tr><td>A convolutional net from scratch on 1,020 labelled images reached 15.3%; fine-tuning a pretrained backbone reached 88.0%</td><td>transfer learning, freezing, augmentation</td></tr>
-    <tr><td>Boxes that were visibly wrong, with no number for <em>how</em> wrong</td><td>IoU, GIoU, average precision, mAP</td></tr>
-    <tr><td>A random split across an autocorrelated series</td><td>stationarity, differencing, backtesting</td></tr>
-  </table>
-  <p class="small">Two of those are worth one more slide each &mdash; the
-  detection metric, and the forecasting split, which is the failure that most
-  looks like success.</p>
+<!-- 43 -->
+<section data-menu-title="The eighteen derivations">
+  <h2>The eighteen derivations, in one place</h2>
+  <div class="cols">
+    <div>
+      <ul class="tight smaller">
+        <li>Least squares and the normal equation <span class="muted">&middot; 2</span></li>
+        <li>Imbalance; precision is not monotone <span class="muted">&middot; 3</span></li>
+        <li>Gradient descent <span class="muted">&middot; 4</span></li>
+        <li>The bias&ndash;variance decomposition <span class="muted">&middot; 5</span></li>
+        <li>Impurity: Gini and entropy <span class="muted">&middot; 6</span></li>
+        <li>Variance of a correlated average <span class="muted">&middot; 7</span></li>
+        <li>PCA via the SVD; Johnson&ndash;Lindenstrauss <span class="muted">&middot; 8</span></li>
+        <li>What a layer computes <span class="muted">&middot; 9</span></li>
+        <li>Reverse-mode automatic differentiation <span class="muted">&middot; 10</span></li>
+      </ul>
+    </div>
+    <div>
+      <ul class="tight smaller">
+        <li>Variance propagation and initialisation <span class="muted">&middot; 11</span></li>
+        <li>Weight sharing, equivariance, memory <span class="muted">&middot; 12</span></li>
+        <li>IoU&rsquo;s vanishing gradient; mAP <span class="muted">&middot; 14</span></li>
+        <li>Stationarity, differencing, autocorrelation <span class="muted">&middot; 15</span></li>
+        <li>Softmax, cross-entropy and logits <span class="muted">&middot; 17</span></li>
+        <li>Scaled dot-product attention <span class="muted">&middot; 18</span></li>
+        <li>Evaluating a ranking: MRR, AP, NDCG <span class="muted">&middot; 19</span></li>
+        <li>Matrix factorisation and the SVD <span class="muted">&middot; 21</span></li>
+        <li>The contrastive objective and its temperature <span class="muted">&middot; 23</span></li>
+      </ul>
+    </div>
+  </div>
+  <p class="small fail">Forty per cent of the written paper, and the part of
+  this course with the longest shelf life.</p>
 </section>
 
-<!-- 68b -->
+<!-- 44 -->
+<section data-menu-title="The failures, collected">
+  <h2>The failures, collected</h2>
+  <table class="smaller">
+    <tr><th>Failure</th><th>First met</th><th>Measured cost</th></tr>
+    <tr><td>Fitting before splitting</td><td>Lecture 2</td><td>about a dollar &mdash; and unknowable in advance</td></tr>
+    <tr><td>Evaluating on training data</td><td>Lecture 2</td><td>an RMSE of zero</td></tr>
+    <tr><td>Accuracy under imbalance</td><td>Lecture 3</td><td>a useless model above 90%</td></tr>
+    <tr><td>Choosing on the test set</td><td>Lectures 2, 5</td><td>an optimistic report, every time</td></tr>
+    <tr><td>Missing <code>zero_grad()</code></td><td>Lecture 10</td><td>76.7 points</td></tr>
+    <tr><td>Default initialisation, deep</td><td>Lecture 11</td><td>a network that does not train at all</td></tr>
+    <tr><td>Random split on a series</td><td>Lecture 15</td><td>optimistic, and undeployable</td></tr>
+    <tr><td>Augmenting the validation set</td><td>Lecture 13</td><td>1.57 points of noise on the criterion</td></tr>
+  </table>
+  <p class="small fail">Not one of them raises an exception. That is the whole
+  reason the course is organised around measurement.</p>
+</section>
+
+<!-- 45 -->
 <section data-menu-title="The wrong metric, in numbers">
   <h2>Application 9, in numbers</h2>
   <table>
@@ -1120,7 +761,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   0.157 &mdash; a mean of a mean is not a mean.</p>
 </section>
 
-<!-- 69 -->
+<!-- 46 -->
 <section data-menu-title="Temporal leakage">
   <h2>Application 10, in numbers</h2>
   <table>
@@ -1134,24 +775,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   autocorrelation a point&rsquo;s own near-future was in its training set.</p>
 </section>
 
-<!-- 70 -->
-<section data-menu-title="Applications 11–12">
-  <h2>Applications 11 and 12</h2>
-  <p class="small">Application 11 taught the lesson in one modality: embeddings
-  learned from one small labelled corpus against embeddings pretrained on a
-  large one, which is where subword tokenisation and fine-tuning arrived.
-  Application 12 needed <em>two</em> modalities, and broke in a new way.</p>
-  <table>
-    <tr><th>What broke</th><th class="num">Measured</th><th>Method it forced</th></tr>
-    <tr><td>Two encoders, two spaces</td><td class="num miss">1.0% R@1</td><td>the contrastive objective</td></tr>
-    <tr><td>The same task, one joint space</td><td class="num hit">72.5% R@1</td><td>temperature, negatives, the sphere</td></tr>
-  </table>
-  <p class="small muted">And the last one closed a loop: the concentration
-  result from Application 5&rsquo;s thread came back seven applications later as
-  the reason a loss targets zero.</p>
-</section>
-
-<!-- 71 -->
+<!-- 47 -->
 <section data-menu-title="The six failures">
   <h2>Six failures, and where they live outside this course</h2>
   <table class="smaller">
@@ -1165,7 +789,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   </table>
 </section>
 
-<!-- 72 -->
+<!-- 48 -->
 <section data-menu-title="The silent-failure catalogue">
   <h2>The catalogue of silent failures, closed</h2>
   <table class="smaller">
@@ -1183,63 +807,67 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   them raises.</p>
 </section>
 
-<!-- 73 -->
-<section data-menu-title="The threads">
-  <h2>The twelve threads were one argument too</h2>
-  <div class="cols">
-    <div>
-      <ol class="tight smaller">
-        <li>Least squares and the normal equation</li>
-        <li>Imbalance; precision is not monotone</li>
-        <li>The bias&ndash;variance decomposition</li>
-        <li>Impurity; variance under averaging</li>
-        <li>SVD, PCA, Johnson&ndash;Lindenstrauss</li>
-        <li>Reverse-mode automatic differentiation</li>
-      </ol>
-    </div>
-    <div>
-      <ol start="7" class="tight smaller">
-        <li>Variance propagation and initialisation</li>
-        <li>Weight sharing, equivariance, memory</li>
-        <li>IoU&rsquo;s vanishing gradient; mAP</li>
-        <li>Stationarity and temporal leakage</li>
-        <li>Cross-entropy, softmax and logits</li>
-        <li>The contrastive objective and $\tau$</li>
-      </ol>
-    </div>
-  </div>
-  <p class="small">1 is completed by 3. 2 is used by 9. 11 is used by 12.
-  <strong>5 is used by 12</strong> &mdash; that is the one that closed today, and
-  it was eight applications apart.</p>
-</section>
-
-<!-- 74 -->
-<section data-menu-title="What did not change">
-  <h2>What never changed, application to application</h2>
+<!-- 49 -->
+<section data-menu-title="What did not change, in twenty-four lectures">
+  <h2>What did not change, in twenty-four lectures</h2>
   <ol class="tight small">
-    <li>Split before anything is fitted</li>
-    <li>All preprocessing inside the object that is cross-validated</li>
-    <li>Nothing derived from the test set in the training path</li>
-    <li>Fixed seeds; report per-fold scores, not only the mean</li>
-    <li>Every number gets a baseline, and every baseline gets stated</li>
+    <li><strong>Split before anything is fitted.</strong> Lecture&nbsp;2, and
+        every lecture since</li>
+    <li><strong>Compute the trivial baseline first.</strong> A metric with
+        nothing beside it is decoration</li>
+    <li><strong>Two numbers measured on different rows are not comparable.</strong>
+        However similar the column headings look</li>
+    <li><strong>A difference smaller than the spread is not a difference.</strong>
+        Report the spread</li>
+    <li><strong>Change one thing.</strong> Otherwise the difference is not
+        attributable to anything</li>
   </ol>
-  <p class="small muted">Five rules, twelve applications, twenty-four lectures.
-  They did not need extending for images, for sequences, or for two modalities
-  at once.</p>
+  <p class="small fail">Five rules, no mathematics, and they would have caught
+  every failure in the table two slides ago.</p>
 </section>
 
-<!-- ==================================================================== -->
-<!-- WHAT WE DID NOT COVER                                                -->
-<!-- ==================================================================== -->
+<!-- 50 -->
+<section data-menu-title="The shape of a lecture, and why">
+  <h2>The shape of a lecture, and why</h2>
+  <table class="smaller">
+    <tr><th>Block</th><th>Why it is there</th></tr>
+    <tr><td>Where we are</td><td>so a lecture you missed is recoverable</td></tr>
+    <tr><td>The derivation</td><td>because the method does not make sense without it, and it outlasts the libraries</td></tr>
+    <tr><td>The method, with a worked example</td><td>real numbers from real data, reproducible from the repository</td></tr>
+    <tr><td>Failure conditions</td><td>stated as properties, never sprung as traps</td></tr>
+    <tr><td>The notebook</td><td>complete, correct, and printing every figure the slides state</td></tr>
+  </table>
+  <p class="small muted">Every number on every slide of this course is produced
+  by a script in the repository, and every figure a slide states is one its own
+  notebook prints. Both are checked mechanically.</p>
+</section>
 
-<!-- 75 -->
+<!-- 51 -->
+<section data-menu-title="The datasets, and why each">
+  <h2>The datasets, and why each</h2>
+  <table class="smaller">
+    <tr><td>California housing</td><td>regression, and a target with a cap in it</td></tr>
+    <tr><td>MNIST</td><td>a rare event carved out of a balanced corpus</td></tr>
+    <tr><td>Titanic</td><td>small, mixed types, and a real need for probabilities</td></tr>
+    <tr><td>CoverType</td><td>large enough that trees and ensembles differ</td></tr>
+    <tr><td>Olivetti</td><td>more dimensions than samples</td></tr>
+    <tr><td>Fashion-MNIST, CIFAR-10</td><td>networks, then deep networks</td></tr>
+    <tr><td>Flowers102</td><td>too few labels to train from scratch</td></tr>
+    <tr><td>COCO</td><td>several objects per image, and captions</td></tr>
+    <tr><td>Chicago transit</td><td>ordered rows, and strong seasonality</td></tr>
+    <tr><td>IMDb</td><td>free text</td></tr>
+    <tr><td>SciFact, MovieLens</td><td>ranking, and implicit feedback</td></tr>
+  </table>
+</section>
+
+<!-- 52 -->
 <section class="divider" data-menu-title="◆ The gaps">
   <p class="kicker">Being explicit</p>
   <h1>What this course<br>did not cover</h1>
   <p class="clock">and where those gaps sit</p>
 </section>
 
-<!-- 76 -->
+<!-- 53 -->
 <section data-menu-title="Why say this at all">
   <h2>Why this slide exists</h2>
   <p class="small">Because &ldquo;I took a machine learning course&rdquo; is
@@ -1252,7 +880,50 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   </div>
 </section>
 
-<!-- 77 -->
+<!-- 54 -->
+<section data-menu-title="Gaps: what this course did not cover">
+  <h2>Gaps: what this course did not cover</h2>
+  <ul class="tight small">
+    <li><strong>Reinforcement learning</strong> &mdash; an agent acting, and
+        learning from the consequences. A different problem shape entirely</li>
+    <li><strong>Generative image models</strong> &mdash; diffusion, and what it
+        optimises</li>
+    <li><strong>Causality</strong> &mdash; every method here predicts; none of
+        them tells you what happens if you <em>intervene</em></li>
+    <li><strong>Fairness and model governance</strong> &mdash; who a model is
+        worse for, and who is accountable when it is</li>
+    <li><strong>Serving and drift</strong> &mdash; the model in production, and
+        how it decays quietly once the world moves</li>
+  </ul>
+  <p class="small muted">Named so you know they exist and roughly where they
+  sit. None is examinable, and each is a course.</p>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="The two you are most likely to need first">
+  <h2>The two you are most likely to need first</h2>
+  <div class="cols">
+    <div>
+      <p><strong>Drift</strong></p>
+      <p class="small">Every number in this course was measured on data drawn
+      like the training data. In production that stops being true, gradually and
+      without warning, and the score you reported at launch is the last honest
+      one anybody has.</p>
+      <p class="small muted">Monitor the inputs, not just the outputs: the
+      distribution moves before the accuracy does.</p>
+    </div>
+    <div>
+      <p><strong>Who it is worse for</strong></p>
+      <p class="small">Lecture&nbsp;2 sliced the error by district and found the
+      poorest tenth predicted worst. That slice was one line of code, and it is
+      the difference between a system you can defend and one you cannot.</p>
+      <p class="small muted">The habit generalises: always ask for whom the
+      average is wrong.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 56 -->
 <section data-menu-title="Gaps — in the book">
   <h2>Gaps that are in the book, past our chapter</h2>
   <table>
@@ -1265,7 +936,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   next chapters of the same book, and you now have the vocabulary for them.</p>
 </section>
 
-<!-- 78 -->
+<!-- 57 -->
 <section data-menu-title="Gaps — beyond the book">
   <h2>Gaps that are beyond the book entirely</h2>
   <table class="smaller">
@@ -1279,7 +950,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   </table>
 </section>
 
-<!-- 79 -->
+<!-- 58 -->
 <section data-menu-title="Gaps — the frontier">
   <h2>And the part that moves fastest</h2>
   <ul class="tight small">
@@ -1301,11 +972,27 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   </div>
 </section>
 
-<!-- ==================================================================== -->
-<!-- CLOSING                                                              -->
-<!-- ==================================================================== -->
+<!-- 59 -->
+<section data-menu-title="What you can measure without a ground truth">
+  <h2>What you can measure without a ground truth</h2>
+  <ul class="tight small">
+    <li><strong>Consistency</strong> &mdash; ask the same thing twice, in two
+        wordings. Disagreement bounds reliability from above</li>
+    <li><strong>Groundedness against the retrieved text</strong> &mdash;
+        mechanical, and it does not need a gold answer</li>
+    <li><strong>Abstention on unanswerable queries</strong> &mdash; construct
+        them deliberately; this is the cheapest useful test of a RAG system</li>
+    <li><strong>Human judgement on a sample</strong> &mdash; expensive, and
+        still the anchor everything else is validated against</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The rule, unchanged since Lecture 1</span>
+    A metric with nothing to compare it to is decoration. That is as true of a
+    generated answer as it was of an RMSE, and harder to honour.
+  </div>
+</section>
 
-<!-- 80 -->
+<!-- 60 -->
 <section data-menu-title="The five questions">
   <h2>The five questions, for the last time</h2>
   <ol class="tight">
@@ -1320,7 +1007,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   working.</p>
 </section>
 
-<!-- 81 -->
+<!-- 61 -->
 <section data-menu-title="The four rules">
   <h2>The four rules, unchanged since the first lecture</h2>
   <ol class="tight">
@@ -1336,23 +1023,90 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   Lecture 23.</p>
 </section>
 
-<!-- 82 -->
+<!-- 62 -->
 <section data-menu-title="What you can do now">
-  <h2>What you can do that you could not in the first lecture</h2>
-  <ul class="tight small">
-    <li>Take a brief, choose a metric, and defend the choice against two
-        alternatives</li>
-    <li>Compute the trivial baseline <em>before</em> the model, every time</li>
-    <li>Read generated code as a reviewer and find the missing constraint</li>
-    <li>Recognise a number that is a draw from a distribution rather than a
-        measurement</li>
-    <li>Say what your system cannot do, with a number attached</li>
-  </ul>
-  <p class="small muted">None of those is a chapter. All of them are what the
-  twelve applications were for.</p>
+  <h2>What you can do now</h2>
+  <ol class="tight small">
+    <li>Take a problem, frame it, and say what a correct answer would be
+        <em>before</em> fitting anything</li>
+    <li>Choose a metric that matches the brief, and measure the trivial baseline
+        first</li>
+    <li>Build the simplest thing that runs, inside a pipeline, evaluated on a
+        protocol you fixed in advance</li>
+    <li>Read the failure: slice the error, look at the worst cases, and name the
+        conditions under which the method breaks</li>
+    <li>Improve one thing at a time, and report the ablation rather than the
+        best row</li>
+    <li>Write down what the number was measured on, every time</li>
+  </ol>
+  <p class="small">Six steps. Nothing in them is specific to a library, and none
+  of them will be out of date in ten years.</p>
 </section>
 
-<!-- 83 -->
+<!-- 63 -->
+<section data-menu-title="A last word on the assistant">
+  <h2>A last word on the assistant</h2>
+  <p class="small">You will build most of this with an assistant, and
+  Lecture&nbsp;1 set out how: specify, generate, <em>read</em>, test, verify
+  &mdash; and steps three to five are yours.</p>
+  <div class="panel">
+    <span class="panel-title">What has changed by Lecture 24</span>
+    You now know what to look for. &ldquo;What was this measured on?&rdquo;,
+    &ldquo;what is the baseline?&rdquo;, &ldquo;was anything fitted before the
+    split?&rdquo; &mdash; these are the questions an assistant will not ask
+    itself, and they are precisely the ones that decide whether the number it
+    hands you means anything.
+  </div>
+  <p class="small fail">The code was never the scarce part. Knowing whether to
+  believe the output is, and that is what these twenty-four lectures were for.</p>
+</section>
+
+<!-- 64 -->
+<section data-menu-title="The examination">
+  <h2>The examination</h2>
+  <div class="cols">
+    <div>
+      <p><strong>Written</strong> &mdash; two hours, closed book</p>
+      <ul class="tight small">
+        <li>A &middot; the derivations <span class="muted">(40%)</span></li>
+        <li>B &middot; choosing a method for a stated situation <span class="muted">(35%)</span></li>
+        <li>C &middot; reading results <span class="muted">(25%)</span></li>
+      </ul>
+    </div>
+    <div>
+      <p><strong>Oral</strong> &mdash; twenty minutes</p>
+      <ul class="tight small">
+        <li>Any topic from the course</li>
+        <li>Including a cell from one of these notebooks</li>
+        <li>No notes, no computer</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small">18/30 on each, independently; the final mark is the average.
+  Everything in Chapters 1&ndash;16 and in the Part&nbsp;V notes is examinable;
+  nothing marked <em>engineering</em> or <em>for context</em> is.</p>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="How to keep learning">
+  <h2>How to keep learning</h2>
+  <ul class="tight small">
+    <li><strong>Reproduce something.</strong> Take a paper&rsquo;s headline
+        number and try to get it. You will learn more from the gap than from the
+        paper</li>
+    <li><strong>Keep the habit of the baseline.</strong> It is the single
+        cheapest defence against a wrong conclusion, and almost nobody does it</li>
+    <li><strong>Read the evaluation section first.</strong> If it does not say
+        what was held out and how, the rest is decoration</li>
+    <li><strong>Write the check before the model.</strong> Every notebook in
+        this course does, and it is why they still run</li>
+  </ul>
+  <p class="small muted">The libraries in these notebooks will be superseded.
+  The derivations will not, and neither will the habit of asking what a number
+  was measured on.</p>
+</section>
+
+<!-- 66 -->
 <section data-menu-title="★ All notebooks">
   <h2>Every notebook in the course</h2>
   <div class="nb-index">
@@ -1386,7 +1140,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   lecture.</p>
 </section>
 
-<!-- 84 -->
+<!-- 67 -->
 <section data-menu-title="References">
   <h2>In the book</h2>
   <table>
@@ -1403,7 +1157,7 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   non-examinable.</p>
 </section>
 
-<!-- 85 -->
+<!-- 68 -->
 <section data-menu-title="Summary">
   <h2>What we did today</h2>
   <ol class="tight small">
@@ -1426,24 +1180,40 @@ print(f"{sum(s in valid_skus for s in cited)}/{len(cited)} cited SKUs exist")
   </ol>
 </section>
 
-<!-- 86 -->
-<section class="divider" data-menu-title="The end">
-  <p class="kicker">Twelve applications &middot; twenty-four lectures</p>
-  <h1>Every method arrived<br>because something broke</h1>
-  <p class="small">
-    You will forget most of the syntax. Keep the five questions,<br>
-    the four rules, and the habit of writing the number down first.
-  </p>
-  <p class="clock">Thank you</p>
+<!-- 69 -->
+<section data-menu-title="If you remember one thing">
+  <h2>If you remember one thing</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">The line</span>
+    <strong>A number is only as good as the question &ldquo;measured on
+    what?&rdquo; can be answered.</strong>
+  </div>
+  <p class="small">Every failure in this course &mdash; the leak, the training
+  score, accuracy under imbalance, the random split on a series, the augmented
+  validation set, the ungrounded generated answer &mdash; is a case where that
+  question had an answer nobody had asked for.</p>
+  <p class="small muted">Asking it costs seconds. Not asking it has cost, in
+  these twenty-four lectures alone, an RMSE of zero, a 90% classifier that never
+  fires, a network that does not train, and a forecast of the past.</p>
 </section>
 
+<!-- 70 -->
+<section class="divider" data-menu-title="The end">
+  <p class="kicker">Applicazioni Informatiche del Machine Learning</p>
+  <h1>Thank you</h1>
+  <p class="small">
+    Eighteen derivations · twenty-four notebooks · thirteen datasets<br>
+    Every number on every slide reproduced by a script in the repository
+  </p>
+  <p class="clock">Questions, and then the examination</p>
+</section>
 </div>
 </div>
 
 <div class="deck-footer">
   Applications of Machine Learning
   <span class="sep">&middot;</span> Lecture 24
-  <span class="sep">&middot;</span> Closing the loop, and closing the course
+  <span class="sep">&middot;</span> Generation, RAG, and closing the course
 </div>
 
 <script src="../lib/reveal.js/dist/reveal.js"></script>
