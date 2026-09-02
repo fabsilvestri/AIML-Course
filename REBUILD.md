@@ -48,6 +48,31 @@ figure scripts behind them. What remains is the verification half of the goal:
 while the kernel it spawned does the work. Do not read that as a deadlock, as I
 did: check the child, or watch the output file grow.
 
+**A note on this machine's filesystem, which cost hours.** Reads under
+`notebooks/datasets/` are intercepted at roughly **one second per file** — `cat`
+alone on the 8,189 Flowers102 JPEGs takes many minutes. Lecture 12's execution
+spent 31 minutes in blocking `read()` having used 17 seconds of CPU, and the
+`sample` output showed 2,274 of 2,285 samples inside `read()` rather than inside
+the JPEG decoder.
+
+It is not the notebooks and it is not OpenMP, which is what I assumed first. The
+symptom is a process at 0% CPU that never finishes, on a dataset directory that
+`ls` says is fully present.
+
+The fix is to **re-extract from the local archive**, which writes fresh files
+that read at full speed:
+
+    mv notebooks/datasets/aclImdb notebooks/datasets/_evicted-aclImdb
+    python3 -c "import tarfile; tarfile.open('notebooks/datasets/aclImdb_v1.tar.gz').extractall('notebooks/datasets', filter='data')"
+
+IMDb went from ~1 s/file to 20 files in 0.00 s, after a 15-second extraction.
+The same works for `flowers-102/102flowers.tgz`. Move rather than delete: the
+old directory is gitignored and regenerable, but it is the user's disk.
+
+None of this affects a student. It affects only how long verification takes on
+this machine, and it is worth knowing before spending an hour on the wrong
+hypothesis.
+
 Never leave this file stale. A row that says `wip` with no commit behind it is
 worse than no row.
 
