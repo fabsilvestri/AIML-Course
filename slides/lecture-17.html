@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lecture 21 — Reading the customers</title>
+<title>Lecture 17 — Text</title>
 
 <link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
 <link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
@@ -18,59 +18,54 @@
 <div class="reveal">
 <div class="slides">
 
-<!-- ==================================================================== -->
-<!-- OPENING                                                              -->
-<!-- ==================================================================== -->
-
 <!-- 1 -->
 <section class="title-slide" data-menu-title="Title">
-  <h1>Reading the customers</h1>
-  <p class="subtitle">Application 11 &middot; IMDb film reviews</p>
-  <p><span class="badge badge-build">Lecture 21 &middot; Build</span>
-     <span class="badge badge-ch">Géron Ch. 14</span></p>
+  <h1>Text</h1>
+  <p class="subtitle">IMDb</p>
+  <p><span class="badge badge-lec">Lecture 17</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 14</span></p>
   <p class="meta">
     Applications of Machine Learning<br>
     BSc Mathematics of Artificial Intelligence &middot; Third year
   </p>
-  <aside class="notes">Blank commitment sheets on every desk before you start.
-  Confirm a GPU runtime is open before the build block, not during it — the
-  recurrent model is the slowest thing in Part IV on a CPU.</aside>
 </section>
 
 <!-- 2 -->
-<section data-menu-title="Where we left off">
-  <h2>Where we left off</h2>
-  <p>The transit forecast. A random split on an autocorrelated series reported a
-  score the model could not reproduce on the future, and time-based backtesting
-  took it away again.</p>
+<section data-menu-title="Where we are">
+  <h2>A new kind of input</h2>
+  <p class="small">Sixteen lectures on numbers, pixels and ordered numbers.
+  Today the input is <strong>free text</strong>: variable length, discrete, and
+  with no natural numeric encoding at all.</p>
+  <ul class="tight small">
+    <li>A review is a sequence of <em>symbols</em>, not of measurements</li>
+    <li>There is no distance between two words that anything gave us</li>
+    <li>Sequence machinery from Lecture&nbsp;16 still applies &mdash; once we
+        decide what a step <em>is</em></li>
+  </ul>
   <div class="panel">
-    <span class="panel-title">What carries over</span>
-    Sequences. The recurrent layers from the previous application are the same
-    layers today &mdash; but the sequence is no longer a number per day. It is a
-    word per position, and words are not numbers.
+    <span class="panel-title">Two questions, and this lecture is both</span>
+    <strong>How do symbols become vectors?</strong> — tokenisation and
+    embeddings. And <strong>what loss does a classifier over $K$ symbols
+    minimise?</strong> — which is today's derivation, and it is the loss every
+    classifier in this course has quietly been using since Lecture&nbsp;4.
   </div>
-  <p class="small muted">That single change is the whole of the first hour.</p>
 </section>
 
 <!-- 3 -->
 <section data-menu-title="Today">
   <h2>Today</h2>
   <ol>
-    <li>The brief, the corpus, and what free text costs you
+    <li>The task, the corpus, and the baselines that a bag of words already
+        gives you <span class="muted small">(15 min)</span></li>
+    <li><strong>The mathematics</strong> &mdash; softmax, cross-entropy and
+        logits <span class="muted small">(25 min)</span></li>
+    <li><strong>The method</strong> &mdash; subword tokenisation, trainable
+        embeddings, and a recurrent classifier
+        <span class="muted small">(35 min)</span></li>
+    <li>The same architecture with pretrained embeddings
         <span class="muted small">(15 min)</span></li>
-    <li>Choose a metric, anchor it, and <strong>commit a number in
-        writing</strong> <span class="muted small">(15 min)</span></li>
-    <li>Build the simplest thing that runs &mdash; tokenizer, embeddings,
-        a recurrent classifier <span class="muted small">(60 min)</span></li>
   </ol>
-  <p class="small muted">One new idea per block: subword tokenisation, then
-  trainable embeddings, then a swap that changes nothing about the
-  architecture.</p>
 </section>
-
-<!-- ==================================================================== -->
-<!-- PART 1 — THE BRIEF (15 min)                                          -->
-<!-- ==================================================================== -->
 
 <!-- 4 -->
 <section class="divider" data-menu-title="◆ The brief">
@@ -144,55 +139,6 @@ def load_imdb():
 </section>
 
 <!-- 9 -->
-<section data-menu-title="Count it first">
-  <h2>Count it before you look at it</h2>
-  <table>
-    <tr><th>Quantity</th><th class="num">Value</th></tr>
-    <tr><td>Training reviews</td><td class="num">25,000</td></tr>
-    <tr><td>Test reviews</td><td class="num">25,000</td></tr>
-    <tr><td>Positive share, training</td><td class="num">50.0%</td></tr>
-    <tr><td>Positive share, test</td><td class="num">50.0%</td></tr>
-  </table>
-  <p class="lead">Balanced by construction, in both halves.</p>
-  <p class="small">Which settles a question Lecture 4 spent ninety minutes on,
-  and settles it in our favour for once.</p>
-</section>
-
-<!-- 10 -->
-<section data-menu-title="Two reviews">
-  <h2>Two reviews, verbatim</h2>
-  <div class="panel">
-    <span class="panel-title">Label: satisfied</span>
-    <span class="small">This is how movies are supposed to be made: a
-    fascinating setting; characters about whom you come to care deeply; writing
-    and editing that move the plot efficiently and build suspense.</span>
-  </div>
-  <p class="small muted">and, from the other half of the corpus:</p>
-  <p class="small">&ldquo;This is by far one of the worst movies i have ever
-  seen, the poor special effects along with the poor acting are just a few of
-  the things wrong with this film.&rdquo;</p>
-  <p class="small">Both are easy. Most are. The interesting question is what
-  fraction is not, and that is what the metric will tell you.</p>
-</section>
-
-<!-- 11 -->
-<section data-menu-title="A hard review">
-  <h2>And one that is not easy</h2>
-  <p class="small">&ldquo;When I first saw this film it was not an impressive
-  one. Now that I have seen it again with some friends on DVD, my opinion
-  remains the same. The subject matter is puerile and the performances are
-  weak.&rdquo;</p>
-  <ul class="tight small">
-    <li><strong>impressive</strong> is a positive word, negated four words earlier</li>
-    <li><strong>friends</strong>, <strong>again</strong> are positive company, doing nothing</li>
-    <li>The verdict arrives in the last clause</li>
-  </ul>
-  <p class="fail">Any method that treats a review as an unordered bag of words
-  has thrown away the negation before it starts. Remember that; we are going to
-  measure it.</p>
-</section>
-
-<!-- FIG -->
 <section class="figslide" data-menu-title="◆ How long is a review">
   <h2>How long is a review?</h2>
   <figure class="fig fig-wide">
@@ -203,24 +149,7 @@ def load_imdb():
   so the cut is a decision to make on purpose and record.</p>
 </section>
 
-<!-- 12 -->
-<section data-menu-title="Lengths measured">
-  <h2>The lengths, measured</h2>
-  <table>
-    <tr><th>Statistic</th><th class="num">Words</th></tr>
-    <tr><td>Mean</td><td class="num">234</td></tr>
-    <tr><td>Median</td><td class="num">174</td></tr>
-    <tr><td>90th percentile</td><td class="num">458</td></tr>
-    <tr><td>Longest</td><td class="num">2,473</td></tr>
-  </table>
-  <p>We will keep the first <strong>256</strong> tokens of every
-  review. That truncates 29% of the reviews and still
-  keeps 77% of all the words in the corpus.</p>
-  <p class="small muted">Both numbers, not one. &ldquo;29% are truncated&rdquo;
-  sounds alarming until you notice how little of the text it removes.</p>
-</section>
-
-<!-- 13 -->
+<!-- 10 -->
 <section data-menu-title="The vocabulary">
   <h2>The vocabulary is the problem</h2>
   <p>Lower-case, split on non-letters, count:</p>
@@ -235,7 +164,7 @@ def load_imdb():
   you cannot afford a row in a table for every one of them.</p>
 </section>
 
-<!-- 14 -->
+<!-- 11 -->
 <section data-menu-title="What the model must do">
   <h2>What the model has to produce</h2>
   <div class="eqn-box">
@@ -249,31 +178,27 @@ def load_imdb():
     <li>A <strong>recurrent layer</strong>, turning the sequence into one vector</li>
     <li>A <strong>linear head</strong>, turning that vector into two numbers</li>
   </ul>
-  <p class="small muted">Only the first two are new. The last two are Lectures 12
-  and 20 unchanged.</p>
+  <p class="small muted">Only the first two are new. The last two are Lectures 10
+  and 16 unchanged.</p>
 </section>
 
-<!-- ==================================================================== -->
-<!-- PART 2 — METRIC AND COMMITMENT (15 min)                              -->
-<!-- ==================================================================== -->
-
-<!-- 15 -->
+<!-- 12 -->
 <section class="divider" data-menu-title="◆ The metric">
   <p class="kicker">Part two</p>
   <h1>Choose a metric<br>and commit</h1>
   <p class="clock">15 minutes &middot; anchored, then written down</p>
 </section>
 
-<!-- 16 -->
+<!-- 13 -->
 <section data-menu-title="Which metric">
   <h2>Which metric?</h2>
-  <p>Lecture 4's rule: <em>count the classes before choosing a metric.</em> We
+  <p>Lecture 3&rsquo;s rule: <em>count the classes before choosing a metric.</em> We
   counted. They are 50.0% to
   50.0%.</p>
   <div class="panel panel-fix">
     <span class="panel-title">So accuracy is defensible here</span>
     Under a 50/50 base rate, the degenerate classifier scores 50% and has
-    nowhere to hide. That is the condition Lecture 4 said accuracy needs, and
+    nowhere to hide. That is the condition Lecture 3 said accuracy needs, and
     this corpus satisfies it.
   </div>
   <p class="small">It is defensible <em>on this corpus</em>. Real feedback is
@@ -281,52 +206,7 @@ def load_imdb():
   the question again.</p>
 </section>
 
-<!-- 17 -->
-<section data-menu-title="What accuracy misses">
-  <h2>What accuracy still will not tell you</h2>
-  <ul class="tight small">
-    <li>Which errors: a missed complaint costs the desk more than a false alarm,
-        and accuracy prices them the same</li>
-    <li>Where the errors are: short reviews, sarcastic reviews, reviews whose
-        verdict is in the last sentence</li>
-    <li>How confident the model was when it was wrong</li>
-  </ul>
-  <p>We report accuracy as the headline because the brief is symmetric and the
-  corpus is balanced &mdash; and we keep the confusion matrix beside it, as in
-  Lecture 4.</p>
-  <p class="small muted">If the desk later says a missed complaint is worth five
-  false alarms, the metric changes and nothing else does.</p>
-</section>
-
-<!-- 18 -->
-<section data-menu-title="Baseline 1">
-  <h2>The trivial baseline, first</h2>
-  <p>Before anything is built: predict the majority class for every review.</p>
-  <pre><code class="language-python" data-trim>
-majority = max(y_test.mean(), 1 - y_test.mean())
-print(f"always predict one class: {majority:.1%}")
-  </code></pre>
-  <p class="big-num">50.0%</p>
-  <p class="small">Rule 2 of this course: a metric with nothing to compare it to
-  is decoration. This is the floor, and it is a low one.</p>
-</section>
-
-<!-- 19 -->
-<section data-menu-title="Baseline 2">
-  <h2>And a baseline that is actually hard to beat</h2>
-  <p class="lead">50% is not a serious anchor. A room that commits against 50%
-  will commit to something it would be embarrassed by.</p>
-  <p>So compute the honest one too: <strong>bag of words plus logistic
-  regression</strong>. Count the words, ignore the order, fit a linear model.
-  Chapter 4, on a matrix of word counts.</p>
-  <div class="panel">
-    <span class="panel-title">Why this is the anchor</span>
-    It is the oldest method in text classification, it takes ten seconds to fit,
-    and anything you build today has to beat it or it has bought you nothing.
-  </div>
-</section>
-
-<!-- 20 -->
+<!-- 14 -->
 <section data-menu-title="Bag of words">
   <h2>Bag of words, precisely</h2>
   <p>One column per term in the vocabulary; one row per review; the entry is how
@@ -343,7 +223,7 @@ print(f"always predict one class: {majority:.1%}")
   no order, so it cannot see the negation two slides ago.</p>
 </section>
 
-<!-- 21 -->
+<!-- 15 -->
 <section data-menu-title="Bag of words code">
   <h2>The whole anchor, in eleven lines</h2>
   <pre><code class="language-python" data-trim data-line-numbers="1-11|5-7|9-11">from sklearn.feature_extraction.text import TfidfVectorizer
@@ -363,7 +243,7 @@ print(f"tf-idf + logistic regression: {acc:.1%}")
   on to that &mdash; it is the last thing we do in the next lecture.</p>
 </section>
 
-<!-- 22 -->
+<!-- 16 -->
 <section data-menu-title="Baselines measured">
   <h2>The anchors, measured</h2>
   <table>
@@ -381,67 +261,387 @@ print(f"tf-idf + logistic regression: {acc:.1%}")
   too.</p>
 </section>
 
-<!-- 23 -->
-<section data-menu-title="What the anchor means">
-  <h2>What that anchor means for today</h2>
-  <div class="panel">
-    <span class="panel-title">The number to beat is not 50%</span>
-    It is <strong>90.1%</strong>. A recurrent network that
-    scores 85% has not done badly in the abstract &mdash; it has lost to a
-    linear model on word counts, and you would not ship it.
+<!-- 17 -->
+<section class="divider" data-menu-title="◆ The mathematics">
+  <p class="kicker">The mathematics</p>
+  <h1>Softmax, cross-entropy<br>and logits</h1>
+  <p class="clock">25 minutes &middot; examinable</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="The question">
+  <h2>The question</h2>
+  <p class="lead">Your model's last line was</p>
+  <pre><code class="language-python" data-trim>
+return self.head(torch.cat([h[0], h[1]], dim=1))     # (B, 2)
+  </code></pre>
+  <p>Two unbounded real numbers per review. No softmax anywhere. You handed them
+  to <code>nn.CrossEntropyLoss</code> and it worked.</p>
+  <div class="panel panel-math">
+    <span class="panel-title">Why you need the answer</span>
+    Because the same two numbers are what every classifier in the rest of this
+    course produces, and because one line that looks like an improvement makes
+    the model measurably worse.
   </div>
-  <p class="small">This is the point of computing the honest baseline before the
-  commitment rather than after. Anchored against 50%, a room writes down 75% and
-  is delighted. Anchored against 90.1%, the same room has to
-  think.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="Logits">
+  <h2>Logits</h2>
+  <p>The output of the last linear layer, before anything is done to it.</p>
+  <div class="eqn-box">
+    $$\mathbf{z} \;=\; W\mathbf{h} + \mathbf{b} \;\in\; \mathbb{R}^{K}$$
+  </div>
+  <ul class="tight small">
+    <li>Unbounded, positive or negative, and they do not sum to anything</li>
+    <li>Only their <strong>differences</strong> carry information &mdash; the
+        next five minutes are about that</li>
+    <li>The name is historical: for $K = 2$ the difference $z_1 - z_0$ is the
+        log-odds, the logit of Lecture 4</li>
+  </ul>
+  <p class="small muted">That last point is worth holding on to. Logistic
+  regression is this construction with $K = 2$ and one difference.</p>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="Softmax">
+  <h2>Softmax</h2>
+  <p>The map from $K$ unbounded numbers to a probability vector:</p>
+  <div class="eqn-box">
+    $$\sigma(\mathbf{z})_k \;=\; \frac{e^{z_k}}{\sum_{j=1}^{K} e^{z_j}}
+      \qquad k = 1,\dots,K$$
+  </div>
+  <ul class="tight small">
+    <li>Every entry is positive, because $e^{x} &gt; 0$</li>
+    <li>They sum to 1, because the denominator is the sum of the numerators</li>
+    <li>It is order-preserving: $z_i &gt; z_j \iff \sigma(\mathbf{z})_i &gt;
+        \sigma(\mathbf{z})_j$</li>
+  </ul>
+  <p class="small">The third point already tells you that
+  <code>argmax</code> does not need it. A prediction never requires softmax.</p>
+</section>
+
+<!-- 21 -->
+<section class="figslide" data-menu-title="◆ Shift invariance">
+  <h2>Add fifty to every logit</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-softmax-shift.svg"
+         alt="Two bar charts of softmax probabilities, one for logits one two three and one for logits fifty-one fifty-two fifty-three, with identical bar heights labelled to four decimal places.">
+  </figure>
+  <p class="takeaway">The two panels agree to
+  5.96046e-08. Not approximately: the same numbers.</p>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Why the shift matters">
+  <h2>Why a mathematician's triviality is an engineer's disaster</h2>
+  <p>The <em>function</em> ignores the shift. <code>float32</code> does not.</p>
+  <div class="eqn-box">
+    $$\begin{aligned}
+      e^{x} \text{ overflows float32 when }
+        x \;&amp;&gt;\; \log(3.4 \times 10^{38}) \\[4pt]
+        &amp;\approx\; 88.7
+      \end{aligned}$$
+  </div>
+  <ul class="tight small">
+    <li>A confident network reaching logits of 100 is completely ordinary</li>
+    <li>The exponential of 100 is not representable; the sum becomes
+        <code>inf</code>; the ratio becomes <code>nan</code></li>
+    <li>And <code>nan</code> propagates into every parameter through
+        <code>backward()</code></li>
+  </ul>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="The max trick">
+  <h2>The standard repair</h2>
+  <div class="eqn-box">
+    $$\sigma(\mathbf{z})_k \;=\; \sigma(\mathbf{z} - z_{\max}\mathbf{1})_k
+      \;=\; \frac{e^{z_k - z_{\max}}}{\sum_j e^{z_j - z_{\max}}}$$
+  </div>
+  <ul class="tight small">
+    <li>The largest exponent is now exactly 0, so $e^{0} = 1$ and nothing
+        overflows</li>
+    <li>The smallest may underflow to 0, which is harmless: it was going to be
+        negligible anyway</li>
+    <li>The denominator is at least 1, so the division is safe</li>
+  </ul>
+  <p class="small">Shift invariance is not a curiosity about the formula. It is
+  the licence to do this, and without it there would be no numerically safe
+  softmax.</p>
 </section>
 
 <!-- 24 -->
-<section class="commit-slide" data-menu-title="★ Commit">
-  <div class="commit">
-    <span class="commit-label">On paper. Now. Not in the notebook.</span>
-    <p>
-      Metric: <span class="blank"></span><br>
-      Accuracy the desk would need to trust it: <span class="blank"></span> %<br>
-      Accuracy I expect from the model I build today: <span class="blank"></span> %<br>
-      Best accuracy I actually obtain: <span class="blank"></span> %
-    </p>
+<section data-menu-title="Cross-entropy">
+  <h2>Cross-entropy</h2>
+  <p>Between a target distribution $\mathbf{y}$ and a predicted $\mathbf{p}$:</p>
+  <div class="eqn-box">
+    $$H(\mathbf{y}, \mathbf{p}) \;=\; -\sum_{k=1}^{K} y_k \log p_k$$
   </div>
-  <p class="small muted">A prediction you can quietly revise is not a
-  prediction. Bring the sheet to the next lecture.</p>
-  <aside class="notes">Do not hint at the outcome. Ask two or three people for
-  their second number and write them on the board — the spread is the useful
-  thing, and it makes the scoring in the next lecture land.</aside>
+  <p>A hard label is one-hot &mdash; $y_c = 1$, the rest 0 &mdash; so every term
+  but one dies:</p>
+  <div class="eqn-box">
+    $$L \;=\; -\log p_c$$
+  </div>
+  <aside class="notes">Say out loud that the loss therefore looks at exactly one
+  number, the probability given to the right answer, and is blind to how the
+  remaining mass is spread over the wrong ones. That matters the moment there
+  are more than two classes.</aside>
 </section>
 
-<!-- ==================================================================== -->
-<!-- PART 3 — THE BUILD (60 min)                                          -->
-<!-- ==================================================================== -->
-
 <!-- 25 -->
-<section class="divider" data-menu-title="◆ Build">
-  <p class="kicker">Part three</p>
-  <h1>Build</h1>
-  <p class="clock">60 minutes &middot; tokenizer, embeddings, recurrence</p>
+<section data-menu-title="Reading the loss">
+  <h2>Reading that loss</h2>
+  <table>
+    <tr><th class="num">$p_c$</th><th class="num">$-\log p_c$</th><th>Reading</th></tr>
+    <tr><td class="num">1.00</td><td class="num">0.00</td><td>certain and right</td></tr>
+    <tr><td class="num">0.50</td><td class="num">0.69</td><td>a coin, on two classes</td></tr>
+    <tr><td class="num">0.10</td><td class="num">2.30</td><td>wrong, and not yet confident about it</td></tr>
+    <tr><td class="num fail">0.01</td><td class="num fail">4.61</td><td class="fail">wrong and certain &mdash; unbounded penalty</td></tr>
+  </table>
+  <p class="small">$-\log$ is what makes confident mistakes expensive. A loss
+  linear in $p_c$ would price the last two rows almost the same.</p>
+  <p class="small muted">On two balanced classes, an untrained model should show
+  a loss near 0.69. If your first epoch starts far from that, something is wrong
+  before any training has happened.</p>
 </section>
 
 <!-- 26 -->
-<section data-menu-title="★ Colab notebook">
-  <h2>Today&rsquo;s notebook</h2>
-  <p class="colab-line">
-    <a class="colab-btn" target="_blank"
-       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-21.ipynb">
-       Open Lecture 21 in Google Colab</a>
-  </p>
-  <div class="panel">
-    <span class="panel-title">Before you run anything</span>
-    Runtime &rarr; Change runtime type &rarr; T4 GPU. The first cell prints the
-    device it found. If it says <code>cpu</code>, fix that now: the recurrent
-    model is the slowest thing you have trained so far.
+<section data-menu-title="The gradient, setup">
+  <h2>The gradient with respect to the logits</h2>
+  <p>Substituting softmax into the loss and using
+  $\log\frac{a}{b} = \log a - \log b$:</p>
+  <div class="eqn-box">
+    $$L \;=\; -\log \frac{e^{z_c}}{\sum_j e^{z_j}}
+      \;=\; -z_c + \log \sum_{j} e^{z_j}$$
   </div>
+  <p class="lead">The exponential of the true class has cancelled.</p>
+  <p class="small">That is not a simplification for the slide &mdash; it is the
+  whole reason the combined form is the one implemented. Hold on to it for four
+  slides.</p>
 </section>
 
 <!-- 27 -->
+<section data-menu-title="The gradient, derived">
+  <h2>Differentiate it</h2>
+  <p class="small">The first term contributes only when $k = c$:</p>
+  <div class="eqn-box">
+    $$\frac{\partial}{\partial z_k}\left(-z_c\right) = -\,[\,k = c\,] = -y_k$$
+  </div>
+  <p class="small">The second is the log-sum-exp, whose derivative is softmax:</p>
+  <div class="eqn-box">
+    $$\frac{\partial}{\partial z_k} \log \sum_j e^{z_j}
+      \;=\; \frac{e^{z_k}}{\sum_j e^{z_j}} \;=\; p_k$$
+  </div>
+  <div class="eqn-box">
+    $$\boxed{\;\frac{\partial L}{\partial \mathbf{z}} \;=\; \mathbf{p} - \mathbf{y}\;}$$
+  </div>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Reading the gradient">
+  <h2>Prediction minus target</h2>
+  <ul class="tight small">
+    <li>Three lines, no chain rule through the softmax, no Jacobian</li>
+    <li>Every component lies in $[-1, 1]$, so the signal into the network is
+        <strong>bounded</strong> however wrong the model is</li>
+    <li>The components sum to zero, because both vectors sum to one &mdash; the
+        gradient has no component along $\mathbf{1}$, which is exactly the
+        direction softmax could not see</li>
+    <li>It vanishes only when the prediction is exactly the target</li>
+  </ul>
+  <div class="panel panel-math">
+    Compare with mean squared error on probabilities, whose gradient carries a
+    factor $p_k(1 - p_k)$ &mdash; near zero precisely when the model is
+    confidently wrong, which is when you most need a gradient.
+  </div>
+</section>
+
+<!-- 29 -->
+<section class="figslide" data-menu-title="◆ p minus y">
+  <h2>One row, checked against autograd</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-gradient.svg"
+         alt="Bar chart of softmax probabilities beside a one-hot target for five classes, with purple dots marking the autograd gradient sitting exactly at the difference of the two bars.">
+  </figure>
+  <p class="takeaway">The dots are what PyTorch computed. The bars are what the
+  algebra predicts. They agree to
+  5.55112e-17.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Why logits">
+  <h2>So why does the loss want logits?</h2>
+  <p class="lead">Because of that cancellation.</p>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>If it took probabilities</strong></p>
+      <div class="eqn-box smaller">
+        $$L = -\log\!\left(\frac{e^{z_c}}{\sum_j e^{z_j}}\right)$$
+      </div>
+      <p class="small fail">Form every exponential, divide, and then take the
+      logarithm of a number that may be $10^{-40}$.</p>
+    </div>
+    <div>
+      <p class="small"><strong>Taking logits</strong></p>
+      <div class="eqn-box smaller">
+        $$L = -z_c + \log\sum_j e^{z_j}$$
+      </div>
+      <p class="small fix">One pass, with the maximum subtracted inside the
+      log-sum-exp. The exponential and the logarithm never meet.</p>
+    </div>
+  </div>
+  <p class="small">And the gradient falls out as $\mathbf{p} - \mathbf{y}$
+  without differentiating through the division.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Instability, measured">
+  <h2>Do not take that on trust &mdash; measure it</h2>
+  <p>Two ways to compute the same loss in <code>float32</code>, scored against a
+  <code>float64</code> reference:</p>
+  <pre><code class="language-python" data-trim>
+# naive: probabilities first
+p     = np.exp(z) / np.exp(z).sum(1, keepdims=True)
+naive = -np.log(p[rows, y])
+
+# stable: the combined form
+m      = z.max(1, keepdims=True)
+stable = -(z[rows, y] - (m[:, 0] + np.log(np.exp(z - m).sum(1))))
+  </code></pre>
+  <p class="small">2,000 rows of 10 logits at each of ten settings, sweeping
+  <strong>how wrong the row is</strong> &mdash; the true class placed 1 to 110
+  nats below the largest logit. That is the quantity the failure depends on: the
+  naive form has to represent $e^{-\text{loss}}$ as a <code>float32</code>.</p>
+</section>
+
+<!-- 32 -->
+<section class="figslide" data-menu-title="◆ Where float32 breaks">
+  <h2>Where <code>float32</code> gives up</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-ce-stability.svg"
+         alt="Log-log chart of relative error against the standard deviation of the logits: the stable form stays near machine epsilon across the range while the naive form rises steeply and its rows become non-finite past a dashed vertical line.">
+  </figure>
+  <p class="takeaway fail">Left: the two agree to <code>float32</code> precision
+  until the loss reaches about 90 nats; at 100 the naive form is four orders of
+  magnitude worse. Right: at 110 it returns nothing at all. The combined form
+  does neither.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="The quiet failure">
+  <h2>And the one that does not announce itself</h2>
+  <pre><code class="language-text" data-trim>
+z = [0., 0., -100.]   float32,   true class = 2
+  </code></pre>
+  <table>
+    <tr><th>Computed as</th><th class="num">Loss</th><th class="num">Error</th></tr>
+    <tr><td>float64 reference</td><td class="num">100.69315</td><td class="num">&mdash;</td></tr>
+    <tr><td class="fail">naive, probabilities first</td><td class="num fail">100.63987</td><td class="num fail">0.0533</td></tr>
+    <tr><td class="fix">combined, from logits</td><td class="num hit">100.69315</td><td class="num hit">1.42861e-06</td></tr>
+  </table>
+  <p class="fail small">Nothing overflowed. The probability
+  $e^{-100}/(2 + e^{-100})$ is 1.96182e-44, which
+  <code>float32</code> can only hold as a <em>subnormal</em> with a handful of
+  significant bits &mdash; so the logarithm of it is wrong in the second decimal,
+  finitely, plausibly, and without a warning.</p>
+</section>
+
+<!-- 34 -->
+<section class="figslide" data-menu-title="◆ Two paths">
+  <h2>Two paths from the last layer</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/d-cetrap.svg"
+         alt="A diagram with logits at the left branching two ways: a green path straight into CrossEntropyLoss and on to one scalar loss, and a red dashed path through softmax into CrossEntropyLoss where softmax is applied a second time, with the gradient identity in a purple box below.">
+  </figure>
+  <p class="takeaway">Both paths run. Only one of them computes the loss you
+  wrote down.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Entropy">
+  <h2>The last piece: what cross-entropy is crossing</h2>
+  <p class="small">Shannon entropy &mdash; the average surprise of a draw:</p>
+  <div class="eqn-box">
+    $$H(\mathbf{y}) \;=\; -\sum_k y_k \log y_k$$
+  </div>
+  <p class="small">Kullback&ndash;Leibler divergence &mdash; how much worse you
+  do coding draws from $\mathbf{y}$ as if they came from $\mathbf{p}$:</p>
+  <div class="eqn-box">
+    $$D_{\mathrm{KL}}(\mathbf{y} \,\Vert\, \mathbf{p})
+      \;=\; \sum_k y_k \log \frac{y_k}{p_k} \;\geq\; 0$$
+  </div>
+  <p class="small">Non-negative, zero only when the two agree, and not
+  symmetric.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="CE equals KL">
+  <h2>They differ by a constant</h2>
+  <div class="eqn-box">
+    $$H(\mathbf{y}, \mathbf{p}) \;=\; H(\mathbf{y})
+      \;+\; D_{\mathrm{KL}}(\mathbf{y} \,\Vert\, \mathbf{p})$$
+  </div>
+  <p class="small">Add and subtract $\sum_k y_k \log y_k$ in
+  $-\sum_k y_k \log p_k$. That is the whole proof.</p>
+  <div class="panel panel-math">
+    <span class="panel-title">And for a one-hot target</span>
+    $H(\mathbf{y}) = 0$, so minimising cross-entropy <strong>is</strong>
+    minimising the KL divergence to the label. The two objectives are the same
+    objective.
+  </div>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="What the derivation buys you">
+  <h2>the derivation, summarised</h2>
+  <ol class="tight small">
+    <li>Softmax is invariant under adding a constant to every logit, which is
+        the licence to subtract the maximum before exponentiating</li>
+    <li>Cross-entropy against a one-hot target is $-\log p_c$ &mdash; one
+        number, and unbounded when the model is confidently wrong</li>
+    <li>$\partial L / \partial \mathbf{z} = \mathbf{p} - \mathbf{y}$: bounded,
+        summing to zero, and free of the softmax Jacobian</li>
+    <li>The loss consumes logits because $-z_c$ cancels the exponential, and
+        computing it any other way loses digits and then overflows</li>
+    <li>Cross-entropy and KL differ by the entropy of the target, which is zero
+        for a hard label</li>
+  </ol>
+  <p class="small muted">Point 3 returns in thread 12, where the contrastive
+  objective is a cross-entropy over similarities.</p>
+</section>
+
+<!-- 38 -->
+<section class="divider" data-menu-title="◆ The method">
+  <p class="kicker">The method</p>
+  <h1>Tokens, embeddings,<br>and a classifier</h1>
+  <p class="clock">35 minutes &middot; examinable</p>
+</section>
+
+<!-- 39 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-17.ipynb">Open Lecture 17 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> IMDb is subsampled and the model is
+        small</li>
+    <li>The softmax shift-invariance and the max trick, checked numerically
+        &mdash; including the row where the naive version overflows</li>
+    <li>The gradient of cross-entropy with respect to the logits, verified
+        against autograd: it really is prediction minus target</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Apply a softmax before a loss that expects logits. Nothing raises, the model
+    still trains, and it trains worse &mdash; the double-softmax failure,
+    measured.
+  </div>
+</section>
+
+<!-- 40 -->
 <section data-menu-title="The plan">
   <h2>The plan, in four boxes</h2>
   <table>
@@ -456,7 +656,7 @@ print(f"tf-idf + logistic regression: {acc:.1%}")
   catches most of what goes wrong in the next hour.</p>
 </section>
 
-<!-- 28 -->
+<!-- 41 -->
 <section data-menu-title="What is a token">
   <h2>Step 1 &middot; what is a token?</h2>
   <p class="lead">The unit the model counts as one thing.</p>
@@ -473,7 +673,7 @@ print(f"tf-idf + logistic regression: {acc:.1%}")
   possibly represent.</p>
 </section>
 
-<!-- 29 -->
+<!-- 42 -->
 <section data-menu-title="Our tokenizer">
   <h2>Our word tokenizer, in full</h2>
   <pre><code class="language-python" data-trim>
@@ -494,24 +694,7 @@ def word_tokens(s):
   learned <code>br</code> as one of the commonest words in the corpus.</p>
 </section>
 
-<!-- 30 -->
-<section data-menu-title="How many words">
-  <h2>Now choose the vocabulary size</h2>
-  <p>87,171 distinct words is too many rows to learn.
-  So keep the commonest $V$ and map everything else to a single token,
-  <code>[UNK]</code>.</p>
-  <pre><code class="language-python" data-trim>
-counts = Counter(w for s in fit_x for w in word_tokens(s))
-w2i = {w: i + 2 for i, (w, _) in enumerate(counts.most_common(V - 2))}
-#     0 = padding, 1 = [UNK]
-  </code></pre>
-  <p class="fail">Read line 1 again. <code>fit_x</code>, not
-  <code>train_x + test_x</code>. Building the vocabulary is
-  <strong>fitting</strong>, and it obeys the same rule as every other fitted
-  thing in this course.</p>
-</section>
-
-<!-- FIG -->
+<!-- 43 -->
 <section class="figslide" data-menu-title="◆ Out of vocabulary">
   <h2>What a word vocabulary costs you</h2>
   <figure class="fig fig-wide">
@@ -522,23 +705,7 @@ w2i = {w: i + 2 for i, (w, _) in enumerate(counts.most_common(V - 2))}
   <em>distinct</em> words never does &mdash; and those are the informative ones.</p>
 </section>
 
-<!-- 31 -->
-<section data-menu-title="OOV measured">
-  <h2>Out of vocabulary, measured</h2>
-  <table>
-    <tr><th>Word vocabulary</th><th class="num">Test tokens unseen</th><th class="num">Distinct test words unseen</th></tr>
-    <tr><td>2,000</td><td class="num">17.5%</td><td class="num fail">97.7%</td></tr>
-    <tr><td class="fix">20,000 &mdash; our choice</td><td class="num">3.5%</td><td class="num fail">77.3%</td></tr>
-    <tr><td>every word in the corpus</td><td class="num">1.2%</td><td class="num fail">42.8%</td></tr>
-  </table>
-  <p class="small">Even a vocabulary of every training word leaves
-  43% of the distinct test words unrepresented, because
-  the test reviews contain words the training reviews never used. The problem is
-  not the size of the vocabulary. It is that a word vocabulary is
-  <strong>closed</strong> and language is not.</p>
-</section>
-
-<!-- 32 -->
+<!-- 44 -->
 <section data-menu-title="Subword idea">
   <h2>Step 1b &middot; subword tokenisation</h2>
   <p class="lead">Keep whole words for the common ones. Break the rest into
@@ -555,7 +722,7 @@ w2i = {w: i + 2 for i, (w, _) in enumerate(counts.most_common(V - 2))}
   corpus, and then shipped. That is the first pretrained thing we use today.</p>
 </section>
 
-<!-- FIG -->
+<!-- 45 -->
 <section class="figslide" data-menu-title="◆ Two tokenizers">
   <h2>The same sentence, twice</h2>
   <figure class="fig fig-tall">
@@ -566,23 +733,7 @@ w2i = {w: i + 2 for i, (w, _) in enumerate(counts.most_common(V - 2))}
   nothing. Below, it became four pieces the model has vectors for.</p>
 </section>
 
-<!-- 33 -->
-<section data-menu-title="Tokenise measured">
-  <h2>What the split costs and buys</h2>
-  <table>
-    <tr><th></th><th class="num">Tokens</th><th class="num">Unknown</th></tr>
-    <tr><td>Our word tokenizer, 20,000 words</td><td class="num">7</td><td class="num fail">1</td></tr>
-    <tr><td class="fix">WordPiece, 30,522 pieces</td><td class="num">13</td><td class="num hit">0</td></tr>
-  </table>
-  <p>Across the whole test set the subword tokenizer produces
-  0.00% unknown tokens, against
-  3.5% for our vocabulary of 20,000.</p>
-  <p class="fail small">The price is length: 1.86
-  tokens per word on this sentence, so a fixed budget of 256
-  positions now holds fewer words.</p>
-</section>
-
-<!-- 34 -->
+<!-- 46 -->
 <section data-menu-title="Why subword works">
   <h2>Why that is a structural fix, not a patch</h2>
   <div class="panel panel-fix">
@@ -599,7 +750,7 @@ w2i = {w: i + 2 for i, (w, _) in enumerate(counts.most_common(V - 2))}
   </ul>
 </section>
 
-<!-- 35 -->
+<!-- 47 -->
 <section data-menu-title="Embeddings">
   <h2>Step 2 &middot; from integers to vectors</h2>
   <p>Token 4271 is not four thousand of anything. The integer is a name, and
@@ -615,7 +766,7 @@ w2i = {w: i + 2 for i, (w, _) in enumerate(counts.most_common(V - 2))}
   </div>
 </section>
 
-<!-- 36 -->
+<!-- 48 -->
 <section data-menu-title="Embedding is a parameter">
   <h2>An embedding is a parameter, not a preprocessing step</h2>
   <pre><code class="language-python" data-trim data-line-numbers="1-7|3-4|6-7">import torch.nn as nn
@@ -636,25 +787,7 @@ print(emb(x).shape)                       # torch.Size([32, 256, 128])
   </ul>
 </section>
 
-<!-- 37 -->
-<section data-menu-title="Padding">
-  <h2>Padding, and the lie it tells</h2>
-  <p>A batch is a rectangle. Reviews are not. So short reviews are padded to
-  256 with token 0 and long ones are cut.</p>
-  <pre><code class="language-python" data-trim>
-X = np.zeros((len(seqs), MAXLEN), dtype=np.int64)
-L = np.zeros(len(seqs), dtype=np.int64)
-for i, s in enumerate(seqs):
-    s = s[:MAXLEN]
-    X[i, :len(s)] = s
-    L[i] = max(len(s), 1)          # keep the true length. You will need it.
-  </code></pre>
-  <p class="fail small">Keep <code>L</code>. A padded batch has lost the
-  information about where each review ends, and a recurrent layer that is not
-  told will happily read two hundred zeros and report on those.</p>
-</section>
-
-<!-- 38 -->
+<!-- 49 -->
 <section data-menu-title="The model">
   <h2>Step 3 &middot; the classifier</h2>
   <pre><code class="language-python" data-trim data-line-numbers="1-13|4-6|8-13">class GRUClassifier(nn.Module):
@@ -671,25 +804,25 @@ for i, s in enumerate(seqs):
         _, h = self.rnn(packed)
         return self.head(torch.cat([h[0], h[1]], dim=1))
   </code></pre>
-  <p class="small">Thirteen lines, and eleven of them are Lecture 12. The two
+  <p class="small">Thirteen lines, and eleven of them are Lecture 10. The two
   new ones are the embedding and the packing.</p>
 </section>
 
-<!-- 39 -->
+<!-- 50 -->
 <section data-menu-title="Why bidirectional">
   <h2>Three choices in that model</h2>
   <table>
     <tr><th>Choice</th><th>Why</th></tr>
     <tr><td><code>bidirectional=True</code></td><td>a review's verdict can be in the first sentence or the last</td></tr>
     <tr><td>the final hidden state</td><td>one fixed-size summary of a variable-length input</td></tr>
-    <tr><td>GRU, not LSTM</td><td>fewer gates, fewer parameters, and Lecture 20 measured no difference here</td></tr>
+    <tr><td>GRU, not LSTM</td><td>fewer gates, fewer parameters, and Lecture 16 measured no difference here</td></tr>
   </table>
   <p class="small"><code>h[0]</code> is the forward direction's last state,
   <code>h[1]</code> the backward direction's &mdash; which, read as a sequence,
   is the <em>first</em> token. Concatenating them gives the head both ends.</p>
 </section>
 
-<!-- 40 -->
+<!-- 51 -->
 <section data-menu-title="pack_padded_sequence">
   <h2><code>pack_padded_sequence</code>, and what it prevents</h2>
   <p>It hands the recurrent layer only the real timesteps, so the state returned
@@ -706,7 +839,7 @@ for i, s in enumerate(seqs):
   plausible.</p>
 </section>
 
-<!-- 41 -->
+<!-- 52 -->
 <section data-menu-title="The loop">
   <h2>The training loop is unchanged</h2>
   <pre><code class="language-python" data-trim data-line-numbers="1-11|7-11">opt   = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -721,14 +854,14 @@ for epoch in range(4):
         loss.backward()
         opt.step()
   </code></pre>
-  <p class="small">Exactly the five lines from Lecture 12, in the same order,
+  <p class="small">Exactly the five lines from Lecture 10, in the same order,
   with the same two silent failures waiting if any of them is deleted. Nothing
   about text changes the loop.</p>
   <p class="small muted">Note line 2. What <code>CrossEntropyLoss</code> is
   actually given, and why, is the whole mathematical thread of the next lecture.</p>
 </section>
 
-<!-- 42 -->
+<!-- 53 -->
 <section data-menu-title="The budget">
   <h2>What this costs to run</h2>
   <table>
@@ -744,7 +877,7 @@ for epoch in range(4):
   is several times slower, which is why the device slide came first.</p>
 </section>
 
-<!-- FIG -->
+<!-- 54 -->
 <section class="figslide" data-menu-title="◆ Learning curves">
   <h2>Four epochs</h2>
   <figure class="fig fig-wide">
@@ -755,7 +888,7 @@ for epoch in range(4):
   the model we have just built.</p>
 </section>
 
-<!-- 43 -->
+<!-- 55 -->
 <section data-menu-title="Result 1">
   <h2>The result</h2>
   <table>
@@ -769,7 +902,7 @@ for epoch in range(4):
   the page.</p>
 </section>
 
-<!-- FIG -->
+<!-- 56 -->
 <section class="figslide" data-menu-title="◆ Against the anchors">
   <h2>Against the anchors</h2>
   <figure class="fig fig-wide">
@@ -780,23 +913,7 @@ for epoch in range(4):
   itself, loses to counting words.</p>
 </section>
 
-<!-- 44 -->
-<section data-menu-title="The uncomfortable comparison">
-  <h2>The uncomfortable comparison</h2>
-  <p class="big-num bad">6.72 points</p>
-  <p>behind a linear model on word counts that fits in
-  10 seconds, from a network that took
-  460 seconds and can, in principle, see word
-  order.</p>
-  <p class="small">This is a real and reproducible result on this corpus, and it
-  is not a bug in the code. It is worth sitting with.</p>
-  <aside class="notes">Resist explaining it immediately. Ask the room for
-  hypotheses and write them up: too few epochs, too small a model, bad learning
-  rate, the truncation, the OOV rate. Most rooms do not propose the right one,
-  which is what makes the next two slides land.</aside>
-</section>
-
-<!-- 45 -->
+<!-- 57 -->
 <section data-menu-title="Why it loses">
   <h2>Why it loses</h2>
   <ul class="tight small">
@@ -820,110 +937,14 @@ for epoch in range(4):
   result would.</p>
 </section>
 
-<!-- ==================== THE WORKED ASSISTANT FAILURE =================== -->
-
-<!-- 46 -->
-<section data-menu-title="The prompt">
-  <h2>An assistant writes the classifier</h2>
-  <div class="panel">
-    <span class="panel-title">The prompt, as a student wrote it</span>
-    <em>&ldquo;Write a PyTorch model that classifies a padded batch of token ids
-    with an embedding and a GRU, and returns two logits.&rdquo;</em>
-  </div>
-  <p class="small">Under-specified in exactly one place. Read the code it
-  returns before you read the next slide, and find it.</p>
-  <aside class="notes">Give them a full minute. The room that finds it is the
-  room that has internalised reviewer question three.</aside>
-</section>
-
-<!-- 47 -->
-<section data-menu-title="The code it returns">
-  <h2>The code it returns</h2>
-  <pre><code class="language-python" data-trim data-line-numbers>class GRUClassifier(nn.Module):
-    def __init__(self, vocab):
-        super().__init__()
-        self.emb  = nn.Embedding(vocab, 128, padding_idx=0)
-        self.rnn  = nn.GRU(128, 64, batch_first=True, bidirectional=True)
-        self.head = nn.Linear(2 * 64, 2)
-
-    def forward(self, x):
-        out, _ = self.rnn(self.emb(x))
-        return self.head(out[:, -1, :])      # the last timestep
-  </code></pre>
-  <p>Same embedding, same GRU, same head as ours. It runs, the shapes are right,
-  the loss goes down, and it reports an accuracy well above the majority class.</p>
-</section>
-
-<!-- 48 -->
-<section data-menu-title="The review question">
-  <h2>Reviewer question 3: what is the shape here?</h2>
-  <p><code>out[:, -1, :]</code> is the hidden state after position 255.</p>
-  <div class="panel panel-fail">
-    <span class="panel-title">And the last position of the batch is padding</span>
-    for <strong>every review shorter than 256 tokens</strong>
-    &mdash; which is 71% of them. The median review is
-    174 words, so the summary is typically taken after
-    eighty zeros.
-  </div>
-  <p class="small">The state does not stay put across those zeros. A GRU has an
-  update gate, and feeding it a constant input drifts the state toward a fixed
-  point that carries no information about the review.</p>
-</section>
-
-<!-- 49 -->
-<section data-menu-title="Padding bug measured">
-  <h2>Measure the damage</h2>
-  <table>
-    <tr><th>Same architecture, same seed, same four epochs</th><th class="num">Test accuracy</th></tr>
-    <tr><td class="fix">Final state at the true last token</td><td class="num hit">83.4%</td></tr>
-    <tr><td class="fail">Final state at position 255</td><td class="num fail">65.2%</td></tr>
-  </table>
-  <p class="big-num bad">18.24 points</p>
-  <p class="small">No exception, no warning, no <code>NaN</code>. The broken
-  version still beats the majority class, so nothing in the output says the
-  model is reading zeros.</p>
-</section>
-
-<!-- 50 -->
-<section data-menu-title="The corrected spec">
-  <h2>The corrected specification</h2>
-  <div class="panel panel-fix">
-    <span class="panel-title">What the prompt should have said</span>
-    <em>&ldquo;&hellip; and a tensor of true sequence lengths. Summarise each
-    sequence at its own final token, not at the last position of the padded
-    batch. Use <code>pack_padded_sequence</code>. Assert that two batches
-    containing the same review with different padding produce the same
-    logits.&rdquo;</em>
-  </div>
-  <p class="small">The assertion is the part worth copying. A padding bug is
-  exactly the class of error that a test on <em>invariance</em> catches and a
-  test on <em>output shape</em> does not.</p>
-</section>
-
-<!-- 51 -->
-<section data-menu-title="The invariance test">
-  <h2>The test that catches it, in three lines</h2>
-  <pre><code class="language-python" data-trim>
-one = model(x[:1, :len_one], torch.tensor([len_one]))
-two = model(x[:1, :], torch.tensor([len_one]))        # same review, padded
-assert torch.allclose(one, two, atol=1e-5), "padding is being read"
-  </code></pre>
-  <p class="small">Costs nothing, runs in milliseconds, and fails loudly on the
-  assistant's version. The general habit: when a representation has a piece that
-  is supposed to be ignored, <strong>test that changing it changes
-  nothing</strong>.</p>
-</section>
-
-<!-- ============================== THE SWAP ============================= -->
-
-<!-- 52 -->
+<!-- 58 -->
 <section class="divider" data-menu-title="◆ The swap">
-  <p class="kicker">Part three, continued</p>
-  <h1>Change nothing<br>but the table</h1>
-  <p class="clock">the architecture stays exactly as it is</p>
+  <p class="kicker">The last fifteen minutes</p>
+  <h1>The same architecture,<br>better vectors</h1>
+  <p class="clock">15 minutes</p>
 </section>
 
-<!-- 53 -->
+<!-- 59 -->
 <section data-menu-title="The idea">
   <h2>The diagnosis said the embedding table</h2>
   <p class="lead">So replace the table. Nothing else.</p>
@@ -938,7 +959,7 @@ assert torch.allclose(one, two, atol=1e-5), "padding is being read"
   how you learn nothing from an experiment.</p>
 </section>
 
-<!-- 54 -->
+<!-- 60 -->
 <section data-menu-title="Swap 1">
   <h2>Swap 1 &middot; the pretrained tokenizer alone</h2>
   <pre><code class="language-python" data-trim>
@@ -955,7 +976,7 @@ model = GRUClassifier(vocab=tk.vocab_size)      # 30,522 rows, random
   rooms predict it wrong.</p>
 </section>
 
-<!-- 55 -->
+<!-- 61 -->
 <section data-menu-title="Swap 1 measured">
   <h2>Swap 1, measured</h2>
   <table>
@@ -974,28 +995,7 @@ model = GRUClassifier(vocab=tk.vocab_size)      # 30,522 rows, random
   cannot afford in a lecture. Saying that out loud is the point of the slide.</aside>
 </section>
 
-<!-- 56 -->
-<section data-menu-title="Why swap 1 was flat">
-  <h2>Why a better tokenizer bought nothing</h2>
-  <ul class="tight small">
-    <li>There was little to win: at 20,000 words only
-        3.5% of test <em>tokens</em> were unknown already</li>
-    <li>And something to lose: sequences are 1.86
-        times longer in pieces, so the 256-token budget holds fewer
-        words and the recurrence carries the signal further</li>
-    <li><em>un</em>, <em>##watch</em> and <em>##able</em> are three random
-        vectors. The model must learn that their <em>composition</em> is
-        negative, which is harder than learning one vector for one word</li>
-  </ul>
-  <div class="panel panel-fail">
-    <span class="panel-title">The reading</span>
-    A subword tokenizer is not a better tokenizer by itself. It is a vocabulary
-    that <strong>someone else's pretraining can be poured into</strong> &mdash;
-    and until you pour, it is a longer sequence for nothing.
-  </div>
-</section>
-
-<!-- 57 -->
+<!-- 62 -->
 <section data-menu-title="Swap 2">
   <h2>Swap 2 &middot; and now the vectors</h2>
   <p>The same subword vocabulary has an embedding table that was already trained
@@ -1013,23 +1013,7 @@ print(E.shape)          # (30522, 768)
   once.</p>
 </section>
 
-<!-- 58 -->
-<section data-menu-title="PCA again">
-  <h2>Thread 5, doing work again</h2>
-  <p>Project 768 dimensions down to 128 with PCA &mdash; the same PCA from
-  Lecture 10, minimising reconstruction error over the whole table.</p>
-  <pre><code class="language-python" data-trim>
-Z = PCA(n_components=128, random_state=42).fit_transform(E)
-Z = Z / Z.std() * 0.1        # match nn.Embedding's own initial scale
-  </code></pre>
-  <p>Those 128 components keep 46.9% of the variance of the
-  original table.</p>
-  <p class="small muted">Less than half &mdash; and that is the honest form of
-  this step. We are throwing away most of the variance and it still helps, which
-  says something about how much redundancy 768 dimensions carry.</p>
-</section>
-
-<!-- 59 -->
+<!-- 63 -->
 <section data-menu-title="Frozen or tuned">
   <h2>Then one more decision</h2>
   <pre><code class="language-python" data-trim>
@@ -1045,7 +1029,7 @@ model.emb.weight.requires_grad = False       # frozen  — or True, tuned
   it is one boolean.</p>
 </section>
 
-<!-- FIG -->
+<!-- 64 -->
 <section class="figslide" data-menu-title="◆ The swap">
   <h2>Four runs, one architecture</h2>
   <figure class="fig fig-wide">
@@ -1056,7 +1040,7 @@ model.emb.weight.requires_grad = False       # frozen  — or True, tuned
   produced the ids, and what was in the embedding table at step zero.</p>
 </section>
 
-<!-- 60 -->
+<!-- 65 -->
 <section data-menu-title="The swap measured">
   <h2>The swap, measured</h2>
   <table>
@@ -1073,23 +1057,7 @@ model.emb.weight.requires_grad = False       # frozen  — or True, tuned
   what you built this morning, and only by about a point.</p>
 </section>
 
-<!-- 60b -->
-<section data-menu-title="Reading the four rows">
-  <h2>Reading the four rows together</h2>
-  <table>
-    <tr><th>Change</th><th class="num">Worth</th></tr>
-    <tr><td>a subword tokenizer, on its own</td><td class="num">-0.94 points</td></tr>
-    <tr><td>pretrained vectors, frozen</td><td class="num">-0.86 points</td></tr>
-    <tr><td class="fix">pretrained vectors, allowed to move</td><td class="num hit">0.79 points</td></tr>
-  </table>
-  <p class="lead">So the hypothesis was half right.</p>
-  <p class="small">The embedding table <em>was</em> holding the model back
-  &mdash; but replacing it is worth about a point, not the
-  6.72 the bag of words is ahead by. One tensor out of a
-  model is not enough of a model.</p>
-</section>
-
-<!-- 61 -->
+<!-- 66 -->
 <section data-menu-title="What moved">
   <h2>What moved, and what did not</h2>
   <table>
@@ -1106,38 +1074,7 @@ model.emb.weight.requires_grad = False       # frozen  — or True, tuned
   learning&rdquo; suggests.</p>
 </section>
 
-<!-- 62 -->
-<section data-menu-title="Frozen vs tuned measured">
-  <h2>Frozen against tuned</h2>
-  <table>
-    <tr><th></th><th class="num">Best validation</th><th class="num">Test</th><th class="num">Trainable parameters</th></tr>
-    <tr><td>Frozen</td><td class="num">82.6%</td><td class="num">82.6%</td><td class="num">74,754</td></tr>
-    <tr><td class="fix">Tuned</td><td class="num hit">86.4%</td><td class="num hit">84.2%</td><td class="num">3,981,570</td></tr>
-  </table>
-  <p class="small">With 20,000 labelled reviews, letting the vectors
-  move helps. With a few hundred it usually does not, and freezing is the safer
-  default &mdash; a trade-off you now have the measurement to make rather than
-  the opinion.</p>
-</section>
-
-<!-- 62b -->
-<section data-menu-title="Where to stop">
-  <h2>Where to stop is a decision too</h2>
-  <p>The tuned run's training loss reaches
-  0.0374 by the fourth epoch. It has memorised the
-  reviews it was fitted on.</p>
-  <table>
-    <tr><th>Model reported</th><th class="num">Our words</th><th class="num">Subword, pretrained</th></tr>
-    <tr><td class="fail">after the last epoch</td><td class="num">83.4%</td><td class="num fail">82.3%</td></tr>
-    <tr><td class="fix">at its best validation epoch</td><td class="num">83.4%</td><td class="num hit">84.2%</td></tr>
-  </table>
-  <p class="small">Early stopping, from Lecture 6, and it is worth
-  1.86 points here. Validation chose epoch
-  2 of 4 for the
-  pretrained run and epoch 4 for ours.</p>
-</section>
-
-<!-- 62c -->
+<!-- 67 -->
 <section data-menu-title="Validation is not the test set">
   <h2>And a warning about that validation set</h2>
   <div class="panel panel-fail">
@@ -1156,7 +1093,7 @@ model.emb.weight.requires_grad = False       # frozen  — or True, tuned
   &ldquo;how well will this do?&rdquo;</p>
 </section>
 
-<!-- 63 -->
+<!-- 68 -->
 <section data-menu-title="Against the anchor">
   <h2>And against the anchor?</h2>
   <table>
@@ -1170,46 +1107,7 @@ model.emb.weight.requires_grad = False       # frozen  — or True, tuned
   question to take home, and the sheet in front of you has a line for it.</p>
 </section>
 
-<!-- 64 -->
-<section data-menu-title="What we borrowed">
-  <h2>What we actually borrowed</h2>
-  <div class="panel">
-    <span class="panel-title">Two artefacts, both made by someone else</span>
-    A list of 30,522 merge rules, and a table of
-    30,522 &times; 768 numbers. Neither knows anything about
-    film reviews or about sentiment.
-  </div>
-  <ul class="tight small">
-    <li>Neither was trained on our task</li>
-    <li>Neither was trained on our corpus</li>
-    <li>Both were trained on a great deal more text than we have</li>
-  </ul>
-  <p class="small muted">That is transfer learning, and it is the same argument
-  as Lecture 16's frozen convolutional backbone &mdash; a different modality,
-  an identical shape of reasoning.</p>
-</section>
-
-<!-- 65 -->
-<section data-menu-title="Not examinable">
-  <h2>One note on the tooling</h2>
-  <div class="panel">
-    <span class="panel-title">Not examinable</span>
-    <code>transformers</code> and the model hub are not in the book. They are on
-    this slide because downloading a tokenizer and an embedding matrix is two
-    lines, and the alternative is a lecture about file formats. What
-    <em>is</em> examinable is what a tokenizer and an embedding table are, and
-    why swapping them moved the number.
-  </div>
-  <p class="small">Everything in Chapters 14 and 15 that this uses &mdash;
-  subword tokenisation, embeddings, recurrent classifiers, transfer of
-  pretrained weights &mdash; is examinable.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- CLOSE                                                                -->
-<!-- ==================================================================== -->
-
-<!-- 66 -->
+<!-- 69 -->
 <section data-menu-title="Where we are">
   <h2>Where we are</h2>
   <table>
@@ -1227,81 +1125,7 @@ model.emb.weight.requires_grad = False       # frozen  — or True, tuned
   nearly twice the cost to run.</p>
 </section>
 
-<!-- 66b -->
-<section data-menu-title="What it costs to run">
-  <h2>The requirement the metric cannot see</h2>
-  <p class="small">Accuracy says nothing about &ldquo;within the hour&rdquo;. So
-  time it: raw strings in, labels out, tokenising or vectorising
-  <strong>included</strong>, because that is what the desk pays per review.</p>
-  <table>
-    <tr><th>Model</th><th class="num">Scoring 25,000</th><th class="num">Per review</th><th class="num">Relative</th></tr>
-    <tr><td class="fix">tf-idf + logistic regression</td><td class="num">3.6 s</td><td class="num">0.14 ms</td><td class="num">1&times;</td></tr>
-    <tr><td>GRU, our words</td><td class="num">6.3 s</td><td class="num">0.25 ms</td><td class="num">1.8&times;</td></tr>
-    <tr><td>GRU, subword pieces</td><td class="num">12.0 s</td><td class="num">0.48 ms</td><td class="num">3.4&times;</td></tr>
-  </table>
-  <p class="small">Median of 5 passes over the whole test set. Subword pieces
-  cost more than words for the reason we already measured: the same review is
-  1.86 times as many tokens.</p>
-  <aside class="notes">The point to make out loud: none of these is anywhere
-  near an hour, so on this brief the cost column does not decide anything — and
-  a requirement that turns out not to bind is still worth measuring, because you
-  did not know that until you did. It binds in the next lecture.</aside>
-</section>
-
-<!-- 67 -->
-<section data-menu-title="Fill in the sheet">
-  <h2>Fill in the last line</h2>
-  <div class="commit">
-    <span class="commit-label">Before you leave</span>
-    <p class="small">
-      Best accuracy I actually obtained: <span class="blank"></span> %<br>
-      &hellip; against what I predicted this morning: <span class="blank"></span> %
-    </p>
-  </div>
-  <p class="small">We score these out loud at the start of the next lecture.
-  Nobody is asked to defend a guess; the useful thing is the size and the sign of
-  the gap.</p>
-</section>
-
-<!-- 68 -->
-<section data-menu-title="Open questions">
-  <h2>Four questions we did not answer</h2>
-  <ol class="tight small">
-    <li>What exactly does <code>CrossEntropyLoss</code> receive, and why does it
-        want the raw two numbers rather than probabilities?</li>
-    <li>We borrowed a tokenizer and a table. What if we borrowed the
-        <em>whole</em> model?</li>
-    <li>The desk wants complaints <em>grouped</em>, not only flagged. Nothing we
-        built today does that</li>
-    <li>Is 84.2% good? Compared with what ceiling?</li>
-  </ol>
-  <p class="small muted">All four are the next lecture. Write down your answer
-  to the first one now, before you are told it.</p>
-</section>
-
-<!-- 68b -->
-<section data-menu-title="Red-team">
-  <h2>Red-team, before you go</h2>
-  <p>Swap notebooks with the team beside you. Ten minutes, the five standing
-  questions plus three that only exist because today was text:</p>
-  <ol class="tight small">
-    <li>What touched the test set?</li>
-    <li>What was fitted, and on what? (<code>fit</code> and <code>transform</code>
-        are different verbs)</li>
-    <li>What is the shape here?</li>
-    <li>What was dropped &mdash; rows, columns, tokens? Count them.</li>
-    <li>What is the default I did not ask for?</li>
-    <li class="fail">Which documents did the vocabulary come from?</li>
-    <li class="fail">Is the summary taken at the true last token, or at the last
-        position of the batch?</li>
-    <li class="fail">What fraction of the test tokens became
-        <code>[UNK]</code>?</li>
-  </ol>
-  <p class="fail small">Report what you found, not what you would have done
-  differently.</p>
-</section>
-
-<!-- 69 -->
+<!-- 70 -->
 <section data-menu-title="Checklist">
   <h2>Text checklist &mdash; keep this</h2>
   <ul class="tight small">
@@ -1316,40 +1140,45 @@ model.emb.weight.requires_grad = False       # frozen  — or True, tuned
   the most, and it is the one the next lecture ends on.</p>
 </section>
 
-<!-- 70 -->
-<section data-menu-title="References">
-  <h2>In the book</h2>
-  <table>
-    <tr><th>Topic</th><th>Chapter</th></tr>
-    <tr><td>Text preprocessing and vocabularies</td><td>14</td></tr>
-    <tr><td>Subword tokenisation, byte-pair encoding</td><td>14</td></tr>
-    <tr><td>Word embeddings and embedding layers</td><td>14</td></tr>
-    <tr><td>Recurrent classifiers for sentiment</td><td>14</td></tr>
-    <tr><td>Reusing pretrained embeddings</td><td>14</td></tr>
-    <tr><td>Recurrent layers, GRU cells</td><td>13</td></tr>
-    <tr><td>PCA and reconstruction error</td><td>7</td></tr>
-  </table>
-</section>
-
 <!-- 71 -->
-<section class="divider" data-menu-title="Next">
-  <p class="kicker">Lecture 22 &middot; Fix</p>
-  <h1>Reusing what<br>someone else learned</h1>
-  <p class="small">
-    Thread 11: cross-entropy, softmax and logits<br>
-    Then the whole pretrained model, not just its first layer<br>
-    and a leak that is genuinely expensive on text
-  </p>
-  <p class="clock">Bring the sheet</p>
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight smaller">
+    <li>Turned symbols into vectors: subword tokenisation, so that an unseen
+        word is still representable, and a trainable embedding table</li>
+    <li>Derived softmax and its invariance under a constant shift &mdash; which
+        is what makes the max trick both safe and necessary</li>
+    <li>Derived the gradient of cross-entropy with respect to the logits, and
+        found it is exactly <strong>prediction minus target</strong></li>
+    <li>Saw why the loss consumes logits rather than probabilities: the
+        cancellation is what keeps it stable, and doing the softmax yourself
+        throws it away</li>
+    <li>Related cross-entropy to KL divergence, and measured that they differ by
+        a constant</li>
+    <li>Built a recurrent classifier, then replaced its embeddings with
+        pretrained ones and measured what moved</li>
+  </ol>
 </section>
 
+<!-- 72 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 18 &middot; G&eacute;ron Ch. 14&ndash;15</p>
+  <h1>Attention and transformers</h1>
+  <p class="small">
+    Scaled dot-product attention, derived &mdash; and why the scores are divided
+    by $\sqrt{d_k}$<br>
+    Multi-head attention, and why a permutation-invariant model needs positions<br>
+    Fine-tuning a pretrained transformer against today&rsquo;s model
+  </p>
+  <p class="clock">Run the Lecture 17 notebook first</p>
+</section>
 </div>
 </div>
 
 <div class="deck-footer">
   Applications of Machine Learning
-  <span class="sep">&middot;</span> Lecture 21
-  <span class="sep">&middot;</span> Reading the customers
+  <span class="sep">&middot;</span> Lecture 17
+  <span class="sep">&middot;</span> Text
 </div>
 
 <script src="../lib/reveal.js/dist/reveal.js"></script>

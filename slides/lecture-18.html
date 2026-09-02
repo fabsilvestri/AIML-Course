@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 18 — Attention and transformers</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Attention and transformers</h1>
+  <p class="subtitle">IMDb</p>
+  <p><span class="badge badge-lec">Lecture 18</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 14&ndash;15</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Lecture&nbsp;16 ended with three things recurrence cannot
+  do, and Lecture&nbsp;17 built a recurrent classifier that ran into all of
+  them:</p>
+  <ul class="tight small">
+    <li>The computation is <strong>sequential</strong> along the sequence</li>
+    <li>Everything remembered must fit through <strong>one fixed-width state</strong></li>
+    <li>Position 400 is four hundred steps from position 2, however good the gates</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">One change removes all three</span>
+    Let every position compute a weighted sum over <em>every</em> position
+    directly, with the weights learned from the content. No recurrence, no
+    single state, and every pair of positions one step apart.
+  </div>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li><strong>The mathematics</strong> &mdash; scaled dot-product attention,
+        and why the scores are divided by $\sqrt{d_k}$
+        <span class="muted small">(25 min)</span></li>
+    <li>Multi-head attention, and positional encoding
+        <span class="muted small">(20 min)</span></li>
+    <li><strong>The method</strong> &mdash; the encoder-decoder architecture and
+        its three families <span class="muted small">(20 min)</span></li>
+    <li>Fine-tuning a pretrained transformer, against Lecture&nbsp;17&rsquo;s
+        model <span class="muted small">(20 min)</span></li>
+  </ol>
+</section>
+
+<!-- 4 -->
+<section class="divider" data-menu-title="◆ The mathematics">
+  <p class="kicker">The mathematics</p>
+  <h1>Scaled dot-product<br>attention</h1>
+  <p class="clock">25 minutes &middot; examinable</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="The question">
+  <h2>The question</h2>
+  <p class="lead">Every position needs a summary of the whole sequence, weighted
+  by <em>relevance</em> &mdash; and relevance has to be learned, not designed.</p>
+  <div class="panel">
+    <span class="panel-title">The shape of the answer</span>
+    Output at position $i$ is $\sum_j w_{ij}\mathbf{v}_j$: a weighted sum of
+    values, one per position. Everything below is about where $w_{ij}$ comes
+    from and why it takes the form it does.
+  </div>
+  <p class="small muted">Note what is already gone: there is no recurrence in
+  that expression, so nothing forces the positions to be computed in order.</p>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="Queries, keys and values">
+  <h2>Queries, keys and values</h2>
+  <ol class="derivation">
+    <li><div>Project each position three ways, with learned matrices:
+        $\mathbf{q}_i = \mathbf{W}_Q\mathbf{x}_i$,
+        $\mathbf{k}_j = \mathbf{W}_K\mathbf{x}_j$,
+        $\mathbf{v}_j = \mathbf{W}_V\mathbf{x}_j$.
+        <span class="why">A query is what this position is looking for; a key is what that position offers; a value is what it contributes if chosen</span></div></li>
+    <li><div>Score every pair by how well the query matches the key:
+        $s_{ij} = \mathbf{q}_i^{\mathsf T}\mathbf{k}_j$.
+        <span class="why">A dot product, because it is the cheapest similarity that a matrix multiply computes for all pairs at once</span></div></li>
+    <li><div>Turn the scores into weights that sum to one:
+        $w_{ij} = \mathrm{softmax}_j(s_{ij})$.
+        <span class="why">Lecture 17's softmax, applied along the sequence rather than across classes</span></div></li>
+    <li class="result"><div>And take the weighted sum:
+        $\mathbf{z}_i = \sum_j w_{ij}\mathbf{v}_j$.
+        <span class="why">In matrix form for all positions at once: $\mathrm{softmax}(\mathbf{Q}\mathbf{K}^{\mathsf T})\mathbf{V}$</span></div></li>
+  </ol>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="Why divide by √d_k">
+  <h2>Why divide by √d_k</h2>
+  <p class="small">Take $\mathbf{q}$ and $\mathbf{k}$ to have independent
+  components with mean 0 and variance 1. Then</p>
+  <ol class="derivation" style="counter-reset: dstep 4">
+    <li><div>$s = \mathbf{q}^{\mathsf T}\mathbf{k} = \sum_{d=1}^{d_k} q_d k_d$
+        is a sum of $d_k$ independent zero-mean terms.
+        <span class="why">Each term has variance $\mathrm{Var}(q_d)\mathrm{Var}(k_d) = 1$</span></div></li>
+    <li><div>So $\mathrm{Var}(s) = d_k$, and $s$ has standard deviation $\sqrt{d_k}$.
+        <span class="why">The scores grow with the dimension — for $d_k = 64$, typical scores are already of order 8</span></div></li>
+    <li><div>Softmax of large scores saturates: one weight goes to 1, the rest to
+        0, and its gradient goes to zero with them.
+        <span class="why">Exactly the vanishing gradient of Lecture 11, arriving through a different door</span></div></li>
+    <li class="result"><div>Divide by $\sqrt{d_k}$ and the variance returns to 1,
+        whatever the dimension:
+        $\mathrm{Attention} = \mathrm{softmax}\!\left(\frac{\mathbf{Q}\mathbf{K}^{\mathsf T}}{\sqrt{d_k}}\right)\mathbf{V}$.
+        <span class="why">The scale is not a hyperparameter — it is the number that makes the score distribution independent of $d_k$</span></div></li>
+  </ol>
+  <p class="small muted"><span class="scope scope-exam">examinable</span> Derive
+  the variance of the score and state what the division fixes.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="What the derivation buys you">
+  <h2>What the derivation buys you</h2>
+  <ul class="tight">
+    <li>Attention is <strong>three projections, a scaled dot product, a softmax
+        and a weighted sum</strong> — no recurrence anywhere</li>
+    <li>Every pair of positions interacts directly: the path length between any
+        two is <strong>1</strong>, against $O(T)$ for a recurrent net</li>
+    <li>All positions compute at once, so the sequence axis parallelises</li>
+    <li>The cost is $O(T^2)$ in time and memory — quadratic in sequence length,
+        which is the price paid for the constant path length</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The trade, stated plainly</span>
+    Recurrence is linear in $T$ and sequential, with a long gradient path.
+    Attention is quadratic in $T$ and parallel, with a path of length one.
+    On the sequence lengths people actually use, the second wins — and when it
+    does not, the $T^2$ term is what has to be approximated.
+  </div>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="Multi-head attention">
+  <h2>Multi-head attention</h2>
+  <p class="small">One attention layer computes one notion of relevance. Run
+  $h$ of them in parallel on <em>different learned projections</em> of the same
+  input, and concatenate.</p>
+  <ul class="tight small">
+    <li>Each head has its own $\mathbf{W}_Q, \mathbf{W}_K, \mathbf{W}_V$, of
+        width $d_{\text{model}}/h$ — so $h$ heads cost the same as one wide one</li>
+    <li>Different heads learn different relations: adjacency, agreement,
+        coreference. Nothing tells them to; the division of labour is learned</li>
+    <li>Concatenate and project back to $d_{\text{model}}$</li>
+  </ul>
+  <p class="small">The argument is the ensemble argument of Lecture&nbsp;7 in a
+  new place: several estimators of the same thing beat one, provided their
+  errors are not identical &mdash; and different projections are what stops them
+  being identical.</p>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="Positional encoding">
+  <h2>Positional encoding</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">The problem attention creates</span>
+    $\mathrm{softmax}(\mathbf{Q}\mathbf{K}^{\mathsf T})\mathbf{V}$ is
+    <strong>permutation equivariant</strong>: shuffle the input positions and
+    the outputs shuffle with them, unchanged. So the model literally cannot tell
+    <em>"the film was not good"</em> from <em>"good, the film was not"</em>.
+  </div>
+  <p class="small">Recurrence got order for free, because it processed the
+  sequence in order. Attention has to be <em>told</em>: add a position-dependent
+  vector to each embedding before the first layer.</p>
+  <ul class="tight small">
+    <li><strong>Sinusoidal</strong> &mdash; fixed, and extends to lengths never
+        seen in training</li>
+    <li><strong>Learned</strong> &mdash; an embedding table indexed by position;
+        simpler, and bounded by the longest training sequence</li>
+    <li><strong>Relative</strong> &mdash; encode the <em>distance</em> between
+        two positions in the score, which is what most current models do</li>
+  </ul>
+</section>
+
+<!-- 11 -->
+<section class="divider" data-menu-title="◆ The architecture">
+  <p class="kicker">The method</p>
+  <h1>Encoder, decoder,<br>and the three families</h1>
+  <p class="clock">20 minutes &middot; examinable</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="One block">
+  <h2>One block</h2>
+  <p class="small">A transformer block is attention plus a small feed-forward
+  network, each wrapped the same way:</p>
+  <ol class="tight small">
+    <li>Multi-head self-attention over the whole sequence</li>
+    <li>Add the input back (a residual connection) and normalise</li>
+    <li>A position-wise feed-forward network &mdash; the same two-layer MLP
+        applied at every position independently</li>
+    <li>Add and normalise again</li>
+  </ol>
+  <div class="panel">
+    <span class="panel-title">Why the residual, and why the norm</span>
+    Both are Lecture&nbsp;11, unchanged. The residual gives the gradient an
+    additive path through depth &mdash; the same argument as an LSTM gate, one
+    level up. The layer normalisation keeps the variance from drifting as blocks
+    stack. A transformer is deep, and it is deep only because of these two.
+  </div>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="Masking, and why the decoder needs it">
+  <h2>Masking, and why the decoder needs it</h2>
+  <p class="small">A decoder generating text must not look at what it has not
+  written yet. So set $s_{ij} = -\infty$ for $j > i$ before the softmax.</p>
+  <div class="eqn-box compact">
+    $$w_{ij} = \mathrm{softmax}_j\!\left(\frac{s_{ij}}{\sqrt{d_k}} + m_{ij}\right),
+    \quad m_{ij} = \begin{cases}0 & j \le i\\ -\infty & j > i\end{cases}$$
+  </div>
+  <p class="small">$e^{-\infty} = 0$, so those positions get exactly zero
+  weight and contribute nothing &mdash; and, crucially, no gradient either.</p>
+  <p class="small fail">This is Lecture&nbsp;15&rsquo;s causality condition
+  again, enforced in the architecture rather than in the data split. An
+  unmasked decoder is a model that has read the answer.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Three families">
+  <h2>Three families</h2>
+  <table class="smaller">
+    <tr><th>Family</th><th>Attention</th><th>Good at</th></tr>
+    <tr><td><strong>Encoder-only</strong><br><span class="muted">BERT-like</span></td><td>bidirectional</td><td>classification, tagging, retrieval — anything where the whole input is available</td></tr>
+    <tr><td><strong>Decoder-only</strong><br><span class="muted">GPT-like</span></td><td>masked, causal</td><td>generation, and everything phrased as generation</td></tr>
+    <tr><td><strong>Encoder&ndash;decoder</strong><br><span class="muted">T5-like</span></td><td>both, plus cross-attention</td><td>translation, summarisation — a sequence in, a different sequence out</td></tr>
+  </table>
+  <p class="small">The choice is the same question as bidirectional layers in
+  Lecture&nbsp;16: <em>at prediction time, do I have the whole input?</em> Today
+  we classify a review we can see in full, so encoder-only is right.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="What a pretrained transformer already knows">
+  <h2>What a pretrained transformer already knows</h2>
+  <p class="small">It was trained on a large corpus to fill in masked tokens or
+  predict the next one. Nothing about sentiment, and yet:</p>
+  <ul class="tight small">
+    <li>Syntax, agreement, and long-range dependence &mdash; because predicting
+        a missing word requires them</li>
+    <li>A great deal of lexical semantics, since words that fill the same slots
+        get similar representations</li>
+    <li>Enough about discourse that a classification head on top needs very few
+        labels</li>
+  </ul>
+  <p class="small">Which is Lecture&nbsp;13&rsquo;s argument, word for word, on
+  a different modality: <strong>do not learn what somebody has already learned
+  for you.</strong> The backbone is the transformer; the head is small and
+  random; the labels are scarce.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="Attention in ten lines">
+  <h2>Attention in ten lines</h2>
+  <pre><code class="language-python" data-trim>
+def attention(Q, K, V, mask=None):
+    d_k = Q.shape[-1]
+    scores = Q @ K.transpose(-2, -1) / math.sqrt(d_k)   # the derivation
+    if mask is not None:
+        scores = scores.masked_fill(mask, float("-inf"))
+    w = scores.softmax(dim=-1)
+    return w @ V, w
+  </code></pre>
+  <p class="small">Six lines, and every one of them is a step of the
+  derivation. The rest of a transformer &mdash; the heads, the residuals, the
+  feed-forward, the normalisation &mdash; is arrangement around this function.</p>
+  <p class="small muted">Which is worth saying plainly: the architecture that
+  changed the field is, at its centre, a similarity, a softmax and a weighted
+  average.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="Checking it against the library">
+  <h2>Checking it against the library</h2>
+  <ul class="tight small">
+    <li>Same inputs, same seed, compare to
+        <code>F.scaled_dot_product_attention</code> &mdash; the two should agree
+        to floating-point tolerance</li>
+    <li>If they do not, the usual causes are a transposed key matrix, a mask
+        applied after the softmax instead of before, or a missing scale</li>
+    <li>Each of those <strong>runs</strong>. Only the comparison finds them</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">Why implement it at all, if a library has it</span>
+    The same reason Lecture&nbsp;2 verified the normal equation numerically and
+    Lecture&nbsp;10 checked autograd against a hand derivative: a formula you
+    have implemented and tested is one you can reason about when the model
+    misbehaves. A formula you have only read is not.
+  </div>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="Where the parameters are">
+  <h2>Where the parameters are</h2>
+  <table class="smaller">
+    <tr><th>Component</th><th>Parameters</th></tr>
+    <tr><td>Attention, per layer</td><td>$4\,d_{\text{model}}^2$ &mdash; the four projections $\mathbf{W}_Q,\mathbf{W}_K,\mathbf{W}_V$ and the output</td></tr>
+    <tr><td>Feed-forward, per layer</td><td>$8\,d_{\text{model}}^2$ &mdash; usually a 4&times; expansion and back</td></tr>
+    <tr><td>Embeddings</td><td>$|V| \times d_{\text{model}}$ &mdash; often a large fraction of a small model</td></tr>
+  </table>
+  <p class="small fail">Two thirds of the parameters in a transformer block are
+  in the <em>feed-forward</em>, not in the attention. The attention is what makes
+  it work and it is the minority of the weights &mdash; a useful corrective to
+  the name.</p>
+  <p class="small muted">Same habit as Lecture&nbsp;9: count the parameters
+  before you fit anything, and know where they are.</p>
+</section>
+
+<!-- 19 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-18.ipynb">Open Lecture 18 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> A small pretrained transformer, a
+        subsampled corpus, and a short fine-tune</li>
+    <li>Attention implemented from the derivation in about ten lines, and
+        checked against the library&rsquo;s</li>
+    <li>The $\sqrt{d_k}$ scaling removed, and the softmax saturation that
+        follows, measured</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Shuffle the token positions of an input and run it through attention with
+    and without positional encoding. Without, the output is the same multiset;
+    with, it is not.
+  </div>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="The model we borrow">
+  <h2>The model we borrow</h2>
+  <table>
+    <tr><th>Property</th><th class="num">Value</th></tr>
+    <tr><td>Parameters</td><td class="num">66,955,010</td></tr>
+    <tr><td>Vocabulary &mdash; the same one we used last lecture</td><td class="num">30,522</td></tr>
+    <tr><td>Embedding width</td><td class="num">768</td></tr>
+    <tr><td>Pretraining task</td><td class="num">predict masked words</td></tr>
+  </table>
+  <p>Last lecture we took 30,522 &times; 768 numbers out of
+  this model and threw the rest away. The rest is where the language is.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Fine-tuning">
+  <h2>Fine-tuning, precisely</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-8|3-5|7-8">from transformers import AutoModelForSequenceClassification
+
+model = AutoModelForSequenceClassification.from_pretrained(
+    "distilbert-base-uncased", num_labels=2)
+# every weight is pretrained EXCEPT the classification head, which is random
+
+opt   = torch.optim.AdamW(model.parameters(), lr=2e-5)
+lossf = nn.CrossEntropyLoss()          # logits in, as always
+  </code></pre>
+  <ul class="tight small">
+    <li>A new linear head, randomly initialised, on top of a pretrained body</li>
+    <li>A learning rate around 100 times smaller than we used from scratch
+        &mdash; large steps destroy what was pretrained</li>
+    <li>One pass over the data, not four</li>
+  </ul>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="The head is random">
+  <h2>How much is the head, and how much is the body?</h2>
+  <p>Run the same backbone with its untrained head and no fine-tuning at all:</p>
+  <table>
+    <tr><th>Model</th><th class="num">Test accuracy</th></tr>
+    <tr><td class="fail">Pretrained body, random head, no training</td><td class="num fail">40.1%</td></tr>
+    <tr><td>Always one class</td><td class="num">50.0%</td></tr>
+  </table>
+  <p class="small">Measured on 5,000 test reviews sampled at
+  random, 49.8% of them positive. Note it is
+  <em>below</em> the majority class: an untrained head is an arbitrary
+  hyperplane, and which side it puts each class on is a coin toss. The
+  pretraining on its own predicts nothing about sentiment, because nothing has
+  told it what the two output units mean.</p>
+  <p class="small muted">Everything that follows is what one pass of fine-tuning
+  does with a representation it did not have to build.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="The budget">
+  <h2>What it costs</h2>
+  <table>
+    <tr><th>Setting</th><th class="num">Value</th></tr>
+    <tr><td>Reviews used to fine-tune</td><td class="num">20,000</td></tr>
+    <tr><td>Epochs run, and the one validation chose</td><td class="num">2, 1</td></tr>
+    <tr><td>Batch size, learning rate</td><td class="num">16, 0.00002</td></tr>
+    <tr><td>Training wall clock</td><td class="num">346 s</td></tr>
+    <tr><td>Scoring 25,000 test reviews</td><td class="num">133 s</td></tr>
+  </table>
+  <p class="small">Measured on an Apple MPS backend, in <code>float32</code>.
+  The number of epochs is a hyperparameter, so it is chosen on the
+  5,000-review validation split, exactly as in Lecture 2 &mdash;
+  never on the test set.</p>
+  <p class="small muted">The scoring time is the median of 5 passes, the same
+  protocol as Lecture 21's cost table. It is also the least reproducible number
+  in this deck: the five passes ran from
+  103 s to
+  160 s. Quote it to two figures or not at all.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Result">
+  <h2>The result</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Test accuracy</th></tr>
+    <tr><td>Always one class</td><td class="num">50.0%</td></tr>
+    <tr><td>tf-idf + logistic regression</td><td class="num">90.1%</td></tr>
+    <tr><td>GRU from scratch</td><td class="num">83.4%</td></tr>
+    <tr><td>GRU, pretrained embeddings</td><td class="num">84.2%</td></tr>
+    <tr><td class="fix">DistilBERT, fine-tuned</td><td class="num hit">90.6%</td></tr>
+  </table>
+  <p class="lead fix">7.18 points over the model you
+  built.</p>
+  <p class="small">And only 0.45 points over the bag of words
+  &mdash; which is the second result of the afternoon, and the less comfortable
+  one.</p>
+</section>
+
+<!-- 25 -->
+<section class="figslide" data-menu-title="◆ Everything, side by side">
+  <h2>Everything, measured the same way</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-final.svg"
+         alt="Bar chart of test accuracy for six models: always positive, bag of words, GRU from scratch, GRU with pretrained embeddings, DistilBERT with an untrained head, and DistilBERT fine-tuned, each labelled with its percentage.">
+  </figure>
+  <p class="takeaway">Five of the six bars are on the same 25,000 held-out
+  reviews, with the same metric, computed by the same function.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Count the errors">
+  <h2>Say it in errors, not in points</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Reviews misclassified, out of 25,000</th></tr>
+    <tr><td>GRU from scratch</td><td class="num fail">4,146</td></tr>
+    <tr><td class="fix">DistilBERT, fine-tuned</td><td class="num hit">2,352</td></tr>
+  </table>
+  <p class="big-num good">43%</p>
+  <p class="small">of the mistakes removed. Percentage points flatter a model
+  near the top of the range; the error count is the number the desk actually
+  cares about, because each one is a review someone has to fix by hand.</p>
+</section>
+
+<!-- 27 -->
+<section class="figslide" data-menu-title="◆ Label efficiency">
+  <h2>Where the pretrained model earns its place</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-label-efficiency.svg"
+         alt="Test accuracy against the number of labelled reviews on a log axis: the fine-tuned DistilBERT curve is far above the bag-of-words curve at two hundred labels and the two converge by twenty thousand.">
+  </figure>
+  <p class="takeaway fix">The gap is largest where labels are scarcest &mdash;
+  which is the situation every real feedback desk starts in.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Label efficiency measured">
+  <h2>Label efficiency, measured</h2>
+  <table>
+    <tr><th class="num">Labelled reviews</th><th class="num">Bag of words</th><th class="num">DistilBERT</th><th class="num">Gap</th></tr>
+    <tr><td class="num">200</td><td class="num">75.7%</td><td class="num hit">83.9%</td><td class="num fix">8.12</td></tr>
+    <tr><td class="num">1,000</td><td class="num">83.0%</td><td class="num hit">87.0%</td><td class="num fix">3.98</td></tr>
+    <tr><td class="num">5,000</td><td class="num">88.2%</td><td class="num hit">88.9%</td><td class="num fix">0.74</td></tr>
+    <tr><td class="num">20,000</td><td class="num">90.5%</td><td class="num">90.1%</td><td class="num">-0.34</td></tr>
+  </table>
+  <p class="small">Each model's budget is <strong>chosen on the validation
+  split at every size</strong> &mdash; the number of optimisation steps for the
+  transformer, the regularisation strength for the linear model. Fixing the
+  epochs instead would give the 200-review model 13 steps, and fixing the steps
+  would undertrain the 20,000-review one; measured, those two protocols disagree
+  about the <em>sign</em> at 20,000 labels.</p>
+  <p class="small muted">Scored on 5,000 test
+  reviews rather than all 25,000, to keep the sweep inside a
+  lecture &mdash; sampled at random, because the corpus ships all the positives
+  first.</p>
+  <p class="small muted">The pretraining is worth thousands of labels. That is
+  the number to quote to whoever is paying for the annotation.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="The other axis">
+  <h2>And the axis the accuracy plot does not have</h2>
+  <p class="small">Lecture 21 timed the anchors because the brief said
+  &ldquo;within the hour&rdquo;. Put the two together and the trade is
+  visible:</p>
+  <table>
+    <tr><th>Model</th><th class="num">Accuracy</th><th class="num">Scoring 25,000</th><th class="num">Per review</th></tr>
+    <tr><td>tf-idf + logistic regression</td><td class="num">90.1%</td><td class="num hit">3.6 s</td><td class="num">0.14 ms</td></tr>
+    <tr><td>GRU from scratch</td><td class="num">83.4%</td><td class="num">6.3 s</td><td class="num">0.25 ms</td></tr>
+    <tr><td class="fix">DistilBERT, fine-tuned</td><td class="num hit">90.6%</td><td class="num fail">133 s</td><td class="num fail">5.30 ms</td></tr>
+  </table>
+  <p class="lead">0.45 points, for
+  37 times the cost per review.</p>
+  <p class="small">Which is a decision, not a result. At
+  20,000 labelled reviews the desk would probably
+  make it against us; at 200 it would not, and the
+  previous slide says by how much.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="What did the work">
+  <h2>What did the work</h2>
+  <table>
+    <tr><th>Changed</th><th>Unchanged</th></tr>
+    <tr><td>the whole model, not just the table</td><td>the corpus, the split, the metric</td></tr>
+    <tr><td>attention instead of recurrence</td><td>the loss &mdash; still logits in</td></tr>
+    <tr><td>a much smaller learning rate</td><td>the training loop, line for line</td></tr>
+    <tr><td>one epoch instead of four</td><td>the evaluation function</td></tr>
+  </table>
+  <p class="small">Every row on the right is a decision you do not have to
+  re-make when the model changes. That is what the discipline of Part I bought.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Beyond classification">
+  <h2>The desk wanted two more things</h2>
+  <p class="lead">&ldquo;Find me the ones like this one.&rdquo;<br>
+  &ldquo;And tell me what people keep complaining about.&rdquo;</p>
+  <p>Neither is classification. Both fall out of the same pretrained models,
+  because what those models produce is a <strong>representation</strong>, and a
+  label was only ever one thing to do with it.</p>
+  <p class="small muted">Search, then grouping. Fifteen minutes, and no training
+  at all.</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Sentence embeddings">
+  <h2>One vector for a whole review</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-9|6-8|9">m  = AutoModel.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+tk = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+
+enc  = tk(texts, truncation=True, max_length=256, padding=True,
+          return_tensors="pt")
+out  = m(**enc).last_hidden_state                  # (B, T, 384)
+mask = enc["attention_mask"].unsqueeze(-1).float()
+vec  = (out * mask).sum(1) / mask.sum(1)           # mean over REAL tokens
+vec  = torch.nn.functional.normalize(vec, dim=1)   # onto the unit sphere
+  </code></pre>
+  <p class="fail small">Line 8 is last lecture's padding bug in its other
+  costume. Divide by <code>out.shape[1]</code> instead of by
+  <code>mask.sum(1)</code> and every short review is scaled toward zero.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="Why normalise">
+  <h2>Why normalise</h2>
+  <p>On the unit sphere the dot product <em>is</em> the cosine:</p>
+  <div class="eqn-box">
+    $$\langle \hat{\mathbf{u}}, \hat{\mathbf{v}} \rangle
+      \;=\; \frac{\langle \mathbf{u}, \mathbf{v} \rangle}
+                 {\lVert \mathbf{u} \rVert \, \lVert \mathbf{v} \rVert}
+      \;=\; \cos\theta \;\in\; [-1, 1]$$
+  </div>
+  <ul class="tight small">
+    <li>Length carries no meaning here, and a long review would otherwise
+        dominate every ranking</li>
+    <li>Searching 5,000 reviews becomes one matrix product</li>
+  </ul>
+  <p class="small muted">Normalisation onto the sphere returns as the first
+  line of thread 12, where it is doing rather more work.</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="Search">
+  <h2>Semantic search, in two lines</h2>
+  <pre><code class="language-python" data-trim>
+sims = query_vec @ corpus_vecs.T          # (1, N) cosine similarities
+top  = np.argsort(-sims[0])[:3]
+  </code></pre>
+  <p>5,000 negative reviews, embedded once in
+  11 seconds, 384 dimensions each. No
+  index, no training, no labels.</p>
+  <div class="panel">
+    <span class="panel-title">Compare with what it replaces</span>
+    A keyword search over the same corpus, using the tf-idf vectoriser from the
+    previous lecture. Same corpus, same queries, different notion of
+    &ldquo;similar&rdquo;.
+  </div>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Search measured">
+  <h2>One query, two searches</h2>
+  <p class="small"><strong>Query:</strong> <em>&ldquo;the acting was wooden and unconvincing&rdquo;</em></p>
+  <div class="panel panel-fix">
+    <span class="panel-title">Nearest by embedding &mdash; cosine 0.638</span>
+    <span class="small">I caught this film late at night on HBO. Talk about wooden acting, unbelievable plot, et al. Very little going in its favor. Skip it.</span>
+  </div>
+  <p class="small"><strong>Nearest by keyword overlap</strong> &mdash; tf-idf
+  cosine 0.229:</p>
+  <p class="small">&ldquo;This is by far the worst non-English horror movie I've ever seen. The acting is wooden, the dialogues are simply stupid and the story is totally...&rdquo;</p>
+  <p class="small muted">Both found it. The scores are not comparable across the
+  two methods &mdash; different spaces &mdash; so the interesting question is
+  the next slide's.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Why search differs">
+  <h2>Where they disagree, over three queries</h2>
+  <table>
+    <tr><th>Query</th><th class="num">Shared in the top 3</th></tr>
+    <tr><td class="smaller">&ldquo;the acting was wooden and unconvincing&rdquo;</td><td class="num">0 of 3</td></tr>
+    <tr><td class="smaller">&ldquo;the sound mix made the dialogue impossible to follow&rdquo;</td><td class="num">0 of 3</td></tr>
+    <tr><td class="smaller">&ldquo;far too long, it should have ended an hour earlier&rdquo;</td><td class="num">0 of 3</td></tr>
+  </table>
+  <p class="small">Not one document in common, on any of the three. Keyword
+  search can only retrieve documents that reuse the query's words, and a
+  complaint rarely uses the desk's vocabulary; the embedding was trained so that
+  sentences with the same meaning land near each other, whatever words they
+  use.</p>
+  <p class="fail small">That is a difference, not a victory &mdash; and nothing
+  here measures which list is <em>better</em>. Judged by eye, on one of these
+  three the keyword search returns the more relevant review. Cosine similarity
+  also has no notion of negation, so <em>the sound was perfect</em> and <em>the
+  sound was not perfect</em> sit close together. If you deploy this, you owe
+  yourself labelled queries and a retrieval metric &mdash; which is Lecture
+  23.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Clustering">
+  <h2>&ldquo;What do people keep complaining about?&rdquo;</h2>
+  <p>Cluster the 5,000 negative reviews in the same embedding
+  space. This is Lecture 9, unchanged &mdash; k-means, and the choice of $k$ by
+  silhouette rather than by eye.</p>
+  <pre><code class="language-python" data-trim>
+for k in (3, 4, 5, 6, 8, 10, 12):
+    km = KMeans(n_clusters=k, n_init=10, random_state=42).fit(V)
+    print(k, silhouette_score(V, km.labels_, sample_size=3000,
+                              random_state=42))
+  </code></pre>
+  <p class="small muted">The vectors are on the unit sphere, so Euclidean
+  k-means and cosine k-means order the same points the same way.</p>
+</section>
+
+<!-- 38 -->
+<section class="figslide" data-menu-title="◆ The complaint groups">
+  <h2>The groups, and how many</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-clusters.svg"
+         alt="Two panels: silhouette score against the number of clusters with the best value marked, and a horizontal bar chart of cluster sizes labelled by the terms most characteristic of each cluster.">
+  </figure>
+  <p class="takeaway">The silhouette is low in absolute terms &mdash; complaint
+  text does not fall into well-separated balls &mdash; and the groups are still
+  legible.</p>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Groups measured">
+  <h2>The three largest groups</h2>
+  <table>
+    <tr><th class="num">Reviews</th><th>Terms most characteristic of the group</th></tr>
+    <tr><td class="num">1,936</td><td>bad, worst, movies, acting</td></tr>
+    <tr><td class="num">1,198</td><td>woman, character, women, role</td></tr>
+    <tr><td class="num">1,170</td><td>horror, monster, zombie, scary</td></tr>
+  </table>
+  <p class="small">The terms are not the cluster centres. They are the words
+  whose average tf-idf weight is highest <em>inside</em> the group relative to
+  outside it &mdash; a group is named by what makes it different, not by what is
+  common everywhere.</p>
+  <p class="small muted">4 groups in total, chosen by a
+  silhouette of 0.0179.</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="What the desk gets">
+  <h2>What the desk actually gets</h2>
+  <table>
+    <tr><th>They asked for</th><th>They get</th></tr>
+    <tr><td>a complaint flag</td><td>90.6% accurate, 133 s for 25,000 reviews</td></tr>
+    <tr><td>&ldquo;find me ones like this&rdquo;</td><td>cosine search over 5,000 vectors</td></tr>
+    <tr><td>&ldquo;what recurs&rdquo;</td><td>4 groups, each named by its own words</td></tr>
+  </table>
+  <p class="small">Three deliverables, one pretrained representation, and one
+  afternoon. None of the three required a labelled example of the thing being
+  asked for except the first.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="The leak prompt">
+  <h2>One more prompt, and this is the one to remember</h2>
+  <div class="panel">
+    <span class="panel-title">The prompt</span>
+    <em>&ldquo;Build a scikit-learn pipeline that vectorises the reviews with
+    tf-idf and classifies them with logistic regression, and report the test
+    accuracy.&rdquo;</em>
+  </div>
+  <p class="small">Under-specified in the same place as Lecture 1's, and this
+  time the object being fitted is not a scaler. Read the code and name what is
+  fitted, and on what.</p>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="The leaky code">
+  <h2>The code it returns</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>vec = TfidfVectorizer(min_df=1, ngram_range=(1, 2))
+X   = vec.fit_transform(all_texts)            # every document
+y   = all_labels
+
+X_tr, X_te, y_tr, y_te = train_test_split(
+    X, y, test_size=0.25, random_state=42, stratify=y)
+
+clf = LogisticRegression(max_iter=2000, C=4.0).fit(X_tr, y_tr)
+print(f"accuracy {(clf.predict(X_te) == y_te).mean():.3f}")
+  </code></pre>
+  <p>It runs, it splits, it never fits the classifier on test rows, and it
+  reports a plausible number.</p>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="What was fitted">
+  <h2>Reviewer question 2: what was fitted, and on what?</h2>
+  <p><code>TfidfVectorizer.fit</code> learns two things from the documents it is
+  given, and both come from the test rows here:</p>
+  <ul class="tight small">
+    <li>The <strong>vocabulary</strong> &mdash; which terms get a column at all.
+        Terms that occur only in the test documents get their own feature</li>
+    <li>The <strong>inverse document frequencies</strong> &mdash; the weight on
+        every column, computed over the whole corpus</li>
+  </ul>
+  <div class="panel panel-fail">
+    <span class="panel-title">Why this is worse than Lecture 1's scaler</span>
+    A scaler learns two numbers per column from an <em>invertible affine</em>
+    map. A vectoriser learns <strong>which columns exist</strong>, and that is
+    not a transformation of the features &mdash; it is a choice of feature
+    space, made with the answers in the room.
+  </div>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Measure it">
+  <h2>So measure it &mdash; twice</h2>
+  <p>The same experiment at two corpus sizes, because the answer depends on the
+  size and that is the lesson:</p>
+  <ul class="tight small">
+    <li><strong>25,000 documents</strong> &mdash; the whole
+        of IMDb, 5 seeds</li>
+    <li><strong>400 documents</strong> &mdash; the size
+        of a real feedback corpus in its first month,
+        20 seeds</li>
+  </ul>
+  <p class="small">Leaky and honest are run on identical splits with identical
+  seeds, so the difference is the leak and nothing else.</p>
+</section>
+
+<!-- 45 -->
+<section class="figslide" data-menu-title="◆ The cost of the leak">
+  <h2>What the leak buys, per seed</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-leak.svg"
+         alt="Strip plot of the accuracy difference between the leaky and honest pipelines, one dot per seed, for a corpus of four hundred reviews and a corpus of twenty-five thousand, with the mean marked on each row.">
+  </figure>
+  <p class="takeaway">Two corpora, the same three lines of code, and two
+  different verdicts.</p>
+</section>
+
+<!-- 46 -->
+<section data-menu-title="Leak measured">
+  <h2>The leak, measured</h2>
+  <table>
+    <tr><th>Corpus</th><th class="num">Leaky</th><th class="num">Honest</th><th class="num">Difference</th><th class="num">sd over seeds</th></tr>
+    <tr><td>25,000 reviews</td><td class="num">90.28%</td><td class="num">90.22%</td><td class="num">0.06 pts</td><td class="num">0.07%</td></tr>
+    <tr><td>400 reviews</td><td class="num">75.90%</td><td class="num">75.60%</td><td class="num">0.30 pts</td><td class="num fail">2.53%</td></tr>
+  </table>
+  <p class="lead">Read the last column before the one beside it.</p>
+  <p class="small">On the small corpus the mean gap is
+  0.30 points and the spread across seeds is
+  2.53% &mdash; eight times larger. The leak wins on
+  10 of 20 seeds:
+  exactly half. <strong>This is a null result.</strong></p>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="Why the size matters">
+  <h2>Why it is so cheap &mdash; and this is the useful part</h2>
+  <p class="small">The leaky vocabulary really is bigger:
+  60,000 columns against
+  54,074. So why does it buy nothing?</p>
+  <ul class="tight small">
+    <li>A term that occurs only in test documents has an <strong>all-zero
+        column</strong> in the training rows. Logistic regression gives it
+        coefficient exactly zero &mdash; there is no gradient to move it</li>
+    <li>What actually leaks is the inverse document frequencies, and an idf is
+        an average over the whole corpus. Removing a quarter of the documents
+        barely moves it</li>
+    <li>So the leak changes the <em>scale</em> of features the model already
+        had, and a regularised linear model is nearly indifferent to that</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">The decision rule, and it is not about the size</span>
+    Fit the vectoriser inside the pipeline anyway. Not because this leak is
+    expensive &mdash; measured, it is not &mdash; but because
+    <strong>the next fitted object in the pipeline may not have that
+    property</strong>, and you will not re-derive the argument each time.
+  </div>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="Cost is not the argument">
+  <h2>Three leaks, three small numbers</h2>
+  <p class="small">Lecture 1's scale-before-split leak was worth about a dollar.
+  Lecture 12's per-batch mean was worth 0.382
+  accuracy points. Today's vectoriser leak is worth nothing you can measure.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">And that is not a reason to relax</span>
+    A leaked score and an honest score can be identical, so you cannot tell from
+    the number which one you are holding. The procedure is what separates them
+    &mdash; which is why the procedure is what gets checked in review, and why
+    the next slide matters more than this one.
+  </div>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="Duplicates">
+  <h2>The text leak that really is expensive</h2>
+  <p class="lead">The same document on both sides of the split.</p>
+  <p>No pipeline protects you from this: every object is fitted correctly, on
+  training rows only, and the test row is still one the model has memorised. On
+  scraped or user-submitted text it is the normal case, not the pathological
+  one &mdash; a resubmit button is enough.</p>
+  <pre><code class="language-python" data-trim>
+norm = lambda s: " ".join(s.lower().split())
+train_norm = set(norm(s) for s in train_x)
+dupes = sum(1 for s in test_x if norm(s) in train_norm)
+  </code></pre>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Duplicates on IMDb">
+  <h2>First, check the corpus you have</h2>
+  <table>
+    <tr><th>On the official IMDb split</th><th class="num">Count</th></tr>
+    <tr><td class="fail">Test reviews also present in training</td><td class="num fail">123</td></tr>
+    <tr><td class="fail">Duplicate reviews within training</td><td class="num fail">96</td></tr>
+  </table>
+  <p><strong>Not zero.</strong> The corpus authors separated the <em>films</em>
+  between train and test, and said so; they did not deduplicate the
+  <em>reviews</em>. Three lines to run, and you now know rather than assume.</p>
+  <p class="small muted">123 out of
+  25,000 is too few to move our numbers. It is also exactly the check
+  nobody ran, on the corpus everybody uses.</p>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="A corpus with duplicates">
+  <h2>A feedback corpus that was never deduplicated</h2>
+  <p class="small">123 duplicates in
+  25,000 is not enough to measure a cost with, so build a corpus where
+  it is: 1,500 reviews, a third of them submitted
+  twice, 1,950 rows in all. Then split two ways and fit
+  the same honest pipeline inside each.</p>
+  <pre><code class="language-python" data-trim data-line-numbers="1-8|2-3|5-7">groups = np.concatenate([np.arange(n_unique), duplicated_ids])
+tr, te = train_test_split(np.arange(len(X)), test_size=0.25,
+                          random_state=seed, stratify=y)
+
+gss = GroupShuffleSplit(n_splits=1, test_size=0.25, random_state=seed)
+tr2, te2 = next(gss.split(np.arange(len(X)), y, groups=groups))
+  </code></pre>
+  <p class="fail small">Under the random split,
+  35% of the test rows have a copy of
+  themselves in the training set.</p>
+</section>
+
+<!-- 52 -->
+<section class="figslide" data-menu-title="◆ The duplicate leak">
+  <h2>The same pipeline, two splits</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-duplicates.svg"
+         alt="Two bars of reported accuracy with one-standard-deviation whiskers: a random split over rows, and a grouped split that keeps every copy of an entry on one side, the first visibly higher.">
+  </figure>
+  <p class="takeaway fail">Nothing was fitted on the test set in either bar. The
+  difference is entirely which rows the split happened to separate.</p>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="Duplicate leak measured">
+  <h2>The duplicate leak, measured</h2>
+  <table>
+    <tr><th>Split</th><th class="num">Reported accuracy</th><th class="num">Spread over 10 seeds</th></tr>
+    <tr><td class="fail">random over rows</td><td class="num fail">90.00%</td><td class="num">1.87%</td></tr>
+    <tr><td class="fix">grouped by entry</td><td class="num hit">82.17%</td><td class="num">2.88%</td></tr>
+  </table>
+  <p class="big-num bad">7.83 points</p>
+  <p class="small">The leak wins on 10 of
+  10 seeds. Compare with the vectoriser leak two
+  slides ago: <strong>the object that was fitted wrongly cost far less than the
+  rows that were split wrongly.</strong></p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="The catalogue">
+  <h2>The silent-failure catalogue so far</h2>
+  <table>
+    <tr><th>Failure</th><th>Diagnosed in</th><th class="num">Measured cost</th></tr>
+    <tr><td>Scaler fitted before the split</td><td>Lecture 2</td><td class="num">about a dollar</td></tr>
+    <tr><td>Accuracy under class imbalance</td><td>Lecture 4</td><td class="num">a useless model above 90%</td></tr>
+    <tr><td>Missing <code>zero_grad()</code></td><td>Lecture 12</td><td class="num">76.7 points</td></tr>
+    <tr><td>Random split on a time series</td><td>Lecture 20</td><td class="num">an unreproducible score</td></tr>
+    <tr><td class="fail">Summarising at the padded last position</td><td class="fail">Lecture 21</td><td class="num fail">18.24 points</td></tr>
+    <tr><td class="fail">Softmax before the loss</td><td class="fail">today</td><td class="num fail">1.67 points</td></tr>
+    <tr><td>Vectoriser fitted before the split</td><td>today</td><td class="num">0.30 points &mdash; not distinguishable from zero</td></tr>
+    <tr><td class="fail">Duplicate documents across the split</td><td class="fail">today</td><td class="num fail">7.83 points</td></tr>
+  </table>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="Is that good">
+  <h2>Is 90.6% good?</h2>
+  <p class="small">Against the desk's own criterion: 2,352
+  reviews out of 25,000 are routed wrongly, and nobody sees them
+  again. Whether that is acceptable depends on what happens to a missed
+  complaint, and we have not asked.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">What a defensible report says</span>
+    Quote the error count, not the percentage. Say which reviews are misread
+    &mdash; short ones, sarcastic ones, ones whose verdict is in the last
+    clause. Offer an abstain band around a probability of one half, and let the
+    desk choose how wide it is.
+  </div>
+  <p class="small muted">The model is not the deliverable. The routing decision
+  is.</p>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="What we kept">
+  <h2>What carried over unchanged</h2>
+  <table>
+    <tr><th>From</th><th>Still true</th></tr>
+    <tr><td>Lecture 1</td><td>compute the trivial baseline, and a serious one, before committing</td></tr>
+    <tr><td>Lecture 2</td><td>split first; fitted objects see training rows only</td></tr>
+    <tr><td>Lecture 9</td><td>choose $k$ by silhouette, not by eye</td></tr>
+    <tr><td>Lecture 10</td><td>PCA when a representation is wider than the slot it must fit</td></tr>
+    <tr><td>Lecture 12</td><td>own the loop; a metric is counted over the set</td></tr>
+    <tr><td>Lecture 16</td><td>a pretrained representation beats a bigger architecture</td></tr>
+  </table>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="Scope">
+  <h2>Where this went past the book</h2>
+  <div class="panel">
+    <span class="panel-title">Not examinable</span>
+    The <code>transformers</code> library, the model hub, and the specific
+    checkpoints used today. Examinable: subword tokenisation, embeddings,
+    attention and the transformer block, fine-tuning a pretrained model,
+    sentence embeddings and their use for retrieval and clustering &mdash; all
+    of Chapters 14 and 15.
+  </div>
+  <p class="small">Also outside the book, and worth one sentence: the models
+  used today are small by current standards, and everything in this lecture
+  applies unchanged to models a thousand times larger, with a different bill.</p>
+</section>
+
+<!-- 58 -->
+<section data-menu-title="References">
+  <h2>In the book</h2>
+  <table>
+    <tr><th>Topic</th><th>Chapter</th></tr>
+    <tr><td>Cross-entropy and softmax output layers</td><td>3, 9</td></tr>
+    <tr><td>Sentiment analysis, subword tokenisation</td><td>14</td></tr>
+    <tr><td>Reusing pretrained embeddings and models</td><td>14</td></tr>
+    <tr><td>Attention and the transformer architecture</td><td>15</td></tr>
+    <tr><td>Fine-tuning a pretrained language model</td><td>15</td></tr>
+    <tr><td>k-means and silhouette scores</td><td>8</td></tr>
+  </table>
+</section>
+
+<!-- 59 -->
+<section data-menu-title="Self-attention against cross-attention">
+  <h2>Self-attention against cross-attention</h2>
+  <table class="smaller">
+    <tr><th></th><th>Queries from</th><th>Keys and values from</th><th>Used in</th></tr>
+    <tr><td><strong>Self-attention</strong></td><td>the sequence</td><td>the same sequence</td><td>every block of every family</td></tr>
+    <tr><td><strong>Cross-attention</strong></td><td>the decoder</td><td>the encoder&rsquo;s output</td><td>encoder&ndash;decoder models only</td></tr>
+  </table>
+  <p class="small">The arithmetic is identical &mdash; the same scaled dot
+  product, the same softmax. Only where $\mathbf{Q}$ and $\mathbf{K}$ come
+  from changes, which is why one implementation serves both.</p>
+  <p class="small muted">In a translation model, cross-attention is the place
+  the output sentence looks at the input one, and its weights are often close to
+  a word alignment without anyone having asked for that.</p>
+</section>
+
+<!-- 60 -->
+<section data-menu-title="The quadratic cost, and what is done about it">
+  <h2>The quadratic cost, and what is done about it</h2>
+  <p class="small">$\mathbf{Q}\mathbf{K}^{\mathsf T}$ is $T \times T$. At
+  $T = 512$ that is 262,144 scores per head per layer; at $T = 8{,}192$ it is
+  67 million.</p>
+  <ul class="tight small">
+    <li><strong>Sparse patterns</strong> &mdash; attend to a local window plus a
+        few global positions, making the cost linear</li>
+    <li><strong>Low-rank or kernel approximations</strong> &mdash; approximate
+        the softmax so the product never has to be formed</li>
+    <li><strong>Better implementations</strong> &mdash; the exact same
+        computation, tiled so it never writes the $T \times T$ matrix to memory.
+        This is what most systems actually use</li>
+  </ul>
+  <p class="small fail">Note which of those changes the mathematics and which
+  does not. The third is an engineering result, and it moved the practical limit
+  further than either of the first two.</p>
+</section>
+
+<!-- 61 -->
+<section data-menu-title="Reading an attention map, carefully">
+  <h2>Reading an attention map, carefully</h2>
+  <p class="small">Attention weights are easy to plot and easy to over-read.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">What they are not</span>
+    They are <strong>not an explanation</strong>. A weight says this value
+    contributed to that output, not that the model's decision depended on it:
+    the residual stream carries information around the attention, several heads
+    disagree, and different weight patterns can give identical outputs.
+  </div>
+  <p class="small">Useful for forming a hypothesis; not evidence on its own. The
+  test is the same as everywhere else in this course &mdash; remove the thing
+  and measure whether the number moves.</p>
+</section>
+
+<!-- 62 -->
+<section data-menu-title="Tokenisation, revisited">
+  <h2>Tokenisation, revisited</h2>
+  <p class="small">A transformer inherits Lecture&nbsp;17&rsquo;s tokenizer, and
+  now the choice bites harder:</p>
+  <ul class="tight small">
+    <li>Sequence length is measured in <em>tokens</em>, and the cost is
+        quadratic in it, so a wasteful tokenizer is expensive twice over</li>
+    <li>The pretrained model&rsquo;s tokenizer is <strong>part of the weights</strong>.
+        Use a different one and every embedding is indexed wrongly &mdash; the
+        model runs, and produces nonsense</li>
+    <li>Rare words split into several tokens, so text in a domain the tokenizer
+        never saw is silently longer and more expensive</li>
+  </ul>
+  <p class="small fail">Loading a checkpoint with the wrong tokenizer raises
+  nothing. It is this lecture&rsquo;s version of Lecture&nbsp;13&rsquo;s
+  normalisation constants: preprocessing that ships <em>with</em> the weights.</p>
+</section>
+
+<!-- 63 -->
+<section data-menu-title="The budget">
+  <h2>The budget</h2>
+  <table class="smaller">
+    <tr><th>What</th><th>Cost</th></tr>
+    <tr><td>Pretraining a transformer from scratch</td><td class="fail">out of reach here, and out of reach for most</td></tr>
+    <tr><td>Fine-tuning all parameters</td><td>feasible on one accelerator for a small model</td></tr>
+    <tr><td>Fine-tuning the head only</td><td class="hit">minutes on a CPU</td></tr>
+    <tr><td>Prompting a large model, no training</td><td class="hit">no training at all, and no control</td></tr>
+  </table>
+  <p class="small">The middle two are Lecture&nbsp;13&rsquo;s probe-then-tune
+  ladder, unchanged. The bottom row is new, and it is a different kind of thing:
+  you are not fitting anything, so there is nothing to evaluate on a validation
+  split &mdash; which makes the evaluation question harder, not easier.</p>
+</section>
+
+<!-- 64 -->
+<section data-menu-title="What we did not do">
+  <h2>What we did not do</h2>
+  <ul class="tight small">
+    <li><strong>Train a transformer from scratch.</strong> The compute is not
+        the point; the architecture is</li>
+    <li><strong>Instruction tuning and preference optimisation</strong> &mdash;
+        how a pretrained model becomes an assistant</li>
+    <li><strong>Efficient attention in detail</strong>, beyond naming the three
+        approaches</li>
+    <li><strong>Scaling laws</strong> &mdash; how loss falls with parameters,
+        data and compute together</li>
+  </ul>
+  <p class="small muted"><span class="scope scope-context">beyond the syllabus,
+  for context</span> Named so you recognise them, not examinable. What
+  <em>is</em> examinable is the derivation and the three families.</p>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="Vocabulary">
+  <h2>Vocabulary</h2>
+  <table class="smaller">
+    <tr><td><strong>logit</strong></td><td>an unnormalised score, before softmax &mdash; Lecture&nbsp;17</td></tr>
+    <tr><td><strong>head</strong></td><td>one attention computation, on its own projections</td></tr>
+    <tr><td><strong>$d_k$</strong></td><td>the width of the query and key vectors, and what the scale corrects for</td></tr>
+    <tr><td><strong>causal mask</strong></td><td>the $-\infty$ that stops a position seeing later ones</td></tr>
+    <tr><td><strong>residual stream</strong></td><td>the additive path each block writes into</td></tr>
+    <tr><td><strong>context length</strong></td><td>the longest sequence a model can attend over</td></tr>
+    <tr><td><strong>cross-attention</strong></td><td>queries from one sequence, keys and values from another</td></tr>
+  </table>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="Scope">
+  <h2>Scope</h2>
+  <ul class="tight small">
+    <li><span class="scope scope-exam">examinable</span> the attention
+        derivation including the $\sqrt{d_k}$ argument; multi-head attention and
+        why it helps; why positional information must be added; the three
+        families and how to choose; the causal mask</li>
+    <li><span class="scope scope-eng">not examinable &mdash; engineering</span>
+        library APIs, checkpoint names, and the details of efficient attention</li>
+    <li><span class="scope scope-context">beyond the syllabus</span> pretraining,
+        instruction tuning, scaling laws</li>
+  </ul>
+</section>
+
+<!-- 67 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight smaller">
+    <li>Derived attention as three projections, a scaled dot product, a softmax
+        and a weighted sum &mdash; with no recurrence in it</li>
+    <li>Derived the $\sqrt{d_k}$: the score variance grows with the dimension,
+        a saturated softmax has no gradient, and the division is exactly the
+        correction</li>
+    <li>Saw multi-head attention as Lecture&nbsp;7&rsquo;s ensemble argument on
+        different learned projections</li>
+    <li>Saw that attention is permutation equivariant, so position has to be
+        supplied &mdash; and three ways to supply it</li>
+    <li>Read the block: attention, residual, normalise, feed-forward, residual,
+        normalise; and the mask that makes a decoder causal</li>
+    <li>Fine-tuned a pretrained transformer and compared it with
+        Lecture&nbsp;17&rsquo;s recurrent model on the same split</li>
+  </ol>
+</section>
+
+<!-- 68 -->
+<section data-menu-title="One line to keep">
+  <h2>One line to keep</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">The line</span>
+    <strong>Attention replaces a path of length $T$ with a path of length one,
+    and pays $T^2$ for it.</strong>
+  </div>
+  <p class="small">Every other property follows. Parallel along the sequence,
+  because nothing waits for the previous step. No fixed-width bottleneck,
+  because there is no single state. Order must be supplied, because a set has
+  none. And a quadratic bill, which is what the last decade of engineering has
+  been spent reducing.</p>
+</section>
+
+<!-- 69 -->
+<section data-menu-title="Before the next lecture">
+  <h2>Before the next lecture</h2>
+  <ul class="tight small">
+    <li>Run the notebook. Remove the $\sqrt{d_k}$ and watch the attention
+        weights collapse onto one position</li>
+    <li>Part&nbsp;V begins next: <strong>information retrieval</strong>, then
+        <strong>recommender systems</strong>. Four lectures outside the textbook,
+        taught from the lecture notes, and fully examinable</li>
+    <li>They are where the embeddings of the last two lectures earn their
+        living: a query and a document in the same space is the whole of dense
+        retrieval, and it is Lecture&nbsp;20</li>
+  </ul>
+</section>
+
+<!-- 70 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 19 &middot; Lecture notes</p>
+  <h1>Information retrieval:<br>the lexical foundation</h1>
+  <p class="small">
+    A query, a corpus, a ranking &mdash; and why it is not classification<br>
+    The inverted index, term weighting, and BM25 derived from what each of its
+    parameters is for<br>
+    Evaluating a ranking: precision@k, MRR, and NDCG
+  </p>
+  <p class="clock">Part V begins &mdash; beyond the textbook, and examinable</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 18
+  <span class="sep">&middot;</span> Attention and transformers
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>
