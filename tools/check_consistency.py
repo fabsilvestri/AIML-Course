@@ -88,6 +88,21 @@ SCALE_ONLY: dict[str, str] = {
         "2,000. The cluster sizes therefore differ; the themes do not.",
 }
 
+# Figures a deck quotes from ANOTHER lecture's experiment. The number is real and
+# it is reproduced -- in the other lecture's notebook, named here so the claim
+# can be checked rather than taken on trust. Same contract as SCALE_ONLY: a
+# reason, or it does not belong in the list.
+CROSS_LECTURE: dict[str, str] = {
+    "l15:app10/torch/rnn_random_cv":
+        "L15 quotes the RNN under a random split to contrast two protocols on "
+        "two models. The RNN is Lecture 16's; L15's notebook fits no network.",
+    "l15:app10/torch/ladder":
+        "same slide: the RNN's forward-split MAE. Reproduced by Lecture 16's "
+        "ladder, row 'Simple RNN, 32 units'.",
+    "l15:app10/margins/rnn/gap":
+        "the difference between those two, so it inherits their provenance.",
+}
+
 # Units that make a figure a duration rather than a result.
 DURATION = re.compile(
     r"\b(s|sec|secs|second|seconds|ms|min|mins|minute|minutes|h|hour|hours)\b"
@@ -335,13 +350,20 @@ def main() -> int:
             continue
         printed = printed_numbers(run)
         stated = stated_facts(deck, facts(n))
-        seen, uniq, excused = set(), [], set()
+        seen, uniq, excused, excused_cross = set(), [], set(), set()
         for line, v, key, ctx in stated:
             if matches(v, printed) or v in seen:
                 continue
-            root = key.lstrip("/").split("/")[0].split("[")[0]
+            path = key.lstrip("/")
+            root = path.split("/")[0].split("[")[0]
             if root in SCALE_ONLY:
                 excused.add(root)
+                continue
+            cross = next((c for c in CROSS_LECTURE
+                          if c.startswith(f"l{n:02d}:")
+                          and path.startswith(c.split(":", 1)[1])), None)
+            if cross:
+                excused_cross.add(cross)
                 continue
             seen.add(v)
             uniq.append((line, v, key, ctx))
@@ -359,6 +381,9 @@ def main() -> int:
                   f"printed by its notebook")
         for root in sorted(excused):
             print(f"        {DIM}scale-exempt: {root} — {SCALE_ONLY[root]}{OFF}")
+        for c in sorted(excused_cross):
+            print(f"        {DIM}quoted from another lecture: "
+                  f"{c.split(':', 1)[1]} — {CROSS_LECTURE[c]}{OFF}")
         if a.verbose:
             print(f"        {DIM}{len(stated)} figures.json values stated on "
                   f"the deck; {len(printed)} numbers printed by the notebook{OFF}")

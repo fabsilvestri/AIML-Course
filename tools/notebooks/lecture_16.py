@@ -49,6 +49,12 @@ Runs on CPU. Nothing here needs an accelerator.
 **A CPU runtime is enough.** The largest model here has a few thousand
 parameters. If Colab offers you a GPU, decline it — for sequences this short the
 transfers cost more than the arithmetic saves.
+
+**Time.** Most of this notebook is seconds a cell. Section 6 runs the six-model
+ladder the slides report, under the same protocol, and takes about **ten
+minutes** — six architectures, each offered two training recipes. It is the
+lecture's result rather than a detour, which is why it is here rather than
+quoted.
 """
 
 SETUP = '''
@@ -529,7 +535,175 @@ for name, score in [("copy last week", NAIVE_MAE),
     ]
     cells += [
         md("""
-## 6 · Where we are
+## 6 · The ladder, under the protocol the deck reports
+
+Everything above built one model at a time to explain a mechanism. This section
+runs the whole comparison at once, under the protocol the slides quote — because
+a table of six models is only a table if every row was produced the same way.
+
+Two things are held fixed and stated. The **recipe** — optimiser, learning rate
+and epoch count — is chosen for each architecture on a slice of the *training*
+period, never on the test period; an architecture that loses only because it was
+given the wrong learning rate has not been shown to lose. And the **split** is
+by time: everything before 2019 trains, everything from 2019 is scored.
+
+⏱ **about ten minutes on CPU** for all six. It is the longest cell in the
+course, and it is the lecture's result rather than a detour.
+"""),
+        prompt(
+            label="⏱ 10 min — six architectures, one protocol",
+            input="the univariate and multivariate window sets",
+            output="test MAE, train MAE and the chosen recipe for each of six models",
+            constraint="select the recipe on a held-out slice of the TRAINING period and then refit on all of it — selecting on the test period is the failure this whole part of the course is about, and it is one line away at every step",
+            check="print the recipe each model chose beside its score. If every architecture chose the same one, the selection step is doing nothing and should be removed rather than reported.",
+            **{"try": "fix every model to the sgd recipe and re-run. At least one architecture gets substantially worse, which is what the selection step exists to prevent."}),
+        code('''
+import time
+from torch.utils.data import DataLoader, TensorDataset
+
+
+def make_arrays(frame, w=WINDOW, target=0, horizon=1):
+    """Windows of w rows, labelled with the next value of column `target`."""
+    V = frame.values.astype(np.float32)
+    n = len(V) - w - horizon + 1
+    X = np.stack([V[i:i + w] for i in range(n)])
+    y = np.stack([V[i + w:i + w + horizon, target] for i in range(n)])
+    return X, y, frame.index[w:w + n]
+
+
+def build_model(kind, input_size, output_size=1):
+    class Rnn(nn.Module):
+        def __init__(self, cell, layers=1, hidden=32):
+            super().__init__()
+            self.rnn = cell(input_size, hidden, num_layers=layers,
+                            batch_first=True)
+            self.head = nn.Linear(hidden, output_size)
+
+        def forward(self, x):
+            o, _ = self.rnn(x)
+            return self.head(o[:, -1])
+
+    if kind == "linear":
+        return nn.Sequential(nn.Flatten(), nn.LazyLinear(output_size))
+    return {"rnn":  lambda: Rnn(nn.RNN),
+            "deep": lambda: Rnn(nn.RNN, layers=3),
+            "gru":  lambda: Rnn(nn.GRU),
+            "lstm": lambda: Rnn(nn.LSTM)}[kind]()
+
+
+# optimiser, learning rate, epochs. Two recipes, and every architecture is
+# offered both, so no model loses for want of a learning rate.
+RECIPES = {"sgd": ("sgd", 0.05, 200), "adam": ("adam", 0.005, 120)}
+
+
+def fit_torch(kind, Xtr, ytr, recipe, seed=RANDOM_STATE):
+    torch.manual_seed(seed)
+    model = build_model(kind, Xtr.shape[2], ytr.shape[1])
+    name, lr, epochs = RECIPES[recipe]
+    Xt, yt = torch.tensor(Xtr), torch.tensor(ytr)
+    if kind == "linear":
+        model(Xt[:2])                     # LazyLinear needs one pass to build
+    opt = (torch.optim.Adam(model.parameters(), lr=lr) if name == "adam"
+           else torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9))
+    loss_fn = nn.HuberLoss(delta=0.05)    # a strike day must not steer the fit
+    loader = DataLoader(TensorDataset(Xt, yt), batch_size=32, shuffle=True,
+                        generator=torch.Generator().manual_seed(seed))
+    model.train()
+    for _ in range(epochs):
+        for xb, yb in loader:
+            opt.zero_grad()
+            loss_fn(model(xb), yb).backward()
+            opt.step()
+    return model.eval()
+
+
+def predict_torch(model, X):
+    with torch.no_grad():
+        return model(torch.tensor(X)).numpy()
+
+
+def mae_1e6(pred, truth):
+    return 1e6 * float(np.abs(np.asarray(pred) - np.asarray(truth)).mean())
+'''),
+        prompt(
+            label="the selection step, and the two window sets",
+            input="the tidied frame",
+            output="univariate rail windows, multivariate windows, and a recipe-selection function",
+            constraint="the selection slice comes out of the TRAINING period — nothing at or after the test cut is read here, and the function says so in its docstring",
+            check="print the multivariate columns. The next day's day-type is a legitimate feature because it is known in advance; the same column shifted the other way would be a leak."),
+        code('''
+CUT_SEL, CUT_END = "2018-07-01", "2019-01-01"
+
+def select_and_fit(kind, X, y, dates):
+    """Choose the recipe inside the training period, then refit on all of it.
+
+    Nothing at or after CUT_END is touched here. That is the whole point: the
+    selection slice comes out of the training period, not out of the test set.
+    """
+    sel, trn = dates < CUT_SEL, dates < CUT_END
+    held = trn & ~sel
+    scores = {}
+    for recipe in RECIPES:
+        m = fit_torch(kind, X[sel], y[sel], recipe)
+        scores[recipe] = mae_1e6(predict_torch(m, X[held])[:, 0], y[held, 0])
+    best = min(scores, key=scores.get)
+    return fit_torch(kind, X[trn], y[trn], best), best, scores
+
+
+POOL_FROM, POOL_TO = "2016-01", "2019-05"   # the same window as Lecture 15
+rail_f = df["rail"][POOL_FROM:POOL_TO].to_frame() / 1e6
+mul_f  = df[["rail", "bus"]][POOL_FROM:POOL_TO] / 1e6
+mul_f["next_day_type"] = df["day_type"].shift(-1)[POOL_FROM:POOL_TO]
+mul_f = pd.get_dummies(mul_f, dtype=float)
+
+Xu, yu, du = make_arrays(rail_f)
+Xm, ym, dm = make_arrays(mul_f)
+print(f"univariate   {Xu.shape}   multivariate {Xm.shape}")
+print(f"multivariate columns: {list(mul_f.columns)}")
+'''),
+        prompt(
+            label="⏱ 10 min — run the ladder",
+            input="six (architecture, window set) pairs",
+            output="one row each: test MAE, train MAE, chosen recipe, wall clock",
+            constraint="report the TRAIN MAE beside the test MAE — without it, a model that is worse on both is indistinguishable from one that overfits, and those have opposite fixes",
+            check="the naive baseline goes in the same table. Six architectures that all fail to beat copying last week is a finding, and it is one the table has to be able to show."),
+        code('''
+ladder = [("linear", Xu, yu, du, "Linear, 56 lags"),
+          ("rnn",    Xu, yu, du, "Simple RNN, 32 units"),
+          ("deep",   Xu, yu, du, "Deep RNN, 3 layers"),
+          ("rnn",    Xm, ym, dm, "Simple RNN, multivariate"),
+          ("gru",    Xm, ym, dm, "GRU, multivariate"),
+          ("lstm",   Xm, ym, dm, "LSTM, multivariate")]
+
+print(f"{'model':28s}{'test MAE':>10s}{'train MAE':>11s}{'recipe':>8s}")
+rows = []
+for kind, X, y, dates, label in ladder:
+    t0 = time.perf_counter()
+    model, best, scores = select_and_fit(kind, X, y, dates)
+    te, tr = dates >= CUT_END, dates < CUT_END
+    test_mae  = mae_1e6(predict_torch(model, X[te])[:, 0], y[te, 0])
+    train_mae = mae_1e6(predict_torch(model, X[tr])[:, 0], y[tr, 0])
+    rows.append((label, test_mae, train_mae, best))
+    print(f"{label:28s}{test_mae:>10,.0f}{train_mae:>11,.0f}{best:>8s}"
+          f"   ({time.perf_counter() - t0:.0f}s)")
+
+print(f"\\n{'copy last week':28s}{NAIVE_MAE:>10,.0f}")
+'''),
+        md("""
+**Read the train column beside the test column.** The deep RNN is worse on
+*both* than the single-layer one, so this is not overfitting — it is a harder
+optimisation problem that the recipe search did not solve. Depth is not free,
+and nothing about the test score alone would have told you which of the two it
+was.
+
+The multivariate rows are the interesting ones: adding bus ridership and the
+*next* day's day-type is worth more than any architectural change on this
+series. The gates help, but the extra series helps more — and knowing which is
+which is why every row here changed exactly one thing.
+"""),
+
+        md("""
+## 7 · Where we are
 
 - A recurrent cell replaces a fixed window with a state, and unrolling shows it
   is a deep network with shared weights.

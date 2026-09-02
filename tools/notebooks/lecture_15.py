@@ -684,14 +684,39 @@ print("the rows are. That is what makes the two protocols comparable at all.")
         code('''
 from sklearn.model_selection import ShuffleSplit
 
-L, T = 700, 98          # the rolling backtest's training and test sizes
-matched = np.array([
-    1e6 * np.abs(LinearRegression().fit(X[a], y[a]).predict(X[b]) - y[b]).mean()
-    for a, b in ShuffleSplit(20, train_size=L, test_size=T,
-                             random_state=RANDOM_STATE).split(X)])
-MATCHED_RANDOM = float(matched.mean())
-print(f"matched random split, 20 draws  MAE {MATCHED_RANDOM:>10,.0f}")
-print(f"(train {L}, test {T} — the same sizes the forward backtest uses)")
+L, T = 700, 98          # a fixed training size, and a quarter to score
+
+# The rolling-origin backtest: five forward folds, each trained on the SAME
+# number of days. TimeSeriesSplit's first fold trains on a fifth of the data, so
+# comparing it with a random split confounds the protocol with the training-set
+# size. Fixing the size removes that confound.
+roll, roll_naive = [], []
+for start in (700, 798, 896, 994, 1092):
+    te  = np.arange(start, min(start + T, len(X)))
+    trn = np.arange(start - L, start)
+    fit_r = LinearRegression().fit(X[trn], y[trn])
+    roll.append(1e6 * np.abs(fit_r.predict(X[te]) - y[te]).mean())
+    roll_naive.append(1e6 * np.abs(X[te, -7] - y[te]).mean())
+ROLLING       = float(np.mean(roll))
+ROLLING_NAIVE = float(np.mean(roll_naive))
+
+matched, matched_naive = [], []
+for a, b in ShuffleSplit(20, train_size=L, test_size=T,
+                         random_state=RANDOM_STATE).split(X):
+    fit_m = LinearRegression().fit(X[a], y[a])
+    matched.append(1e6 * np.abs(fit_m.predict(X[b]) - y[b]).mean())
+    matched_naive.append(1e6 * np.abs(X[b, -7] - y[b]).mean())
+MATCHED_RANDOM       = float(np.mean(matched))
+MATCHED_RANDOM_NAIVE = float(np.mean(matched_naive))
+
+print(f"train {L} days, test {T} days, in both protocols\\n")
+print(f"{'protocol':26s}{'model':>10s}{'naive':>10s}{'skill':>8s}")
+for name, m, n in (("rolling origin, forward", ROLLING, ROLLING_NAIVE),
+                   ("matched random, 20 draws", MATCHED_RANDOM,
+                    MATCHED_RANDOM_NAIVE)):
+    print(f"{name:26s}{m:>10,.0f}{n:>10,.0f}{m / n:>8.2f}")
+print("\\nThe naive column needs no fitting, so it measures only how hard the")
+print("rows are. The skill column is what makes the two protocols comparable.")
 '''),
 
         md("""
