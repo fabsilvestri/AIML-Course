@@ -450,13 +450,22 @@ One variable changes.
             constraint="re-seed before every fit so the only variable is depth",
             check="assert depth 2 beats depth 20 — if it does not, depth is not the variable and the rest of the lecture is about the wrong thing. An assert that encodes the premise of the lecture. If it fires, stop and re-diagnose rather than continuing to instrument the wrong thing."),
         code('''
-sweep = {}
+sweep, params = {}, {}
 for k in (1, 2, 5, 10, 20):
     torch.manual_seed(RANDOM_STATE)
-    m, h = train(make_net(depth=k))
+    net_k = make_net(depth=k)
+    params[k] = sum(p.numel() for p in net_k.parameters())
+    m, h = train(net_k)
     sweep[k] = accuracy(m, Xt, yt)
-    print(f"depth {k:2d}: final loss {h['loss'][-1]:.4f}   "
-          f"test accuracy {sweep[k]:.4f}")
+    print(f"depth {k:2d}: {params[k]:>7,} parameters   "
+          f"final loss {h['loss'][-1]:.4f}   test accuracy {sweep[k]:.4f}")
+
+# The parameter count is printed because it is the control for the obvious
+# rival explanation. The 3,072-input first layer dominates the count, so going
+# from one hidden layer to twenty barely changes it -- whatever goes wrong
+# below is therefore not a story about capacity.
+print(f"\\ndepth 1 -> 20 changes the parameter count by "
+      f"{100*(params[20]/params[1] - 1):.0f}%")
 
 plt.figure(figsize=(7, 3.2))
 plt.bar([str(k) for k in sweep], [100*v for v in sweep.values()])
