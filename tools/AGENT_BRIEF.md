@@ -92,6 +92,13 @@ Every lecture converted so far has shipped at least one. Look for all three.
 The slide figures come from `assets/figures/figures.json`, which is the
 authority. If a slide and the script disagree, the script is right.
 
+**Except durations.** A wall-clock second is a property of a machine, so no
+amount of matching makes a slide and a notebook agree on one. See AUTHORING.md
+§3.2a: one significant figure, labelled as one machine's measurement, never in
+a column that invites an unstable comparison, and the notebook says the
+reader's number will differ. Cap BLAS threads before importing numpy if your
+notebook reports any timing at all.
+
 ---
 
 ## Deliverable

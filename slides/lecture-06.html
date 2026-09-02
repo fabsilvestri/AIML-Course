@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lecture 6 — Reading a learning curve</title>
+<title>Lecture 7 — A model the regulator will accept</title>
 
 <link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
 <link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
@@ -24,1428 +24,1300 @@
 
 <!-- 1 -->
 <section class="title-slide" data-menu-title="Title">
-  <h1>Reading a learning curve</h1>
-  <p class="subtitle">Application 3 &middot; Titanic</p>
-  <p><span class="badge badge-fix">Lecture 6 &middot; Fix</span>
-     <span class="badge badge-math">Thread 3</span>
-     <span class="badge badge-ch">Géron Ch. 4</span></p>
+  <h1>A model the regulator will accept</h1>
+  <p class="subtitle">Application 4 &middot; Forest cover type</p>
+  <p><span class="badge badge-build">Lecture 7 &middot; Build</span>
+     <span class="badge badge-ch">Géron Ch. 5</span></p>
   <p class="meta">
     Applications of Machine Learning<br>
     BSc Mathematics of Artificial Intelligence &middot; Third year
   </p>
-  <aside class="notes">Commitment sheets on the desk before anything else, and
-  the degree sweep open on the screen. Nobody proceeds without both.</aside>
+  <aside class="notes">Fresh commitment sheets on every desk before we start.
+  This one has a twist: the constraint arrives before the metric does, and it is
+  not negotiable.</aside>
 </section>
 
 <!-- 2 -->
-<section data-menu-title="Where we left off">
-  <h2>Where we left off</h2>
-  <table class="smaller">
-    <tr><th class="num">Degree</th><th class="num">Columns</th><th class="num">Training log loss</th><th class="num">Held-out log loss</th></tr>
-    <tr><td class="num">1</td><td class="num">22</td><td class="num">0.395</td><td class="num">0.468</td></tr>
-    <tr><td class="num">2</td><td class="num">32</td><td class="num">0.381</td><td class="num hit">0.467</td></tr>
-    <tr><td class="num">3</td><td class="num">52</td><td class="num">0.355</td><td class="num">0.537</td></tr>
-    <tr><td class="num">5</td><td class="num">143</td><td class="num">0.285</td><td class="num fail">1.922</td></tr>
-  </table>
-  <p class="lead">Two curves on the same axes. One falls forever, the other
-  turns and climbs.</p>
-  <p class="fail">Nobody in the room can currently say what either curve is
-  made of.</p>
+<section data-menu-title="A new application">
+  <h2>A new application, and a new kind of constraint</h2>
+  <p>The previous application ended with a model whose <em>coefficients</em> you
+  could read, and a pair of curves you could diagnose.</p>
+  <ul class="tight">
+    <li>Every application so far asked: <strong>how accurate is it?</strong></li>
+    <li>This one asks a second question first: <strong>can you explain
+        it?</strong> &mdash; to somebody who will not accept &ldquo;the model
+        said so&rdquo;</li>
+  </ul>
+  <p class="small muted">The two questions pull in opposite directions. Making
+  that tension measurable is the whole point of the next two lectures.</p>
 </section>
 
 <!-- 3 -->
 <section data-menu-title="Today">
   <h2>Today</h2>
   <ol>
-    <li><span class="badge badge-math">Thread 3</span> The bias&ndash;variance
-        decomposition <span class="muted small">(20 min)</span></li>
-    <li>Diagnose &mdash; what went wrong at degree 5, in three ways
-        <span class="muted small">(20 min)</span></li>
-    <li>Fix &mdash; ridge, lasso, elastic net, early stopping
-        <span class="muted small">(35 min)</span></li>
-    <li>Re-measure and red-team <span class="muted small">(15 min)</span></li>
+    <li>The brief &mdash; a classification problem with a legal constraint
+        <span class="muted small">(15 min)</span></li>
+    <li>The metric, a baseline, and your written commitment
+        <span class="muted small">(15 min)</span></li>
+    <li>The build &mdash; a decision tree you can read, trace and defend
+        <span class="muted small">(60 min)</span></li>
   </ol>
-  <p class="small muted">The thread is not a parallel theory course. Every term
-  we derive is measured on the pipeline you wrote in the previous lecture.</p>
+  <p><span class="badge badge-ch">Géron, Chapter 5</span></p>
+  <p class="small muted">One new model family, and the first time in this course
+  that a stakeholder constrains the <em>shape</em> of the answer rather than its
+  quality.</p>
 </section>
 
 <!-- ==================================================================== -->
-<!-- MATHEMATICAL THREAD 3 (20 min)                                       -->
+<!-- PART 1 — THE BRIEF (15 min)                                          -->
 <!-- ==================================================================== -->
 
 <!-- 4 -->
-<section class="divider" data-menu-title="◆ Thread 3">
-  <p class="kicker">Mathematical thread 3</p>
-  <h1>The bias&ndash;variance<br>decomposition</h1>
-  <p class="clock">20 minutes</p>
+<section class="divider" data-menu-title="◆ The brief">
+  <p class="kicker">Part one</p>
+  <h1>The brief</h1>
+  <p class="clock">15 minutes</p>
 </section>
 
 <!-- 5 -->
-<section data-menu-title="The question">
-  <h2>The question</h2>
-  <p class="lead">Your held-out error is 0.467 and your training error is
-  0.395.</p>
-  <p class="lead">Where does the difference come from &mdash; and how far down
-  could it ever go?</p>
-  <div class="panel panel-math">
-    <span class="panel-title">Why you need the answer</span>
-    The two questions have different repairs. Attack the wrong one and you will
-    spend an afternoon making the model worse.
+<section data-menu-title="The scenario">
+  <h2>You have just been hired again</h2>
+  <p>You work for the agency that manages a national forest. It has to publish a
+  map of <strong>forest cover type</strong> &mdash; which species dominates each
+  30 by 30 metre patch of ground &mdash; over an area far too large to survey on
+  foot.</p>
+  <div class="panel">
+    <span class="panel-title">The task</span>
+    From cartographic measurements alone &mdash; elevation, slope, aspect,
+    distances to water, road and fire ignition points, hillshade, soil type
+    &mdash; predict which of <strong>seven</strong> tree species covers the
+    patch.
   </div>
+  <p class="small muted">No satellite imagery, no remote sensing. Numbers a
+  surveyor could in principle read off a contour map.</p>
 </section>
 
 <!-- 6 -->
-<section data-menu-title="What is random">
-  <h2>First: what is random here?</h2>
-  <p>Not the passenger. Fix one passenger $x$ and ask about them repeatedly.</p>
-  <ul class="tight small">
-    <li>The <strong>training set</strong> $D$ is random &mdash; you happened to
-        get these 712 rows out of the 891</li>
-    <li>The <strong>label</strong> $y$ of the passenger is random &mdash; two
-        people with identical recorded values did not both survive</li>
+<section data-menu-title="What the output feeds">
+  <h2>What the output feeds</h2>
+  <p>The map is not an internal artefact. It goes into the public record, and it
+  is used to decide:</p>
+  <ul class="tight">
+    <li>where logging is permitted and where it is not</li>
+    <li>which parcels qualify for habitat protection</li>
+    <li>how fire risk is modelled for the whole district</li>
   </ul>
-  <p class="small">Everything in this thread is an expectation over those two
-  sources, and over nothing else. The model is deterministic given $D$.</p>
-  <aside class="notes">This slide is where the room splits. Ask explicitly:
-  "when I write E, what am I averaging over?" Someone will say "the test set".
-  That is the answer to a different question.</aside>
+  <p class="fail">A landowner who is refused a permit is entitled to ask
+  <em>why</em>. So is a court.</p>
+  <aside class="notes">Ask the room what happens if the answer is "a random
+  forest with 200 trees said so". Someone will say "so what". Let them argue
+  about it for a minute; the next slide settles it.</aside>
 </section>
 
 <!-- 7 -->
-<section data-menu-title="Three predictions">
-  <h2>Three numbers for one passenger</h2>
-  <table class="smaller">
-    <tr><th>Symbol</th><th>Meaning</th><th>Observed?</th></tr>
-    <tr><td>$\hat{p}_D(x)$</td><td>what <em>your</em> model predicts, having seen $D$</td><td class="hit">yes</td></tr>
-    <tr><td>$\bar{p}(x) = \mathbb{E}_D[\hat{p}_D(x)]$</td><td>the average prediction over all training sets you could have drawn</td><td class="miss">no &mdash; estimated</td></tr>
-    <tr><td>$p^{*}(x)$</td><td>the true probability that this passenger survives</td><td class="miss">never</td></tr>
-  </table>
-  <p class="small">$y \in \{0, 1\}$ is what actually happened. It is never
-  $p^{*}$, and that gap is the third term we are about to derive.</p>
+<section data-menu-title="The constraint">
+  <h2>The constraint, stated by the regulator</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Not negotiable</span>
+    Every individual prediction must be accompanied by a
+    <strong>human-readable justification</strong>: a statement, in terms of the
+    measured quantities, of why <em>this</em> patch was classified as
+    <em>that</em> species.
+  </div>
+  <p>Note the word <em>individual</em>. Not &ldquo;which variables matter in
+  general&rdquo;. Not &ldquo;the model is 88% accurate&rdquo;. This patch, this
+  answer, this reason.</p>
 </section>
 
 <!-- 8 -->
-<section data-menu-title="The error we care about">
-  <h2>The quantity to decompose</h2>
-  <div class="eqn-box">
-    $$\mathbb{E}_{D,\,y}\!\left[\left(y - \hat{p}_D(x)\right)^{2}\right]$$
-  </div>
-  <p class="eqn-label">Expected squared error at one passenger</p>
-  <p class="small">Averaged over passengers this is the <strong>Brier
-  score</strong> you already report. We decompose it at a single $x$ and then
-  average &mdash; the decomposition is linear, so nothing is lost.</p>
+<section data-menu-title="Turning it into a spec">
+  <h2>Turn the constraint into a specification</h2>
+  <p class="small">&ldquo;Human-readable&rdquo; is not a testable condition.
+  Before writing any code, negotiate it into one. We asked, and this is what
+  came back:</p>
+  <table class="smaller">
+    <tr><th>Requirement</th><th>Testable form</th></tr>
+    <tr><td>Readable by a non-specialist</td><td>stated as conditions on the
+        measured columns, not on transformed ones</td></tr>
+    <tr><td>Short enough to check</td><td>at most <strong>8</strong> conditions
+        per prediction</td></tr>
+    <tr><td>Auditable</td><td>the same patch gives the same justification, and
+        the rule can be applied by hand</td></tr>
+  </table>
+  <p class="fix small">Eight is the number the agency chose. It is arbitrary
+  &mdash; and it is now a hyperparameter, fixed by law rather than by
+  cross-validation. That is unusual and worth noticing.</p>
 </section>
 
 <!-- 9 -->
-<section data-menu-title="Add and subtract">
-  <h2>Step 1 &middot; Add and subtract the average prediction</h2>
-  <p class="derive-step">Condition on $y$ for a moment and average over $D$ only:</p>
-  <div class="eqn-box">
-    $$\left(y - \hat{p}_D\right)^{2}
-      = \left(\underbrace{y - \bar{p}}_{\text{does not depend on } D}
-             + \underbrace{\bar{p} - \hat{p}_D}_{\text{mean } 0}\right)^{2}$$
-  </div>
-  <p class="small">Expand the square. The cross term is
-  $2\,(y - \bar{p})\,\mathbb{E}_D[\bar{p} - \hat{p}_D] = 0$, because
-  $\bar{p}$ is <em>defined</em> as $\mathbb{E}_D[\hat{p}_D]$.</p>
+<section data-menu-title="What it rules out">
+  <h2>What that rules out, before we start</h2>
+  <table class="smaller">
+    <tr><th>Model</th><th>Can it justify one prediction?</th></tr>
+    <tr><td>Logistic regression</td><td class="hit">partly &mdash; a weighted sum of 54 terms is a reason, but not a short one</td></tr>
+    <tr><td>k-nearest neighbours</td><td class="miss">&ldquo;because these 5 other patches looked similar&rdquo;</td></tr>
+    <tr><td>SVM with an RBF kernel</td><td class="miss">no &mdash; the decision surface has no finite description</td></tr>
+    <tr><td>Neural network</td><td class="miss">no</td></tr>
+    <tr><td>Decision tree</td><td class="hit">yes &mdash; the path from root to leaf <em>is</em> the justification</td></tr>
+  </table>
+  <p class="small">This is the first application in the course where the model
+  family is chosen by the <strong>constraint</strong> rather than by the data.</p>
+  <p class="small muted">It is also the answer to &ldquo;why are we learning
+  trees now?&rdquo; &mdash; they enter the course at the moment nothing else
+  will do.</p>
 </section>
 
 <!-- 10 -->
-<section data-menu-title="Two terms">
-  <h2>Step 2 &middot; Two terms, exactly</h2>
-  <div class="eqn-box">
-    $$\mathbb{E}_{D}\!\left[\left(y - \hat{p}_D\right)^{2}\right]
-      = \left(y - \bar{p}\right)^{2}
-      + \underbrace{\mathbb{E}_{D}\!\left[\left(\hat{p}_D - \bar{p}\right)^{2}\right]}_{\textbf{variance}}$$
-  </div>
-  <p>The second term is the variance of your predictor. It says how much the
-  answer moves when the 712 rows move &mdash; and it does not mention the truth
-  at all.</p>
-  <p class="fix small">This step is an identity, not an approximation. We check
-  it numerically later in this lecture, and the residual is zero to machine
-  precision.</p>
+<section data-menu-title="Frame the problem">
+  <h2>Frame the problem</h2>
+  <p>The same four questions as in the first application:</p>
+  <ol>
+    <li>What kind of <strong>training supervision</strong>?</li>
+    <li><strong>Classification, regression</strong>, or something else?</li>
+    <li><strong>Batch or online</strong>?</li>
+    <li>What <strong>assumptions</strong> are we making?</li>
+  </ol>
+  <p class="small muted">Answer them before the next slide. They take one minute
+  and they have saved projects.</p>
 </section>
 
 <!-- 11 -->
-<section data-menu-title="Now average over y">
-  <h2>Step 3 &middot; Now average over the label as well</h2>
-  <p class="derive-step">Repeat the trick on $(y - \bar{p})^{2}$, this time
-  inserting $p^{*}$:</p>
-  <div class="eqn-box">
-    $$\mathbb{E}_{y}\!\left[\left(y - \bar{p}\right)^{2}\right]
-      = \underbrace{\left(p^{*} - \bar{p}\right)^{2}}_{\textbf{squared bias}}
-      + \underbrace{p^{*}\!\left(1 - p^{*}\right)}_{\textbf{noise}}$$
+<section data-menu-title="Framing 1–3">
+  <h2>Questions 1&ndash;3, answered</h2>
+  <table>
+    <tr><th>Question</th><th>Answer</th><th>Because</th></tr>
+    <tr><td>Supervision</td><td class="fix">supervised</td><td>every surveyed patch carries its species</td></tr>
+    <tr><td>Task</td><td class="fix">multiclass classification</td><td>seven mutually exclusive cover types</td></tr>
+    <tr><td>Learning mode</td><td class="fix">batch, offline</td><td>the survey is finished; nothing streams in</td></tr>
+  </table>
+  <div class="panel panel-book">
+    <span class="panel-title">Vocabulary</span>
+    <em>Multiclass</em> (one label out of seven), not <em>multilabel</em> (any
+    subset of seven) and not <em>multioutput</em> (several labels at once). The
+    distinction changes the metric, the loss and the confusion matrix.
   </div>
-  <p class="small">Same cancellation: $\mathbb{E}_y[y] = p^{*}$, so the cross
-  term vanishes again. And $\operatorname{Var}(y) = p^{*}(1-p^{*})$ because $y$
-  is Bernoulli.</p>
 </section>
 
 <!-- 12 -->
-<section data-menu-title="The decomposition">
-  <h2>The decomposition</h2>
-  <div class="eqn-box">
-    $$\mathbb{E}\!\left[\left(y - \hat{p}_D\right)^{2}\right]
-      \;=\; \left(p^{*} - \bar{p}\right)^{2}
-      \;+\; \mathbb{E}_{D}\!\left[\left(\hat{p}_D - \bar{p}\right)^{2}\right]
-      \;+\; p^{*}\!\left(1 - p^{*}\right)$$
+<section data-menu-title="Check the assumptions">
+  <h2>4 &middot; Check the assumptions</h2>
+  <p>Two are worth stating out loud, because both would change what we build.</p>
+  <ul class="tight small">
+    <li><strong>The seven classes are exhaustive and exclusive.</strong> A patch
+        with two species in equal measure has no correct answer here</li>
+    <li><strong>The training survey is representative of the mapped area.</strong>
+        If surveyors walked the accessible valleys, the model learns valleys</li>
+  </ul>
+  <div class="panel panel-fail">
+    <span class="panel-title">The one that would sink us</span>
+    If the agency intends to publish a <em>probability</em> per species rather
+    than a single label, the metric changes and so does the model. We asked. They
+    want a label, with a reason.
   </div>
-  <table class="smaller">
-    <tr><th>Term</th><th>Means</th><th>Cured by</th></tr>
-    <tr><td>squared bias</td><td>wrong <em>on average</em> &mdash; the model family cannot reach the truth</td><td>more capacity</td></tr>
-    <tr><td>variance</td><td>unstable &mdash; a different sample gives a different answer</td><td>less capacity, or more data</td></tr>
-    <tr><td>noise</td><td>the label is not a function of the recorded columns</td><td class="fail">nothing</td></tr>
-  </table>
-  <p class="small fail">The two repairs point in opposite directions. That is
-  the whole difficulty.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ The decomposition">
-  <h2>The whole thread, in one picture</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/d-biasvariance.svg"
-         alt="Several training sets D1, D2, D3 feed the same fitting procedure, producing a spread of predicted probabilities for one passenger; the spread's centre is p-bar, the truth p-star sits elsewhere on the axis, and the three labelled terms of the identity are written underneath.">
-  </figure>
-  <p class="takeaway muted">Bias is the distance from the centre of the spread
-  to the truth. Variance is the width of the spread. Neither is visible from one
-  training set.</p>
 </section>
 
 <!-- 13 -->
-<section data-menu-title="Squared error, not log loss">
-  <h2>An honest caveat before we measure anything</h2>
-  <p class="small">The identity above is exact for <strong>squared
-  error</strong>. Your committed metric is log loss, and log loss does
-  <em>not</em> decompose into three additive terms like this.</p>
-  <div class="panel panel-math">
-    <span class="panel-title">What we do about it</span>
-    The decomposition is measured on the Brier score &mdash; which the previous
-    lecture already reported alongside log loss, and which is the squared error
-    of a probability. The <em>shape</em> of the answer transfers; the numbers
-    are Brier numbers and are labelled as such.
-  </div>
-  <p class="small muted">Saying &ldquo;bias&ndash;variance&rdquo; about a log
-  loss curve is common and slightly wrong. Doing it knowingly, and saying which
-  metric you decomposed, is the difference.</p>
+<section data-menu-title="The data">
+  <h2>The data</h2>
+  <p>The <strong>Forest CoverType</strong> survey: 581,012 patches of 30 by 30
+  metres in the Roosevelt National Forest, Colorado, each with 54 cartographic
+  measurements and a surveyed cover type.</p>
+  <table class="smaller">
+    <tr><th>Columns</th><th class="num">How many</th><th>Kind</th></tr>
+    <tr><td>Elevation, aspect, slope, hillshade, distances</td><td class="num">10</td><td>quantitative</td></tr>
+    <tr><td>Wilderness area</td><td class="num">4</td><td>already one-hot</td></tr>
+    <tr><td>Soil type</td><td class="num">40</td><td>already one-hot</td></tr>
+  </table>
+  <p class="small">No missing values, no text columns, nothing to impute. After
+  three applications of cleaning, this one is handed to you clean &mdash; so the
+  difficulty is entirely elsewhere.</p>
 </section>
 
 <!-- 14 -->
-<section data-menu-title="The third term, measured">
-  <h2>Start with the term you cannot fix</h2>
-  <p class="small">$p^{*}$ is never observed &mdash; but where several
-  passengers share <em>exactly</em> the same recorded values, every model of
-  those columns must give them the same number. Whatever their outcomes do
-  inside that cell is a floor.</p>
+<section data-menu-title="Fetching the data">
+  <h2>Fetching it</h2>
   <pre><code class="language-python" data-trim>
-keys = ["Sex", "Pclass", "AgeBand", "FamBand", "Embarked"]
-cells = full.groupby(keys, observed=True)["Survived"].agg(["sum", "count"])
+from sklearn.datasets import fetch_covtype
 
-# k(m-k)/(m(m-1)) is the unbiased estimator of p(1-p) from m Bernoulli draws
-multi = cells[cells["count"] >= 2]
-var   = multi["sum"] * (multi["count"] - multi["sum"]) / (
-        multi["count"] * (multi["count"] - 1))
-noise = (var * multi["count"]).sum() / multi["count"].sum()
+cover = fetch_covtype(as_frame=True)     # ~11 MB, cached after the first call
+X_all, y_all = cover.data, cover.target
+
+print(X_all.shape, y_all.nunique())      # (581012, 54) 7
+print(X_all.columns[:4].tolist())
   </code></pre>
-  <p class="small">133 distinct cells; 102 of them contain at least two
-  passengers, covering 858 people.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Identical inputs">
-  <h2>Identical inputs, different outcomes</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l06-noise-cells.svg"
-         alt="Four horizontal bars, one per cell of identical recorded values, each split into a died segment and a survived segment; the largest cell holds 75 third-class men travelling alone, of whom 6 survived.">
-  </figure>
-  <p class="takeaway fail">62 third-class men aged 26 to 40, travelling alone
-  from Southampton, with every recorded value identical. 13 of them survived.
-  No model of these columns can separate them.</p>
+  <p class="small"><code>fetch_covtype</code> downloads once into
+  <code>~/scikit_learn_data</code> and reads from disk afterwards. The classes
+  are labelled 1 to 7, not 0 to 6 &mdash; a default nobody asked for, and one
+  that will bite an index somewhere if you forget it.</p>
 </section>
 
 <!-- 15 -->
-<section data-menu-title="The floor">
-  <h2>The floor</h2>
-  <p class="big-num">0.121</p>
-  <p class="lead">Brier score. Measured, not assumed.</p>
-  <p class="small">56 of the 102 shared cells are mixed &mdash; 657 passengers
-  sit in a cell where the outcome went both ways. That is 74% of everyone on
-  board, living inside a cell whose answer cannot be certain.</p>
-  <p class="small muted">It is an <em>under</em>-estimate of the true noise: two
-  passengers in the same cell may still differ in ways the Titanic&rsquo;s
-  manifest never recorded. The real floor is at least this high.</p>
+<section data-menu-title="Subsampling">
+  <h2>We are going to use a tenth of it</h2>
+  <pre><code class="language-python" data-trim>
+X, _, y, _ = train_test_split(X_all, y_all, train_size=60_000,
+                              stratify=y_all, random_state=42)
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, stratify=y, random_state=42)
+  </code></pre>
+  <p class="small">60,000 patches out of 581,012, stratified so the class
+  proportions are preserved exactly, then split 48,000 / 12,000.</p>
+  <div class="panel">
+    <span class="panel-title">Say what you did, and why</span>
+    A 200-tree ensemble on all 581,012 rows takes several minutes per fit, which
+    does not fit inside a ninety-minute session. Every number in these two
+    lectures is measured on the subsample, and every one of them would move if
+    you used the full set.
+  </div>
+  <p class="smaller muted">Subsampling for speed is a legitimate choice and a
+  <em>reportable</em> one. Subsampling and not mentioning it is not.</p>
 </section>
 
 <!-- 16 -->
-<section data-menu-title="Measure the other two">
-  <h2>Now measure the other two terms &mdash; on your own pipeline</h2>
+<section data-menu-title="Split before you look">
+  <h2>Split before you look &mdash; still</h2>
+  <p>The rule from the first application has not changed, and neither has the
+  reason.</p>
   <pre><code class="language-python" data-trim>
-rng   = np.random.default_rng(42)
-draws = [rng.choice(len(X_train), size=400, replace=False)
-         for _ in range(200)]
-
-P = np.array([pipeline(degree=d).fit(X_train.iloc[s], y_train.iloc[s])
-                                 .predict_proba(X_test)[:, 1]
-              for s in draws])                       # 200 x 179
-
-pbar     = P.mean(axis=0)
-variance = ((P - pbar) ** 2).mean(axis=0)
-bias2_pn = (y_test.values - pbar) ** 2               # bias^2 + noise
-total    = ((y_test.values - P) ** 2).mean(axis=0)
+assert len(X_train) == 48_000 and len(X_test) == 12_000
+assert set(X_train.index).isdisjoint(X_test.index)
+assert X_train.isna().sum().sum() == 0
   </code></pre>
-  <p class="small">200 training sets of 400 rows each, drawn from the 712 you
-  hold. Every fit uses the pipeline from the previous lecture, unchanged.</p>
-  <p class="smaller muted">About three minutes on a free Colab CPU runtime.
-  Timings are <strong>not examinable</strong>.</p>
+  <p class="small">Three assertions, three seconds, and the shape of the next
+  ninety minutes is now guaranteed rather than hoped for.</p>
+  <p class="small muted">Stratifying on the label is new here. With one class at
+  0.5% of the data, an unstratified split can hand a fold almost none of it.</p>
 </section>
 
 <!-- 17 -->
-<section data-menu-title="The identity holds">
-  <h2>Check the identity before believing the plot</h2>
+<section data-menu-title="The classes">
+  <h2>Look at the labels first</h2>
   <pre><code class="language-text" data-trim>
-&gt;&gt;&gt; abs(total.mean() - variance.mean() - bias2_pn.mean())
-2.7755575615628914e-17
+&gt;&gt;&gt; y_train.value_counts()
+2    23405     Lodgepole Pine
+1    17501     Spruce/Fir
+3     2954     Ponderosa Pine
+7     1694     Krummholz
+6     1435     Douglas-fir
+5      784     Aspen
+4      227     Cottonwood/Willow
   </code></pre>
-  <p>Machine epsilon on a double. The three columns you are about to see are not
-  a model of the error &mdash; they <em>are</em> the error, rearranged.</p>
-  <p class="fix small">Do this every time you implement a decomposition. If the
-  residual is not at floating-point noise, you have a bug, and the picture will
-  still look plausible.</p>
+  <p class="fail">The commonest class is a hundred times the rarest.</p>
+  <p class="small muted">You met this shape in the second application, on a
+  rare-event detector. It did not go well then either.</p>
 </section>
 
 <!-- FIG -->
-<section class="figslide" data-menu-title="◆ Bias and variance">
-  <h2>Your degree sweep, taken apart</h2>
+<section class="figslide" data-menu-title="◆ Class balance">
+  <h2>Seven classes, and two of them are most of the forest</h2>
   <figure class="fig fig-wide">
-    <img src="../assets/figures/l06-bias-variance.svg"
-         alt="Stacked area chart against polynomial degree: a wide bias-squared-plus-noise band that grows slowly, and a variance band that grows fast from degree three onward, with the total drawn as a black line and a dashed horizontal line at the measured noise floor of 0.121.">
+    <img src="../assets/figures/l07-class-balance.svg"
+         alt="Bar chart of the seven cover types by share of the training set, from Lodgepole Pine at 48.8 per cent down to Cottonwood/Willow at 0.5 per cent, with the largest bar drawn in red.">
   </figure>
-  <p class="takeaway">Between degree 1 and degree 6 the variance term is
-  multiplied by <strong>twelve</strong>. Everything else is nearly flat.</p>
+  <p class="takeaway fail">Two species are 85% of the ground. Whatever we build
+  has to be judged against the model that always says &ldquo;Lodgepole
+  Pine&rdquo;.</p>
 </section>
 
+<!-- ==================================================================== -->
+<!-- PART 2 — THE METRIC (15 min)                                          -->
+<!-- ==================================================================== -->
+
 <!-- 18 -->
-<section data-menu-title="The numbers">
-  <h2>The same figure, as numbers</h2>
-  <table class="smaller">
-    <tr><th class="num">Degree</th><th class="num">bias² + noise</th><th class="num">variance</th><th class="num">total</th></tr>
-    <tr><td class="num">1</td><td class="num">0.130</td><td class="num hit">0.006</td><td class="num hit">0.136</td></tr>
-    <tr><td class="num">2</td><td class="num">0.134</td><td class="num">0.011</td><td class="num">0.146</td></tr>
-    <tr><td class="num">3</td><td class="num">0.138</td><td class="num">0.029</td><td class="num">0.167</td></tr>
-    <tr><td class="num">4</td><td class="num">0.163</td><td class="num">0.059</td><td class="num">0.222</td></tr>
-    <tr><td class="num">5</td><td class="num">0.180</td><td class="num fail">0.068</td><td class="num fail">0.249</td></tr>
-    <tr><td class="num">6</td><td class="num">0.182</td><td class="num fail">0.072</td><td class="num fail">0.254</td></tr>
-  </table>
-  <p class="small">Read the first column: 0.130 at degree 1, against a measured
-  noise floor of 0.121. <strong>Almost all of it is noise.</strong> The squared
-  bias of a degree-1 logistic model on these features is under 0.01.</p>
-  <p class="small fail">So there was never much bias to buy back. Every extra
-  degree bought variance and nothing else.</p>
+<section class="divider" data-menu-title="◆ The metric">
+  <p class="kicker">Part two</p>
+  <h1>The metric</h1>
+  <p class="clock">15 minutes &middot; and a number in writing</p>
 </section>
 
 <!-- 19 -->
-<section data-menu-title="Map it onto your curves">
-  <h2>Now put it back on the two curves you drew</h2>
-  <div class="cols">
-    <div>
-      <p class="small"><strong>The training curve</strong></p>
-      <p class="smaller">Falls forever. It is measured on the rows that were fitted, so it sees no variance term at all &mdash; the model was tuned to those exact rows.</p>
-    </div>
-    <div>
-      <p class="small"><strong>The held-out curve</strong></p>
-      <p class="smaller">Turns at degree 2 and climbs. It is the sum of all three terms, and from degree 3 the variance term dominates.</p>
-    </div>
+<section data-menu-title="Metric before model">
+  <h2>Metric before model &mdash; again</h2>
+  <p>Seven classes, no natural ordering, no asymmetric cost supplied by the
+  agency. The default is <strong>accuracy</strong>: the fraction of patches whose
+  species is called correctly.</p>
+  <div class="eqn-box">
+    $$\text{accuracy} \;=\; \frac{1}{m}\sum_{i=1}^{m}\mathbf{1}\!\left[\hat{y}^{(i)} = y^{(i)}\right]$$
   </div>
-  <div class="panel panel-math">
-    <span class="panel-title">The identification, stated once</span>
-    <strong>The vertical gap between your two curves is the variance
-    term.</strong> Degree 1: gap 0.073. Degree 5: gap 1.672. The gap grew by a
-    factor of 23 while the model family stayed the same size in every other
-    respect.
-  </div>
+  <p class="small">One number, easy to state to a stakeholder, and &mdash; on the
+  evidence of the second application &mdash; the metric most likely to flatter a
+  useless model.</p>
 </section>
 
 <!-- 20 -->
-<section data-menu-title="Two shapes">
-  <h2>Two shapes, two diagnoses</h2>
-  <ul class="tight">
-    <li>Both curves plateau <strong>high and together</strong> &rarr; bias. The
-        model is too rigid; more data changes nothing</li>
-    <li>A gap that is <strong>still open</strong> at the last point &rarr;
-        variance. More data would help, and you may not be able to get any</li>
-  </ul>
-  <p class="small">These are the only two shapes, and telling them apart takes
-  ten seconds once you know what you are looking at.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Reading a curve">
-  <h2>The two shapes, drawn</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/d-curve-reading.svg"
-         alt="Two schematic learning-curve panels side by side: on the left both curves rise to meet at a high plateau above the irreducible error, labelled bias; on the right the two curves stay far apart at the right-hand edge, labelled variance, each with its own repair written underneath.">
-  </figure>
-  <p class="takeaway muted">The repairs are written on the diagram because they
-  are opposites. Applying the left-hand repair to a right-hand curve is the most
-  common wasted afternoon in applied machine learning.</p>
+<section data-menu-title="Is accuracy defensible">
+  <h2>Is accuracy defensible <em>here</em>?</h2>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>For</strong></p>
+      <ul class="tight smaller">
+        <li>All seven errors cost the agency roughly the same</li>
+        <li>The two largest classes are 85% of the map, so the headline number
+            is dominated by the case that matters most</li>
+        <li>It is what the agency already reports</li>
+      </ul>
+    </div>
+    <div>
+      <p class="small"><strong>Against</strong></p>
+      <ul class="tight smaller">
+        <li>A model can score 48.8% while never once predicting five of the
+            seven species</li>
+        <li>Cottonwood/Willow is 0.5% of the data and, plausibly, the species a
+            habitat rule protects</li>
+      </ul>
+    </div>
+  </div>
+  <p class="fix small">So: report accuracy as the headline, and
+  <strong>always beside a per-class breakdown</strong>. We will look at both
+  today, and the breakdown is the more interesting of the two.</p>
 </section>
 
 <!-- 21 -->
-<section data-menu-title="Learning curves in code">
-  <h2>Drawing them on your own model</h2>
+<section data-menu-title="The trivial baseline">
+  <h2>Before you commit: what does <em>nothing</em> score?</h2>
+  <p class="small">The cheapest possible classifier. Predict the commonest
+  species for every patch in Colorado, forever.</p>
   <pre><code class="language-python" data-trim>
-from sklearn.model_selection import learning_curve
+from sklearn.dummy import DummyClassifier
 
-n, train, valid = learning_curve(
-    pipeline(degree=d), X_train, y_train, cv=cv,
-    train_sizes=np.linspace(0.12, 1.0, 8),
-    scoring="neg_log_loss", shuffle=True, random_state=42)
+dummy = DummyClassifier(strategy="most_frequent").fit(X_train, y_train)
+print(f"{dummy.score(X_test, y_test):.1%}")     # 48.8%
   </code></pre>
-  <p class="small">The x-axis is now the <strong>number of training rows</strong>,
-  not the degree. Same two curves, a different knob &mdash; and the shape answers
-  a question the degree sweep cannot: <em>would more data help?</em></p>
-  <p class="smaller muted">Note <code>shuffle=True</code>. Without it the
-  sub-samples are the first $n$ rows of the frame, in whatever order your frame
-  happens to be in.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Learning curves">
-  <h2>Degree 1 and degree 5, as the data grows</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l06-learning-curve.svg"
-         alt="Two panels sharing a y-axis: on the left, degree one, the training and held-out log loss converge to within 0.078 of each other by 640 passengers; on the right, degree five, the held-out curve starts near ten and is still 1.599 above the training curve at the last point.">
-  </figure>
-  <p class="takeaway">Left: the curves have met. Right: they have not, and the
-  gap is still falling &mdash; the model is starved of rows, not of capacity.</p>
+  <table class="smaller">
+    <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Species it can ever predict</th></tr>
+    <tr><td>Always &ldquo;Lodgepole Pine&rdquo;</td><td class="num">48.8%</td><td class="num fail">1 of 7</td></tr>
+  </table>
+  <p class="fix">Anything below 48.8% is worse than a constant. The distance
+  above it is the only part you actually earned.</p>
+  <aside class="notes">Show of hands on the guess before revealing it. Most
+  guess far too low, because seven classes feels like 14%.</aside>
 </section>
 
 <!-- 22 -->
-<section data-menu-title="Reading the panels">
-  <h2>Reading those two panels</h2>
-  <table class="smaller">
-    <tr><th></th><th class="num">Degree 1</th><th class="num">Degree 5</th></tr>
-    <tr><td>Training log loss at 640 rows</td><td class="num">0.395</td><td class="num">0.286</td></tr>
-    <tr><td>Held-out log loss at 640 rows</td><td class="num">0.474</td><td class="num fail">1.885</td></tr>
-    <tr><td>Gap</td><td class="num hit">0.078</td><td class="num fail">1.625</td></tr>
-    <tr><td>Held-out at 76 rows</td><td class="num">2.853</td><td class="num fail">9.889</td></tr>
-  </table>
-  <p class="small">The degree-5 held-out curve falls from 9.8 to 1.9 as rows
-  arrive, and is still falling steeply at 640. Extrapolating it, this model
-  would need <em>several times</em> our dataset before it became competitive.</p>
-  <p class="fix small">There are 891 passengers on the Titanic. There will never
-  be more. <strong>Rows are not a knob we can turn</strong>, so the only repair
-  left is to shrink the model.</p>
+<section data-menu-title="What is good">
+  <h2>What number would count as success?</h2>
+  <ul class="tight small">
+    <li>The constant model scores <strong>48.8%</strong></li>
+    <li>The agency&rsquo;s surveyors are stated to agree with one another on
+        roughly nine patches in ten &mdash; an <em>assumption we were handed</em>,
+        not a measurement we made</li>
+    <li>So the useful range is somewhere between those two, and the constraint
+        may well stop us short of the top of it</li>
+  </ul>
+  <div class="panel">
+    A model that is 5 points worse and can be defended in a hearing may be worth
+    more to this agency than one that is 5 points better and cannot. That is not
+    a machine learning judgement, and it is not yours to make alone.
+  </div>
 </section>
 
 <!-- 23 -->
-<section data-menu-title="The trade-off">
-  <h2>Why it is called a trade-off</h2>
-  <p>Increasing a model&rsquo;s complexity typically increases its variance and
-  reduces its bias. Reducing complexity does the reverse.</p>
-  <div class="eqn-box">
-    $$\text{total} \;=\; \underbrace{\text{bias}^{2}}_{\downarrow\ \text{with capacity}}
-      \;+\; \underbrace{\text{variance}}_{\uparrow\ \text{with capacity}}
-      \;+\; \underbrace{\text{noise}}_{\text{fixed}}$$
-  </div>
-  <p class="small">You are minimising a sum of two terms that move in opposite
-  directions. The minimum is interior, and on this dataset it sits at degree 1
-  or 2 &mdash; which is exactly where your held-out curve turned.</p>
-  <p class="small muted">The word &ldquo;trade-off&rdquo; is doing real work.
-  There is no setting that is good at both.</p>
-</section>
-
-<!-- 24 -->
-<section data-menu-title="Thread 3 summary">
-  <h2>Thread 3 &middot; Summary</h2>
-  <ul class="tight smaller">
-    <li>Expected squared error at a point splits <em>exactly</em> into squared
-        bias, variance, and $p^{*}(1-p^{*})$</li>
-    <li>The expectation is over the <strong>training set</strong> and the
-        <strong>label</strong>, not over test points</li>
-    <li>Bias is being wrong on average; variance is being unstable; noise is
-        neither and cannot be reduced</li>
-    <li>The gap between a training curve and a held-out curve is the variance
-        term made visible</li>
-    <li>Curves plateauing high together mean bias; a gap still open at the last
-        point means variance</li>
-    <li>On this dataset the floor is <strong>0.121</strong> Brier, and the
-        degree-1 model is already within 0.01 of it in squared bias</li>
-  </ul>
-  <p class="small muted">Examinable: derive the three terms; state what each
-  expectation is over; read a diagnosis off a pair of curves.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- DIAGNOSE (20 min)                                                    -->
-<!-- ==================================================================== -->
-
-<!-- 25 -->
-<section class="divider" data-menu-title="◆ Diagnose">
-  <p class="kicker">Part two</p>
-  <h1>Diagnose</h1>
-  <p class="clock">20 minutes &middot; three faults, one shape</p>
-</section>
-
-<!-- 26 -->
-<section data-menu-title="Score the sheet">
-  <h2>Take out the sheet</h2>
+<section class="commit-slide" data-menu-title="★ COMMIT">
+  <h2>Commit</h2>
   <div class="commit">
-    <span class="commit-label">From the previous lecture</span>
+    <span class="commit-label">Write this down. On paper. Now.</span>
     <p class="small">
-      Log loss for a system I would sign off: <span class="blank"></span><br>
-      Log loss I expect from the model we build today: <span class="blank"></span><br>
-      Best log loss I obtained: <span class="blank"></span>
+      Metric: <span class="blank"></span><br>
+      Accuracy a good system would need: <span class="blank"></span><br>
+      Accuracy I expect from the model we build today: <span class="blank"></span>
     </p>
   </div>
-  <table class="smaller">
-    <tr><th>Reality, cross-validated on the training set</th><th class="num">Log loss</th></tr>
-    <tr><td>Report the base rate to everyone &mdash; the anchor</td><td class="num">0.666</td></tr>
-    <tr><td>Best degree you found</td><td class="num hit">0.467</td></tr>
-    <tr><td>Degree 5, where the sweep ended</td><td class="num fail">1.922</td></tr>
-  </table>
-  <p class="small muted">Read your three numbers out loud before the next slide.
-  The interesting question is not whether you were close.</p>
-</section>
-
-<!-- 27 -->
-<section data-menu-title="The suspect">
-  <h2>The suspect</h2>
-  <p class="big-num bad">1.922</p>
-  <p class="lead">Degree 5 is <strong>three times worse than saying nothing at
-  all</strong>.</p>
-  <p>Not worse than the best model. Worse than the anchor &mdash; worse than a
-  model that has learned only how many people died.</p>
-  <aside class="notes">Let this land. Almost nobody expects a more expressive
-  model to be beaten by a constant, and the number is large enough that they
-  cannot argue it is noise.</aside>
-</section>
-
-<!-- 28 -->
-<section data-menu-title="How that is possible">
-  <h2>How is that even possible?</h2>
-  <p class="small">Accuracy at degree 5 was 75.4% &mdash; poor, but not absurd.
-  Log loss went to 1.922. The two metrics disagree because they measure
-  different things.</p>
-  <div class="eqn-box">
-    $$-\log(0.01) \;\approx\; 4.6 \qquad\text{one confident mistake}$$
-  </div>
-  <p>A single passenger given probability 0.01 who then survives contributes 4.6
-  to the average, on its own. Accuracy records that passenger as one error out of
-  179 and moves on.</p>
-  <p class="fix small">Log loss is unbounded above. That is not a defect &mdash;
-  it is the metric telling you that confident-and-wrong is a different failure
-  from wrong.</p>
-</section>
-
-<!-- 29 -->
-<section data-menu-title="Diagnosis 1">
-  <h2>Diagnosis 1 &middot; Variance, straight off the decomposition</h2>
-  <table class="smaller">
-    <tr><th></th><th class="num">Degree 1</th><th class="num">Degree 5</th></tr>
-    <tr><td>Columns</td><td class="num">22</td><td class="num fail">143</td></tr>
-    <tr><td>Training rows</td><td class="num">712</td><td class="num">712</td></tr>
-    <tr><td>Rows per weight</td><td class="num">32</td><td class="num fail">5</td></tr>
-    <tr><td>Variance term, Brier</td><td class="num">0.006</td><td class="num fail">0.068</td></tr>
-  </table>
-  <p>Five rows per weight. Move one passenger between folds and the fitted
-  surface moves with them.</p>
-  <p class="small muted">This is the diagnosis the thread was built to deliver,
-  and it is not yet the whole story. Two more faults are hiding underneath it.</p>
-</section>
-
-<!-- 30 -->
-<section data-menu-title="Diagnosis 2">
-  <h2>Diagnosis 2 &middot; The warning you were told to read</h2>
-  <pre><code class="language-text" data-trim>
-ConvergenceWarning: lbfgs failed to converge after 4000 iteration(s)
-  </code></pre>
-  <table class="smaller">
-    <tr><th class="num">Degree</th><th class="num">1</th><th class="num">2</th><th class="num">3</th><th class="num">4</th><th class="num">5</th><th class="num">6</th></tr>
-    <tr><td>Converged</td><td class="num good">yes</td><td class="num good">yes</td><td class="num good">yes</td><td class="num fail">no</td><td class="num fail">no</td><td class="num fail">no</td></tr>
-    <tr><td>Largest $|\theta_j|$</td><td class="num">4.87</td><td class="num">5.43</td><td class="num">6.32</td><td class="num fail">18.70</td><td class="num fail">11.07</td><td class="num">3.98</td></tr>
-  </table>
-  <p class="small">The reflex is <code>max_iter=100000</code>. It will not help,
-  because the optimiser is not converging slowly. <strong>It is looking for
-  something that does not exist.</strong></p>
-</section>
-
-<!-- 31 -->
-<section data-menu-title="Separation">
-  <h2>Why the minimiser does not exist</h2>
-  <p class="small">Suppose that in the expanded feature space some vector
-  $\boldsymbol\theta$ separates the two classes perfectly: every survivor has
-  $\boldsymbol\theta^{\intercal}\mathbf{x} &gt; 0$ and every casualty has
-  $\boldsymbol\theta^{\intercal}\mathbf{x} &lt; 0$.</p>
-  <div class="eqn-box">
-    $$\sigma\!\left(c\,\boldsymbol\theta^{\intercal}\mathbf{x}\right)
-      \;\longrightarrow\; \begin{cases}1 & \text{if } \boldsymbol\theta^{\intercal}\mathbf{x} > 0\\
-                                       0 & \text{if } \boldsymbol\theta^{\intercal}\mathbf{x} < 0\end{cases}
-      \qquad \text{as } c \to \infty$$
-  </div>
-  <p>So the training log loss falls monotonically towards zero as
-  $\lVert\boldsymbol\theta\rVert \to \infty$. The infimum is never attained.
-  There is no minimum to find.</p>
-  <p class="fail small">143 columns and 712 rows makes separation easy. lbfgs
-  runs out of iterations because we told it to stop, not because it arrived.</p>
-</section>
-
-<!-- 32 -->
-<section data-menu-title="One shape, twice">
-  <h2>Two symptoms of one thing</h2>
-  <table>
-    <tr><th>Symptom</th><th>Underlying statement</th></tr>
-    <tr><td>Enormous coefficients, no convergence</td><td>$\lVert\boldsymbol\theta\rVert$ is unbounded &mdash; the minimiser does not <strong>exist</strong></td></tr>
-    <tr><td>Rank 23 of 29 columns, from the previous lecture</td><td>the minimiser is not <strong>unique</strong></td></tr>
-  </table>
-  <p>Both are statements about the optimisation problem, not about the
-  passengers. Both are repaired by adding one term to the objective.</p>
-  <aside class="notes">If someone shouts "ridge" here, that is the right answer
-  and it arrives in twelve minutes. Do not let it arrive early, because the
-  third diagnosis is the one that makes the callback land.</aside>
-</section>
-
-<!-- 33 -->
-<section data-menu-title="Diagnosis 3">
-  <h2>Diagnosis 3 &middot; Thread 1, returning</h2>
-  <p class="lead">You engineered a column that is an exact linear combination of
-  two others.</p>
-  <div class="eqn-box">
-    $$\texttt{FamilySize} \;=\; \texttt{SibSp} \;+\; \texttt{Parch} \;+\; 1$$
-  </div>
-  <pre><code class="language-python" data-trim>
-&gt;&gt;&gt; (X_train["SibSp"] + X_train["Parch"] + 1
-...  - X_train["FamilySize"]).abs().max()
-0.0
-  </code></pre>
-  <p class="small">Not approximately. Exactly, on every row &mdash; because you
-  wrote the line that made it.</p>
-</section>
-
-<!-- 34 -->
-<section data-menu-title="What Thread 1 said">
-  <h2>What Thread 1 said would happen</h2>
-  <div class="panel panel-fail">
-    <span class="panel-title">Lecture 2, on the normal equation</span>
-    &ldquo;If one column is a linear combination of others, the columns are
-    dependent and $\mathbf{X}^{\intercal}\mathbf{X}$ is singular.&rdquo; And:
-    &ldquo;when creating new combined features, avoid simple weighted sums of
-    existing features.&rdquo;
-  </div>
-  <p class="small">A weighted sum with weights $1, 1$ and an intercept is still
-  a weighted sum. The singularity was manufactured by hand, in a feature
-  engineering cell, and it looked like good practice at the time.</p>
-</section>
-
-<!-- 35 -->
-<section data-menu-title="The eigenvalue">
-  <h2>Look at the spectrum</h2>
-  <p class="small">Standardise the five numeric columns and form
-  $\mathbf{X}^{\intercal}\mathbf{X}$. Its eigenvalues:</p>
-  <pre><code class="language-text" data-trim>
-&gt;&gt;&gt; np.linalg.eigvalsh(Z.T @ Z)
-array([1.81e-12, 4.29e+02, 5.43e+02, 7.90e+02, 1.80e+03])
-  </code></pre>
-  <p>The smallest eigenvalue is $1.8\times10^{-12}$ &mdash; zero, to the
-  precision the arithmetic allows. Four columns of information in five columns of
-  data.</p>
-  <p class="fail">Condition number: about $9\times10^{14}$. A double has about
-  $10^{16}$ of relative precision, so roughly two significant digits survive the
-  solve.</p>
-</section>
-
-<!-- 36 -->
-<section data-menu-title="Adding alpha I">
-  <h2>What adding $\alpha\mathbf{I}$ does to that spectrum</h2>
-  <p class="derive-step">If $\mathbf{X}^{\intercal}\mathbf{X}\,\mathbf{v} = \lambda\mathbf{v}$, then</p>
-  <div class="eqn-box">
-    $$\left(\mathbf{X}^{\intercal}\mathbf{X} + \alpha\mathbf{I}\right)\mathbf{v}
-      \;=\; \left(\lambda + \alpha\right)\mathbf{v}$$
-  </div>
-  <ul class="tight small">
-    <li>Same eigenvectors; every eigenvalue moved up by exactly $\alpha$</li>
-    <li>$\mathbf{X}^{\intercal}\mathbf{X}$ is positive semi-definite, so
-        $\lambda \ge 0$, so $\lambda + \alpha \ge \alpha &gt; 0$</li>
-    <li>No eigenvalue is zero &rArr; <strong>the matrix is invertible for every
-        $\alpha &gt; 0$</strong></li>
-  </ul>
-  <div class="panel panel-math">
-    <span class="panel-title">The callback, stated outright</span>
-    Lecture 2 promised that ridge regression makes
-    $\mathbf{X}^{\intercal}\mathbf{X}$ invertible for every $\alpha &gt; 0$.
-    That is the promise, and this is its two-line proof.
-  </div>
-</section>
-
-<!-- 37 -->
-<section data-menu-title="The condition bound">
-  <h2>And it bounds the conditioning</h2>
-  <div class="eqn-box">
-    $$\kappa\!\left(\mathbf{X}^{\intercal}\mathbf{X} + \alpha\mathbf{I}\right)
-      \;=\; \frac{\lambda_{\max} + \alpha}{\lambda_{\min} + \alpha}
-      \;\le\; \frac{\lambda_{\max} + \alpha}{\alpha}$$
-  </div>
-  <p class="small">The bound on the right does not mention $\lambda_{\min}$ at
-  all. Whatever the data do &mdash; exact collinearity included &mdash; the
-  conditioning is controlled by a number you choose.</p>
-  <p class="fix">At $\alpha = 1$ the condition number of our singular matrix
-  falls from $9\times10^{14}$ to 1798.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Conditioning">
-  <h2>Condition number against $\alpha$</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l06-condition.svg"
-         alt="Log-log plot of the condition number of X-transpose-X plus alpha-I against alpha, falling from about nine times ten to the fourteen at tiny alpha along a straight line of slope minus one, with the value at alpha equal to one marked at 1798.">
-  </figure>
-  <p class="takeaway">A straight line of slope $-1$ over twelve decades: in this
-  regime the condition number is simply $\lambda_{\max}/\alpha$. The dependence
-  the data has is not repaired &mdash; it is <em>dominated</em>.</p>
-</section>
-
-<!-- 38 -->
-<section data-menu-title="Diagnosis">
-  <h2>Diagnosis</h2>
-  <table class="smaller">
-    <tr><th>Fault</th><th>Evidence</th><th>Statement about</th></tr>
-    <tr><td>Variance</td><td>held-out minus training gap of 1.672 at degree 5</td><td>the estimator</td></tr>
-    <tr><td>No minimiser</td><td>lbfgs stops at the iteration cap from degree 4 up</td><td>the objective</td></tr>
-    <tr><td>No unique minimiser</td><td>rank 23 of 29; an eigenvalue at $10^{-12}$</td><td>the design matrix</td></tr>
-  </table>
-  <p class="lead fix">Three faults. One term repairs all three.</p>
+  <p class="small">You are not guessing in the dark: a constant scores
+  <strong>48.8%</strong>, and the model must justify every prediction in at most
+  eight conditions. Your number belongs somewhere above the first and below
+  whatever the constraint costs.</p>
+  <aside class="notes">Do not move on until pens have moved. Do not hint that
+  the number will be disappointing — the whole device depends on them believing
+  their own estimate.</aside>
 </section>
 
 <!-- ==================================================================== -->
-<!-- FIX (35 min)                                                         -->
+<!-- PART 3 — THE BUILD (60 min)                                          -->
 <!-- ==================================================================== -->
 
-<!-- 39 -->
-<section class="divider" data-menu-title="◆ Fix">
+<!-- 24 -->
+<section class="divider" data-menu-title="◆ Build">
   <p class="kicker">Part three</p>
-  <h1>Fix</h1>
-  <p class="clock">35 minutes</p>
+  <h1>Build</h1>
+  <p class="clock">60 minutes &middot; a model you can read</p>
 </section>
 
-<!-- 40 -->
+<!-- 25 -->
 <section data-menu-title="★ Colab notebook">
   <h2>Today&rsquo;s notebook</h2>
   <p class="colab-line">
     <a class="colab-btn" target="_blank"
-       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-06.ipynb">
-       Open Lecture 6 in Google Colab</a>
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-07.ipynb">
+       Open Lecture 7 in Google Colab</a>
   </p>
-  <p class="small muted">It rebuilds the previous lecture&rsquo;s degree sweep
-  from scratch, so you can reproduce 1.922 before repairing it.</p>
+  <div class="panel">
+    <span class="panel-title">How to work</span>
+    Run the setup cell, then work section by section. Where the notebook says
+    <code># YOUR SPECIFICATION HERE</code>, write what you want in plain English,
+    generate the code, and <strong>read it before running it</strong>.
+  </div>
+  <p class="small muted">The first cell downloads about 11 MB. Start it now so
+  it is finished by the time we need it.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="The plan">
+  <h2>The plan</h2>
+  <ol class="tight">
+    <li>Fit one decision tree, unconstrained, and read what it gives us</li>
+    <li>Ask an assistant for the justification, and watch it fail</li>
+    <li>Constrain the tree until the justification fits the brief</li>
+    <li>Tune what is left, inside the constraint</li>
+    <li>Read the tree, trace a prediction, look at the errors</li>
+    <li>Measure, and commit the result</li>
+  </ol>
+  <p class="small muted">Steps 3 and 4 are in that order deliberately. The
+  constraint is not a hyperparameter we get to optimise.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="What a tree is">
+  <h2>What a decision tree is</h2>
+  <p>A binary tree. Each internal node asks one question about one feature; each
+  leaf carries a prediction.</p>
+  <ul class="tight small">
+    <li>A question is always of the form
+        $x_k \le t_k$ &mdash; one feature, one threshold</li>
+    <li>Prediction: start at the root, answer the question, go left or right,
+        repeat until a leaf</li>
+    <li>The leaf predicts the <strong>majority class of the training instances
+        that reached it</strong></li>
+  </ul>
+  <div class="panel panel-book">
+    Trees are the building block of random forests, which are among the most
+    powerful algorithms available today. They are also, on their own, one of the
+    very few models whose reasoning a human can follow end to end.
+  </div>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="How it trains">
+  <h2>How it trains &mdash; CART</h2>
+  <p class="small">Scikit-Learn uses the <em>Classification And Regression Tree</em>
+  algorithm. At each node it searches over every feature $k$ and every threshold
+  $t_k$ for the split minimising</p>
+  <div class="eqn-box">
+    $$J(k, t_k) \;=\; \frac{m_{\text{left}}}{m}\,G_{\text{left}} \;+\; \frac{m_{\text{right}}}{m}\,G_{\text{right}}$$
+  </div>
+  <p class="eqn-label">the impurity of the two children, weighted by their size</p>
+  <p class="small">Then it recurses on each child, and stops when a stopping
+  condition fires or no split reduces impurity.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Gini impurity">
+  <h2>The impurity being minimised</h2>
+  <div class="eqn-box">
+    $$G_i \;=\; 1 - \sum_{k=1}^{K} p_{i,k}^{\,2}$$
+  </div>
+  <p class="eqn-label">Gini impurity of node $i$, over $K$ classes</p>
+  <ul class="tight small">
+    <li>$p_{i,k}$ &mdash; the fraction of the training instances in node $i$ that
+        belong to class $k$</li>
+    <li>All of one class $\Rightarrow G_i = 0$. The node is <strong>pure</strong></li>
+    <li>Seven classes in equal measure $\Rightarrow G_i = 1 - 7\cdot(1/7)^2 = 6/7$</li>
+  </ul>
+  <p class="small muted">There is a second impurity measure,
+  <code>criterion="entropy"</code>, and a good reason to ask whether it makes any
+  difference. That question is the mathematical thread of the next lecture, and
+  we are deliberately not answering it now.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Greedy">
+  <h2>CART is greedy, and that is not a detail</h2>
+  <p>It picks the best split <em>at this node</em>, then never reconsiders it. A
+  split that looks mediocre now but enables two excellent splits below is never
+  found.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Why nobody does better</span>
+    Finding the optimal tree is <strong>NP-complete</strong>. The greedy
+    algorithm returns a reasonably good solution in $O(n\,m\log m)$ and no known
+    algorithm returns the best one in reasonable time.
+  </div>
+  <p class="small muted">So the tree you get is a function of the algorithm as
+  much as of the data. Remember that; it is the seed of the next lecture&rsquo;s
+  diagnosis.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Complexity">
+  <h2>What it costs</h2>
+  <table>
+    <tr><th>Operation</th><th>Cost</th><th>Why</th></tr>
+    <tr><td>Predict one instance</td><td>$O(\log_2 m)$</td><td>traverse one root-to-leaf path of a roughly balanced tree</td></tr>
+    <tr><td>Train</td><td>$O(n \times m \log_2 m)$</td><td>at every node, sort and scan all $n$ features</td></tr>
+  </table>
+  <p class="small">Prediction does not depend on the number of features, which is
+  why a 54-column tree is as fast as a 5-column one. Training does.</p>
+  <p class="small fix">This is the property that makes the justification cheap:
+  reading a prediction costs the same as making it.</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="First tree">
+  <h2>Fit one, with no constraints at all</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.tree import DecisionTreeClassifier
+
+tree = DecisionTreeClassifier(random_state=42)      # no depth limit
+tree.fit(X_train, y_train)
+
+print(f"depth          {tree.get_depth()}")
+print(f"leaves         {tree.get_n_leaves():,}")
+print(f"train accuracy {tree.score(X_train, y_train):.1%}")
+  </code></pre>
+  <pre><code class="language-text" data-trim>
+depth          33
+leaves         5,699
+train accuracy 100.0%
+  </code></pre>
+  <p class="fail small">100.0%. You have seen this before, and you know what it
+  means.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="Not again">
+  <h2>We are not falling for that twice</h2>
+  <p class="lead">A tree with 5,699 leaves and 48,000 training patches has, on
+  average, eight patches per leaf. Of course it is perfect on its own data.</p>
+  <table class="smaller">
+    <tr><th>Unconstrained tree</th><th class="num">Accuracy</th></tr>
+    <tr><td>On the training set</td><td class="num fail">100.0%</td></tr>
+    <tr><td>5-fold cross-validated, on the training set</td><td class="num">82.1%</td></tr>
+    <tr><td>On the test set (looked at once, at the end)</td><td class="num">82.6%</td></tr>
+  </table>
+  <p class="small">82% is a real number and it is far above the 48.8% baseline.
+  So the tree works. The question this lecture asks is a different one.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- THE WORKED ASSISTANT FAILURE                                         -->
+<!-- ==================================================================== -->
+
+<!-- 34 -->
+<section data-menu-title="Weak vs usable prompt">
+  <h2>Ask an assistant for the justification</h2>
+  <div class="cols">
+    <div>
+      <p><span class="badge badge-fail">Weak</span></p>
+      <div class="panel panel-fail small">
+        &ldquo;Train a decision tree on the covertype data and make it
+        interpretable, so I can explain each prediction to a regulator.&rdquo;
+      </div>
+      <p class="small muted">Under-specified in exactly one place, and it is not
+      the word &ldquo;interpretable&rdquo;.</p>
+    </div>
+    <div>
+      <p><span class="badge badge-fix">Usable</span></p>
+      <div class="panel panel-fix small">
+        &ldquo;&hellip; the justification is <strong>per prediction</strong>: the
+        list of conditions that instance satisfied on its path to a leaf, at most
+        eight of them. Print that list for one test instance so I can check the
+        length.&rdquo;
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="What it returns">
+  <h2>What the weak prompt returns</h2>
+  <pre><code class="language-python" data-trim data-line-numbers># interpretable land-cover classifier
+from sklearn.tree import DecisionTreeClassifier
+import pandas as pd
+
+tree = DecisionTreeClassifier(random_state=42)
+tree.fit(X_train, y_train)
+
+importances = pd.Series(tree.feature_importances_, index=X_train.columns)
+print("Why the model predicts what it predicts:")
+print(importances.sort_values(ascending=False).head(5).round(3))
+print(f"\naccuracy: {tree.score(X_test, y_test):.1%}")
+</code></pre>
+  <p class="small">It runs. It imports nothing exotic. It prints a ranked list of
+  features and a believable accuracy, under a heading that says
+  <em>why the model predicts what it predicts</em>.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="The review question">
+  <h2>The review question that catches it</h2>
+  <p><em>Reviewer question 3: what is the shape here?</em></p>
+  <div class="panel panel-fail">
+    <span class="panel-title">One vector for the whole model</span>
+    <code>feature_importances_</code> has <strong>54 entries</strong> &mdash; one
+    per column, not one per prediction. It is the same for every patch in
+    Colorado.
+  </div>
+  <p>The regulator asked why <em>this</em> parcel was refused. The answer on
+  offer is &ldquo;elevation matters a lot, in general&rdquo;. That is not a
+  justification; it is a description of the training run.</p>
+  <p class="small muted">Nothing in the code is wrong. The specification did not
+  say <em>per prediction</em>, so the assistant answered the easier question.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Measure the damage">
+  <h2>Now measure the damage &mdash; do not guess</h2>
+  <p class="small">The tree <em>can</em> justify a prediction: the path from root
+  to leaf is a list of conditions. Count them.</p>
+  <pre><code class="language-python" data-trim>
+# decision_path marks every node visited, root and leaf included,
+# so the number of conditions applied is that count minus one
+path = tree.decision_path(X_test)
+lengths = path.sum(axis=1).A1 - 1
+
+print(f"mean {lengths.mean():.2f}   max {lengths.max()}")
+  </code></pre>
+  <pre><code class="language-text" data-trim>
+mean 17.88   max 33
+  </code></pre>
+  <p class="fail">The brief allows eight conditions. The average justification
+  this tree produces is <strong>17.88</strong>, and the worst is
+  <strong>33</strong>.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Path lengths">
+  <h2>How long a justification actually is</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l07-paths.svg"
+         alt="Histogram on a logarithmic count axis of the number of conditions per prediction: the depth-8 tree is a single spike at eight, the unconstrained tree spreads from nine to thirty-three.">
+  </figure>
+  <p class="takeaway fail">Two models, the same 12,000 predictions. One produces
+  a reason a person can check; the other produces a paragraph nobody will read.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="The corrected spec">
+  <h2>The corrected specification</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">What to ask for instead</span>
+    &ldquo;Fit a <code>DecisionTreeClassifier</code> with
+    <code>max_depth=8</code> on <code>X_train</code>. For a given test instance,
+    return the list of <code>(feature, comparison, threshold, value)</code>
+    tuples along its decision path, and the class distribution of the leaf it
+    lands in. Assert that the list has at most eight entries. Do not use
+    <code>feature_importances_</code>: it is one vector for the whole
+    model.&rdquo;
+  </div>
+  <p class="small">Three additions: the <em>shape</em> of the output, the
+  <em>check</em>, and an explicit prohibition on the plausible wrong answer.</p>
+  <aside class="notes">This is the transferable lesson: when you know which
+  wrong answer is tempting, name it in the prompt. It costs one clause.</aside>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="The lesson">
+  <h2>What that example is really teaching</h2>
+  <ul class="tight">
+    <li>The assistant was <em>obedient</em>. &ldquo;Interpretable&rdquo; has a
+        common meaning in the literature, and it used it</li>
+    <li>The number it printed &mdash; 82.6% &mdash; was correct</li>
+    <li>The failure was in the <strong>shape of the output</strong>, which no
+        accuracy check would ever catch</li>
+  </ul>
+  <p class="fail small">A specification that names only the metric will be
+  satisfied by a model that meets the metric and fails the brief.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- REGULARISATION                                                       -->
+<!-- ==================================================================== -->
+
+<!-- 40 -->
+<section data-menu-title="Nonparametric">
+  <h2>Why the tree grew to depth 33</h2>
+  <p>Because nothing stopped it. A decision tree is a
+  <strong>nonparametric</strong> model: the number of parameters is not fixed
+  before training, so the structure is free to follow the data as far as the data
+  goes.</p>
+  <div class="panel">
+    That freedom is exactly what let it isolate almost every training patch. It
+    is also exactly what we now have to take away &mdash; not to reduce
+    overfitting, but to meet the brief.
+  </div>
+  <p class="small muted">A linear model cannot do this. Its parameter count is
+  decided by the number of columns before it sees a single row.</p>
 </section>
 
 <!-- 41 -->
-<section data-menu-title="The idea">
-  <h2>The idea, in one sentence</h2>
-  <p class="lead">Stop asking for the best fit. Ask for the best fit
-  <em>among small models</em>.</p>
-  <div class="eqn-box">
-    $$J(\boldsymbol\theta) \;=\; \underbrace{L(\boldsymbol\theta)}_{\text{fit the data}}
-      \;+\; \underbrace{\alpha\,\Omega(\boldsymbol\theta)}_{\text{stay small}}$$
-  </div>
-  <p class="small">$\Omega$ penalises the size of the weights. $\alpha$ says how
-  much you care. Setting $\alpha = 0$ recovers exactly what you did in the
-  previous lecture.</p>
-  <p class="fix small">Constraining a model is one of the three cures for
-  variance, and the only one available when the dataset is fixed at 891 rows.</p>
+<section data-menu-title="The hyperparameters">
+  <h2>The regularisation hyperparameters</h2>
+  <table class="smaller">
+    <tr><th>Parameter</th><th>Effect</th></tr>
+    <tr><td><code>max_depth</code></td><td>hard ceiling on the length of every path &mdash; and therefore on the justification</td></tr>
+    <tr><td><code>min_samples_split</code></td><td>a node with fewer instances than this is never split</td></tr>
+    <tr><td><code>min_samples_leaf</code></td><td>a split that would leave a child smaller than this is rejected</td></tr>
+    <tr><td><code>max_leaf_nodes</code></td><td>ceiling on the total number of leaves &mdash; on the number of rules</td></tr>
+    <tr><td><code>max_features</code></td><td>how many features are considered at each split</td></tr>
+  </table>
+  <p class="small">Increasing the <code>min_*</code> parameters or decreasing the
+  <code>max_*</code> ones regularises the model.</p>
+  <p class="small fix">Two of these control accuracy. One of them &mdash;
+  <code>max_depth</code> &mdash; is fixed for us by the regulator.</p>
 </section>
 
 <!-- 42 -->
-<section data-menu-title="Ridge">
-  <h2>Fix 1 &middot; Ridge &mdash; the $\ell_2$ penalty</h2>
-  <div class="eqn-box">
-    $$J(\boldsymbol\theta) \;=\; \mathrm{MSE}(\boldsymbol\theta)
-      \;+\; \frac{\alpha}{m}\sum_{j=1}^{n}\theta_j^{2}$$
-  </div>
-  <ul class="tight small">
-    <li>The sum starts at $j = 1$: <strong>the bias term $\theta_0$ is not
-        penalised</strong>. Shrinking the intercept would shift every prediction
-        towards zero rather than towards the mean</li>
-    <li>Equivalently, $\Omega(\boldsymbol\theta) = \tfrac12\lVert\mathbf{w}\rVert_2^2$
-        where $\mathbf{w}$ is $\boldsymbol\theta$ without the bias</li>
-  </ul>
-  <p class="small muted">Also called Tikhonov regularisation. The book gives both
-  names.</p>
+<section data-menu-title="Sweep the depth">
+  <h2>What does depth actually buy?</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.model_selection import StratifiedKFold, cross_validate
+
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+for d in range(1, 19):
+    clf = DecisionTreeClassifier(max_depth=d, random_state=42)
+    scores = cross_validate(clf, X_train, y_train, cv=cv,
+                            return_train_score=True, n_jobs=-1)
+    # about 2 minutes for the whole sweep
+  </code></pre>
+  <p class="small muted">Cross-validated, on the training set. The test set is
+  not consulted to choose anything &mdash; that rule survives from the first
+  application and will survive to the last.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Depth">
+  <h2>Accuracy against depth, and the price of reading it</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l07-depth.svg"
+         alt="Two panels sharing a max_depth axis: on the left, training and five-fold cross-validated accuracy both rising from 63 per cent, with a dashed line at depth 8; on the right, the number of leaves on a logarithmic scale rising from 2 to over 3,000, with 206 leaves marked at depth 8.">
+  </figure>
+  <p class="takeaway">Cross-validated accuracy is still climbing at depth 18.
+  Every point of it is bought with more rules than anyone will read.</p>
 </section>
 
 <!-- 43 -->
-<section data-menu-title="Ridge closed form">
-  <h2>Ridge has a closed form too</h2>
-  <p class="derive-step">Differentiate and set to zero, exactly as in Thread 1:</p>
-  <div class="eqn-box">
-    $$\hat{\boldsymbol\theta} \;=\; \left(\mathbf{X}^{\intercal}\mathbf{X} + \alpha\mathbf{A}\right)^{-1}\mathbf{X}^{\intercal}\,y$$
-  </div>
-  <p class="small">$\mathbf{A}$ is the identity with a zero in the top-left cell
-  &mdash; the identity, minus the row and column belonging to the bias term.</p>
-  <div class="panel panel-math">
-    <span class="panel-title">This is Thread 1&rsquo;s failure condition, closed</span>
-    The normal equation could fail to be solvable in two ways: $m &lt; n$, or
-    collinear columns. <strong>Adding $\alpha\mathbf{A}$ removes both, for every
-    $\alpha &gt; 0$.</strong> Ridge is not only a bias&ndash;variance device; it
-    is what makes the linear algebra work.
-  </div>
+<section data-menu-title="Reading the curve">
+  <h2>Reading that curve honestly</h2>
+  <table class="smaller">
+    <tr><th class="num">max_depth</th><th class="num">CV accuracy</th><th class="num">Leaves</th><th>What a justification looks like</th></tr>
+    <tr><td class="num">1</td><td class="num">63.3%</td><td class="num">2</td><td>one condition</td></tr>
+    <tr><td class="num">3</td><td class="num">67.5%</td><td class="num">8</td><td>a sentence</td></tr>
+    <tr><td class="num hit">8</td><td class="num hit">73.8%</td><td class="num">206</td><td>a short paragraph &mdash; the brief</td></tr>
+    <tr><td class="num">18</td><td class="num">81.7%</td><td class="num">3,377</td><td>nobody reads this</td></tr>
+  </table>
+  <p class="small">Between depth 8 and depth 18 there are <strong>7.9
+  points</strong> of accuracy. That is the measured price of the regulator&rsquo;s
+  constraint, and it is a number worth putting in front of them.</p>
+  <p class="small fail">It is not, however, ours to spend. The constraint is the
+  brief.</p>
 </section>
 
 <!-- 44 -->
-<section data-menu-title="Ridge for logistic">
-  <h2>The same term, on our loss</h2>
-  <div class="eqn-box">
-    $$\begin{aligned}
-      J(\boldsymbol\theta) \;=\;
-        &\underbrace{-\frac{1}{m}\sum_{i} \left[y^{(i)}\log \hat{p}^{(i)}
-          + (1-y^{(i)})\log(1-\hat{p}^{(i)})\right]}
-          _{\text{log loss, from the previous lecture}} \\[8pt]
-        &\;+\; \frac{\alpha}{m}\lVert\mathbf{w}\rVert_2^{2}
-      \end{aligned}$$
+<section data-menu-title="Not a hyperparameter">
+  <h2>The one hyperparameter we may not tune</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Read this carefully</span>
+    Cross-validation says <code>max_depth=None</code>. The brief says
+    <code>max_depth=8</code>. <strong>Cross-validation does not get a vote on
+    this one</strong>, because it is not optimising the thing the agency is
+    buying.
   </div>
-  <p>Now the objective is <strong>coercive</strong>: as
-  $\lVert\mathbf{w}\rVert \to \infty$ the penalty $\to \infty$ while the log loss
-  is bounded below by zero. A minimiser exists, and strict convexity makes it
-  unique.</p>
-  <p class="fix small">Both of Diagnosis 2 and Diagnosis 3 are gone, and we have
-  not looked at the data once.</p>
+  <p class="small">This is the first time in the course that the honest answer
+  to &ldquo;what does the search say?&rdquo; is &ldquo;the search is answering
+  the wrong question&rdquo;.</p>
+  <p class="small muted">Bring the 7.9-point figure to the regulator. Perhaps
+  they will trade a condition or two for it. That is a conversation, not a
+  <code>GridSearchCV</code>.</p>
 </section>
 
 <!-- 45 -->
-<section data-menu-title="C not alpha">
-  <h2>A trap in the API</h2>
-  <p>Scikit-Learn&rsquo;s <code>LogisticRegression</code> does not take $\alpha$.
-  It takes <code>C</code>.</p>
-  <div class="eqn-box">
-    $$C \;=\; \frac{1}{\alpha}$$
-  </div>
-  <ul class="tight small">
-    <li>Small <code>C</code> &rarr; large $\alpha$ &rarr; <strong>strong</strong> regularisation</li>
-    <li>Large <code>C</code> &rarr; weak regularisation; <code>C=1e6</code> is what we used to switch it off</li>
-    <li>The default is <code>C=1.0</code>, and <code>penalty="l2"</code>. <strong>Logistic regression in Scikit-Learn is regularised unless you say otherwise</strong></li>
-  </ul>
-  <p class="small fail">Reviewer question five: <em>what is the default I did not
-  ask for?</em> Here it was regularisation, and the previous lecture turned it
-  off on purpose to have something to repair.</p>
+<section data-menu-title="Tune inside the constraint">
+  <h2>Tune what is left, inside the constraint</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.model_selection import GridSearchCV
+
+grid = {"max_depth": [4, 6, 8, 10, 12, None],
+        "min_samples_leaf": [1, 5, 20, 50, 200]}
+
+search = GridSearchCV(DecisionTreeClassifier(random_state=42), grid,
+                      cv=cv, n_jobs=-1).fit(X_train, y_train)
+# 30 combinations x 5 folds = 150 fits, about 3 minutes
+  </code></pre>
+  <p class="small">We search the whole grid anyway &mdash; including the depths
+  we are not allowed to use &mdash; because the rows we cannot pick are exactly
+  what tells the agency what its constraint costs.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The grid">
+  <h2>Thirty combinations, and only one row is available to us</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l07-grid.svg"
+         alt="Heatmap of five-fold accuracy over max_depth by min_samples_leaf; the best cell, unlimited depth with min_samples_leaf 1 at 82.1 per cent, is outlined in red, and the depth-8 row is outlined in dashed green.">
+  </figure>
+  <p class="takeaway">The red cell is the best model. The green row is the set of
+  models we are allowed to ship.</p>
 </section>
 
 <!-- 46 -->
-<section data-menu-title="Scale first">
-  <h2>Ridge requires scaling. Not as a nicety</h2>
-  <p class="small">The penalty $\sum \theta_j^2$ treats every weight
-  identically. If <code>Fare</code> is in pounds and <code>SibSp</code> is a
-  count of people, then a &ldquo;weight of 1&rdquo; means two unrelated things
-  and the penalty falls unequally on them.</p>
+<section data-menu-title="Reading the grid">
+  <h2>Two things to read off that grid</h2>
+  <ul class="tight small">
+    <li><strong>Within the green row, <code>min_samples_leaf</code> barely
+        matters</strong> &mdash; 73.8% at 1, 71.5% at 200. At depth 8 the depth
+        limit binds first, so the leaf-size limit has almost nothing left to
+        do</li>
+    <li><strong>Down the first column, it matters enormously</strong> &mdash;
+        82.1% at <code>min_samples_leaf=1</code> falling to 71.9% at 200. With no
+        depth limit, the leaf size <em>is</em> the regularisation</li>
+  </ul>
   <div class="panel">
-    Rescale a column by $c$ and its fitted weight scales by $1/c$ &mdash; so its
-    contribution to the penalty scales by $1/c^{2}$. Measuring fares in pence
-    instead of pounds changes which coefficients ridge decides to shrink.
+    Two hyperparameters that both restrict the tree do not act independently. The
+    2-D grid shows that; two separate 1-D sweeps would not have.
   </div>
-  <p class="fix small">We already have <code>StandardScaler</code> inside the
-  pipeline, fitted per fold. Regularisation is the reason it is not optional.</p>
+  <p class="small muted">So the grid&rsquo;s answer under the cap is
+  <code>min_samples_leaf=1</code>. <strong>We are not going to ship it</strong>
+  &mdash; next slide.</p>
+</section>
+
+<!-- 46a -->
+<section data-menu-title="Overruling the grid">
+  <h2>Why we ship <code>min_samples_leaf=20</code></h2>
+  <p class="small">The model states its justification as &ldquo;90% of the 481
+  training patches in this leaf&rdquo;. At <code>min_samples_leaf=1</code> that
+  becomes <em>&ldquo;100% of the 1&rdquo;</em> &mdash; a single surveyed patch
+  wearing the grammar of evidence. The brief requires a justification a
+  regulator can audit; that is not one.</p>
+  <table class="smaller">
+    <tr><th></th><th class="num">leaf</th><th class="num">CV accuracy</th></tr>
+    <tr><td>what cross-validation prefers</td><td class="num">1</td><td class="num">73.75%</td></tr>
+    <tr><td>what the brief requires</td><td class="num hit">20</td><td class="num">73.35%</td></tr>
+    <tr class="fix"><td>price of auditability</td><td class="num">&mdash;</td><td class="num">0.40 points</td></tr>
+  </table>
+  <p class="fix">Same reason we overruled it on depth: <strong>when the brief
+  constrains the model, the grid does not get a vote.</strong> And that 0.40
+  goes to the agency &mdash; a constraint that overrules a measurement has to
+  show the measurement it overruled.</p>
 </section>
 
 <!-- 47 -->
-<section data-menu-title="Lasso">
-  <h2>Fix 2 &middot; Lasso &mdash; the $\ell_1$ penalty</h2>
-  <div class="eqn-box">
-    $$J(\boldsymbol\theta) \;=\; \mathrm{MSE}(\boldsymbol\theta)
-      \;+\; 2\alpha\sum_{j=1}^{n}\left|\theta_j\right|$$
-  </div>
-  <p><em>Least Absolute Shrinkage and Selection Operator.</em> The word
-  <strong>selection</strong> is the point: lasso drives weights to exactly zero,
-  so it performs feature selection as a side effect of fitting.</p>
-  <p class="small muted">Ridge shrinks everything and eliminates nothing.</p>
+<section data-menu-title="The tuned tree">
+  <h2>The model we are going to ship</h2>
+  <pre><code class="language-python" data-trim>
+tree = DecisionTreeClassifier(max_depth=8, min_samples_leaf=20,
+                              random_state=42).fit(X_train, y_train)
+
+print(f"leaves          {tree.get_n_leaves()}")     # 163
+print(f"columns used    {tree.tree_.feature[tree.tree_.feature >= 0].size}")
+print(f"train accuracy  {tree.score(X_train, y_train):.1%}")   # 74.4%
+  </code></pre>
+  <table class="smaller">
+    <tr><th></th><th class="num">Unconstrained</th><th class="num">Depth 8</th></tr>
+    <tr><td>Leaves</td><td class="num">5,699</td><td class="num hit">163</td></tr>
+    <tr><td>Mean conditions per justification</td><td class="num fail">17.88</td><td class="num hit">7.97</td></tr>
+    <tr><td>Smallest leaf</td><td class="num fail">1</td><td class="num hit">20</td></tr>
+    <tr><td>Training accuracy</td><td class="num">100.0%</td><td class="num">74.4%</td></tr>
+    <tr><td>Cross-validated accuracy</td><td class="num">82.1%</td><td class="num">73.4%</td></tr>
+  </table>
 </section>
 
 <!-- 48 -->
-<section data-menu-title="Why l1 gives zeros">
-  <h2>Why $\ell_1$ produces exact zeros and $\ell_2$ does not</h2>
-  <p class="small">Look at the gradient of the penalty near $\theta_j = 0$.</p>
-  <div class="cols">
-    <div>
-      <p class="small"><strong>Ridge</strong></p>
-      <div class="eqn-box"><small>$$\frac{\partial}{\partial\theta_j}\,\theta_j^{2} = 2\theta_j \;\to\; 0$$</small></div>
-      <p class="smaller">The push towards zero fades as you approach zero. You get there only in the limit.</p>
-    </div>
-    <div>
-      <p class="small"><strong>Lasso</strong></p>
-      <div class="eqn-box"><small>$$\frac{\partial}{\partial\theta_j}\,\left|\theta_j\right| = \pm 1$$</small></div>
-      <p class="smaller">The push has constant size right up to zero. If the data pulls with less than $\alpha$, the weight arrives at zero and stops.</p>
-    </div>
-  </div>
-  <p class="small">At $\theta_j = 0$ the absolute value is not differentiable;
-  the subgradient is the whole interval $[-1, 1]$, and any data pull inside that
-  interval is held at exactly zero.</p>
+<section data-menu-title="Train vs CV, again">
+  <h2>Notice what the two accuracy rows now do</h2>
+  <p class="lead">74.4% on the training set, 73.4% cross-validated. A gap of
+  <strong>one point</strong>.</p>
+  <p>The unconstrained tree&rsquo;s gap was <strong>17.9 points</strong>. The
+  depth limit did not only shorten the justification; it removed almost all of
+  the overfitting as a side effect.</p>
+  <p class="small muted">Which raises a question we are not going to answer
+  today: if the constrained tree barely overfits, why is it still nearly nine
+  points worse than the unconstrained one? Hold that thought.</p>
+  <aside class="notes">Someone usually asks this unprompted. If they do, praise
+  it and refuse to answer — it is the whole of the next lecture.</aside>
 </section>
 
+<!-- ==================================================================== -->
+<!-- READING THE TREE                                                     -->
+<!-- ==================================================================== -->
+
 <!-- 49 -->
-<section data-menu-title="Elastic net">
-  <h2>Fix 3 &middot; Elastic net &mdash; both at once</h2>
-  <div class="eqn-box">
-    $$J(\boldsymbol\theta) \;=\; \mathrm{MSE}
-      \;+\; 2 r \alpha \sum_j \left|\theta_j\right|
-      \;+\; \frac{(1-r)\alpha}{m} \sum_j \theta_j^{2}$$
+<section data-menu-title="Export it">
+  <h2>Now read it</h2>
+  <p class="small">Two ways, and you want both. The classic route is
+  <code>export_graphviz</code> to a <code>.dot</code> file:</p>
+  <pre><code class="language-python" data-trim>
+from sklearn.tree import export_graphviz
+
+export_graphviz(tree, out_file="cover.dot", max_depth=2,
+                feature_names=X_train.columns, filled=True)
+# then, in a terminal:  dot -Tpng cover.dot -o cover.png
+  </code></pre>
+  <div class="panel panel-fail">
+    <span class="panel-title">And on a machine with no Graphviz</span>
+    That last line needs the <code>dot</code> binary, which is not installed on a
+    stock Colab runtime and is not a Python package. The call succeeds, writes a
+    file, and nothing renders. <em>(Non-examinable: this is tooling, not machine
+    learning.)</em>
   </div>
-  <p class="small">$r$ is the mix &mdash; <code>l1_ratio</code> in
-  Scikit-Learn. $r = 0$ is ridge, $r = 1$ is lasso.</p>
-  <div class="panel panel-book">
-    Prefer some regularisation to none. Ridge is a good default; if only a few
-    features matter, prefer lasso or elastic net &mdash; and prefer elastic net
-    to lasso when features are correlated or outnumber the instances, because
-    lasso behaves erratically there.
-  </div>
-  <p class="small fail">Both conditions hold for us: 143 columns from 712 rows,
-  and $\text{Age}$ and $\text{Age}^2$ are about as correlated as two columns
-  get.</p>
 </section>
 
 <!-- 50 -->
-<section data-menu-title="The sweep">
-  <h2>Sweep $\alpha$ &mdash; on the degree-5 model that failed</h2>
+<section data-menu-title="plot_tree">
+  <h2>The route with no external binary</h2>
   <pre><code class="language-python" data-trim>
-Cs = np.logspace(-4, 4, 17)
+from sklearn.tree import plot_tree
+import matplotlib.pyplot as plt
 
-for name, kw in (("ridge",   dict(penalty="l2", solver="lbfgs")),
-                 ("lasso",   dict(penalty="l1", solver="saga")),
-                 ("elastic", dict(penalty="elasticnet", solver="saga",
-                                  l1_ratio=0.5, max_iter=3000))):
-    for C in Cs:
-        s = cross_val_score(pipeline(degree=5, C=C, **kw),
-                            X_train, y_train, cv=cv,
-                            scoring="neg_log_loss")
+fig, ax = plt.subplots(figsize=(11.5, 3.7))
+plot_tree(tree, max_depth=2, feature_names=X_train.columns,
+          class_names=COVER_NAMES, filled=True, proportion=True, ax=ax)
   </code></pre>
-  <p class="small">Three penalties, 17 values of <code>C</code>, ten folds each.
-  Note <code>solver=</code> changes: not every solver supports every penalty, and
-  Scikit-Learn raises rather than silently ignoring the request.</p>
-  <p class="smaller muted">About five minutes on a free Colab CPU runtime.
-  Timings are <strong>not examinable</strong>.</p>
+  <p class="small"><code>plot_tree</code> draws into a matplotlib axis, so it
+  works anywhere matplotlib does. <code>max_depth=2</code> is essential: all
+  eight levels at a readable font size is about two metres of paper.</p>
 </section>
 
 <!-- FIG -->
-<section class="figslide" data-menu-title="◆ The penalty sweep">
-  <h2>What the penalty buys at degree 5</h2>
+<section class="figslide" data-menu-title="◆ The tree">
+  <h2>The top three levels of the model</h2>
   <figure class="fig fig-wide">
-    <img src="../assets/figures/l06-alpha-curve.svg"
-         alt="Cross-validated log loss against C on a log axis for ridge, lasso and elastic net, each with its minimum marked; a black dashed line at 1.96 marks the unregularised degree-5 model and a green dotted line at 0.468 marks the best unregularised degree.">
+    <img src="../assets/figures/l07-tree.svg"
+         alt="The top three levels of the depth-8 decision tree: the root splits on elevation at 3,046 metres, both children split on elevation again or on wilderness area and soil type, and each node shows its share of the training set and its majority class.">
   </figure>
-  <p class="takeaway">Every curve is far below the dashed line. None of them
-  reaches the dotted one.</p>
+  <p class="takeaway">The first three questions the model asks about any patch in
+  Colorado. Two of them are about elevation.</p>
 </section>
 
 <!-- 51 -->
-<section data-menu-title="Reading the sweep">
-  <h2>Reading it</h2>
-  <table class="smaller">
-    <tr><th>Penalty at degree 5</th><th class="num">Best <code>C</code></th><th class="num">Log loss</th><th class="num">Non-zero weights</th></tr>
-    <tr><td>none &mdash; what you built</td><td class="num">&mdash;</td><td class="num fail">1.922</td><td class="num">143</td></tr>
-    <tr><td>ridge</td><td class="num">0.01</td><td class="num">0.706</td><td class="num">143</td></tr>
-    <tr><td>elastic net, $r = 0.5$</td><td class="num">0.0001</td><td class="num">0.684</td><td class="num">3</td></tr>
-    <tr><td>lasso</td><td class="num">0.00032</td><td class="num hit">0.683</td><td class="num">3</td></tr>
-  </table>
-  <p class="small">Ridge alone removes 1.251 of log
-  loss. Lasso removes 1.274 and throws away
-  140 of the 143 columns while doing it.</p>
+<section data-menu-title="The tree as text">
+  <h2>The same thing, as text</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; print(export_text(tree, feature_names=names, max_depth=2))
+|--- Elevation &lt;= 3046
+|   |--- Elevation &lt;= 2510
+|   |   |--- Wild_0 &lt;= 0
+|   |   |   |--- truncated branch of depth 6
+|   |   |--- Wild_0 &gt;  0
+|   |   |   |--- truncated branch of depth 5
+|   |--- Elevation &gt;  2510
+|   |   |--- Soil_3 &lt;= 0
+|   |   |   |--- truncated branch of depth 6
+  </code></pre>
+  <p class="small"><code>export_text</code> needs no plotting library at all, and
+  it is what you paste into an email. For a model whose selling point is that a
+  person can read it, that matters.</p>
 </section>
 
 <!-- 52 -->
-<section data-menu-title="The uncomfortable result">
-  <h2>And now the uncomfortable part</h2>
+<section data-menu-title="Reading a node">
+  <h2>Reading one node</h2>
   <table class="smaller">
-    <tr><th>Model</th><th class="num">Cross-validated log loss</th></tr>
-    <tr><td>Degree 5, lasso, tuned</td><td class="num">0.683</td></tr>
-    <tr><td>Degree 2, no penalty at all</td><td class="num hit">0.467</td></tr>
+    <tr><th>Field</th><th>Meaning</th></tr>
+    <tr><td><code>Elevation &lt;= 3046.5</code></td><td>the question; go left if true</td></tr>
+    <tr><td><code>gini = 0.65</code></td><td>impurity here &mdash; 0 would be a single species</td></tr>
+    <tr><td><code>samples = 48,000</code></td><td>training patches that reached this node</td></tr>
+    <tr><td><code>value = [0.36, 0.49, ...]</code></td><td>their class distribution, seven entries</td></tr>
+    <tr><td><code>class = Lodgepole Pine</code></td><td>the majority &mdash; what a leaf here would predict</td></tr>
   </table>
-  <p class="lead fail">The best regularised degree-5 model does not beat the
-  plain degree-2 model you already had.</p>
-  <p class="small">Regularisation repaired an over-complex model. It did not turn
-  it into a better one than the simple model, because there was never much bias
-  to buy back &mdash; the decomposition said so an hour ago, and this is what
-  that sentence looks like in a table.</p>
-  <aside class="notes">Resist the urge to soften this. The honest result is the
-  interesting one: regularisation is a repair, not an upgrade, and choosing the
-  right capacity in the first place beats penalising the wrong one.</aside>
+  <p class="small">The threshold is 3,046.5 rather than 3,046 because CART puts
+  the split <strong>midway between two adjacent observed values</strong>. Nothing
+  in the data sits at 3,046.5 metres.</p>
+  <p class="small muted">Trees need no feature scaling at all. Splitting on
+  $x_k \le t_k$ is invariant under any monotone transformation of $x_k$, so
+  standardising the columns changes the thresholds and nothing else.</p>
 </section>
 
 <!-- 53 -->
-<section data-menu-title="What regularisation is for">
-  <h2>So what is regularisation actually for?</h2>
-  <ul class="tight small">
-    <li><strong>It makes the problem well-posed.</strong> A unique minimiser
-        exists for every $\alpha &gt; 0$, whatever the columns do</li>
-    <li><strong>It makes capacity a continuous dial.</strong> Degree is an
-        integer; $\alpha$ is not, so you can sit between two degrees</li>
-    <li><strong>It is insurance.</strong> When you cannot know the right capacity
-        in advance &mdash; which is usually &mdash; it bounds the damage</li>
-    <li><strong>It selects.</strong> Lasso&rsquo;s 32 columns are a hypothesis
-        about which features matter, generated by the fit</li>
-  </ul>
-  <p class="small muted">What it is <em>not</em> is a way to make an
-  over-parameterised model beat a well-chosen one on a dataset this small.</p>
+<section data-menu-title="Trace a prediction">
+  <h2>Trace one prediction, all the way down</h2>
+  <pre><code class="language-python" data-trim>
+def justify(tree, x, names):
+    t, node, out = tree.tree_, 0, []
+    while t.children_left[node] != -1:
+        f, thr = t.feature[node], t.threshold[node]
+        left = x[f] &lt;= thr
+        out.append((names[f], "&lt;=" if left else "&gt;", thr, x[f]))
+        node = t.children_left[node] if left else t.children_right[node]
+    return out, node
+  </code></pre>
+  <p class="small">Twelve lines, no library beyond what is already imported. The
+  entire justification mechanism is <code>tree_.children_left</code>,
+  <code>tree_.feature</code> and <code>tree_.threshold</code>.</p>
 </section>
 
 <!-- 54 -->
-<section data-menu-title="Coefficient paths">
-  <h2>Watch the weights as $\alpha$ moves</h2>
-  <pre><code class="language-python" data-trim>
-paths = []
-for C in np.logspace(-3, 3, 25):
-    m = pipeline(degree=5, C=C, penalty=pen, solver=sol).fit(X_train, y_train)
-    paths.append(m[-1].coef_[0].copy())          # 143 weights per row
+<section data-menu-title="The trace">
+  <h2>One patch, eight conditions</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; justify(tree, X_test.iloc[27].values, names)
+1. Elevation   = 3,763  &gt;  3,046
+2. Elevation   = 3,763  &gt;  3,306
+3. Wild_2      = 1      &gt;  0
+4. Soil_31     = 0      &lt;= 0
+5. Elevation   = 3,763  &gt;  3,360
+6. HDist_Fire  = 3,020  &gt;  364
+7. Soil_26     = 0      &lt;= 0
+8. Shade_Noon  = 200    &lt;= 244
+-&gt; Krummholz  (90% of the 481 training patches in this leaf)
   </code></pre>
-  <p class="small">One row of 143 weights per value of <code>C</code>. Plot each
-  weight against <code>C</code> and the two penalties become visibly different
-  objects.</p>
+  <p class="fix small">Eight conditions. Every one of them a measurement a
+  surveyor took. The true species of that patch is Krummholz.</p>
 </section>
 
 <!-- FIG -->
-<section class="figslide" data-menu-title="◆ Coefficient paths">
-  <h2>Ridge shrinks; lasso selects</h2>
+<section class="figslide" data-menu-title="◆ The justification">
+  <h2>What the regulator actually receives</h2>
   <figure class="fig fig-wide">
-    <img src="../assets/figures/l06-paths.svg"
-         alt="Two panels of coefficient paths against C on a log axis: on the left the ridge paths fan out smoothly from zero without any reaching zero, on the right the lasso paths leave zero one at a time, with a green line showing the count of non-zero weights rising from 3 to 143.">
+    <img src="../assets/figures/d-justify.svg"
+         alt="A patch enters the tree, passes through eight conditions on elevation, wilderness area, soil type and hillshade, arrives at a leaf of 481 training patches that is 90 per cent Krummholz, and the path is rewritten as a sentence.">
   </figure>
-  <p class="takeaway">Left, every path approaches zero and none arrives. Right,
-  paths sit at exactly zero and leave one at a time as the penalty weakens.</p>
+  <p class="takeaway fix">The path <em>is</em> the justification. No extra
+  machinery, no approximation, no second model explaining the first.</p>
 </section>
 
 <!-- 55 -->
-<section data-menu-title="Reading the paths">
-  <h2>Two things to read off those paths</h2>
+<section data-menu-title="What the leaf says">
+  <h2>Read the leaf carefully</h2>
+  <p class="lead">90% of the 481 training patches in that leaf were Krummholz.</p>
   <ul class="tight small">
-    <li><strong>At the strong-penalty end both panels are flat near zero.</strong>
-        That is the high-bias regime: the model is being told to ignore the data,
-        and it obeys</li>
-    <li><strong>At the weak-penalty end the ridge paths fan out to $\pm 6$ and
-        beyond.</strong> That is the separation of Diagnosis 2 reasserting itself
-        as the penalty stops holding it down</li>
+    <li>That is a statement about <strong>481 training patches</strong>, not a
+        probability that this patch is Krummholz</li>
+    <li><code>predict_proba</code> returns exactly those leaf proportions &mdash;
+        so a tree&rsquo;s &ldquo;probabilities&rdquo; are piecewise constant, and
+        identical for every patch reaching the same leaf</li>
+    <li>A leaf holding 3 patches, all of one species, reports 100%</li>
   </ul>
-  <div class="panel">
-    The lasso count rises from 3 non-zero weights to all 143 across six decades
-    of <code>C</code>. Every point on that line is a different model, and
-    cross-validation is what picks one.
+  <div class="panel panel-fail">
+    <span class="panel-title">The honest sentence</span>
+    &ldquo;Of the training patches that satisfied these eight conditions, 90%
+    were Krummholz.&rdquo; Not &ldquo;this patch is 90% likely to be
+    Krummholz.&rdquo;
   </div>
 </section>
 
 <!-- 56 -->
-<section data-menu-title="Early stopping">
-  <h2>Fix 4 &middot; Early stopping</h2>
-  <p>A different way to keep the weights small: fit iteratively, and
-  <strong>stop before the optimiser gets where it is going</strong>.</p>
-  <ul class="tight small">
-    <li>Gradient descent starts at $\boldsymbol\theta = \mathbf{0}$ &mdash; the
-        smallest possible model</li>
-    <li>Each epoch moves the weights outward, fitting more of the training set</li>
-    <li>Held-out error falls, reaches a minimum, and then rises</li>
-  </ul>
-  <p class="fix small">Géron calls it a &ldquo;beautiful free lunch&rdquo;: no
-  penalty term, no extra hyperparameter in the objective &mdash; just a stopping
-  rule.</p>
+<section data-menu-title="predict_proba">
+  <h2>How many patches is a leaf built on?</h2>
+  <pre><code class="language-python" data-trim>
+leaves = tree.apply(X_train)                 # leaf id per training patch
+sizes = np.bincount(leaves)
+sizes = sizes[sizes &gt; 0]
+
+print(f"leaves {len(sizes)}   smallest {sizes.min()}   median "
+      f"{int(np.median(sizes))}")
+  </code></pre>
+  <p class="small">A leaf built on four patches and a leaf built on four thousand
+  produce the same kind of sentence and deserve very different amounts of trust.
+  The count belongs in the justification, which is why it is in ours.</p>
+  <p class="small fix">Which is why the shipped tree carries
+  <code>min_samples_leaf=20</code>. Every justification it produces now rests
+  on at least twenty surveyed patches, so &ldquo;100% of the 1&rdquo; cannot be
+  written &mdash; and the smallest leaf here holds
+  <strong>20</strong>, not one.</p>
 </section>
+
+<!-- ==================================================================== -->
+<!-- THE ERRORS                                                           -->
+<!-- ==================================================================== -->
 
 <!-- 57 -->
-<section data-menu-title="Early stopping in code">
-  <h2>In code, one epoch at a time</h2>
-  <pre><code class="language-python" data-trim>
-clf = SGDClassifier(loss="log_loss", penalty=None, learning_rate="constant",
-                    eta0=0.0015, random_state=42,
-                    warm_start=True, max_iter=1, tol=None)
-
-for epoch in range(500):
-    clf.fit(Z_train, y_a)                 # warm_start: resume, do not restart
-    train.append(log_loss(y_a, clf.predict_proba(Z_train)[:, 1], labels=[0, 1]))
-    valid.append(log_loss(y_b, clf.predict_proba(Z_valid)[:, 1], labels=[0, 1]))
-  </code></pre>
-  <p class="small"><code>warm_start=True</code> with <code>max_iter=1</code> is
-  what makes each call one epoch of the <em>same</em> fit.
-  <code>penalty=None</code> is deliberate: we want early stopping to be the only
-  regularisation in the room.</p>
-  <p class="smaller muted">The transform is fitted on the training part only,
-  outside the loop, and applied to both. Refitting it inside the loop would be
-  the previous application&rsquo;s leak, 500 times over.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Early stopping">
-  <h2>The point where the two curves disagree</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l06-early-stopping.svg"
-         alt="Training and validation log loss against epoch over 500 epochs of stochastic gradient descent on the degree-5 features; the validation curve reaches its minimum at epoch 105 and then rises while the training curve keeps falling.">
-  </figure>
-  <p class="takeaway">Epoch 105 is the best model this run ever holds. Running to
-  epoch 500 costs 1.274 of log loss and never announces it.</p>
+<section data-menu-title="The headline number">
+  <h2>The headline number</h2>
+  <p class="big-num">73.3%</p>
+  <p class="lead">on 12,000 test patches the model has never seen.</p>
+  <p class="small muted">Against a constant baseline of 48.8%. We touch the test
+  set once, here, and then not again.</p>
 </section>
 
 <!-- 58 -->
-<section data-menu-title="Reading the stopping curve">
-  <h2>Reading it honestly</h2>
-  <table class="smaller">
-    <tr><th></th><th class="num">Epoch 105</th><th class="num">Epoch 500</th></tr>
-    <tr><td>Training log loss</td><td class="num">2.458</td><td class="num">2.219</td></tr>
-    <tr><td>Validation log loss</td><td class="num hit">2.371</td><td class="num fail">3.645</td></tr>
-  </table>
-  <ul class="tight small">
-    <li>These are bad numbers in absolute terms. Plain SGD at a constant learning
-        rate on 143 correlated columns is a poor optimiser, and we are showing
-        <em>the shape</em>, not a competitive model</li>
-    <li>The training curve is noisy &mdash; each epoch shuffles &mdash; so
-        &ldquo;stop at the minimum&rdquo; needs a patience rule in practice, not
-        a single-epoch comparison</li>
-  </ul>
-  <p class="small fail">The stopping epoch is chosen by looking at held-out data.
-  It is a hyperparameter like any other, and it must be chosen on validation
-  rows, never on the test set.</p>
+<section data-menu-title="Never one number">
+  <h2>One number for seven species is a summary, not a finding</h2>
+  <p class="small">The metric slide promised a per-class breakdown. This is the
+  part of the report the agency will actually argue about.</p>
+  <pre><code class="language-python" data-trim>
+from sklearn.metrics import ConfusionMatrixDisplay, classification_report
+
+print(classification_report(y_test, tree.predict(X_test),
+                            target_names=cover_names, digits=3))
+ConfusionMatrixDisplay.from_estimator(tree, X_test, y_test,
+                                      normalize="true")
+  </code></pre>
+  <p class="small muted"><code>normalize="true"</code> divides by the row total,
+  so each row reads as &ldquo;of the patches that really were this species, where
+  did they go?&rdquo;</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Confusion">
+  <h2>Where the errors actually are</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l07-confusion.svg"
+         alt="Row-normalised confusion matrix of the depth-8 tree on the test set; the diagonal is strong for Lodgepole Pine and Ponderosa Pine, and the Aspen row sends 93 per cent of its patches to Lodgepole Pine.">
+  </figure>
+  <p class="takeaway fail">Read the Aspen row. Almost all of it is in the
+  Lodgepole Pine column.</p>
 </section>
 
 <!-- 59 -->
-<section data-menu-title="Four repairs">
-  <h2>Four repairs, one idea</h2>
+<section data-menu-title="Per-class recall">
+  <h2>The same matrix, as one column of numbers</h2>
   <table class="smaller">
-    <tr><th>Repair</th><th>Keeps $\lVert\boldsymbol\theta\rVert$ small by</th><th>Zeros?</th></tr>
-    <tr><td>Ridge</td><td>penalising $\sum\theta_j^2$</td><td class="miss">no</td></tr>
-    <tr><td>Lasso</td><td>penalising $\sum\left|\theta_j\right|$</td><td class="hit">yes</td></tr>
-    <tr><td>Elastic net</td><td>both, mixed by $r$</td><td class="hit">yes</td></tr>
-    <tr><td>Early stopping</td><td>starting at zero and not going far</td><td class="miss">no</td></tr>
+    <tr><th>Cover type</th><th class="num">Share of the data</th><th class="num">Recall</th></tr>
+    <tr><td>Lodgepole Pine</td><td class="num">48.8%</td><td class="num hit">82.5%</td></tr>
+    <tr><td>Ponderosa Pine</td><td class="num">6.2%</td><td class="num hit">79.4%</td></tr>
+    <tr><td>Spruce/Fir</td><td class="num">36.5%</td><td class="num">69.9%</td></tr>
+    <tr><td>Krummholz</td><td class="num">3.5%</td><td class="num">59.2%</td></tr>
+    <tr><td>Cottonwood/Willow</td><td class="num">0.5%</td><td class="num">56.1%</td></tr>
+    <tr><td>Douglas-fir</td><td class="num">3.0%</td><td class="num fail">12.8%</td></tr>
+    <tr><td>Aspen</td><td class="num">1.6%</td><td class="num fail">3.1%</td></tr>
   </table>
-  <p class="small">All four reduce variance by reducing the set of models the fit
-  is allowed to reach. All four increase bias. Which is why all four need
-  $\alpha$ &mdash; or an epoch count &mdash; chosen by cross-validation.</p>
+  <p class="small fail">The model finds 3 Aspen patches in every hundred. On the
+  headline number, that costs 1.6 points and is invisible.</p>
 </section>
 
 <!-- 60 -->
-<section data-menu-title="Weak vs usable prompt">
-  <h2>The assistant, asked badly</h2>
-  <div class="cols">
-    <div>
-      <div class="panel panel-fail small">
-        &ldquo;Find the best value of <code>C</code> for my logistic regression
-        and tell me how well it does.&rdquo;
-      </div>
-    </div>
-    <div>
-      <p class="small">Every word is reasonable. Nothing in it says
-      <em>on what data</em> the best <code>C</code> is to be found, or
-      <em>on what data</em> &ldquo;how well it does&rdquo; is to be measured.</p>
-    </div>
+<section data-menu-title="Why Aspen">
+  <h2>Why the tree cannot see Aspen</h2>
+  <ul class="tight small">
+    <li>Aspen is 1.6% of the training set. A split that isolates it improves the
+        weighted Gini by very little, so CART never chooses one</li>
+    <li>With <code>max_depth=8</code> there are at most 256 leaves to allocate
+        across seven species. The greedy algorithm spends them where the
+        instances are</li>
+    <li>Both effects point the same way: <strong>the impurity criterion is a
+        weighted average, and a rare class carries almost no weight</strong></li>
+  </ul>
+  <div class="panel">
+    This is the second application&rsquo;s lesson arriving in a new costume.
+    Accuracy under imbalance rewards ignoring the rare class, and here the model
+    obliges on two species out of seven.
   </div>
-  <p class="small muted">This is the failure this lecture is about: choosing a
-  hyperparameter is choosing a model, and it consumes whatever data it looks at.</p>
+  <p class="small muted">Fixes exist &mdash; <code>class_weight="balanced"</code>
+  reweights the impurity. Try it in the notebook and see what it does to the
+  headline number.</p>
 </section>
 
 <!-- 61 -->
-<section data-menu-title="What it returns">
-  <h2>What it returns &mdash; and it runs</h2>
-  <pre><code class="language-python" data-trim data-line-numbers>
-best_C, best_score = None, np.inf
-
-for C in np.logspace(-4, 4, 17):
-    m = pipeline(degree=3, C=C).fit(X_train, y_train)
-    score = log_loss(y_test, m.predict_proba(X_test)[:, 1])
-    if score < best_score:
-        best_C, best_score = C, score
-
-print(f"best C = {best_C:g}, log loss = {best_score:.4f}")
-  </code></pre>
-  <p class="small">No exception, no warning, a plausible number, and a variable
-  named <code>best_score</code> that a reader will quote in a report.</p>
+<section data-menu-title="Report it">
+  <h2>What goes in the report</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">One sentence the agency needs</span>
+    &ldquo;This map is 73.3% accurate overall, but it identifies fewer than one
+    Aspen stand in ten. Do not use it to decide anything about Aspen or
+    Douglas-fir.&rdquo;
+  </div>
+  <p class="small">A model can be fit for one purpose and unfit for another, in
+  the same deployment. Saying which is which is the job.</p>
+  <p class="small muted">This is the fairness slice from the first application,
+  applied to classes rather than to districts. Same idea, same obligation.</p>
 </section>
 
+<!-- ==================================================================== -->
+<!-- LOOSE ENDS FROM CHAPTER 5                                            -->
+<!-- ==================================================================== -->
+
 <!-- 62 -->
-<section data-menu-title="The review question">
-  <h2>The review question that catches it</h2>
-  <div class="panel panel-fix">
-    <span class="panel-title">Reviewer question 1</span>
-    <strong>What touched the test set?</strong>
+<section data-menu-title="Regression trees">
+  <h2>The same algorithm, for regression</h2>
+  <p class="small">You already used one, in the first application, and it scored
+  zero on its training data. <code>DecisionTreeRegressor</code> is CART with the
+  impurity replaced by the mean squared error of the node:</p>
+  <div class="eqn-box">
+    $$J(k, t_k) \;=\; \frac{m_{\text{left}}}{m}\,\text{MSE}_{\text{left}} \;+\; \frac{m_{\text{right}}}{m}\,\text{MSE}_{\text{right}}$$
   </div>
-  <p class="small">Answer: seventeen models did, and then we reported the score of
-  whichever one it liked best. <code>best_score</code> is a
-  <strong>minimum over seventeen noisy estimates</strong>, and the minimum of
-  noisy estimates is biased downward even if every estimate is individually
-  unbiased.</p>
-  <p class="small fail">The code never writes to the test set. It reads it
-  eighteen times, and reading is enough.</p>
+  <p class="small">A leaf predicts the <strong>mean</strong> of the training
+  targets that reached it, so a regression tree&rsquo;s output is a step function
+  &mdash; piecewise constant, with one step per leaf.</p>
+  <p class="small muted">That is why an unconstrained regression tree can drive
+  its training error to exactly zero: enough leaves and every training row gets
+  its own step.</p>
 </section>
 
 <!-- 63 -->
-<section data-menu-title="Measure the damage">
-  <h2>Measure the damage &mdash; do not assert it</h2>
-  <p class="small">20 seeds. For each: split, run the loop above, and also run the
-  honest version that picks <code>C</code> by 5-fold cross-validation inside the
-  training part. Score both on the same held-out rows.</p>
-  <table class="smaller">
-    <tr><th>Reported number</th><th class="num">Log loss</th><th class="num">Spread over 20 seeds</th></tr>
-    <tr><td>Chosen on the test set, scored on the test set</td><td class="num fail">0.451</td><td class="num">0.049</td></tr>
-    <tr><td>Chosen by cross-validation, scored on the test set</td><td class="num hit">0.470</td><td class="num">0.045</td></tr>
-  </table>
-  <p><strong>Optimism: 0.019 of log loss, about 4.1%.</strong> On 13 seeds of 20
-  the dishonest number is the flattering one, and the two procedures picked the
-  same <code>C</code> on 7 seeds of 20.</p>
+<section data-menu-title="Axis-aligned">
+  <h2>One weakness worth knowing about</h2>
+  <p>Every split is of the form $x_k \le t_k$, so every decision boundary is
+  <strong>perpendicular to an axis</strong>.</p>
+  <ul class="tight small">
+    <li>A boundary that genuinely runs at 45&deg; has to be approximated by a
+        staircase of axis-aligned steps</li>
+    <li>Rotate the data and the tree changes completely, even though the problem
+        did not</li>
+    <li>Géron&rsquo;s remedy: apply PCA first, which tends to orient the axes
+        better &mdash; that is Chapter 8, and Application 5</li>
+  </ul>
+  <p class="small fail">Sensitivity to a transformation that does not change the
+  problem is a warning sign. Keep it in mind for the next lecture, where a
+  related sensitivity turns out to be the whole diagnosis.</p>
 </section>
 
 <!-- 64 -->
-<section data-menu-title="Read the damage carefully">
-  <h2>Read that result carefully &mdash; both halves</h2>
-  <div class="cols">
-    <div>
-      <p class="small"><strong>It is small.</strong></p>
-      <p class="smaller">0.019 against a fold spread of 0.045. On a single split you would never see it. Seventeen candidates is a small search.</p>
-    </div>
-    <div>
-      <p class="small"><strong>It is real, and it is one-sided.</strong></p>
-      <p class="smaller">13 seeds of 20 flattered. It never averages away, and it grows with the number of candidates you try.</p>
-    </div>
-  </div>
-  <div class="panel panel-fail">
-    <span class="panel-title">The decision rule</span>
-    Small search, small bias. Search a thousand configurations &mdash; which a
-    randomised search does in an afternoon &mdash; and the same procedure will
-    hand you a number that is confidently wrong. The size of the lie scales with
-    how hard you looked.
-  </div>
-  <p class="small muted">Reporting &ldquo;the effect is small here&rdquo; is the
-  lesson only if you also say <em>why</em> it is small here.</p>
+<section data-menu-title="What we did not do">
+  <h2>What we deliberately did not do</h2>
+  <ul class="tight small">
+    <li><strong>Scale anything.</strong> Trees are invariant under monotone
+        transformations of individual features</li>
+    <li><strong>Encode anything.</strong> Wilderness area and soil type arrived
+        one-hot; a tree splits a 0/1 column at 0.5 and reads as
+        &ldquo;is it soil type 26?&rdquo;</li>
+    <li><strong>Touch the test set more than once.</strong> Every choice was made
+        on cross-validated folds of the training set</li>
+  </ul>
+  <p class="small muted">Three of the four steps of the first application&rsquo;s
+  pipeline turned out to be unnecessary for this model. Knowing <em>which</em>
+  preprocessing a model needs is worth more than applying all of it by reflex.</p>
 </section>
 
-<!-- 65 -->
-<section data-menu-title="The corrected spec">
-  <h2>The specification that would have prevented it</h2>
-  <div class="panel panel-fix">
-    <span class="panel-title">Say this instead</span>
-    &ldquo;Choose <code>C</code> by 10-fold cross-validation <strong>on the
-    training set only</strong>, using <code>GridSearchCV</code> over a pipeline.
-    Refit the winner on the full training set. Then evaluate once on the test
-    set and report both numbers separately, with the fold spread.&rdquo;
-  </div>
-  <pre><code class="language-python" data-trim>
-gs = GridSearchCV(pipeline(degree=3), {"clf__C": np.logspace(-4, 4, 17)},
-                  scoring="neg_log_loss", cv=cv).fit(X_train, y_train)
+<!-- ==================================================================== -->
+<!-- CLOSE                                                                -->
+<!-- ==================================================================== -->
 
-print(-gs.best_score_)                                    # the honest estimate
-print(log_loss(y_test, gs.predict_proba(X_test)[:, 1]))   # the test set, once
-  </code></pre>
-  <p class="small muted">Same seventeen candidates, same runtime, two numbers
-  instead of one. The second is allowed to be worse than the first.</p>
+<!-- 65 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Conditions per justification</th></tr>
+    <tr><td>Always &ldquo;Lodgepole Pine&rdquo;</td><td class="num">48.8%</td><td class="num">0</td></tr>
+    <tr><td>Depth-3 tree</td><td class="num">67.9%</td><td class="num hit">3</td></tr>
+    <tr><td>Depth-8 tree &mdash; <strong>ours</strong></td><td class="num hit">73.3%</td><td class="num hit">7.99</td></tr>
+    <tr><td>Unconstrained tree</td><td class="num">82.6%</td><td class="num fail">17.88</td></tr>
+  </table>
+  <p>Row three meets the brief. It is 24.5 points better than doing nothing, and
+  every one of its predictions comes with a reason a surveyor could check on
+  site.</p>
 </section>
 
 <!-- 66 -->
-<section data-menu-title="The lesson">
-  <h2>The lesson</h2>
-  <p class="lead">A hyperparameter chosen on a set of rows makes that set part of
-  the training procedure.</p>
-  <p>It is in the silent-failure catalogue, it was diagnosed once already in
-  Lecture 2, and it came back in a lecture whose entire subject is choosing a
-  hyperparameter. That is not a coincidence &mdash; it is what makes it worth
-  a catalogue.</p>
-  <p class="small muted">The assistant did exactly what was asked. The
-  specification was the defect.</p>
+<section data-menu-title="★ Commit the result">
+  <h2>Write the result on the same sheet</h2>
+  <div class="commit">
+    <span class="commit-label">Add one line</span>
+    <p class="small">
+      Accuracy I expected: <span class="blank"></span><br>
+      Accuracy I obtained: <span class="blank"></span>
+    </p>
+  </div>
+  <p class="small">Bring the sheet to the next lecture. We open by comparing the
+  two out loud.</p>
+  <p class="small muted">Do not tidy anything up between now and then. The
+  notebook as it stands is the object the next ninety minutes operate on.</p>
 </section>
 
-<!-- ==================================================================== -->
-<!-- RE-MEASURE (15 min)                                                  -->
-<!-- ==================================================================== -->
-
 <!-- 67 -->
-<section class="divider" data-menu-title="◆ Re-measure">
-  <p class="kicker">Part four</p>
-  <h1>Re-measure</h1>
-  <p class="clock">15 minutes</p>
+<section data-menu-title="A question to take away">
+  <h2>One question to take away</h2>
+  <p class="lead">You now have a model whose every prediction comes with a rule
+  a person can read.</p>
+  <p class="lead">Your neighbour has fitted the same model, with the same
+  hyperparameters, to <em>almost</em> the same training set.</p>
+  <p class="lead fail">How similar are the two sets of rules?</p>
+  <aside class="notes">Do not answer. Do not hint. Let them speculate for thirty
+  seconds and then move on — the measurement opens the next lecture and it
+  surprises almost everyone.</aside>
 </section>
 
 <!-- 68 -->
-<section data-menu-title="The test set, once">
-  <h2>The test set. Once</h2>
-  <pre><code class="language-python" data-trim>
-for name, m in candidates.items():
-    m.fit(X_train, y_train)
-    p = m.predict_proba(X_test)[:, 1]
-    print(name,
-          log_loss(y_test, p, labels=[0, 1]),
-          brier_score_loss(y_test, p),
-          accuracy_score(y_test, p >= 0.5))
-  </code></pre>
-  <p class="small">179 passengers, untouched since the split in the previous
-  lecture. Five candidates, all of whose hyperparameters were fixed before this
-  cell ran.</p>
-</section>
-
-<!-- 69 -->
-<section data-menu-title="The final table">
-  <h2>The honest numbers</h2>
-  <table class="smaller">
-    <tr><th>Model</th><th class="num">Log loss</th><th class="num">Brier</th><th class="num">Accuracy</th></tr>
-    <tr><td>Degree 5, no penalty &mdash; where the sweep ended</td><td class="num fail">1.727</td><td class="num">0.189</td><td class="num">74.9%</td></tr>
-    <tr><td>Degree 5, ridge, tuned</td><td class="num">0.804</td><td class="num">0.173</td><td class="num">77.1%</td></tr>
-    <tr><td>Degree 5, lasso, tuned</td><td class="num">0.677</td><td class="num">0.244</td><td class="num">65.9%</td></tr>
-    <tr><td>Degree 1, Scikit-Learn defaults</td><td class="num">0.433</td><td class="num">0.134</td><td class="num hit">82.7%</td></tr>
-    <tr><td>Degree 2, no penalty &mdash; <strong>the winner</strong></td><td class="num hit">0.427</td><td class="num hit">0.134</td><td class="num hit">82.7%</td></tr>
-  </table>
-  <p class="small">The winner improves on the degree-5 model you finished the
-  previous lecture with by <strong>1.285</strong> of log loss.</p>
-</section>
-
-<!-- 70 -->
-<section data-menu-title="The awkward winner">
-  <h2>The winner is a model with no repair in it</h2>
-  <p class="lead">Degree 2, no penalty, chosen by reading a held-out curve.</p>
-  <p class="small">Row four is worth as much attention: <code>LogisticRegression()</code>
-  with every default left alone &mdash; degree 1, <code>C=1.0</code>,
-  <code>penalty="l2"</code> &mdash; scores 0.433. Statistically it is the same
-  model as the winner.</p>
-  <div class="panel panel-fail">
-    <span class="panel-title">The result nobody wanted</span>
-    Ninety minutes of ridge, lasso, elastic net and early stopping, and the best
-    system on the test set is a two-line model that any of you could have written
-    before Lecture 5 started.
-  </div>
-  <p class="small fix">Report it anyway. The alternative is choosing the
-  interesting model over the better one, which is the failure this whole course
-  is built to prevent.</p>
-</section>
-
-<!-- 71 -->
-<section data-menu-title="What was it all for">
-  <h2>Then what was any of it for?</h2>
-  <ul class="tight small">
-    <li>You now know <strong>why</strong> degree 2 wins, and can say it in three
-        terms rather than as a preference</li>
-    <li>You know the floor is about <strong>0.121</strong> Brier and that no
-        model of these columns goes below it</li>
-    <li>You know that the degree-5 model was not merely worse but
-        <em>ill-posed</em>, and exactly which term repairs that</li>
-    <li>You have four repairs, measured, for the next dataset &mdash; where 143
-        columns will arrive with a hundred times as many rows and the answer will
-        be different</li>
-  </ul>
-  <p class="small muted">A negative result that you can explain is a result. A
-  positive result you cannot explain is a liability.</p>
-</section>
-
-<!-- 72 -->
-<section data-menu-title="★ Your numbers">
-  <h2>Compare with your sheet</h2>
-  <table>
-    <tr><th>Quantity</th><th class="num">Value</th></tr>
-    <tr><td>Anchor &mdash; report the base rate to everyone</td><td class="num">0.666</td></tr>
-    <tr><td>Best cross-validated log loss</td><td class="num">0.467</td></tr>
-    <tr><td>Final, on the test set</td><td class="num hit">0.427</td></tr>
-    <tr><td>Test accuracy at a 0.5 cut-off</td><td class="num">82.7%</td></tr>
-    <tr><td>Majority-class accuracy on the test set</td><td class="num">61.5%</td></tr>
-  </table>
-  <p class="small">Compare like with like: on the cross-validated numbers you
-  beat the anchor by 0.198 of log loss, and the majority class by 20.6 points of
-  accuracy. Both are real. Neither is what you wrote down.</p>
-  <aside class="notes">Ask for a show of hands: who predicted a number below
-  0.427? Who below 0.467? Most will have been optimistic, and that is the point
-  to name out loud rather than the accuracy.</aside>
-</section>
-
-<!-- 73 -->
-<section data-menu-title="Is that good">
-  <h2>Is that good?</h2>
-  <p class="small">The brief asked for calibrated probabilities and a defensible
-  cut-off, not for a headline. Against that brief:</p>
-  <ul class="tight small">
-    <li>Log loss 0.427 against an anchor of 0.666 &mdash; the model has genuinely
-        learned something beyond the base rate</li>
-    <li>Brier 0.134 against a measured floor of about 0.121. <strong>There is
-        roughly 0.013 of Brier score left on the table</strong>, total, for any
-        model of these columns</li>
-    <li>179 test passengers, so a difference of a point or two of accuracy is
-        three or four people and is not a difference</li>
-  </ul>
-  <p class="fix small">That third bullet is the one to put in the report. A test
-  set of 179 cannot support the comparisons people will want to make with it.</p>
-</section>
-
-<!-- 74 -->
-<section data-menu-title="Red-team">
-  <h2>Red-team exercise</h2>
-  <p>Swap notebooks with the team beside you. You have eight minutes.</p>
-  <ol class="tight small">
-    <li>What touched the test set? Count every read, not every write</li>
-    <li>What was fitted, and on what? Is the scaler inside the cross-validated
-        pipeline, or fitted once outside it?</li>
-    <li>What is the shape here? How many columns does the degree-5 pipeline
-        actually produce, and how many rows are there?</li>
-    <li>What was dropped? Which passengers have an imputed <code>Age</code>, and
-        how many?</li>
-    <li>What is the default you did not ask for? Find every
-        <code>LogisticRegression</code> whose <code>C</code> was never stated</li>
-  </ol>
-  <p class="fail small">Report what you found, not what you would have done
-  differently.</p>
-</section>
-
-<!-- 75 -->
-<section data-menu-title="Regularisation checklist">
-  <h2>Regularisation checklist &mdash; keep this</h2>
-  <ul class="tight small">
-    <li>Is the data scaled, <em>inside</em> the pipeline, before a penalty is applied?</li>
-    <li>Is the bias term excluded from the penalty?</li>
-    <li>Was $\alpha$ (or <code>C</code>) chosen on validation folds, never on the test set?</li>
-    <li>If the search sat at the edge of the grid, was the grid widened?</li>
-    <li>Is the unregularised model in the comparison table, so the penalty has to earn its place?</li>
-    <li>Was the stopping epoch, if any, chosen on held-out rows?</li>
-  </ul>
-  <p class="small muted">Six questions. The fifth is the one people skip, and it
-  is the one that would have saved us an hour today.</p>
-</section>
-
-<!-- 76 -->
-<section data-menu-title="Red-teaming with the assistant">
-  <h2>Can the assistant red-team this one?</h2>
-  <div class="cols">
-    <div>
-      <div class="panel panel-fail small">
-        &ldquo;Review my hyperparameter tuning.&rdquo;
-        <br><span class="small muted">Returns a lecture on grid search. Finds nothing.</span>
-      </div>
-    </div>
-    <div>
-      <div class="panel panel-fix small">
-        &ldquo;This notebook reports log loss 0.451. Assume it is optimistic.
-        List every line at which <code>X_test</code> or <code>y_test</code> is
-        read, in order, and say what was decided after each read.&rdquo;
-      </div>
-    </div>
-  </div>
-  <p class="small">The second prompt names a number to disbelieve and asks for an
-  <em>ordered</em> list. Ordering is what turns &ldquo;the test set is used
-  here&rdquo; into &ldquo;the test set is used before the choice&rdquo;.</p>
-</section>
-
-<!-- 77 -->
-<section data-menu-title="What it will and will not catch">
-  <h2>What that catches &mdash; and what it does not</h2>
-  <table class="smaller">
-    <tr><th>Defect</th><th>Found from the code alone?</th></tr>
-    <tr><td>Scoring candidates on <code>X_test</code> inside a loop</td><td class="hit">yes</td></tr>
-    <tr><td>Scaler fitted outside the cross-validated pipeline</td><td class="hit">yes</td></tr>
-    <tr><td><code>C</code> left at its default and then reported as &ldquo;unregularised&rdquo;</td><td class="hit">yes</td></tr>
-    <tr><td><code>FamilySize = SibSp + Parch + 1</code> being collinear</td><td class="miss">no &mdash; that is arithmetic about your columns</td></tr>
-    <tr><td>Whether 0.427 is good enough to deploy</td><td class="miss">no &mdash; that is the stakeholder&rsquo;s</td></tr>
-  </table>
-  <p class="small fail">The two it misses are the two that needed a mathematician
-  and a conversation. Those are yours.</p>
-</section>
-
-<!-- 78 -->
-<section data-menu-title="The prompt that prevents it">
-  <h2>Moving the check upstream</h2>
-  <p>Add one clause to the standing constraint you wrote down in Lecture 2:</p>
-  <div class="panel panel-fix">
-    <span class="panel-title">Standing constraint, extended</span>
-    &ldquo;Split before anything is fitted. All preprocessing lives inside a
-    <code>Pipeline</code> passed to cross-validation. Nothing derived from the
-    test set may appear in the training path &mdash; <strong>including the choice
-    of any hyperparameter</strong>. Fixed random seed. Print the fold scores, not
-    just the mean.&rdquo;
-  </div>
-  <p class="small muted">Eleven added words. They are the whole of today&rsquo;s
-  assistant failure.</p>
-</section>
-
-<!-- 79 -->
 <section data-menu-title="★ All notebooks">
   <h2>Every notebook in the course</h2>
   <div class="nb-index">
@@ -1476,54 +1348,52 @@ for name, m in candidates.items():
   </div>
 </section>
 
-<!-- 80 -->
+<!-- 69 -->
 <section data-menu-title="Summary">
   <h2>What we learned</h2>
   <ol class="tight smaller">
-    <li>Expected squared error splits exactly into squared bias, variance and
-        irreducible noise, over the training set and the label</li>
-    <li>The gap between a training curve and a held-out curve <em>is</em> the
-        variance term; curves plateauing together mean bias instead</li>
-    <li>The noise floor is measurable: 0.121 Brier, from passengers whose
-        recorded values are identical</li>
-    <li>Degree 5 failed three ways at once &mdash; high variance, no minimiser,
-        and no unique minimiser</li>
-    <li>Adding $\alpha\mathbf{A}$ fixes the last two for every $\alpha &gt; 0$,
-        which is Thread 1&rsquo;s open question answered</li>
-    <li>Ridge shrinks, lasso selects, elastic net does both, early stopping does
-        it by not arriving</li>
-    <li>None of them beat choosing the right degree. Regularisation is a repair,
-        not an upgrade</li>
-    <li>A hyperparameter chosen on the test set costs 0.019 of log loss here, and
-        the cost grows with the size of the search</li>
+    <li>A stakeholder can constrain the <em>shape</em> of the answer, not only
+        its quality &mdash; and that constraint selects the model family before
+        the data does</li>
+    <li>A decision tree predicts by traversing a path of $x_k \le t_k$ tests; the
+        path <em>is</em> the justification, and it costs nothing extra</li>
+    <li>CART is greedy, minimises weighted Gini impurity, and is used because the
+        optimal tree is NP-complete</li>
+    <li><code>feature_importances_</code> is one vector for the whole model. It
+        cannot justify an individual prediction, and asking for
+        &ldquo;interpretability&rdquo; will get you it anyway</li>
+    <li><code>max_depth</code> bought 7.9 points of accuracy between 8 and 18
+        &mdash; measure the price of a constraint and report it</li>
+    <li>73.3% overall, and 3.1% recall on Aspen. Never ship the first number
+        without the second</li>
   </ol>
 </section>
 
-<!-- 81 -->
+<!-- 70 -->
 <section data-menu-title="References">
   <h2>In the book</h2>
   <table>
     <tr><th>Topic</th><th>Chapter</th></tr>
-    <tr><td>Learning curves; the bias/variance trade-off</td><td>4</td></tr>
-    <tr><td>Ridge, lasso, elastic net</td><td>4</td></tr>
-    <tr><td>Early stopping</td><td>4</td></tr>
-    <tr><td>Regularised logistic regression; <code>C</code></td><td>4</td></tr>
-    <tr><td>The normal equation and its invertibility</td><td>4</td></tr>
+    <tr><td>Training, visualising and reading a decision tree</td><td>5</td></tr>
+    <tr><td>Gini impurity, the CART cost function, greediness</td><td>5</td></tr>
+    <tr><td>Computational complexity of trees</td><td>5</td></tr>
+    <tr><td>Regularisation hyperparameters; nonparametric models</td><td>5</td></tr>
+    <tr><td>Regression trees; sensitivity to axis orientation</td><td>5</td></tr>
+    <tr><td>Multiclass classification, confusion matrices, recall</td><td>3</td></tr>
     <tr><td>Cross-validation and grid search</td><td>2</td></tr>
-    <tr><td>Overfitting, underfitting, generalisation error</td><td>1</td></tr>
   </table>
 </section>
 
-<!-- 82 -->
+<!-- 71 -->
 <section class="divider" data-menu-title="Next">
-  <p class="kicker">Lecture 7 &middot; Build</p>
-  <h1>A model the<br>regulator will accept</h1>
+  <p class="kicker">Lecture 8 &middot; Fix</p>
+  <h1>Retrain it and watch it change</h1>
   <p class="small">
-    A new application, and a new kind of constraint<br>
-    The stakeholder does not care how accurate it is<br>
-    until you can tell them <em>why</em> it said that
+    Your model is legible, defensible, and 73.3% accurate<br>
+    Your neighbour&rsquo;s, fitted to almost the same data,<br>
+    disagrees with it about one patch in eleven
   </p>
-  <p class="clock">Bring a fresh commitment sheet</p>
+  <p class="clock">Bring your commitment sheet</p>
 </section>
 
 </div>
@@ -1531,8 +1401,8 @@ for name, m in candidates.items():
 
 <div class="deck-footer">
   Applications of Machine Learning
-  <span class="sep">&middot;</span> Lecture 6
-  <span class="sep">&middot;</span> Reading a learning curve
+  <span class="sep">&middot;</span> Lecture 7
+  <span class="sep">&middot;</span> A model the regulator will accept
 </div>
 
 <script src="../lib/reveal.js/dist/reveal.js"></script>

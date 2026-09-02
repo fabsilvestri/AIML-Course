@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Lecture 7 — A model the regulator will accept. Build, CoverType, Géron Ch. 5.
+Lecture 8 — Retrain it and watch it change. Fix, CoverType, Géron Ch. 5–6.
 
 Exports build() -> list[cell]; tools/make_notebooks.py wraps it.
 
-Structure mirrors the deck: brief -> data -> metric -> anchor -> commitment ->
-build -> the worked assistant failure -> read the tree -> record the number.
-Every structural step is followed by an assertion, and anything slower than
-about twenty seconds states its wall clock, because "no output" otherwise reads
-as "it hung" to an audience of mathematicians rather than engineers.
+Structure mirrors the deck: thread -> diagnosis -> repair -> re-measure ->
+red-team. Every import this notebook needs is in its own setup cell: a notebook
+that only runs because the previous one is still in the kernel is not
+reproducible.
 """
 
 from __future__ import annotations
@@ -22,649 +21,776 @@ from make_notebooks import code, header, md, SETUP, SETUP_PROMPT        # noqa: 
 from _prompt import prompt                                # noqa: E402
 
 
-COVER_LOADER = code('''
-# --- the data ----------------------------------------------------------------
-# ~30 s and about 11 MB the first time; cached by scikit-learn afterwards.
+REBUILD = code('''
+# --- everything this notebook needs, in one place ----------------------------
 from sklearn.datasets import fetch_covtype
+from sklearn.dummy import DummyClassifier
+from sklearn.ensemble import (BaggingClassifier, ExtraTreesClassifier,
+                              RandomForestClassifier)
+from sklearn.inspection import permutation_importance
 from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier
+import matplotlib.pyplot as plt
 
 COVER_NAMES = ["Spruce/Fir", "Lodgepole Pine", "Ponderosa Pine",
                "Cottonwood/Willow", "Aspen", "Douglas-fir", "Krummholz"]
 
-cover = fetch_covtype(as_frame=True)
-X_all, y_all = cover.data, cover.target
-
-print(f"{len(X_all):,} patches, {X_all.shape[1]} columns, "
-      f"{y_all.nunique()} cover types")
-assert X_all.shape == (581012, 54), f"unexpected shape {X_all.shape}"
-assert sorted(y_all.unique()) == [1, 2, 3, 4, 5, 6, 7]   # 1-based, not 0-based
-''')
-
-
-SUBSAMPLE = code('''
-# A tenth of the data, stratified so the class proportions are preserved
-# exactly. This is a stated compromise for speed, not a silent one: a 200-tree
-# ensemble on all 581,012 rows takes minutes per fit.
-X, _, y, _ = train_test_split(X_all, y_all, train_size=60_000,
-                              stratify=y_all, random_state=RANDOM_STATE)
-
+cover = fetch_covtype(as_frame=True)              # ~5 s from the local cache
+X, _, y, _ = train_test_split(cover.data, cover.target, train_size=60_000,
+                              stratify=cover.target, random_state=RANDOM_STATE)
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, stratify=y, random_state=RANDOM_STATE)
+del cover
 
-del cover, X_all, y_all          # 250 MB we no longer need
+tree = DecisionTreeClassifier(max_depth=8, min_samples_leaf=1,
+                              random_state=RANDOM_STATE).fit(X_train, y_train)
+tree_acc = tree.score(X_test, y_test)
+baseline = DummyClassifier(strategy="most_frequent").fit(
+    X_train, y_train).score(X_test, y_test)
 
 assert len(X_train) == 48_000 and len(X_test) == 12_000
-assert set(X_train.index).isdisjoint(X_test.index), "the split overlaps"
-assert X_train.isna().sum().sum() == 0, "unexpected missing values"
-print(f"train {len(X_train):,}   test {len(X_test):,}")
+print("same split as the previous lecture — the seed guarantees it")
+print(f"depth-8 tree {tree_acc:.1%}   constant baseline {baseline:.1%}")
 ''')
 
 
 def build() -> list:
-    cells = header(7, "A model the regulator will accept", "build", "Chapter 5")
+    cells = header(
+        8, "Retrain it and watch it change", "fix", "Chapters 5 & 6",
+        thread="impurity, and why averaging reduces variance")
 
     cells += [
-        md("## 1 · Setup"), SETUP_PROMPT, SETUP,
+        md("## 1 · Setup and where we left off"), SETUP_PROMPT, SETUP, prompt(
+                                                                label="rebuild the previous lecture's state",
+                                                                input="the same dataset, the same seed",
+                                                                output="the identical 48,000 / 12,000 split, the depth-8 tree, and the constant baseline",
+                                                                constraint="reproduce the split from the SEED, not by loading anything the previous notebook saved",
+                                                                check="assert the two sizes — if the split differs, every comparison in this notebook is against a different model. `del cover` after splitting. 250 MB held for no reason is how a free runtime dies three cells later, blaming the wrong cell."),
+                                                         REBUILD,
 
         md("""
-## 2 · The brief
+## 2 · Thread 4, part one — Gini and entropy
 
-You work for the agency that manages a national forest. It has to publish a map
-of **forest cover type** — which of seven species dominates each 30 by 30 metre
-patch — over an area far too large to survey on foot.
+CART minimises **Gini impurity**, $G = 1 - \\sum_k p_k^2$. Scikit-Learn offers
+**entropy**, $H = -\\sum_k p_k \\log_2 p_k$, instead. Both are zero exactly at
+purity and maximal at uniformity. Géron says the choice usually makes little
+difference.
 
-The map goes into the public record. It decides where logging is permitted,
-which parcels qualify for habitat protection, and how fire risk is modelled.
+That is a claim about behaviour, and we have a dataset. Plot the two first.
+"""),
+        prompt(
+            label="Gini and entropy, drawn before they are compared",
+            input="p from 0 to 1",
+            output="both impurity curves, entropy halved to put them on one scale, and their difference",
+            constraint="stop short of 0 and 1 — `log2(0)` is a warning and a NaN, and the NaN then silently propagates into the difference plot",
+            check="when two quantities are on different scales, rescale before comparing shapes and say what you divided by. The `/2` here is in the legend for exactly that reason."),
+        code('''
+p = np.linspace(1e-9, 1 - 1e-9, 400)
+gini = 2 * p * (1 - p)
+ent = -(p * np.log2(p) + (1 - p) * np.log2(1 - p))
 
-The regulator's constraint, and it is not negotiable:
+fig, ax = plt.subplots(1, 2, figsize=(11, 3.4))
+ax[0].plot(p, gini, label="Gini  2p(1-p)")
+ax[0].plot(p, ent, label="entropy  H(p), bits")
+ax[0].plot(p, ent / 2, "--", label="entropy / 2")
+ax[0].set_xlabel("p"); ax[0].set_ylabel("impurity"); ax[0].legend(fontsize=8)
+ax[1].plot(p, ent / 2 - gini, color="firebrick")
+ax[1].axhline(0, lw=1, color="grey")
+ax[1].set_xlabel("p"); ax[1].set_ylabel("entropy/2 - Gini")
+plt.tight_layout(); plt.show()
 
-> Every individual prediction must be accompanied by a **human-readable
-> justification**: a statement, in terms of the measured quantities, of why
-> *this* patch was classified as *that* species.
+gap = (ent / 2 - gini)
+print(f"largest gap {gap.max():.4f} at p = {p[gap.argmax()]:.3f}")
+'''),
+        md("""
+Same zeros, same maximum, different shoulders: entropy penalises a nearly-pure
+node more heavily. Now measure whether that changes anything, **paired** — both
+criteria on the same resample each time, so the resample-to-resample noise
+cancels.
 
-Negotiated into something testable:
+⏱ **about 40 seconds** — twenty fits.
+"""),
+        prompt(
+            label="⏱ 40 s — does the criterion matter",
+            input="ten resamples of the training set",
+            output="how often the root feature agrees, how often the predictions agree, and the paired accuracy difference",
+            constraint="PAIRED — both criteria on the same resample each time, so the resample-to-resample noise cancels",
+            check="'statistically detectable' and 'worth acting on' are different claims needing different evidence. Report the effect size beside the sign count, always."),
+        code('''
+rows = []
+for seed in range(10):
+    Xs, _, ys, _ = train_test_split(X_train, y_train, train_size=0.8,
+                                    stratify=y_train, random_state=seed)
+    rec = {}
+    for crit in ("gini", "entropy"):
+        t = DecisionTreeClassifier(criterion=crit, max_depth=8,
+                                   random_state=RANDOM_STATE).fit(Xs, ys)
+        rec[crit] = t.score(X_test, y_test)
+        rec[crit + "_root"] = int(t.tree_.feature[0])
+        rec[crit + "_pred"] = t.predict(X_test)
+    rec["agree"] = float((rec["gini_pred"] == rec["entropy_pred"]).mean())
+    rows.append(rec)
 
-| Requirement | Testable form |
+diff = np.array([r["entropy"] - r["gini"] for r in rows]) * 100
+same_root = sum(r["gini_root"] == r["entropy_root"] for r in rows)
+
+print(f"same root feature      {same_root} of {len(rows)} resamples")
+print(f"predictions agreeing   {np.mean([r['agree'] for r in rows]):.1%}")
+print(f"entropy - gini         {diff.mean():+.2f} +/- {diff.std():.2f} points")
+print(f"resamples entropy won  {(diff > 0).sum()} of {len(rows)}")
+'''),
+        md("""
+Three statements, all true, and only the third is a recommendation:
+
+1. The effect is **real** — the sign is consistent, and gini wins on 8 of the
+   10 resamples.
+2. The effect is **tiny** — a fraction of a point, against the several points
+   `max_depth` was worth in the previous lecture.
+3. So **do not spend your tuning budget here.** Leave the default.
+
+"Statistically detectable" and "worth acting on" are different claims and need
+different evidence.
+"""),
+
+        md("""
+## 3 · Thread 4, part two — the variance of an average
+
+Forget trees for ten minutes. You have $n$ predictors of the same quantity, each
+with variance $\\sigma^2$, and you average them. Almost everyone answers
+$\\sigma^2/n$, and that is only valid when they are uncorrelated.
+
+For **identically distributed** predictors with common pairwise correlation
+$\\rho$:
+
+$$\\operatorname{Var}\\!\\left(\\frac{1}{n}\\sum_t f_t\\right)
+  = \\frac{1}{n^2}\\Big[n\\sigma^2 + n(n-1)\\rho\\sigma^2\\Big]
+  = \\rho\\sigma^2 + \\frac{(1-\\rho)\\sigma^2}{n}$$
+
+There are $n$ diagonal terms of $\\sigma^2$ and $n(n-1)$ off-diagonal terms of
+$\\rho\\sigma^2$ in the double sum; that is the whole derivation.
+
+**Averaging destroys the independent component and leaves the correlated one
+completely untouched.** Check it numerically before believing it.
+"""),
+        prompt(
+            label="the variance of an average, checked numerically",
+            input="n predictors with unit variance and common pairwise correlation ρ",
+            output="the measured variance of their average, beside ρ + (1−ρ)/n",
+            constraint="build the correlation from a SHARED component plus an independent one — √ρ·shared + √(1−ρ)·own gives exactly the structure the formula assumes",
+            check="assert measured and predicted agree to within 0.02, at every ρ and every n. Anything that lowers ρ by making individual members worse is a trade, not a free lunch — σ² appears in BOTH terms of the formula."),
+        code('''
+def correlated(n, rho, draws, rng):
+    """n predictors, unit variance, common pairwise correlation rho."""
+    shared = rng.standard_normal((draws, 1))
+    own = rng.standard_normal((draws, n))
+    return np.sqrt(rho) * shared + np.sqrt(1 - rho) * own
+
+
+rng = np.random.default_rng(RANDOM_STATE)
+print(f"{'rho':>5s} {'n':>4s} {'measured':>10s} {'formula':>10s}")
+for rho in (0.0, 0.3, 0.8):
+    for n in (1, 5, 50):
+        f = correlated(n, rho, 200_000, rng)
+        measured = f.mean(axis=1).var()
+        formula = rho + (1 - rho) / n
+        print(f"{rho:5.1f} {n:4d} {measured:10.4f} {formula:10.4f}")
+        assert abs(measured - formula) < 0.02
+'''),
+        md("""
+Three limits worth memorising:
+
+| case | variance of the average |
 |---|---|
-| readable by a non-specialist | conditions on the measured columns, not transformed ones |
-| short enough to check | at most **8** conditions per prediction |
-| auditable | same patch, same justification; applicable by hand |
+| $\\rho = 0$ | $\\sigma^2/n$ — the classical result |
+| $\\rho = 1$ | $\\sigma^2$ — averaging is a no-op |
+| $n \\to \\infty$ | $\\rho\\sigma^2$ — the floor |
 
-Note what that does to the model choice. It is made before we look at the data.
+So the way to improve an ensemble is not more members. It is **less correlated**
+members. And anything that lowers $\\rho$ by making individual members worse is a
+trade, not a free lunch: $\\sigma^2$ appears in both terms.
 """),
-
-        md("## 3 · The data"), prompt(
-                                      label="the data",
-                                      input="the CoverType dataset from scikit-learn",
-                                      output="581,012 patches by 54 columns, with the seven species named",
-                                      constraint="print the shape and the label domain — the labels are 1-based, not 0-based, and every index into COVER_NAMES below depends on that",
-                                      check="assert the shape and that the classes are exactly 1 through 7. Assert the label domain, not just the shape. `sorted(y.unique()) == [1..7]` is what tells you the indexing convention before you build anything on it."),
-                               COVER_LOADER,
 
         md("""
-Ten quantitative columns — elevation, aspect, slope, hillshade at three times of
-day, and four distances — plus four wilderness-area indicators and forty soil
-type indicators, both already one-hot. Nothing to impute, nothing to encode.
+## 4 · Diagnose — the question from the end of the last lecture
+
+Your neighbour fitted the same model, same hyperparameters, same seed, to
+*almost* the same training set. How similar are the two sets of rules?
+
+Twenty trees, each on 90% of the same training set, so any two share about 80%
+of their rows.
+
+⏱ **about 30 seconds.**
 """),
         prompt(
-            label="what the columns are",
-            input="the frame",
-            output="the ten quantitative column names and the first few rows",
-            constraint="show the QUANTITATIVE ten separately — the other 44 are already one-hot indicators and printing all 54 hides that structure",
-            check="separate the measured columns from the indicator columns before you look at anything. A mean of 0.03 means something quite different for elevation and for Soil_Type_23."),
+            label="⏱ 30 s — twenty nearly-identical training sets",
+            input="twenty 90% subsamples of the same training rows",
+            output="the accuracy of each tree",
+            constraint="same hyperparameters and same estimator seed every time — only the ROWS change, so any difference is attributable to the data",
+            check="assert twenty prediction vectors of 12,000 each before anything is compared. A spread of about a point across twenty refits. Watching only the headline you would conclude the model is completely stable, and this is the flattering half of the answer."),
         code('''
-print(X_all.columns[:10].tolist())
-print()
-print(X_all.iloc[:3, :6])
+trees, preds, roots, accs = [], [], [], []
+for seed in range(20):
+    Xs, _, ys, _ = train_test_split(X_train, y_train, train_size=0.9,
+                                    stratify=y_train, random_state=1000 + seed)
+    t = DecisionTreeClassifier(max_depth=8, min_samples_leaf=1,
+                               random_state=RANDOM_STATE).fit(Xs, ys)
+    trees.append(t)
+    preds.append(t.predict(X_test))
+    roots.append((int(t.tree_.feature[0]), round(float(t.tree_.threshold[0]), 1)))
+    accs.append(t.score(X_test, y_test))
+
+accs = np.array(accs)
+assert len(preds) == 20 and all(len(p) == 12_000 for p in preds)
+print(f"accuracy  mean {accs.mean():.2%}  sd {accs.std():.2%}  "
+      f"({accs.min():.2%} - {accs.max():.2%})")
+'''),
+        md("""
+A spread of about a point across twenty refits. Watching only the headline
+number, you would conclude the model is completely stable.
+
+That is the flattering half. Now the other one.
+"""),
+        prompt(
+            label="the other half of the answer",
+            input="the twenty prediction vectors",
+            output="pairwise disagreement across all 190 pairs, and the share of patches all twenty agree on",
+            constraint="compare PREDICTIONS, not accuracies — two models with identical accuracy can disagree on one patch in eleven",
+            check="a stable metric is not a stable model — it is evidence you measured the wrong thing. If you make per-instance claims, test per-instance stability."),
+        code('''
+P = np.array(preds)
+disagree = np.array([(P[i] != P[j]).mean()
+                     for i in range(20) for j in range(i + 1, 20)])
+unanimous = (P == P[0]).all(axis=0).mean()
+
+print(f"pairwise disagreement  {disagree.mean():.1%}  "
+      f"({disagree.min():.1%} - {disagree.max():.1%}) over "
+      f"{len(disagree)} pairs")
+print(f"patches all 20 agree on  {unanimous:.1%}")
+'''),
+        prompt(
+            label="what is stable and what is not",
+            input="the twenty trees",
+            output="the root feature, the number of distinct root thresholds, the leaf counts and the columns consulted",
+            constraint="separate the root FEATURE from the root THRESHOLD — the feature is the same every time and the threshold is not",
+            check="report stability at the level at which you make claims. Stable roots justify a statement about elevation; they justify nothing about a parcel."),
+        code('''
+from collections import Counter
+
+print("root feature:", {X_train.columns[f]: c
+                        for (f, _), c in Counter(roots).items()})
+print("distinct root thresholds:", len({thr for _, thr in roots}))
+print("leaves per tree:", min(t.get_n_leaves() for t in trees), "-",
+      max(t.get_n_leaves() for t in trees))
+print("columns consulted:",
+      min(len({int(f) for f in t.tree_.feature if f >= 0}) for t in trees), "-",
+      max(len({int(f) for f in t.tree_.feature if f >= 0}) for t in trees))
+'''),
+        md("""
+### The diagnosis
+
+The part you put on a slide is stable — the root is the same feature every time.
+The part that decides is not: two trees with the same accuracy disagree about one
+prediction in eleven.
+
+Both results are consistent. A tree is a **hierarchy**: the root split is chosen
+from 48,000 patches and wins by a wide margin, but a node eight levels down was
+chosen from a few hundred, where two candidates are often separated by a hair.
+Change one row and everything below that node is a different tree. Accuracy is an
+average over 12,000 patches, and averages hide substitutions.
+
+**A stable metric is not a stable model. It is evidence that you measured the
+wrong thing.**
+
+This is *variance* in the sense of the bias–variance decomposition, and the
+thread tells us exactly what to do about variance: average.
+"""),
+
+        md("""
+## 5 · Fix — bagging
+
+Draw rows with replacement, fit a tree, repeat. Each bootstrap sample contains
+about 63% of the distinct rows. The members are **unconstrained** trees: we want
+low bias from each and we are about to average the variance away.
+
+⏱ **about 40 seconds** — 100 unconstrained trees on 48,000 rows.
+"""),
+        prompt(
+            label="⏱ 40 s — bagging",
+            input="100 unconstrained trees, each on a bootstrap sample",
+            output="the out-of-bag score and the test score",
+            constraint="the members are UNCONSTRAINED — we want low bias from each and we are about to average the variance away",
+            check="oob and test should be close. If oob is much better, something in the pipeline saw the out-of-bag rows anyway."),
+        code('''
+bag = BaggingClassifier(DecisionTreeClassifier(random_state=RANDOM_STATE),
+                        n_estimators=100, bootstrap=True, oob_score=True,
+                        random_state=RANDOM_STATE, n_jobs=-1).fit(X_train, y_train)
+
+print(f"out-of-bag  {bag.oob_score_:.1%}")
+print(f"test        {bag.score(X_test, y_test):.1%}")
+'''),
+        md("""
+A given row is missed by one draw with probability $1 - 1/m$, so by all $m$ draws
+with probability $(1-1/m)^m \\to e^{-1} \\approx 0.368$. Those out-of-bag rows give
+a generalisation estimate with no validation split and no extra fits. It replaces
+the *validation* set, not the test set.
+
+### One trap, worth ten minutes of your life
+
+⚠ **Read before running.** This is the shape question, and it costs an afternoon
+the first time.
+"""),
+        prompt(
+            label="⚠ the trap that costs an afternoon",
+            input="one member of the ensemble and the test set",
+            output="that member's accuracy computed naively, and again mapped through `classes_`",
+            constraint="show the WRONG number first — it is plausible and small rather than an exception, which is what makes it expensive",
+            check="assert the mapped score beats the naive one, so the rescue is demonstrated rather than asserted. Reviewer question 5 — what is the default you did not ask for. Print `ensemble.classes_` beside `member.classes_` any time you reach inside an ensemble."),
+        code('''
+member = bag.estimators_[0]
+print("ensemble labels:", bag.classes_)
+print("member labels:  ", member.classes_)
+
+Xte_arr = X_test.to_numpy()
+naive = (member.predict(Xte_arr) == y_test).mean()
+mapped = (bag.classes_[member.predict(Xte_arr).astype(int)] == y_test).mean()
+
+print(f"\\ncompared directly with y_test: {naive:.1%}   <- looks like a bad model")
+print(f"mapped through classes_:       {mapped:.1%}   <- the truth")
+assert mapped > naive, "the mapping should rescue the score"
+'''),
+        md("""
+Every ensemble in Scikit-Learn re-encodes `y` as positions `0..k-1` before
+handing it to its members, so a member's `predict` returns **positions**, not
+cover types. Comparing them with `y_test` directly gives a plausible-looking
+small number rather than an exception.
+
+Reviewer question 5: *what is the default I did not ask for?* This one.
+"""),
+
+        md("""
+## 6 · Random forests and extra-trees
+
+Bagging randomises the **rows**. A random forest also randomises the
+**columns**: at every node, only $\\lfloor\\sqrt{54}\\rfloor = 7$ features are
+considered. Extra-trees also randomises the **thresholds** — drawn at random
+rather than searched for.
+
+All three exist to reduce one quantity: $\\rho$.
+
+⏱ **about 40 seconds for the three.**
+"""),
+        prompt(
+            label="⏱ 40 s — three ways to decorrelate",
+            input="bagging, random forest, extra-trees with and without the bootstrap",
+            output="each ensemble's accuracy, and the accuracy of ONE of its members",
+            constraint="report the member column too — every mechanism that makes members less alike also makes each of them worse, and that is the trade the formula warned about",
+            check="bagging randomises ROWS, forests also randomise COLUMNS, extra-trees also randomises THRESHOLDS. All three exist to reduce one quantity."),
+        code('''
+ensembles = {
+    "bagging": bag,
+    "forest": RandomForestClassifier(n_estimators=100, max_features="sqrt",
+                                     random_state=RANDOM_STATE, n_jobs=-1),
+    "extra": ExtraTreesClassifier(n_estimators=100, max_features="sqrt",
+                                  bootstrap=False, random_state=RANDOM_STATE,
+                                  n_jobs=-1),
+    "extra_bs": ExtraTreesClassifier(n_estimators=100, max_features="sqrt",
+                                     bootstrap=True, random_state=RANDOM_STATE,
+                                     n_jobs=-1),
+}
+for name, m in ensembles.items():
+    if name != "bagging":
+        m.fit(X_train, y_train)
+    member_acc = (m.classes_[m.estimators_[0].predict(X_test.to_numpy()).astype(int)]
+                  == y_test).mean()
+    print(f"{name:10s} ensemble {m.score(X_test, y_test):.1%}   "
+          f"one member {member_acc:.1%}")
+'''),
+        md("""
+Note the second column. Every mechanism that makes the members less alike also
+makes each of them **worse**. That is the trade the formula warned about.
+
+Scikit-Learn's default for extra-trees is `bootstrap=False` — the random
+thresholds *replace* the bootstrap rather than joining it. `extra_bs` turns it
+back on, and the pair is what separates the two effects.
+"""),
+
+        md("""
+## 7 · Measuring $\\rho$ needs something we do not have
+
+$\\rho$ is the correlation between two members over the randomness of the **whole
+procedure**, which includes which training set you were handed. Conditional on
+one dataset the members are independent by construction, and $\\rho$ would
+measure as zero.
+
+So the experiment needs several *independent* training sets. CoverType has
+581,012 rows, so we can cut disjoint ones and never reuse a row.
+
+⏱ **about 90 seconds.** The lecture's figure uses 20 training sets of 20,000
+rows and 20 members; this is a smaller version of the same experiment, so the
+numbers will be close but not identical.
+"""),
+        prompt(
+            label="⏱ 90 s — the setup for measuring ρ",
+            input="ten DISJOINT training sets of 15,000 rows and one held-out set",
+            output="a function that fits an ensemble per training set and records every member's correctness on every test patch",
+            constraint="the training sets must be disjoint AND disjoint from the test set — ρ is a correlation over the randomness of the whole procedure, including which training set you were handed",
+            check="assert the pool is exactly K×N_Z rows and shares nothing with the test indices. The disjointness assert. If the training pools overlap, the between-group variance is contaminated and ρ comes out too high for a reason you will not find by reading the formula."),
+        code('''
+K, M, N_Z, N_TE = 10, 10, 15_000, 6_000
+
+full = fetch_covtype(as_frame=False)
+rng = np.random.default_rng(RANDOM_STATE)
+perm = rng.permutation(len(full.target))
+te, pool = perm[:N_TE], perm[N_TE:N_TE + K * N_Z]
+Xte, yte = full.data[te], full.target[te]
+
+assert len(pool) == K * N_Z and len(set(pool) & set(te)) == 0
+
+
+def make(kind, n, seed):
+    if kind == "bagging":
+        return BaggingClassifier(DecisionTreeClassifier(random_state=seed),
+                                 n_estimators=n, bootstrap=True,
+                                 random_state=seed, n_jobs=-1)
+    if kind == "forest":
+        return RandomForestClassifier(n_estimators=n, max_features="sqrt",
+                                      random_state=seed, n_jobs=-1)
+    return ExtraTreesClassifier(n_estimators=n, max_features="sqrt",
+                                bootstrap=(kind == "extra_bs"),
+                                random_state=seed, n_jobs=-1)
+
+
+def experiment(kind):
+    S = np.zeros((K, M, N_TE), dtype=np.float32)
+    for k in range(K):
+        idx = pool[k * N_Z:(k + 1) * N_Z]
+        m = make(kind, M, 1000 + k).fit(full.data[idx], full.target[idx])
+        for j, est in enumerate(m.estimators_):
+            S[k, j] = (m.classes_[est.predict(Xte).astype(int)] == yte)
+    return S
+'''),
+        prompt(
+            label="ρ, σ², and the prediction",
+            input="the correctness array, ten training sets by ten members by test patches",
+            output="ρ, σ², the measured variance at n=1 and n=10, and the formula's prediction at n=10",
+            constraint="use the ANOVA estimator — between-group variance minus within-group over M — and clamp it at zero, since an unbiased variance estimate can come out negative on small samples",
+            check="the mechanisms are NOT additive. Feature subsampling does most of the work; random thresholds are largely a substitute for the bootstrap. And nothing gets ρ near zero, because all four ensembles ultimately saw the same rows."),
+        code('''
+def decompose(S):
+    """Split one member's variance into the part its training set explains."""
+    K_, M_, _ = S.shape
+    within = S.var(axis=1, ddof=1).mean(axis=0)        # per test patch
+    between = S.mean(axis=1).var(axis=0, ddof=1)       # per test patch
+    tau2 = np.maximum(between - within / M_, 0.0)      # ANOVA estimator
+    sigma2 = tau2 + within
+    curve = {n: float(S[:, :n].mean(axis=1).var(axis=0, ddof=1).mean())
+             for n in (1, 2, 5, 10)}
+    return dict(rho=float(tau2.mean() / sigma2.mean()),
+                sigma2=float(sigma2.mean()), tau2=float(tau2.mean()),
+                within=float(within.mean()), curve=curve)
+
+
+dec = {}
+for kind in ("bagging", "forest", "extra", "extra_bs"):
+    dec[kind] = decompose(experiment(kind))
+
+print(f"{'':10s} {'rho':>7s} {'sigma^2':>9s} {'V(1)':>9s} {'V(10)':>9s} "
+      f"{'predicted':>10s}")
+for kind, d in dec.items():
+    pred = d["tau2"] + d["within"] / 10
+    print(f"{kind:10s} {d['rho']:7.3f} {d['sigma2']:9.4f} "
+          f"{d['curve'][1]:9.4f} {d['curve'][10]:9.4f} {pred:10.4f}")
+'''),
+        md("""
+The last two columns are the point of the whole lecture: the variance of an
+average of ten members, measured, against
+$\\rho\\sigma^2 + (1-\\rho)\\sigma^2/n$ evaluated at $n = 10$. Nothing was fitted
+to make them agree.
+
+Read the $\\rho$ column carefully. Every variant is below bagging, so the claim
+survives — but the mechanisms are **not additive**. Feature subsampling does most
+of the work; random thresholds are largely a substitute for the bootstrap rather
+than an addition to it.
+
+And there is a floor to the floor: nothing gets $\\rho$ near zero, because all
+four ensembles ultimately saw the same rows. $\\rho$ is not a property of the
+algorithm — it is the share of the variance that comes from *which data you were
+given*.
+"""),
+        prompt(
+            label="the curve and its floor",
+            input="the four decompositions",
+            output="measured variance against n, the fitted curve, and each ρσ² floor",
+            constraint="log y-axis, and draw the floor as a horizontal line per variant — the point of the picture is that the curves flatten onto different floors rather than towards zero",
+            check="plot the measured points and the predicted curve on the same axes. Agreement between two independently computed things is the strongest evidence a notebook can offer."),
+        code('''
+fig, ax = plt.subplots(figsize=(7, 3.6))
+for kind, d in dec.items():
+    ns = sorted(d["curve"])
+    ax.plot(ns, [d["curve"][n] for n in ns], "o", label=kind)
+    nn = np.linspace(1, 10, 60)
+    ax.plot(nn, d["tau2"] + d["within"] / nn, lw=1.5, alpha=0.7)
+    ax.axhline(d["tau2"], ls=":", lw=1)
+ax.set_xlabel("n, members averaged"); ax.set_ylabel("variance of the average")
+ax.set_yscale("log"); ax.legend(fontsize=8)
+plt.tight_layout(); plt.show()
 '''),
 
         md("""
-## 4 · Split before you look
+## 8 · Now the bill
 
-Same rule as the first application, and stratified on the label this time —
-with one class at half a per cent of the data, an unstratified split can hand a
-fold almost none of it.
+We fixed the variance. Ask what happened to the thing we were hired to deliver.
 """),
         prompt(
-               label="a stated compromise, and the split",
-               input="all 581,012 rows",
-               output="a stratified tenth, then a stratified 48,000 / 12,000 split of that",
-               constraint="stratify BOTH times — one class is half a per cent of the data, and an unstratified draw can hand a fold almost none of it",
-               check="assert the two sizes, that the indices are disjoint, and that nothing is missing. `del` the full frames afterwards. 250 MB held for no reason is how a free Colab runtime dies three cells later, and the traceback blames the wrong cell."),
-        SUBSAMPLE,
-
-        md("""
-## 5 · Look at the labels
-
-Take thirty seconds over these counts before scrolling. One number here decides
-what the baseline is.
-"""),
-        prompt(
-            label="look at the labels",
-            input="the training labels",
-            output="how many patches of each species, as a count and a share",
-            constraint="name the species — `4: 1728` is not something anyone can think about",
-            check="assert the counts sum to the training size, and print the commonest-to-rarest ratio. Always print class shares beside class counts. A 48.8% majority is a baseline; 1.6% is a class your impurity criterion will decline to split for."),
+            label="now the bill",
+            input="the forest and the depth-8 tree",
+            output="total leaves and accuracy for each",
+            constraint="count leaves across ALL 100 members — the justification for one prediction is now 100 decision paths and a vote",
+            check="when a fix improves the metric, check what it did to the REQUIREMENT. They are different objects and only one of them was written down by the customer."),
         code('''
-counts = y_train.value_counts()
-for k, n in counts.items():
-    print(f"{COVER_NAMES[k - 1]:20s} {n:6,d}   {n / len(y_train):6.1%}")
+rnd = ensembles["forest"]
+total_leaves = sum(t.get_n_leaves() for t in rnd.estimators_)
 
-assert counts.sum() == len(y_train)
-print(f"\\ncommonest / rarest ratio: {counts.max() / counts.min():.0f}x")
-'''),
-
-        md("""
-## 6 · A number to compare against
-
-Rule 2 of this course: *a metric with nothing to compare it to is decoration.*
-The cheapest possible classifier predicts the commonest species for every patch
-in Colorado, forever.
-"""),
-        prompt(
-            label="the anchor",
-            input="the training labels",
-            output="the accuracy of always predicting the commonest species",
-            constraint="use a real DummyClassifier fitted and scored through the same interface, not the majority share computed by hand",
-            check="print what the dummy can ever predict: one species of seven. An anchor that scores well while being obviously useless is exactly what makes it useful as an anchor."),
-        code('''
-from sklearn.dummy import DummyClassifier
-
-dummy = DummyClassifier(strategy="most_frequent").fit(X_train, y_train)
-baseline = dummy.score(X_test, y_test)
-
-print(f"always '{COVER_NAMES[dummy.predict(X_test.iloc[:1])[0] - 1]}'"
-      f"  ->  {baseline:.1%}")
-print("species it can ever predict: 1 of 7")
-'''),
-
-        md("""
-## 7 · Commit
-
-**Stop. On paper, now.** Not in this notebook — on paper, where you cannot
-quietly revise it.
-
-```
-Metric:                                        ____________
-Accuracy a good system would need:             ____________
-Accuracy I expect from the model I build today: ___________
-```
-
-You are not guessing in the dark: a constant scores 48.8%, and the model has to
-justify every prediction in at most eight conditions.
-"""),
-
-        md("""
-## 8 · One tree, with no constraints at all
-
-A decision tree asks a sequence of questions of the form `x[k] <= t`, and the
-leaf it reaches predicts the majority class of the training patches that reached
-the same leaf. Fit one and look at its shape before looking at its score.
-"""),
-        prompt(
-            label="one tree, unconstrained",
-            input="the 48,000 training patches",
-            output="its depth, its leaf count, and its training accuracy",
-            constraint="look at its SHAPE before its score",
-            check="assert it grew past a thousand leaves — an unconstrained tree on this data should be enormous, and a small one means something was capped by accident. Leaves against rows. Eight patches per leaf is a lookup table; the number is the diagnosis and it takes one line."),
-        code('''
-from sklearn.tree import DecisionTreeClassifier
-
-free = DecisionTreeClassifier(random_state=RANDOM_STATE).fit(X_train, y_train)
-
-print(f"depth           {free.get_depth()}")
-print(f"leaves          {free.get_n_leaves():,}")
-print(f"train accuracy  {free.score(X_train, y_train):.1%}")
-
-assert free.get_n_leaves() > 1000, "expected a large, unconstrained tree"
+print(f"depth-8 tree     {tree.get_n_leaves():>10,d} leaves   "
+      f"{tree_acc:.1%}")
+print(f"100-tree forest  {total_leaves:>10,d} leaves   "
+      f"{rnd.score(X_test, y_test):.1%}")
+print("\\nThe justification for one prediction is now 100 decision paths "
+      "and a vote.")
 '''),
         md("""
-100% on the data it was fitted to. You met that number in the second lecture and
-you know what it means: with 5,699 leaves for 48,000 patches, the tree can put a
-handful of patches in each leaf and look them up.
-
-Measure it honestly, then move on — overfitting is *not* what this lecture is
-about.
-
-⏱ **about 30 seconds** — five fits on 38,400 rows each.
+There is no technical fix for this. The regulator asked for a model whose every
+prediction comes with a human-readable justification, and we have built one that
+is far more accurate and **cannot supply one**. What follows recovers something,
+and it is genuinely less than what was lost.
 """),
-        prompt(
-            label="⏱ 30 s — measure it honestly",
-            input="the unconstrained tree and the training rows",
-            output="cross-validated accuracy with the fold range",
-            constraint="stratified folds, and report the RANGE as well as the mean",
-            check="fold minimum and maximum beside the mean. A mean of 82.6% built from folds spanning four points is a different object from one built from folds spanning half a point."),
-        code('''
-from sklearn.model_selection import StratifiedKFold, cross_val_score
-
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
-free_cv = cross_val_score(free, X_train, y_train, cv=cv, n_jobs=-1)
-
-print(f"cross-validated {free_cv.mean():.1%}  (folds {free_cv.min():.1%} - "
-      f"{free_cv.max():.1%})")
-'''),
 
         md("""
-## 9 · An assistant writes the interpretable model
+## 9 · An assistant explains the forest
 
-Here is a real request and the code it returns. **⚠ Read before running.** It
-runs, it imports nothing exotic, and it prints a ranked list of features under a
-heading that says *why the model predicts what it predicts*.
+> *"The forest replaced our decision tree. Show me which features it relies on,
+> so I can put that in the report to the regulator."*
 
-> *"Train a decision tree on the covertype data and make it interpretable, so I
-> can explain each prediction to a regulator."*
+**⚠ Read before running.** It runs, it is fast, and the top of the list is
+entirely sensible.
 """),
         prompt(
             label="⚠ what the assistant returns",
-            input="'train a decision tree and make it interpretable, so I can explain each prediction to a regulator'",
-            output="the five largest feature importances, under a heading saying why the model predicts what it predicts",
-            constraint="print it exactly as returned — it runs, it imports nothing exotic, and it answers a different question than the one asked",
-            check="count the entries in any explanation you are offered. If there are as many as there are FEATURES rather than as many as there are PREDICTIONS, it is a global summary wearing a local word."),
+            input="'show me which features the forest relies on, for the regulator'",
+            output="the eight largest impurity importances",
+            constraint="print it as returned — it runs, it is fast, and the top of the list is entirely sensible",
+            check="before trusting any ranking, ask what it would look like on a variable you KNOW carries no information. If you cannot answer, add one and find out."),
         code('''
-importances = pd.Series(free.feature_importances_, index=X_train.columns)
-
-print("Why the model predicts what it predicts:")
-print(importances.sort_values(ascending=False).head(5).round(3))
-print(f"\\naccuracy: {free.score(X_test, y_test):.1%}")
-'''),
-
-        md("""
-### Reviewer question 3: what is the shape here?
-
-`feature_importances_` has **54 entries** — one per column, not one per
-prediction. It is the same vector for every patch in Colorado.
-
-The regulator asked why *this* parcel was refused. The answer on offer is
-"elevation matters a lot, in general". That is a description of the training
-run, not a justification.
-
-**Now measure the damage.** The tree *can* justify a prediction — the path from
-root to leaf is a list of conditions. Count them.
-"""),
-        prompt(
-            label="measure the damage — count the conditions",
-            input="a fitted tree and the test patches",
-            output="the mean and maximum number of conditions applied per prediction",
-            constraint="count nodes VISITED minus one — the leaf is not a condition, and an off-by-one here silently reports depth+1",
-            check="assert the maximum path length equals the tree's own reported depth. The assert tying path length back to `get_depth()`. Two independent routes to the same number is how you find out `decision_path` counts the leaf."),
-        code('''
-def path_lengths(tree, X):
-    """Conditions applied per prediction: nodes visited, minus the leaf."""
-    visited = np.asarray(tree.decision_path(X).sum(axis=1)).ravel()
-    return visited - 1
-
-free_len = path_lengths(free, X_test)
-print(f"unconstrained tree:  mean {free_len.mean():.2f}   max {free_len.max()}")
-print(f"the brief allows:    8")
-
-assert free_len.max() == free.get_depth()
+imp = pd.Series(rnd.feature_importances_, index=X_train.columns)
+print("The measurements the model relies on:")
+print(imp.sort_values(ascending=False).head(8).round(3))
 '''),
         md("""
-### The corrected specification
+### The review question: what would the answer look like if it were wrong?
 
-> *"Fit a `DecisionTreeClassifier` with `max_depth=8` on `X_train`. For a given
-> test instance, return the list of `(feature, comparison, threshold, value)`
-> tuples along its decision path, and the class distribution of the leaf it lands
-> in. Assert that the list has at most eight entries. Do not use
-> `feature_importances_`: it is one vector for the whole model."*
+Add a **control**. A column of uniform random numbers cannot possibly carry
+information about which trees grow where. Guess where it ranks among the 55
+before running the cell.
 
-Three additions: the **shape** of the output, the **check**, and an explicit
-prohibition on the plausible wrong answer. The assistant was obedient, not wrong
-— "interpretable" has a common meaning in the literature and it used it.
-"""),
-
-        md("""
-## 10 · What does depth actually buy?
-
-The constraint fixes `max_depth`. Before accepting that, measure what it costs,
-because the number belongs in the report to the agency.
-
-⏱ **about 90 seconds** — twelve depths, five folds each.
+⏱ **about 20 seconds.**
 """),
         prompt(
-            label="⏱ 90 s — what does depth buy",
-            input="depths 1 to 12",
-            output="cross-validated accuracy and leaf count at each depth",
-            constraint="sweep PAST the depth we are allowed to use — the rows we cannot pick are what tell the agency what its constraint costs",
-            check="when a hyperparameter is fixed by the brief, still measure the alternatives — and report the difference as a price, not as a missed opportunity."),
+            label="⏱ 20 s — the control",
+            input="the same data plus one column of uniform random numbers",
+            output="where the decoy ranks among the 55 columns",
+            constraint="add the decoy to BOTH train and test, and refit — a control added to only one side is not a control",
+            check="assert the decoy ranks absurdly high, which is the finding rather than a sanity check. A control column costs one line and turns an unfalsifiable ranking into a measurement. Add one to every importance table you produce."),
         code('''
-rows = []
-for d in range(1, 13):
-    clf = DecisionTreeClassifier(max_depth=d, random_state=RANDOM_STATE)
-    acc = cross_val_score(clf, X_train, y_train, cv=cv, n_jobs=-1).mean()
-    leaves = clf.fit(X_train, y_train).get_n_leaves()
-    rows.append({"max_depth": d, "cv_accuracy": acc, "leaves": leaves})
+rng = np.random.default_rng(RANDOM_STATE)
+X_tr2 = X_train.assign(random_decoy=rng.random(len(X_train)))
+X_te2 = X_test.assign(random_decoy=rng.random(len(X_test)))
 
-depth_table = pd.DataFrame(rows).set_index("max_depth")
-print(depth_table.to_string(float_format=lambda v: f"{v:.4f}"))
-'''),
-        prompt(
-            label="the price, drawn",
-            input="the depth table",
-            output="accuracy against depth, and leaves against depth on a log axis",
-            constraint="log scale on the leaf count — it spans three orders of magnitude, and on a linear axis every depth below 10 is flat on the floor",
-            check="mark the constrained value on both panels. A sweep with no line at the value you actually chose makes the reader do the lookup."),
-        code('''
-import matplotlib.pyplot as plt
+rnd2 = RandomForestClassifier(n_estimators=100, max_features="sqrt",
+                              random_state=RANDOM_STATE,
+                              n_jobs=-1).fit(X_tr2, y_train)
 
-fig, ax = plt.subplots(1, 2, figsize=(11, 3.4))
-ax[0].plot(depth_table.index, depth_table["cv_accuracy"] * 100, "-o")
-ax[0].axvline(8, ls="--", color="green")
-ax[0].set_xlabel("max_depth"); ax[0].set_ylabel("CV accuracy (%)")
-ax[1].semilogy(depth_table.index, depth_table["leaves"], "-o", color="purple")
-ax[1].axvline(8, ls="--", color="green")
-ax[1].set_xlabel("max_depth"); ax[1].set_ylabel("leaves")
-plt.tight_layout(); plt.show()
+imp2 = pd.Series(rnd2.feature_importances_, index=X_tr2.columns)
+order = imp2.sort_values(ascending=False)
+rank = list(order.index).index("random_decoy") + 1
+
+print(f"random_decoy ranks {rank} of {len(imp2)}  "
+      f"(importance {imp2['random_decoy']:.4f})")
+print(f"{(imp2 < imp2['random_decoy']).sum()} real columns rank below it")
+assert rank < 30, "expected the decoy to rank absurdly high"
 '''),
         md("""
-Cross-validated accuracy is still climbing at depth 12 and the number of rules is
-climbing with it. That difference is the measured price of the constraint. Bring
-it to the regulator — perhaps they will trade a condition or two for it. That is
-a conversation, not a `GridSearchCV`.
+### Why impurity importance does that
 
-**Cross-validation does not get a vote on `max_depth` here**, because it is not
-optimising the thing the agency is buying.
-"""),
+`feature_importances_` sums, over every node that split on a feature, the
+weighted impurity reduction that split achieved. Two biases follow directly:
 
-        md("""
-## 11 · Tune what is left, inside the constraint
+- **It is measured on the training data.** A split that reduces impurity on the
+  rows that chose it will do so whether or not the feature is informative.
+- **It favours high-cardinality features.** A continuous column offers thousands
+  of candidate thresholds; a 0/1 soil-type column offers one. More chances to
+  find a lucky split means more accumulated impurity reduction.
 
-`min_samples_leaf` is still ours. Search the whole grid anyway — including the
-depths we may not use — because the rows we cannot pick are what tell the agency
-what its constraint costs.
+Our decoy is continuous and forty of the fifty-four real columns are binary.
 
-⏱ **about 2 minutes** — 24 combinations, five folds each.
-"""),
-        prompt(
-            label="⏱ 2 min — tune what is left",
-            input="a 2-D grid of max_depth and min_samples_leaf",
-            output="the full grid as a pivot table, not just the winner",
-            constraint="search the WHOLE grid including depths we may not use, and print the table rather than `best_params_` alone",
-            check="print the grid as a table whenever two hyperparameters both restrict the same thing. `best_params_` is one cell of it and the shape of the rest is the result."),
-        code('''
-from sklearn.model_selection import GridSearchCV
+The repair: shuffle one column of the **held-out** set, re-score, and see how
+much accuracy falls.
 
-grid = {"max_depth": [4, 6, 8, None],
-        "min_samples_leaf": [1, 5, 20, 50, 200, 500]}
-
-search = GridSearchCV(DecisionTreeClassifier(random_state=RANDOM_STATE),
-                      grid, cv=cv, n_jobs=-1).fit(X_train, y_train)
-
-res = pd.DataFrame(search.cv_results_)
-pivot = res.pivot_table(index="param_max_depth", columns="param_min_samples_leaf",
-                        values="mean_test_score", dropna=False)
-print(pivot.to_string(float_format=lambda v: f"{v:.4f}"))
-print(f"\\nbest overall: {search.best_params_}")
-'''),
-        md("""
-Read two things off that table.
-
-**Along the `max_depth=8` row, `min_samples_leaf` barely matters** — the depth
-limit binds first, so the leaf-size limit has almost nothing left to do.
-
-**Along the `max_depth=None` row it matters enormously** — with no depth limit,
-the leaf size *is* the regularisation.
-
-Two hyperparameters that both restrict the tree do not act independently. A 2-D
-grid shows that; two separate 1-D sweeps would not have.
-"""),
-
-        md("""
-## 12 · The model we are going to ship — overruling the grid
-
-The grid's answer under the cap is `min_samples_leaf=1`. **We are not going to
-ship it.**
-
-The model states its justification as *"90% of the 481 training patches in this
-leaf"*. With a minimum leaf of 1 that sentence can become *"100% of the 1"* — a
-single surveyed patch wearing the grammar of evidence. The brief asks for a
-justification a regulator can audit, and that is not one.
-
-So we overrule the grid, for exactly the reason we overruled it on depth: **when
-the brief constrains the model, the grid does not get a vote.** It costs 0.40
-points of cross-validated accuracy, and that number goes to the agency with
-everything else.
+⏱ **about 60 seconds.** *(`permutation_importance` goes beyond Chapter 6 —
+**not examinable**. It is here because the alternative is to ship the biased
+measurement.)*
 """),
         prompt(
-            label="overruling the grid, deliberately",
-            input="max_depth 8 and a minimum leaf of 20",
-            output="leaves, columns consulted, conditions per prediction, and training accuracy",
-            constraint="min_samples_leaf=20 comes from the BRIEF, not from the grid — the grid's answer under the cap is 1",
-            check="assert no prediction uses more than 8 conditions, which is the brief expressed as an assert. When the brief constrains the model, the grid does not get a vote — and the assert that encodes the brief belongs in the cell that ships the model."),
+            label="⏱ 60 s — the repair",
+            input="the fitted forest and 3,000 HELD-OUT rows",
+            output="permutation importance with its standard deviation",
+            constraint="permute on HELD-OUT data — the whole defect of the impurity version is that it is measured on the rows that chose the splits",
+            check="report the standard deviation. An importance of 0.002 ± 0.004 is zero, and without the second number it reads as a small positive effect."),
         code('''
-AUDITABLE_LEAF = 20        # the brief, not the grid — see the note above
+sub = slice(0, 3000)
+perm = permutation_importance(rnd2, X_te2.iloc[sub], y_test.iloc[sub],
+                              n_repeats=3, random_state=RANDOM_STATE, n_jobs=-1)
 
-tree = DecisionTreeClassifier(max_depth=8, min_samples_leaf=AUDITABLE_LEAF,
-                              random_state=RANDOM_STATE).fit(X_train, y_train)
-
-used = {int(f) for f in tree.tree_.feature if f >= 0}
-lens = path_lengths(tree, X_test)
-
-print(f"leaves                  {tree.get_n_leaves()}")
-print(f"columns consulted       {len(used)} of {X_train.shape[1]}")
-print(f"conditions, mean / max  {lens.mean():.2f} / {lens.max()}")
-print(f"train accuracy          {tree.score(X_train, y_train):.1%}")
-
-assert lens.max() <= 8, "the brief is violated"
-'''),
-        md("""
-The gap between training and cross-validated accuracy has almost vanished. The
-depth limit did not only shorten the justification; it removed nearly all of the
-overfitting as a side effect.
-
-Which raises a question we are **not** answering today: if the constrained tree
-barely overfits, why is it still several points worse than the unconstrained
-one? Hold that thought until the next lecture.
-"""),
-
-        md("""
-## 13 · Read the tree
-
-Two routes. `export_graphviz` writes a `.dot` file, which then needs the `dot`
-binary — not a Python package, and not installed on a stock Colab runtime. The
-call succeeds, writes a file, and nothing renders.
-
-*(Not examinable: this is tooling, not machine learning.)*
-
-`plot_tree` draws into a matplotlib axis and works anywhere matplotlib does.
-`max_depth=2` is essential — all eight levels at a readable size is about two
-metres of paper.
-"""),
-        prompt(
-            label="draw it",
-            input="the shipped tree",
-            output="the top two levels, drawn into a matplotlib axis",
-            constraint="`max_depth=2` in the PLOT call — all eight levels at a readable font is about two metres of paper",
-            check="shorten the feature names before plotting. `Horizontal_Distance_To_Fire_Points` renders as a smear at any font size that fits eight levels on a page."),
-        code('''
-from sklearn.tree import export_text, plot_tree
-
-short = [c.replace("Horizontal_Distance_To_", "HDist_")
-          .replace("Vertical_Distance_To_", "VDist_")
-          .replace("Hillshade_", "Shade_")
-          .replace("Wilderness_Area_", "Wild_")
-          .replace("Soil_Type_", "Soil_") for c in X_train.columns]
-
-fig, ax = plt.subplots(figsize=(13, 4.5))
-plot_tree(tree, max_depth=2, feature_names=short, class_names=COVER_NAMES,
-          filled=True, rounded=True, impurity=False, proportion=True,
-          precision=1, fontsize=8, ax=ax)
-plt.show()
-'''),
-        prompt(
-            label="the version you can paste into an email",
-            input="the same tree",
-            output="the top two levels as indented text",
-            constraint="no plotting library at all — for a model whose selling point is that a person can read it, that matters more than it sounds",
-            check="if a model is sold as interpretable, check that its explanation survives being pasted into an email. A PNG does not."),
-        code('''
-print(export_text(tree, feature_names=short, class_names=COVER_NAMES,
-                  max_depth=2, decimals=0))
-'''),
-        md("""
-`export_text` needs no plotting library at all, and it is what you paste into an
-email. For a model whose selling point is that a person can read it, that
-matters more than it sounds.
-
-The thresholds sit at half-integers — CART puts a split **midway between two
-adjacent observed values**, so nothing in the data sits exactly on one.
-"""),
-
-        md("""
-## 14 · Trace one prediction, all the way down
-
-The entire justification mechanism is three arrays: `tree_.children_left`,
-`tree_.feature` and `tree_.threshold`.
-"""),
-        prompt(
-            label="trace one prediction all the way down",
-            input="one test patch and the fitted tree",
-            output="the conditions it satisfied, and the class distribution of its leaf",
-            constraint="walk `children_left` / `feature` / `threshold` by hand — the whole justification mechanism is those three arrays",
-            check="assert at most 8 conditions AND that the traced class agrees with `predict()`. The assert that the hand-walk agrees with `predict()`. A justification that disagrees with the model it claims to explain is worse than no justification."),
-        code('''
-def justify(tree, x, names):
-    """The conditions one instance satisfied on its way to a leaf."""
-    t, node, out = tree.tree_, 0, []
-    while t.children_left[node] != -1:
-        f, thr = int(t.feature[node]), float(t.threshold[node])
-        left = x[f] <= thr
-        out.append((names[f], "<=" if left else ">", thr, float(x[f])))
-        node = t.children_left[node] if left else t.children_right[node]
-    return out, node
-
-
-i = 27
-x = X_test.iloc[i].values
-conditions, leaf = justify(tree, x, short)
-
-for n, (name, op, thr, val) in enumerate(conditions, 1):
-    print(f"{n}. {name:12s} = {val:8,.0f}  {op:2s} {thr:8,.0f}")
-
-dist = tree.tree_.value[leaf][0]
-print(f"-> {COVER_NAMES[int(dist.argmax())]}  ({dist.max():.0%} of the "
-      f"{int(tree.tree_.n_node_samples[leaf])} training patches in this leaf)")
-print(f"   true class: {COVER_NAMES[int(y_test.iloc[i]) - 1]}")
-
-assert len(conditions) <= 8
-assert COVER_NAMES[int(dist.argmax())] == COVER_NAMES[tree.predict(
-    X_test.iloc[[i]])[0] - 1], "the trace disagrees with predict()"
-'''),
-        md("""
-### Read the leaf carefully
-
-That is a statement about the **training patches in the leaf**, not a probability
-that this patch is that species. `predict_proba` returns exactly those leaf
-proportions, so a tree's "probabilities" are piecewise constant and identical
-for every patch reaching the same leaf.
-
-The honest sentence: *"Of the training patches that satisfied these eight
-conditions, 90% were Krummholz."* Not *"this patch is 90% likely to be
-Krummholz."*
-
-A leaf built on four patches and a leaf built on four thousand produce the same
-kind of sentence and deserve very different amounts of trust — which is why the
-count belongs in the justification.
-"""),
-        prompt(
-            label="how much is each leaf built on",
-            input="the training patches routed through the tree",
-            output="the smallest, median and largest leaf",
-            constraint="drop the zero counts — `bincount` returns a slot for every node id, and the internal nodes are all zeros",
-            check="the minimum leaf size should equal what you set. If it is smaller, `min_samples_leaf` is not doing what you think it is."),
-        code('''
-sizes = np.bincount(tree.apply(X_train))
-sizes = sizes[sizes > 0]
-print(f"leaves {len(sizes)}   smallest {sizes.min()}   "
-      f"median {int(np.median(sizes))}   largest {sizes.max():,}")
-'''),
-
-        md("""
-## 15 · The test set. Once.
-
-Everything above used only training data and cross-validated folds.
-"""),
-        prompt(
-            label="the test set, once",
-            input="the 12,000 held-out patches",
-            output="accuracy against the baseline, and per-class precision and recall",
-            constraint="per-class numbers, not just the headline — the headline is an average over seven very differently sized classes",
-            check="everything above this cell used training data and cross-validated folds. If that is not true of your notebook, this number is not a test score."),
-        code('''
-from sklearn.metrics import ConfusionMatrixDisplay, classification_report
-
-acc = tree.score(X_test, y_test)
-print(f"test accuracy {acc:.1%}   (baseline {baseline:.1%})")
+pi = pd.DataFrame({"mean": perm.importances_mean, "sd": perm.importances_std},
+                  index=X_te2.columns).sort_values("mean", ascending=False)
+print(pi.head(8).round(4))
 print()
-print(classification_report(y_test, tree.predict(X_test),
-                            target_names=COVER_NAMES, digits=3, zero_division=0))
+print("random_decoy:")
+print(pi.loc[["random_decoy"]].round(5))
 '''),
         prompt(
-            label="the confusion matrix, row-normalised",
-            input="the tree and the test patches",
-            output="a seven by seven matrix normalised by row",
-            constraint="`normalize='true'` — each row then reads as 'of the patches that really were this species, where did they go?'",
-            check="why it happens: Aspen is 1.6% of the training set, so a split that isolates it improves the weighted Gini by very little and CART never chooses one. The impurity criterion is a weighted average and a rare class carries almost no weight."),
+            label="the two rankings, side by side",
+            input="both importance measures on the same twelve columns",
+            output="two horizontal bar charts, the decoy coloured differently",
+            constraint="same columns, same order, shared y-axis — the comparison is the figure, and re-sorting each panel independently would destroy it",
+            check="error bars on the right panel. They are what let a reader see that the decoy's bar is not small but absent."),
         code('''
-fig, ax = plt.subplots(figsize=(7, 6))
-ConfusionMatrixDisplay.from_estimator(
-    tree, X_test, y_test, display_labels=COVER_NAMES, normalize="true",
-    cmap="Blues", values_format=".2f", xticks_rotation=45, ax=ax, colorbar=False)
+top = order.head(12).index
+fig, ax = plt.subplots(1, 2, figsize=(11, 3.6), sharey=True)
+colours = ["firebrick" if c == "random_decoy" else "steelblue" for c in top]
+ax[0].barh(range(len(top))[::-1], imp2[top], color=colours)
+ax[0].set_yticks(range(len(top))[::-1], top, fontsize=7)
+ax[0].set_xlabel("impurity importance")
+ax[1].barh(range(len(top))[::-1], pi.loc[top, "mean"], color=colours,
+           xerr=pi.loc[top, "sd"])
+ax[1].axvline(0, lw=1, color="grey")
+ax[1].set_xlabel("permutation importance, held out")
 plt.tight_layout(); plt.show()
 '''),
         md("""
-`normalize="true"` divides by the row total, so each row reads as *"of the
-patches that really were this species, where did they go?"*
+Same model, same columns, same row order. The decoy is near the top on the left
+and indistinguishable from zero on the right.
 
-**Read the Aspen row.** Almost all of it is in the Lodgepole Pine column. The
-model finds a handful of Aspen patches in every hundred, and on the headline
-number that costs about a point and a half and is invisible.
+### What importance can and cannot tell a regulator
 
-Why: Aspen is 1.6% of the training set, so a split that isolates it improves the
-weighted Gini by very little and CART never chooses one. The impurity criterion
-is a weighted average, and a rare class carries almost no weight.
+| Question | Can importance answer it? |
+|---|---|
+| Which measurements should the survey keep collecting? | yes — this is what it is for |
+| Is the model using a variable it legally must not? | yes, as a screen |
+| Why was *this* parcel refused? | **no** |
+| Would removing this column hurt? | no — remove it, refit, and measure |
 
-Try `class_weight="balanced"` below and see what it does to both numbers.
+Row three is the regulator's actual question.
+"""),
+
+        md("""
+## 10 · The rest of Chapter 6, briefly
+
+Everything above trains members **in parallel** and averages them. **Boosting**
+trains them in sequence, each correcting its predecessor — so today's formula
+does not apply to it, and it reduces *bias* rather than variance.
+
+⏱ **about 60 seconds.**
 """),
         prompt(
-            label="what class weighting buys, and costs",
-            input="the same tree with class_weight='balanced'",
-            output="overall accuracy and Aspen recall, each beside its unweighted value",
-            constraint="report BOTH numbers — one goes up and one goes down, and quoting either alone is an argument rather than a measurement",
-            check="any change that improves a rare class will cost the common ones. Show the pair, and let whoever owns the decision make it."),
+            label="⏱ 60 s — boosting, briefly",
+            input="the same training rows",
+            output="its accuracy beside bagging and the legible tree",
+            constraint="early stopping on, and report the iteration count it actually used — `max_iter=100` with early stopping is a ceiling, not a setting",
+            check="stacking trains a blender on cross-validated out-of-fold predictions, and that cross-validation is the only reason stacking is safe. Build it by hand and reviewer question 1 becomes the whole difficulty."),
         code('''
-balanced = DecisionTreeClassifier(max_depth=8, class_weight="balanced",
-                                  random_state=RANDOM_STATE).fit(X_train, y_train)
-rep = classification_report(y_test, balanced.predict(X_test),
-                            target_names=COVER_NAMES, output_dict=True,
-                            zero_division=0)
+from sklearn.ensemble import HistGradientBoostingClassifier
 
-print(f"accuracy      {balanced.score(X_test, y_test):.1%}  "
-      f"(was {acc:.1%})")
-print(f"Aspen recall  {rep['Aspen']['recall']:.1%}")
-print("\\nA different model, answering a different question. Which one the "
-      "agency wants is not a machine learning decision.")
+hgb = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.2,
+                                     early_stopping=True, n_iter_no_change=10,
+                                     random_state=RANDOM_STATE)
+hgb.fit(X_train, y_train)
+
+print(f"histogram gradient boosting  {hgb.score(X_test, y_test):.1%}  "
+      f"({hgb.n_iter_} iterations, early stopping)")
+print(f"bagging                      {bag.score(X_test, y_test):.1%}")
+print(f"the legible depth-8 tree     {tree_acc:.1%}")
+'''),
+        md("""
+`AdaBoost` reweights the misclassified instances; gradient boosting fits each
+new member to the ensemble's residual errors; `StackingClassifier` trains a
+*blender* on cross-validated out-of-fold predictions — and that cross-validation
+is the only reason stacking is safe. Build it by hand and reviewer question 1
+becomes the whole difficulty: what touched the data the blender learns from?
+"""),
+
+        md("""
+## 11 · Re-measure, and score your sheet
+
+| Reality | Test accuracy |
+|---|---|
+| always "Lodgepole Pine" | 48.8% |
+| the legible depth-8 tree | 73.3% |
+| bagged, 200 unconstrained trees | 89.8% |
+
+The diagnosis was instability, not inaccuracy — so test the thing we diagnosed.
+Repeat the twenty-subsample experiment on a forest and predict the answer before
+you run it.
+
+⏱ **about 2 minutes** — twenty forests of 30 trees.
+"""),
+        prompt(
+            label="⏱ 2 min — test the thing we diagnosed",
+            input="the same twenty 90% subsamples, forests of 30 trees",
+            output="pairwise disagreement, beside the single tree's",
+            constraint="the SAME twenty seeds as the single-tree experiment — a stability comparison across different subsamples is not a comparison",
+            check="predict the answer before running it. A repair whose effect you can predict is a repair you understood; one that surprises you is worth another hour."),
+        code('''
+fpreds = []
+for seed in range(20):
+    Xs, _, ys, _ = train_test_split(X_train, y_train, train_size=0.9,
+                                    stratify=y_train, random_state=1000 + seed)
+    f = RandomForestClassifier(n_estimators=30, max_features="sqrt",
+                               random_state=RANDOM_STATE,
+                               n_jobs=-1).fit(Xs, ys)
+    fpreds.append(f.predict(X_test))
+
+F = np.array(fpreds)
+fdis = np.array([(F[i] != F[j]).mean()
+                 for i in range(20) for j in range(i + 1, 20)])
+
+print(f"single tree, pairwise disagreement  {disagree.mean():.1%}")
+print(f"30-tree forest                      {fdis.mean():.1%}")
+print(f"patches all 20 forests agree on     {(F == F[0]).all(axis=0).mean():.1%}")
 '''),
 
         md("""
-## 16 · Where we are
+## 12 · Red-team
 
-Write your **best accuracy** on the same sheet of paper, next to what you
-predicted. Bring it to the next lecture — we open by comparing them.
+Swap notebooks with the team beside you. Eight minutes, five questions:
 
-| Model | Test accuracy | Conditions per justification |
-|---|---|---|
-| always "Lodgepole Pine" | 48.8% | 0 |
-| depth-8 tree — **ours** | 73.3% | 7.99 |
-| unconstrained tree | 82.6% | 17.88 |
+1. What touched the test set? Was any hyperparameter chosen by looking at it?
+2. What was fitted, and on what? Check where `permutation_importance` was
+   computed.
+3. What is the shape here? Check every comparison between a member's output and
+   `y_test`.
+4. What was dropped — rows, columns, classes? Count them.
+5. What is the default you did not ask for? Find `bootstrap`, `max_features` and
+   `oob_score` in their code and say what each is set to.
 
-Row two meets the brief. Every one of its predictions comes with a reason a
-surveyor could check on site.
+Report what you **found**, not what you would have done differently.
 
-**Do not fix anything.** One question to take away, and do not look it up:
+### The standing constraint, extended
 
-> Your neighbour has fitted the same model, with the same hyperparameters, to
-> *almost* the same training set. How similar are the two sets of rules?
+> "… Split before anything is fitted. All preprocessing inside a `Pipeline`
+> passed to cross-validation. Nothing derived from the test set in the training
+> path. Fixed seeds. Per-fold scores, not just the mean. **Any importance or
+> explanation is computed on held-out data and reported with a control. Any
+> per-instance claim is checked for stability under refitting.**"
 """),
     ]
     return cells

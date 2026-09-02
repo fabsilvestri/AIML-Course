@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lecture 5 — Who survives, and how sure are we?</title>
+<title>Lecture 6 — Reading a learning curve</title>
 
 <link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
 <link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
@@ -24,1544 +24,1506 @@
 
 <!-- 1 -->
 <section class="title-slide" data-menu-title="Title">
-  <h1>Who survives, and how sure are we?</h1>
+  <h1>Reading a learning curve</h1>
   <p class="subtitle">Application 3 &middot; Titanic</p>
-  <p><span class="badge badge-build">Lecture 5 &middot; Build</span>
+  <p><span class="badge badge-fix">Lecture 6 &middot; Fix</span>
+     <span class="badge badge-math">Thread 3</span>
      <span class="badge badge-ch">Géron Ch. 4</span></p>
   <p class="meta">
     Applications of Machine Learning<br>
     BSc Mathematics of Artificial Intelligence &middot; Third year
   </p>
-  <aside class="notes">Blank paper on every desk before you start. The
-  commitment happens about a third of the way in and it does not work if they
-  have to go looking for a pen.</aside>
+  <aside class="notes">Commitment sheets on the desk before anything else, and
+  the degree sweep open on the screen. Nobody proceeds without both.</aside>
 </section>
 
 <!-- 2 -->
 <section data-menu-title="Where we left off">
   <h2>Where we left off</h2>
-  <p class="lead">A detector that fires, or does not.</p>
-  <ul class="tight">
-    <li>You built a binary classifier and learned that accuracy is not a metric under imbalance</li>
-    <li>You met precision, recall, and the trade-off between them</li>
-    <li>You moved a <strong>threshold</strong> until the operating point was the one you wanted</li>
-  </ul>
-  <p>That threshold was applied to a <em>decision score</em> &mdash; a number
-  with no units, whose only meaning was its order.</p>
-  <p class="fail">Today a stakeholder asks what the number <em>means</em>.</p>
+  <table class="smaller">
+    <tr><th class="num">Degree</th><th class="num">Columns</th><th class="num">Training log loss</th><th class="num">Held-out log loss</th></tr>
+    <tr><td class="num">1</td><td class="num">22</td><td class="num">0.395</td><td class="num">0.468</td></tr>
+    <tr><td class="num">2</td><td class="num">32</td><td class="num">0.381</td><td class="num hit">0.467</td></tr>
+    <tr><td class="num">3</td><td class="num">52</td><td class="num">0.355</td><td class="num">0.537</td></tr>
+    <tr><td class="num">5</td><td class="num">143</td><td class="num">0.285</td><td class="num fail">1.922</td></tr>
+  </table>
+  <p class="lead">Two curves on the same axes. One falls forever, the other
+  turns and climbs.</p>
+  <p class="fail">Nobody in the room can currently say what either curve is
+  made of.</p>
 </section>
 
 <!-- 3 -->
 <section data-menu-title="Today">
   <h2>Today</h2>
   <ol>
-    <li>The brief, the data, the stakeholder
-        <span class="muted small">(15 min)</span></li>
-    <li>Choose a metric, compute a baseline, and
-        <strong>commit a number in writing</strong>
-        <span class="muted small">(15 min)</span></li>
-    <li>Build the simplest thing that runs &mdash; then push it until it breaks
-        <span class="muted small">(60 min)</span></li>
+    <li><span class="badge badge-math">Thread 3</span> The bias&ndash;variance
+        decomposition <span class="muted small">(20 min)</span></li>
+    <li>Diagnose &mdash; what went wrong at degree 5, in three ways
+        <span class="muted small">(20 min)</span></li>
+    <li>Fix &mdash; ridge, lasso, elastic net, early stopping
+        <span class="muted small">(35 min)</span></li>
+    <li>Re-measure and red-team <span class="muted small">(15 min)</span></li>
   </ol>
-  <p class="small muted">You will leave with two curves drawn on the same axes.
-  In the next lecture we spend twenty minutes proving what they mean.</p>
+  <p class="small muted">The thread is not a parallel theory course. Every term
+  we derive is measured on the pipeline you wrote in the previous lecture.</p>
 </section>
 
 <!-- ==================================================================== -->
-<!-- PART 1 — THE BRIEF AND THE DATA (15 min)                             -->
+<!-- MATHEMATICAL THREAD 3 (20 min)                                       -->
 <!-- ==================================================================== -->
 
 <!-- 4 -->
-<section class="divider" data-menu-title="◆ The brief">
-  <p class="kicker">Part one</p>
-  <h1>The brief</h1>
-  <p class="clock">15 minutes</p>
-</section>
-
-<!-- 5 -->
-<section data-menu-title="The stakeholder">
-  <h2>The stakeholder</h2>
-  <div class="panel">
-    <span class="panel-title">Marine safety planning unit</span>
-    &ldquo;We are building an evacuation-assistance model from historical
-    passenger manifests. During an evacuation we have
-    <strong>80 crew</strong> who can be assigned to escort individual
-    passengers. We need to know, for each passenger profile, <strong>how
-    likely that person is to get off unaided</strong> &mdash; and we need to be
-    able to explain the assignment afterwards.&rdquo;
-  </div>
-  <p class="small muted">Historical data, modern decision. The data are from
-  1912; the question is not.</p>
-</section>
-
-<!-- 6 -->
-<section data-menu-title="Four requirements">
-  <h2>Read the brief as four requirements</h2>
-  <table>
-    <tr><th>#</th><th>What they asked for</th><th>What that forces</th></tr>
-    <tr><td>1</td><td>&ldquo;how likely&rdquo;</td><td>a <strong>probability</strong>, not a label</td></tr>
-    <tr><td>2</td><td>the probability is used to allocate</td><td>it must be <strong>calibrated</strong></td></tr>
-    <tr><td>3a</td><td>the escort is worth assigning or not</td><td>a <strong>cut-off</strong>, chosen from stated costs</td></tr>
-    <tr><td>3b</td><td><strong>a fixed number</strong> of crew</td><td>a <strong>capacity</strong>, which the costs cannot see</td></tr>
-    <tr><td>4</td><td>&ldquo;explain the assignment&rdquo;</td><td>weights a human can <strong>read</strong></td></tr>
-  </table>
-  <p class="fix">Requirement 1 alone rules out most of the models in this book.</p>
-  <aside class="note">3a and 3b were one row until somebody checked. They are
-  two constraints, they disagree, and section 12b is what happens when only one
-  of them reaches the code.</aside>
-</section>
-
-<!-- 7 -->
-<section data-menu-title="Label vs probability">
-  <h2>A label is not a probability</h2>
-  <div class="cols">
-    <div>
-      <p><strong>What a label says</strong></p>
-      <p class="small">&ldquo;This passenger survives.&rdquo;</p>
-      <p class="small muted">Two passengers with the same label are
-      indistinguishable. There is nothing to rank, nothing to allocate against,
-      and nothing to be more or less sure about.</p>
-    </div>
-    <div>
-      <p><strong>What a probability says</strong></p>
-      <p class="small">&ldquo;This passenger survives with probability
-      0.31.&rdquo;</p>
-      <p class="small muted">Now the sentence is checkable: take everyone the
-      model puts near 0.31 and count how many survived. If it is not about a
-      third, the model is lying.</p>
-    </div>
-  </div>
-  <p class="fix">Requirement 2 is what makes requirement 1 more than a
-  formatting choice.</p>
-</section>
-
-<!-- 8 -->
-<section data-menu-title="Why logistic regression">
-  <h2>So: logistic regression</h2>
-  <ul class="tight">
-    <li>It estimates $P(y=1 \mid \mathbf{x})$ <em>directly</em>, by maximising the likelihood of the labels &mdash; not as an afterthought</li>
-    <li>Its loss is a <strong>proper scoring rule</strong>: the minimiser is the true probability, so calibration is what it is trying to do</li>
-    <li>Its parameters are one number per feature, on a scale that has a name</li>
-  </ul>
-  <div class="panel panel-book">
-    Géron, Chapter 4. Same chapter as the training algorithms, and for a
-    reason: this is the first model in the course whose <em>training</em> we
-    look at rather than only its output.
-  </div>
-</section>
-
-<!-- 9 -->
-<section data-menu-title="The data">
-  <h2>The data</h2>
-  <pre><code class="language-python" data-trim>
-from pathlib import Path
-import tarfile, urllib.request
-import pandas as pd
-
-def load_titanic():
-    tarball = Path("datasets/titanic.tgz")
-    if not tarball.is_file():
-        Path("datasets").mkdir(parents=True, exist_ok=True)
-        url = "https://github.com/ageron/data/raw/main/titanic.tgz"
-        urllib.request.urlretrieve(url, tarball)
-        with tarfile.open(tarball) as t:
-            t.extractall(path="datasets", filter="data")
-    return pd.read_csv("datasets/titanic/train.csv")
-  </code></pre>
-  <p class="small">A function, not a manual download &mdash; the same rule as
-  the first application. The archive also contains <code>test.csv</code>, which
-  has <strong>no labels</strong>: it is a competition submission file, and it is
-  useless to us.</p>
-</section>
-
-<!-- 10 -->
-<section data-menu-title="One frame, split by us">
-  <h2>One labelled frame, split by us</h2>
-  <p>891 passengers, 12 columns. That is the whole labelled corpus.</p>
-  <div class="panel panel-fail">
-    <span class="panel-title">A file called <code>test.csv</code> is not a test set</span>
-    It has no <code>Survived</code> column. If you evaluate on it you will get
-    an exception; if you fill the column in from somewhere you will get a
-    number that measures nothing.
-  </div>
-  <p class="small muted">We hold out our own test set, stratified on the label,
-  and touch it once at the end of the next lecture.</p>
-</section>
-
-<!-- 11 -->
-<section data-menu-title="The columns">
-  <h2>What is in it</h2>
-  <table class="smaller">
-    <tr><th>Column</th><th>Meaning</th><th>Column</th><th>Meaning</th></tr>
-    <tr><td><code>Survived</code></td><td>the label, 0 or 1</td><td><code>Parch</code></td><td>parents and children aboard</td></tr>
-    <tr><td><code>Pclass</code></td><td>ticket class, 1&ndash;3</td><td><code>Ticket</code></td><td>ticket number, free text</td></tr>
-    <tr><td><code>Name</code></td><td>full name, free text</td><td><code>Fare</code></td><td>fare paid, in pounds</td></tr>
-    <tr><td><code>Sex</code></td><td>male or female</td><td><code>Cabin</code></td><td>cabin number, mostly absent</td></tr>
-    <tr><td><code>Age</code></td><td>years, sometimes absent</td><td><code>Embarked</code></td><td>port of embarkation</td></tr>
-    <tr><td><code>SibSp</code></td><td>siblings and spouses aboard</td><td><code>PassengerId</code></td><td>a row number</td></tr>
-  </table>
-  <p class="small fail">One of these columns is an index dressed as a feature.
-  Give it to a model and it will find something.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Missing values">
-  <h2>Three columns have holes in them</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l05-missing.svg"
-         alt="Horizontal bar chart of missing-value counts: Cabin 687 of 891, Age 177, Embarked 2.">
-  </figure>
-  <p class="takeaway muted">Cabin is missing for more than three quarters of
-  the passengers. That is not a column with gaps; it is a gap with a column.</p>
-</section>
-
-<!-- 13 -->
-<section data-menu-title="What to do with Cabin">
-  <h2>What do you do with a column that is 77% missing?</h2>
-  <ol class="tight small">
-    <li><strong>Drop it.</strong> Defensible, and you lose whatever it knows</li>
-    <li><strong>Impute it.</strong> Indefensible &mdash; you would be inventing 687 cabin numbers</li>
-    <li><strong>Recode the missingness itself.</strong> Take the deck letter where there is one, and give the rest their own category</li>
-  </ol>
-  <p>We take the third, and we do it knowing that
-  <code>Deck = "U"</code> will mostly mean <em>third class</em>: the cabin
-  number was recorded for the passengers whose tickets carried one.</p>
-  <p class="small fail">So the column is partly a proxy for <code>Pclass</code>.
-  Write that down &mdash; it is the sort of thing a regulator asks about.</p>
-</section>
-
-<!-- 14 -->
-<section data-menu-title="Age and Embarked">
-  <h2>Age, and two missing ports</h2>
-  <div class="cols">
-    <div>
-      <p><strong><code>Age</code> &mdash; 177 missing</strong></p>
-      <p class="small">Impute the median, <em>inside the pipeline</em>, so the
-      median is recomputed on every training fold and never sees a validation
-      row.</p>
-    </div>
-    <div>
-      <p><strong><code>Embarked</code> &mdash; 2 missing</strong></p>
-      <p class="small">Impute the most frequent port. Two rows out of 891: the
-      choice cannot matter, and you should still be able to say what it was.</p>
-    </div>
-  </div>
-  <p class="small muted">Neither decision is interesting. Both are decisions,
-  and both belong in the report.</p>
-</section>
-
-<!-- 15 -->
-<section data-menu-title="The label">
-  <h2>The label</h2>
-  <table>
-    <tr><th>Outcome</th><th class="num">Passengers</th><th class="num">Share</th></tr>
-    <tr><td>Did not survive</td><td class="num">549</td><td class="num">61.6%</td></tr>
-    <tr><td>Survived</td><td class="num">342</td><td class="num">38.4%</td></tr>
-  </table>
-  <p>Mildly imbalanced &mdash; nothing like the rare-event problem of the
-  previous application. Accuracy will not be absurd here.</p>
-  <p class="small fail">It will be something worse than absurd: plausible.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Who survived">
-  <h2>Two columns already explain most of it</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l05-survival-rates.svg"
-         alt="Bar chart of survival rate by sex and passenger class: first-class women 97%, third-class women 50%, first-class men 37%, third-class men 14%, against an overall rate of 38%.">
-  </figure>
-  <p class="takeaway">A first-class woman and a third-class man differ by
-  a factor of seven. Any model that cannot beat this table is not earning its
-  keep.</p>
-</section>
-
-<!-- 17 -->
-<section data-menu-title="Name is not free text">
-  <h2><code>Name</code> is not a useless string</h2>
-  <pre><code class="language-text" data-trim>
-Braund, Mr. Owen Harris
-Cumings, Mrs. John Bradley (Florence Briggs Thayer)
-Heikkinen, Miss. Laina
-Allen, Mr. William Henry
-  </code></pre>
-  <p>Every name carries a <strong>title</strong>, and the title carries sex,
-  marital status and &mdash; for <code>Master</code> &mdash; being a boy.</p>
-  <pre><code class="language-python" data-trim>
-d["Title"] = (d["Name"].str.extract(r",\s*([^\.]+)\.", expand=False)
-              .str.strip()
-              .replace({"Mlle": "Miss", "Ms": "Miss", "Mme": "Mrs"}))
-d["Title"] = d["Title"].where(
-    d["Title"].isin(["Mr", "Mrs", "Miss", "Master"]), "Rare")
-  </code></pre>
-</section>
-
-<!-- 18 -->
-<section data-menu-title="Titles, measured">
-  <h2>What the titles are worth</h2>
-  <table>
-    <tr><th>Title</th><th class="num">Passengers</th><th class="num">Survived</th></tr>
-    <tr><td><code>Mrs</code></td><td class="num">126</td><td class="num">79.4%</td></tr>
-    <tr><td><code>Miss</code></td><td class="num">185</td><td class="num">70.3%</td></tr>
-    <tr><td><code>Master</code> &mdash; a boy</td><td class="num">40</td><td class="num">57.5%</td></tr>
-    <tr><td><code>Rare</code> &mdash; Dr, Rev, Col, &hellip;</td><td class="num">23</td><td class="num">34.8%</td></tr>
-    <tr><td><code>Mr</code></td><td class="num">517</td><td class="num">15.7%</td></tr>
-  </table>
-  <p class="small"><code>Master</code> is the only one that is not a
-  re-encoding of <code>Sex</code>: those 40 boys survived at nearly four times
-  the rate of the men. That is the feature earning its place.</p>
-  <aside class="notes">Ask what <code>Master</code> means before showing the
-  rate. Most will not know it is a boy, and the number is much more memorable
-  once they do.</aside>
-</section>
-
-<!-- 19 -->
-<section data-menu-title="Engineered columns">
-  <h2>Four engineered columns, each with a reason</h2>
-  <pre><code class="language-python" data-trim>
-d["FamilySize"] = d["SibSp"] + d["Parch"] + 1
-d["IsAlone"]    = (d["FamilySize"] == 1).astype(int)
-d["Deck"]       = d["Cabin"].str[0].fillna("U")
-# Title, as above
-  </code></pre>
-  <table class="smaller">
-    <tr><th>Column</th><th>The claim it encodes</th></tr>
-    <tr><td><code>Title</code></td><td>a boy is not a man</td></tr>
-    <tr><td><code>FamilySize</code></td><td>a group evacuates together, and slowly</td></tr>
-    <tr><td><code>IsAlone</code></td><td>nobody is waiting for you</td></tr>
-    <tr><td><code>Deck</code></td><td>distance to a boat, and a proxy for class</td></tr>
-  </table>
-  <p class="small fail">One line on this slide is a linear combination of
-  columns you already have. We will pay for it later in the session.</p>
-</section>
-
-<!-- 20 -->
-<section data-menu-title="Split first">
-  <h2>Split first &mdash; still</h2>
-  <pre><code class="language-python" data-trim>
-X = full[NUM + CAT + BIN]
-y = full["Survived"]
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y)
-
-assert len(X_train) == 712 and len(X_test) == 179
-assert set(X_train.index).isdisjoint(X_test.index)
-print(f"train rate {y_train.mean():.4f}   test rate {y_test.mean():.4f}")
-  </code></pre>
-  <p class="small">Stratified on the <strong>label</strong> this time, not on a
-  predictor: with 179 test rows, an unstratified draw can shift the base rate
-  by several points and every downstream number moves with it.</p>
-  <p class="fix small">712 training passengers. That is a small dataset, and by
-  the end of today the size will be doing visible damage.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- PART 2 — THE METRIC AND THE COMMITMENT (15 min)                      -->
-<!-- ==================================================================== -->
-
-<!-- 21 -->
-<section class="divider" data-menu-title="◆ The metric">
-  <p class="kicker">Part two</p>
-  <h1>Choose a metric,<br>and commit</h1>
-  <p class="clock">15 minutes</p>
-</section>
-
-<!-- 22 -->
-<section data-menu-title="Accuracy will not do">
-  <h2>Why accuracy cannot be the headline here</h2>
-  <ul class="tight">
-    <li>It reads a probability of 0.51 and a probability of 0.99 as the same answer</li>
-    <li>It cannot be computed at all until you have chosen a cut-off &mdash; so quoting it hides the decision the brief asked you to make explicit</li>
-    <li>It weighs the two mistakes equally, and the stakeholder does not</li>
-  </ul>
-  <p class="fix">Accuracy will still be <em>reported</em>. It will not be
-  <em>optimised</em>, and it is not the number you commit to.</p>
-</section>
-
-<!-- 23 -->
-<section data-menu-title="What calibration means">
-  <h2>What &ldquo;calibrated&rdquo; means, precisely</h2>
-  <div class="eqn-box">
-    $$P\!\left(y = 1 \;\middle|\; \hat p(\mathbf{x}) = q\right) \;=\; q
-      \qquad \text{for every } q \in (0,1)$$
-  </div>
-  <p>Take every passenger the model scored near $q$. The fraction who actually
-  survived should be about $q$.</p>
-  <p class="small muted">This is a property of a <em>set</em> of predictions,
-  not of any one prediction. You cannot check it on a single passenger, which
-  is exactly why it is so easy to ship a model that fails it.</p>
-</section>
-
-<!-- 24 -->
-<section data-menu-title="Log loss">
-  <h2>The metric: log loss</h2>
-  <div class="eqn-box">
-    $$\mathcal{L} \;=\; -\frac{1}{m}\sum_{i=1}^{m}
-      \Big[\, y^{(i)} \log \hat p^{(i)} \;+\; \bigl(1-y^{(i)}\bigr)\log\bigl(1-\hat p^{(i)}\bigr) \Big]$$
-  </div>
-  <ul class="tight small">
-    <li>Only the probability you gave the <em>true</em> class enters each term</li>
-    <li>It is unbounded above: claim 0.001 for a passenger who survived and the term is $-\log 0.001 \approx 6.9$</li>
-    <li>Lower is better; a perfect, confident model scores 0</li>
-  </ul>
-  <p class="small">Natural logarithm throughout, so the units are nats. This is
-  the quantity logistic regression minimises, which makes it the honest thing
-  to report.</p>
-</section>
-
-<!-- 25 -->
-<section data-menu-title="Proper scoring">
-  <h2>Why this metric and not something friendlier</h2>
-  <p>A scoring rule is <strong>proper</strong> if the expected score is
-  optimised by reporting your true belief.</p>
-  <div class="cols">
-    <div>
-      <p class="small"><strong>Log loss</strong> &mdash; proper. Reporting
-      anything other than $p^\ast$ is expected to score worse.</p>
-    </div>
-    <div>
-      <p class="small"><strong>Brier score</strong> &mdash;
-      $\frac{1}{m}\sum (\hat p - y)^2$. Also proper, bounded, and easier to
-      read. We report it too.</p>
-    </div>
-  </div>
-  <div class="panel panel-fail">
-    <span class="panel-title">Accuracy is not proper</span>
-    Under accuracy, a model that reports 0.51 scores exactly the same as one
-    that reports 0.99 &mdash; so accuracy gives you no reason at all to tell the
-    truth about your uncertainty.
-  </div>
-</section>
-
-<!-- 26 -->
-<section data-menu-title="Brier and squared error">
-  <h2>One remark about the Brier score, for later</h2>
-  <div class="eqn-box">
-    $$\text{Brier} \;=\; \frac{1}{m}\sum_{i=1}^{m}\bigl(\hat p^{(i)} - y^{(i)}\bigr)^2$$
-  </div>
-  <p>That is mean <strong>squared error</strong>, with a target that happens to
-  be 0 or 1.</p>
-  <div class="panel panel-math">
-    Everything you know about squared error therefore applies to it unchanged
-    &mdash; including a decomposition we have not met yet. Keep the observation;
-    it is the whole of the next lecture's first twenty minutes.
-  </div>
-</section>
-
-<!-- 27 -->
-<section data-menu-title="The cut-off is a decision">
-  <h2>The cut-off is a separate decision</h2>
-  <p>The model produces $\hat p$. The <em>rule</em> is</p>
-  <div class="eqn-box">
-    $$\text{assign an escort} \iff \hat p(\mathbf{x}) &lt; t$$
-  </div>
-  <p>and $t$ is not part of the model. It comes from the costs.</p>
-  <table class="smaller">
-    <tr><th>Mistake</th><th>What happens</th><th class="num">Cost</th></tr>
-    <tr><td>Not escorted, did not survive</td><td>the one the brief exists to prevent</td><td class="num fail">10</td></tr>
-    <tr><td>Escorted, would have survived anyway</td><td>a crew member spent where they were not needed</td><td class="num">1</td></tr>
-  </table>
-  <p class="small muted">Escort-units, stated by the stakeholder, and the ratio
-  is the only part that matters.</p>
-</section>
-
-<!-- 28 -->
-<section data-menu-title="Two baselines">
-  <h2>Before you commit: what does <em>nothing</em> score?</h2>
-  <p class="small">Two trivial models. Neither looks at a single feature.</p>
-  <pre><code class="language-python" data-trim>
-p = y_train.mean()                       # 0.3834
-
-# 1. predict the majority class for everyone
-majority_accuracy = 1 - p
-
-# 2. predict the same probability p for everyone
-constant_log_loss = -(p * np.log(p) + (1 - p) * np.log(1 - p))
-constant_brier    = p * (1 - p)
-  </code></pre>
-  <table class="smaller">
-    <tr><th>Trivial model</th><th class="num">Accuracy</th><th class="num">Log loss</th><th class="num">Brier</th></tr>
-    <tr><td>Always predict &ldquo;did not survive&rdquo;</td><td class="num">61.7%</td><td class="num">&mdash;</td><td class="num">&mdash;</td></tr>
-    <tr><td>Always report $p = 0.383$</td><td class="num">61.7%</td><td class="num">0.666</td><td class="num">0.236</td></tr>
-  </table>
-</section>
-
-<!-- 29 -->
-<section data-menu-title="The anchor">
-  <h2>Your anchor</h2>
-  <p class="big-num">0.666</p>
-  <p>The log loss of a model that has learned <strong>nothing except the base
-  rate</strong>. It is the entropy of the label, in nats.</p>
-  <p class="small muted">Anything above it is worse than knowing only how many
-  people died. The distance below it is the only part you actually earned
-  &mdash; and unlike RMSE in the first application, this scale has a hard floor
-  you will not reach, for reasons we measure in the next lecture.</p>
-  <aside class="notes">Show of hands on what they think today's model will
-  score, before the commitment slide. The guesses will be far too optimistic;
-  do not say so.</aside>
-</section>
-
-<!-- 30 -->
-<section class="commit-slide" data-menu-title="★ COMMIT">
-  <h2>Commit</h2>
-  <div class="commit">
-    <span class="commit-label">Write this down. On paper. Now.</span>
-    <p class="small">
-      Metric: <span class="blank"></span><br>
-      Log loss for a system I would sign off: <span class="blank"></span><br>
-      Log loss I expect from the model we build today: <span class="blank"></span><br>
-      Accuracy I expect at my chosen cut-off: <span class="blank"></span>
-    </p>
-  </div>
-  <p class="small">You are not guessing in the dark: reporting the base rate to
-  everyone scores 0.666, and the sex-and-class table on an earlier slide is a
-  rule you could write out by hand.</p>
-  <aside class="notes">Do not move on until pens have moved. Walk the room.
-  Say nothing about whether the numbers will be right.</aside>
-</section>
-
-<!-- 31 -->
-<section data-menu-title="Why on paper">
-  <h2>Why on paper</h2>
-  <ul class="tight small">
-    <li>A prediction you can silently revise is not a prediction</li>
-    <li>Being wrong is only informative if the wrongness is on record</li>
-    <li>We score these out loud at the start of the next lecture</li>
-  </ul>
-  <p class="fix">This is also, exactly, what you will ask a stakeholder to do
-  before you show them a result.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- PART 3 — BUILD (60 min)                                              -->
-<!-- ==================================================================== -->
-
-<!-- 32 -->
-<section class="divider" data-menu-title="◆ Build">
-  <p class="kicker">Part three</p>
-  <h1>Build</h1>
-  <p class="clock">60 minutes &middot; end to end, in one sitting</p>
-</section>
-
-<!-- 33 -->
-<section data-menu-title="★ Colab notebook">
-  <h2>Today&rsquo;s notebook</h2>
-  <p>
-    <a class="colab-btn" target="_blank"
-       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-05.ipynb">
-       Open Lecture 5 in Google Colab</a>
-  </p>
-  <div class="panel">
-    <span class="panel-title">How to work</span>
-    Run the setup cell first, then work section by section. Where the notebook
-    says <code># YOUR SPECIFICATION HERE</code>, write what you want in plain
-    English, generate the code, <strong>then read it before running it</strong>.
-  </div>
-</section>
-
-<!-- 34 -->
-<section data-menu-title="The plan">
-  <h2>The plan</h2>
-  <ol class="tight">
-    <li>The model &mdash; what logistic regression actually computes</li>
-    <li>Fit it, and measure it honestly with cross-validation</li>
-    <li>Read the coefficients &mdash; requirement 4</li>
-    <li>Check the calibration &mdash; requirement 2</li>
-    <li>Choose the cut-off from the costs &mdash; requirement 3</li>
-    <li>Push the capacity up until something gives</li>
-  </ol>
-</section>
-
-<!-- 35 -->
-<section data-menu-title="The model">
-  <h2>The model</h2>
-  <p>Take the linear model from Thread 1 and pass it through one function.</p>
-  <div class="eqn-box">
-    $$\hat p \;=\; h_{\boldsymbol\theta}(\mathbf{x}) \;=\; \sigma\!\left(\boldsymbol\theta^{\intercal}\mathbf{x}\right),
-      \qquad \sigma(t) \;=\; \frac{1}{1 + e^{-t}}$$
-  </div>
-  <p class="small">$\boldsymbol\theta^{\intercal}\mathbf{x}$ is exactly the
-  quantity least squares fitted in the previous application. Everything new
-  today is in $\sigma$ and in what we ask $\boldsymbol\theta$ to minimise.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ The sigmoid">
-  <h2>One function, and the whole difference</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l05-sigmoid.svg"
-         alt="The logistic curve rising from 0 to 1, passing through 0.5 at t equals zero, flattening at both ends.">
-  </figure>
-  <p class="takeaway muted">Monotone, so the ranking is the linear model's
-  ranking. Saturating, so beyond about $|t| = 5$ more evidence changes almost
-  nothing.</p>
-</section>
-
-<!-- 37 -->
-<section data-menu-title="Log-odds">
-  <h2>What $\boldsymbol\theta^{\intercal}\mathbf{x}$ <em>is</em></h2>
-  <p>Invert $\sigma$:</p>
-  <div class="eqn-box">
-    $$t \;=\; \log\frac{\hat p}{1 - \hat p} \;=\; \boldsymbol\theta^{\intercal}\mathbf{x}$$
-  </div>
-  <p>The linear model does not predict the probability. It predicts the
-  <strong>log-odds</strong>, and the odds are what the coefficients act on.</p>
-  <p class="small muted">This is the sentence that makes requirement 4
-  answerable, and it is the sentence students most often get wrong in the
-  examination.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Three scales">
-  <h2>Three scales, one number</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/d-logodds.svg"
-         alt="A chain from log-odds through odds to probability, and three aligned number lines showing that equal steps in log-odds are equal multipliers in odds and neither in probability.">
-  </figure>
-  <p class="takeaway">Add 1 to $t$ and the odds are multiplied by
-  $e \approx 2.72$, wherever you started. The probability has no such
-  rule.</p>
-</section>
-
-<!-- 39 -->
-<section data-menu-title="The loss">
-  <h2>What it minimises</h2>
-  <div class="eqn-box">
-    $$J(\boldsymbol\theta) \;=\; -\frac{1}{m}\sum_{i=1}^{m}
-      \Big[\, y^{(i)} \log \hat p^{(i)} + \bigl(1-y^{(i)}\bigr)\log\bigl(1-\hat p^{(i)}\bigr)\Big]$$
-  </div>
-  <p class="small">The metric and the training objective are the same function.
-  That is unusual and worth noticing: in the first application we minimised
-  squared error and reported its root.</p>
-  <div class="panel panel-math">
-    $J$ is <strong>convex</strong> in $\boldsymbol\theta$, so gradient descent
-    reaches the global minimum &mdash; but there is <em>no closed form</em>.
-    Unlike least squares, no normal equation exists here.
-  </div>
-</section>
-
-<!-- 40 -->
-<section data-menu-title="The gradient">
-  <h2>The gradient, and why it looks familiar</h2>
-  <div class="eqn-box">
-    $$\frac{\partial J}{\partial \theta_j} \;=\; \frac{1}{m}\sum_{i=1}^{m}
-      \left(\sigma\!\left(\boldsymbol\theta^{\intercal}\mathbf{x}^{(i)}\right) - y^{(i)}\right) x_j^{(i)}$$
-  </div>
-  <p>Prediction minus target, times the feature. Identical in form to the
-  gradient of the mean squared error for a linear model.</p>
-  <p class="small muted">That coincidence is not one. It comes back as a
-  general fact about these losses in Thread 11, and you may take it on trust
-  until then.</p>
-</section>
-
-<!-- 41 -->
-<section data-menu-title="Preprocessing">
-  <h2>The preprocessing</h2>
-  <pre><code class="language-python" data-trim>
-NUM = ["Age", "Fare", "FamilySize", "SibSp", "Parch"]
-CAT = ["Pclass", "Sex", "Embarked", "Title", "Deck"]
-BIN = ["IsAlone"]
-
-prep = ColumnTransformer([
-    ("num", make_pipeline(SimpleImputer(strategy="median"),
-                          StandardScaler()), NUM),
-    ("cat", make_pipeline(SimpleImputer(strategy="most_frequent"),
-                          OneHotEncoder(handle_unknown="ignore")), CAT),
-    ("bin", "passthrough", BIN),
-])
-  </code></pre>
-  <p class="small">Scaling matters here in a way it did not for trees: gradient
-  descent on unscaled features takes a long, thin valley very slowly, and the
-  penalty we add in the next lecture is not scale-invariant either.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- WORKED ASSISTANT FAILURE                                             -->
-<!-- ==================================================================== -->
-
-<!-- 42 -->
-<section data-menu-title="Weak vs usable prompt">
-  <h2>The same request, twice</h2>
-  <div class="cols">
-    <div>
-      <p><span class="badge badge-fail">Weak</span></p>
-      <div class="panel panel-fail small">
-        &ldquo;Train a model to predict Titanic survival and tell me how
-        accurate it is.&rdquo;
-      </div>
-      <p class="small muted">Under-specified in exactly one place. The word
-      &ldquo;accurate&rdquo; silently chooses a cut-off and silently declares
-      the two mistakes equally bad.</p>
-    </div>
-    <div>
-      <p><span class="badge badge-fix">Usable</span></p>
-      <div class="panel panel-fix small">
-        &ldquo;Fit a probabilistic classifier. Report cross-validated log loss
-        and Brier score. Then choose the cut-off that minimises expected cost
-        at 10 : 1, choosing it on out-of-fold predictions, and report the
-        confusion matrix at that cut-off.&rdquo;
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- 43 -->
-<section data-menu-title="What the weak prompt returns">
-  <h2>What the weak prompt returns</h2>
-  <pre><code class="language-python" data-trim data-line-numbers>from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
-
-model = Pipeline([("prep", prep), ("clf", LogisticRegression(max_iter=1000))])
-model.fit(X_train, y_train)
-
-y_pred = model.predict(X_test)
-print(f"accuracy: {accuracy_score(y_test, y_pred):.3f}")
-# accuracy: 0.816
-</code></pre>
-  <p class="small">It runs. It uses a pipeline. It even splits correctly.
-  <span class="fail">And it answers a question the stakeholder did not
-  ask.</span></p>
-  <aside class="notes">Give them a full minute on this one. Somebody will spot
-  <code>.predict</code>; that is the thread to pull.</aside>
-</section>
-
-<!-- 44 -->
-<section data-menu-title="The review question">
-  <h2>The review question that catches it</h2>
-  <p><em>Reviewer question 5: what is the default I did not ask for?</em></p>
-  <div class="panel panel-fail">
-    <span class="panel-title"><code>.predict()</code> is <code>.predict_proba() &gt;= 0.5</code></span>
-    Nothing in the prompt mentioned 0.5. Nothing in the code mentions 0.5.
-    The cut-off &mdash; the one thing the brief asked to be explicit and
-    defensible &mdash; was chosen by a library default and never written down.
-  </div>
-  <p class="small">And 0.5 is the cost-optimal cut-off only when the two
-  mistakes cost the same. The stakeholder said they cost 10 and 1.</p>
-</section>
-
-<!-- 45 -->
-<section data-menu-title="Measure the damage">
-  <h2>So measure the damage &mdash; do not guess</h2>
-  <p class="small">Twenty splits. On each: fit, choose the cut-off on
-  <strong>out-of-fold training predictions</strong>, then apply both cut-offs to
-  the held-out passengers and add up the cost.</p>
-  <table>
-    <tr><th>Cut-off</th><th class="num">Accuracy</th><th class="num">Expected cost</th></tr>
-    <tr><td>0.50 &mdash; the default</td><td class="num">81.8%</td><td class="num fail">169</td></tr>
-    <tr><td>0.86 &mdash; chosen from the costs, per split</td><td class="num">74.0%</td><td class="num good">59</td></tr>
-  </table>
-  <p class="fail">The default cut-off costs 110 escort-units more
-  per evacuation, on average &mdash; and it is worse on
-  20 of the 20 splits.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Cost against accuracy">
-  <h2>The more accurate model is the more expensive one</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l05-cost-vs-accuracy.svg"
-         alt="Paired bars comparing expected cost and accuracy at the default 0.5 cut-off against the cost-chosen cut-off; cost falls sharply while accuracy also falls.">
-  </figure>
-  <p class="takeaway fail">Accuracy goes <em>down</em> when you do the right
-  thing. If accuracy is your headline you will reject the better model.</p>
-</section>
-
-<!-- 47 -->
-<section data-menu-title="Why accuracy falls">
-  <h2>Why accuracy falls, and why that is correct</h2>
-  <p>Raising the cut-off flags more passengers as needing help. Some of them
-  would have survived unaided, so those are now counted as errors.</p>
-  <ul class="tight small">
-    <li>Accuracy counts every error once</li>
-    <li>The stakeholder counts one kind of error ten times</li>
-    <li>The two rank the cut-offs differently, and only one of them is the brief</li>
-  </ul>
-  <div class="panel panel-fix">
-    <span class="panel-title">The corrected specification</span>
-    State the loss, state the cost ratio, state where the cut-off is chosen, and
-    require the confusion matrix at that cut-off. Then &ldquo;accurate&rdquo;
-    cannot be filled in for you.
-  </div>
-</section>
-
-<!-- 48 -->
-<section data-menu-title="The lesson">
-  <h2>What that example is teaching</h2>
-  <ul class="tight">
-    <li>The assistant was obedient. The word &ldquo;accurate&rdquo; was the bug</li>
-    <li>The defect is not in any line of the code &mdash; it is in a default that no line mentions</li>
-    <li>Nothing crashed, and the number it printed was true</li>
-  </ul>
-  <p class="small muted">A true number answering the wrong question is the
-  hardest kind of error to see, because there is nothing to debug.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- FIT AND READ                                                         -->
-<!-- ==================================================================== -->
-
-<!-- 49 -->
-<section data-menu-title="Fit and measure">
-  <h2>Fit it, and measure it honestly</h2>
-  <pre><code class="language-python" data-trim>
-clf = LogisticRegression(C=1e6, max_iter=4000)   # see the next slide for C
-model = Pipeline([("prep", prep), ("clf", clf)])
-
-cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
-scores = cross_validate(model, X_train, y_train, cv=cv,
-                        scoring=["neg_log_loss", "accuracy",
-                                 "neg_brier_score"],
-                        return_train_score=True)
-  </code></pre>
-  <p class="small"><code>StratifiedKFold</code>, not <code>KFold</code>: with
-  71 passengers per fold, an unstratified split can hand a fold a base rate
-  several points from the truth.</p>
-</section>
-
-<!-- 50 -->
-<section data-menu-title="Turning C up">
-  <h2>One default we <em>are</em> going to change</h2>
-  <pre><code class="language-python" data-trim>
-LogisticRegression()            # C = 1.0     ← the default
-LogisticRegression(C=1e6)       # what we are using
-  </code></pre>
-  <p><code>C</code> is the inverse of a penalty on the size of the
-  coefficients. The default is <strong>not</strong> off.</p>
-  <div class="panel">
-    <span class="panel-title">Why we turn it down anyway</span>
-    Requirement 4 asks for coefficients a human can read. A shrunk coefficient
-    is a compromise between the data and a penalty, and it cannot be reported
-    as an odds ratio of the data. So we ask for the unshrunk fit.
-  </div>
-  <p class="small fail">Remember that we chose this. It is the first thing the
-  next lecture undoes.</p>
-</section>
-
-<!-- 51 -->
-<section data-menu-title="First numbers">
-  <h2>The first numbers</h2>
-  <table>
-    <tr><th>Model</th><th class="num">Log loss</th><th class="num">Accuracy</th></tr>
-    <tr><td>Report the base rate to everyone</td><td class="num">0.666</td><td class="num">61.7%</td></tr>
-    <tr><td>Logistic regression, 10-fold cross-validated</td><td class="num hit">0.468</td><td class="num hit">81.5%</td></tr>
-  </table>
-  <p>About 30% below the anchor on log loss, and 20 points of accuracy above
-  the majority class.</p>
-  <p class="small muted">Cross-validated, not training. We learned that the hard
-  way in the previous application and we are not doing it again.</p>
-</section>
-
-<!-- 52 -->
-<section data-menu-title="Read the coefficients">
-  <h2>Requirement 4: read the coefficients</h2>
-  <pre><code class="language-python" data-trim>
-names = model[:-1].get_feature_names_out()
-coefs = model[-1].coef_[0]
-for n, c in sorted(zip(names, coefs), key=lambda t: -abs(t[1]))[:6]:
-    print(f"{n.split('__')[-1]:16s} {c:+.3f}   odds x{np.exp(c):.3f}")
-  </code></pre>
-  <pre><code class="language-text" data-trim>
-Deck_T           -5.678   odds x0.003
-Title_Master     +3.484   odds x32.596
-Sex_female       +3.308   odds x27.325
-Sex_male         -2.833   odds x0.059
-Title_Miss       -2.806   odds x0.060
-Title_Mrs        -2.020   odds x0.133
-  </code></pre>
-  <aside class="notes">Let them read it in silence. Someone will object to
-  <code>Title_Miss</code> being negative. If nobody does, ask what
-  <code>Title_Mrs</code> is doing at &minus;2.02 when 79% of them survived.</aside>
-</section>
-
-<!-- 53 -->
-<section data-menu-title="Something is wrong">
-  <h2>Two of those rows are impossible</h2>
-  <ul class="tight small">
-    <li><code>Title_Miss</code> at &minus;2.81 &mdash; but 70.3% of them survived, against 38.4% overall</li>
-    <li><code>Title_Mrs</code> at &minus;2.02 &mdash; the highest-surviving group in the data</li>
-    <li><code>Deck_T</code> at &minus;5.68 &mdash; and there is exactly <strong>one</strong> passenger on deck T</li>
-  </ul>
-  <p class="fail">These are not weak effects or noisy estimates. They have the
-  wrong sign, and the model's predictions are nonetheless good.</p>
-  <p class="small">Do not reach for an explanation about confounding yet.
-  Reach for reviewer question 3.</p>
-</section>
-
-<!-- 54 -->
-<section data-menu-title="What is the shape here">
-  <h2><em>Reviewer question 3: what is the shape here?</em></h2>
-  <pre><code class="language-python" data-trim>
-Z = model[:-1].transform(X_train)
-Z_b = np.c_[np.ones(len(Z)), Z]          # add the intercept column
-
-print("columns:", Z_b.shape[1])
-print("rank:   ", np.linalg.matrix_rank(Z_b))
-print("cond:   ", np.linalg.cond(Z_b))
-  </code></pre>
-  <pre><code class="language-text" data-trim>
-columns: 29
-rank:    23
-cond:    2.6e+16
-  </code></pre>
-  <p class="fail lead">Six columns of the design matrix are linear combinations
-  of the others.</p>
-</section>
-
-<!-- 55 -->
-<section data-menu-title="Where the six come from">
-  <h2>Where the six come from</h2>
-  <div class="cols cols-60-40">
-    <div>
-      <p class="small"><strong>Five from the encoder.</strong> Each one-hot
-      block sums to 1 in every row &mdash; and the intercept column is also 1
-      in every row. Five categorical columns, five dependencies.</p>
-    </div>
-    <div>
-      <p class="small"><strong>One from us.</strong></p>
-      <p class="smaller"><code>FamilySize = SibSp + Parch + 1</code>, exactly,
-      for all 891 passengers. We wrote that line ourselves an hour ago.</p>
-    </div>
-  </div>
-  <pre><code class="language-python" data-trim>
-resid = (X_train["SibSp"] + X_train["Parch"] + 1
-         - X_train["FamilySize"]).abs().max()
-print(resid)          # 0.0
-  </code></pre>
-  <p class="small">Standardising does not help: an affine map of a linear
-  dependence is still a linear dependence.</p>
-</section>
-
-<!-- 56 -->
-<section data-menu-title="Thread 1 returns">
-  <h2>You proved this two threads ago</h2>
-  <div class="eqn-box">
-    $$\mathbf{X}^{\intercal}\mathbf{X}\ \text{is invertible}
-      \iff \mathbf{X}\ \text{has full column rank}$$
-  </div>
-  <p>Logistic regression has no normal equation, but the same rank condition
-  governs it: if $\mathbf{X}\mathbf{v} = \mathbf{0}$ for some
-  $\mathbf{v} \neq \mathbf{0}$, then
-  $\boldsymbol\theta$ and $\boldsymbol\theta + c\,\mathbf{v}$ produce
-  <em>identical</em> logits for every passenger, for every $c$.</p>
-  <div class="panel panel-math">
-    The likelihood is flat along $\mathbf{v}$. There is not one best
-    $\boldsymbol\theta$ &mdash; there is a whole affine subspace of them, and
-    the solver returned one point of it without mentioning the fact.
-  </div>
-</section>
-
-<!-- 57 -->
-<section data-menu-title="Prove it on our data">
-  <h2>Prove it, on our own matrix</h2>
-  <p class="small">Take the fitted weights. Add 2.5 to
-  <code>Sex_female</code> and to <code>Sex_male</code>, subtract 2.5 from the
-  intercept. Nothing else.</p>
-  <pre><code class="language-python" data-trim>
-v = np.zeros_like(theta)
-v[names.index("Sex_female")] = 1.0
-v[names.index("Sex_male")]   = 1.0
-
-logit_a = Z @ theta            + b0
-logit_b = Z @ (theta + 2.5*v) + (b0 - 2.5)
-print(np.abs(logit_a - logit_b).max())     # 1.8e-15
-  </code></pre>
-  <p class="fail">Sex_male can be &minus;2.83 or &minus;0.33. Both fits make
-  the same prediction for all 712 passengers.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Coefficients are not the data">
-  <h2>Two coefficient vectors, one model</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l05-coef-ambiguity.svg"
-         alt="Paired bars for intercept, Sex_female and Sex_male under two fits that differ by a shift of 2.5 along the null space, with a note that all predicted probabilities agree to 3e-16.">
-  </figure>
-  <p class="takeaway fail">If the coefficient can be moved without changing any
-  prediction, the coefficient is not a property of the data &mdash; and
-  requirement 4 is not met.</p>
-</section>
-
-<!-- 59 -->
-<section data-menu-title="The repair">
-  <h2>The repair: delete the redundancy</h2>
-  <pre><code class="language-python" data-trim>
-NUM = ["Age", "Fare", "SibSp", "Parch"]        # FamilySize removed
-
-("cat", make_pipeline(SimpleImputer(strategy="most_frequent"),
-                      OneHotEncoder(drop="first",
-                                    handle_unknown="ignore")), CAT),
-  </code></pre>
-  <table class="smaller">
-    <tr><th>Design matrix</th><th class="num">Columns</th><th class="num">Rank</th><th class="num">Condition number</th></tr>
-    <tr><td>As first written</td><td class="num">29</td><td class="num fail">23</td><td class="num fail">2.6e+16</td></tr>
-    <tr><td>One level dropped, FamilySize removed</td><td class="num">23</td><td class="num good">23</td><td class="num good">83.6</td></tr>
-  </table>
-  <p class="small">Fourteen orders of magnitude. <code>IsAlone</code> stays:
-  it is an indicator, not a linear function of the counts.</p>
-</section>
-
-<!-- 60 -->
-<section data-menu-title="What the reference level means">
-  <h2>What <code>drop="first"</code> costs you</h2>
-  <p>Each dropped level becomes the <strong>reference</strong>, folded into the
-  intercept. Every remaining coefficient is now read <em>relative to it</em>.</p>
-  <table class="smaller">
-    <tr><th>Column</th><th>Reference level</th><th>Column</th><th>Reference level</th></tr>
-    <tr><td><code>Pclass</code></td><td>1st class</td><td><code>Title</code></td><td><code>Master</code></td></tr>
-    <tr><td><code>Sex</code></td><td><code>female</code></td><td><code>Deck</code></td><td><code>A</code></td></tr>
-    <tr><td><code>Embarked</code></td><td>Cherbourg</td><td></td><td></td></tr>
-  </table>
-  <p class="small fail">A coefficient with no stated reference level is not
-  reportable. This is the most common defect in the regression tables you will
-  be asked to review.</p>
-</section>
-
-<!-- 60b -->
-<section data-menu-title="Where the two options collide">
-  <h2>And one pairing you must not use</h2>
-  <p class="small">Both arguments produce <strong>all zeros</strong>:
-  <code>drop="first"</code> for the reference level,
-  <code>handle_unknown="ignore"</code> for an unseen one.</p>
-  <pre><code class="language-python" data-trim>
-enc = OneHotEncoder(drop="first", handle_unknown="ignore")
-enc.fit([["A"], ["B"], ["C"]])       # Deck A is the reference
-
-enc.transform([["A"]])   # array([[0., 0.]])   the reference level
-enc.transform([["T"]])   # array([[0., 0.]])   a deck it has never seen
-  </code></pre>
-  <p class="fail small">A passenger on a deck never seen is scored as though
-  they were on deck A. There is a <code>UserWarning</code>, and nothing else.</p>
-  <p class="small">Lecture 2's <code>ISLAND</code> failure in a different hat.
-  Our own data has it: one passenger is on deck <code>T</code>, so one fold in
-  ten holds them out.</p>
-  <div class="panel panel-fix">
-    <span class="panel-title">Pick one</span>
-    <code>handle_unknown="error"</code> and be told; or
-    <code>min_frequency</code>, which gives rare and unseen levels a column of
-    their own. Not both of the first two.
-  </div>
-</section>
-
-<!-- 61 -->
-<section data-menu-title="It also scored better">
-  <h2>And the honest number moved</h2>
-  <table>
-    <tr><th>Encoding</th><th class="num">Cross-validated log loss</th></tr>
-    <tr><td>All levels, FamilySize kept &mdash; rank 23 of 29</td><td class="num">0.496</td></tr>
-    <tr><td>One level dropped, FamilySize removed &mdash; full rank</td><td class="num hit">0.468</td></tr>
-  </table>
-  <p class="small">Not a large move, and not the point. The point is that the
-  first row was reporting a number produced by a fit that had no unique answer,
-  and nothing said so.</p>
-  <p class="small muted">The fold spread is far wider than this gap. Do not
-  claim the second encoding is better on this evidence &mdash; claim it is
-  <em>defined</em>.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Coefficients">
-  <h2>Now the coefficients can be read</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l05-coefficients.svg"
-         alt="Horizontal bar chart of logistic regression coefficients with odds multipliers labelled, sorted from most negative to most positive.">
-  </figure>
-  <p class="takeaway">Each bar is a log-odds. The label beside it is what the
-  odds get multiplied by.</p>
-</section>
-
-<!-- 63 -->
-<section data-menu-title="Reading one coefficient">
-  <h2>Reading one of them out loud</h2>
-  <div class="panel">
-    <span class="panel-title"><code>Pclass_3</code> = &minus;1.169</span>
-    &ldquo;Holding every other recorded feature fixed, travelling third class
-    multiplies the <em>odds</em> of survival by
-    $e^{-1.169} = 0.31$, relative to first class.&rdquo;
-  </div>
-  <ul class="tight small">
-    <li>&ldquo;Holding every other feature fixed&rdquo; is doing real work &mdash; drop it and the sentence is false</li>
-    <li>Odds, not probability. Going from 0.5 to $0.31 \times$ the odds gives 0.24, but from 0.9 it gives 0.73</li>
-    <li>Relative to the reference level, always</li>
-  </ul>
-</section>
-
-<!-- 64 -->
-<section data-menu-title="An honest caveat">
-  <h2>An honest caveat on that table</h2>
-  <p><code>Sex</code> and <code>Title</code> carry the same information twice.
-  <code>Title_Mr</code> is nearly a synonym for <code>Sex_male</code>.</p>
-  <ul class="tight small">
-    <li>The design is now full rank, so the coefficients are <em>unique</em></li>
-    <li>They are not <em>stable</em>: the columns are strongly correlated, so how the effect is split between them moves with the sample</li>
-    <li>Uniqueness and stability are different properties, and we only fixed the first</li>
-  </ul>
-  <p class="small fail">Bring that sentence to the next lecture. It is one of
-  the two things the repair there is for.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ The boundary">
-  <h2>The decision boundary, on two features</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l05-boundary.png"
-         alt="Scatter of training passengers in age and fare, over a shaded probability surface from a two-feature logistic model, with the p equals 0.5 contour drawn as a straight line.">
-  </figure>
-  <p class="takeaway">Every contour is straight: the log-odds are linear. The sigmoid bends the <em>colours</em>, never the <em>lines</em>.</p>
-</section>
-
-<!-- 66 -->
-<section data-menu-title="What a linear boundary costs">
-  <h2>What a straight boundary cannot express</h2>
-  <p>&ldquo;Children and the elderly were helped first&rdquo; is not a
-  monotone statement about age. A linear term in <code>Age</code> cannot say
-  it.</p>
-  <div class="panel">
-    <span class="panel-title">The obvious fix, and it is the book's</span>
-    Add $\text{Age}^2$. Then the log-odds are quadratic in age and the boundary
-    in the original coordinates is a conic &mdash; still a linear model, in
-    transformed features.
-  </div>
-  <p class="small muted">Keep that thought for twenty minutes. First we finish
-  requirements 2 and 3.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- CALIBRATION AND THE CUT-OFF                                          -->
-<!-- ==================================================================== -->
-
-<!-- 67 -->
-<section data-menu-title="Checking calibration">
-  <h2>Requirement 2: is it calibrated?</h2>
-  <pre><code class="language-python" data-trim>
-from sklearn.model_selection import cross_val_predict
-
-p_oof = cross_val_predict(model, X_train, y_train, cv=cv,
-                          method="predict_proba")[:, 1]
-
-bins = np.linspace(0, 1, 11)
-idx  = np.clip(np.digitize(p_oof, bins) - 1, 0, 9)
-for b in range(10):
-    sel = idx == b
-    if sel.sum():
-        print(f"[{bins[b]:.1f},{bins[b+1]:.1f})  predicted {p_oof[sel].mean():.3f}"
-              f"   observed {y_train.values[sel].mean():.3f}   n={sel.sum()}")
-  </code></pre>
-  <p class="small"><code>cross_val_predict</code>, not <code>predict</code>:
-  every probability here was produced by a fit that had never seen that
-  passenger. A reliability diagram drawn on training predictions always looks
-  excellent.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Calibration">
-  <h2>The reliability diagram</h2>
-  <figure class="fig fig-tall">
-    <img src="../assets/figures/l05-calibration.svg"
-         alt="Reliability diagram comparing predicted probability against observed survival rate for training and held-out predictions, with marker area proportional to bin count.">
-  </figure>
-  <p class="takeaway">Close to the diagonal in the bins that hold most of the
-  passengers &mdash; the two ends, where the model is confident.</p>
-</section>
-
-<!-- 69 -->
-<section data-menu-title="Reading it">
-  <h2>How to read that diagram without fooling yourself</h2>
-  <ul class="tight small">
-    <li>Look at the marker <strong>area</strong> first. A bin with six passengers has an observed rate that swings by a sixth on one person</li>
-    <li>Deviations in the middle bins are mostly sampling noise; deviations in the crowded end bins are not</li>
-    <li>The held-out curve is the one that counts. The training curve is closer to the diagonal by construction</li>
-  </ul>
-  <div class="panel panel-fix">
-    <span class="panel-title">Why it is roughly calibrated at all</span>
-    Because log loss is a proper scoring rule and we minimised it directly. The
-    calibration is not a happy accident &mdash; it is what the objective was
-    asking for.
-  </div>
-</section>
-
-<!-- 70 -->
-<section data-menu-title="Now the cut-off">
-  <h2>Requirement 3: choose the cut-off</h2>
-  <pre><code class="language-python" data-trim>
-COST_FN, COST_FP = 10.0, 1.0          # stated by the stakeholder
-
-died = (y_train.values == 0)
-for t in np.linspace(0.02, 0.98, 97):
-    flag = p_oof &lt; t                  # assign an escort
-    cost = (COST_FN * (died & ~flag).sum()
-            + COST_FP * (~died & flag).sum())
-  </code></pre>
-  <p class="small">Swept over <code>p_oof</code>, the out-of-fold
-  probabilities. Choosing a cut-off on predictions the model has already seen is
-  the same mistake as scoring a tree on its own training rows, one level up.</p>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ The cut-off">
-  <h2>The cut-off, and what it buys</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l05-threshold.svg"
-         alt="Left: expected cost against cut-off, with a marked minimum well above 0.5. Right: recall and precision against cut-off, crossing near the chosen value.">
-  </figure>
-  <p class="takeaway">The cost curve has a clear minimum, and it is nowhere
-  near 0.5.</p>
-</section>
-
-<!-- 72 -->
-<section data-menu-title="Defending the choice">
-  <h2>Defending the choice, in one paragraph</h2>
-  <div class="panel">
-    <span class="panel-title">For the report</span>
-    &ldquo;We assign an escort whenever the estimated probability of unaided
-    survival falls below <strong>0.83</strong>. That value minimises
-    expected cost under the stated 10 : 1 ratio, and was selected on
-    out-of-fold predictions, never on the held-out set. At that cut-off we
-    flag 605 of the 712 training passengers and miss 4 of
-    those who did not survive.&rdquo;
-  </div>
-  <p class="small muted">Every clause in that paragraph is a decision someone
-  can disagree with, which is what makes it a defence rather than a claim.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- THE CONSTRAINT NOBODY USED                                           -->
-<!-- ==================================================================== -->
-
-<!-- 72a -->
-<section data-menu-title="Count the crew">
-  <h2>Read that paragraph again, and count</h2>
-  <p>&ldquo;At that cut-off we flag <strong>605</strong> of the 712 training
-  passengers.&rdquo;</p>
-  <table>
-    <tr><th>&nbsp;</th><th>escorts</th></tr>
-    <tr><td>the cost-optimal cut-off asks for</td><td class="num">605</td></tr>
-    <tr><td>the safety unit has</td><td class="num">80</td></tr>
-    <tr class="fail"><td>short by</td><td class="num">525</td></tr>
-  </table>
-  <p class="fail">We have recommended a policy that needs 525 more people than
-  exist, and reported its cost as 210 &mdash; a number nobody can pay, for a
-  plan nobody can staff.</p>
-</section>
-
-<!-- 72b -->
-<section data-menu-title="Stated, then ignored">
-  <h2>The requirement was there the whole time</h2>
-  <ul class="tight">
-    <li>It was in the stakeholder&rsquo;s first sentence: <em>80 crew</em></li>
-    <li>It got its own row in the requirements table</li>
-    <li><strong>Not one line of code has ever referred to it</strong></li>
-  </ul>
-  <p>Every cell since has optimised against the <strong>cost ratio</strong>.
-  The costs say what a mistake is worth; the capacity says how many escorts
-  there are to spend. <em>No price makes a person appear.</em></p>
-  <p class="fix">Nothing errored. The cost curve is correct. The cut-off really
-  is optimal &mdash; for a question nobody asked.</p>
-  <aside class="note">This is the most ordinary failure in applied work, and it
-  does not look like a failure. It looks like a finished analysis.</aside>
-</section>
-
-<!-- FIG -->
-<section class="figslide" data-menu-title="◆ Capacity">
-  <h2>Most of that curve is a place you cannot go</h2>
-  <figure class="fig fig-wide">
-    <img src="../assets/figures/l05-capacity.svg"
-         alt="Left: the same cost curve, with everything above 80 escorts shaded out as unstaffable; the cost-optimal point sits deep in the shaded region. Right: of 80 escorts assigned by risk ranking, 72 go to passengers who did not survive and 8 to passengers who did.">
-  </figure>
-  <p class="takeaway">Only <strong>5.2%</strong> of the cut-offs on that sweep
-  can be staffed at all.</p>
-</section>
-
-<!-- 72c -->
-<section data-menu-title="99% becomes 16%">
-  <h2>The whole finding, in two numbers</h2>
-  <table>
-    <tr><th>policy</th><th>escorts</th><th>cost</th><th>at-risk reached</th></tr>
-    <tr><td>cost-optimal, 0.83</td><td class="num">605</td><td class="num">210</td><td class="num">99.1%</td></tr>
-    <tr class="fix"><td>the 80 you have</td><td class="num">80</td><td class="num">3,678</td><td class="num">16.4%</td></tr>
-  </table>
-  <p>Same model, same probabilities, same costs. The only thing added was the
-  constraint that was in the brief all along.</p>
-  <p class="fail">The difference between 99.1% and 16.4% is not a modelling
-  result. It is the distance between a <em>report</em> and a <em>plan</em>.</p>
-</section>
-
-<!-- 72d -->
-<section data-menu-title="Rank, don't threshold">
-  <h2>Three things change once capacity binds</h2>
-  <ul class="tight small">
-    <li><strong>The rule becomes a ranking.</strong> Not <em>is this passenger
-    below 0.83</em> but <em>are they in the worst 80</em>. The cut-off lands at
-    <strong>0.062</strong> and nobody chose it &mdash; it is whatever the 80th
-    smallest probability happened to be, and it moves with the passenger mix
-    while the model sits still. Lecture 8 is about exactly that.</li>
-    <li><strong>Calibration stops mattering; ordering starts.</strong> Under a
-    hard cap, any strictly increasing relabelling of the probabilities gives
-    the same 80 people and the same cost. Calibration is what you need to
-    choose a cut-off <em>from costs</em>; ranking is what you need to spend a
-    <em>fixed budget</em>.</li>
-    <li><strong>Requirement 1 and requirement 3b want different things</strong>
-    from the same model &mdash; and the brief asked for both.</li>
-  </ul>
-</section>
-
-<!-- 72e -->
-<section data-menu-title="What to report">
-  <h2>What the report should have said</h2>
-  <div class="panel">
-    <span class="panel-title">For the report, second attempt</span>
-    &ldquo;With <strong>80</strong> crew we escort the 80 passengers ranked
-    least likely to survive unaided. That reaches <strong>72</strong> of the
-    <strong>439</strong> at-risk passengers &mdash; <strong>16.4%</strong>
-    &mdash; at a cost of <strong>3,678</strong>. Eight escorts go to passengers
-    who would have survived anyway. Lifting the cap is worth up to
-    <strong>3,468</strong> in avoided cost, which is a budget question and we
-    have priced it.&rdquo;
-  </div>
-  <p class="fix">A cost curve with the infeasible region shaded beats a cost
-  curve with a circle on its minimum, because it tells the stakeholder what to
-  go and change.</p>
-</section>
-
-<!-- 73 -->
-<section data-menu-title="Cut-off sensitivity">
-  <h2>What if the stakeholder&rsquo;s ratio is wrong?</h2>
-  <p class="small">It probably is &mdash; 10 : 1 was an estimate. So report the
-  cut-off as a function of the ratio rather than as a single number, and let
-  them argue with the ratio instead of with you.</p>
-  <ul class="tight small">
-    <li>The cost-minimising cut-off for a calibrated model is $t^\ast = c_{\text{FN}} / (c_{\text{FN}} + c_{\text{FP}})$</li>
-    <li>At 10 : 1 that is $0.909$; at 1 : 1 it is $0.5$</li>
-    <li>Our measured optimum sits below the formula&rsquo;s value, because the model is not perfectly calibrated and the sweep is on finite data</li>
-  </ul>
-  <p class="small fix">That gap between the theoretical cut-off and the measured
-  one <em>is</em> the calibration error, expressed in a unit the stakeholder
-  cares about.</p>
-</section>
-
-<!-- ==================================================================== -->
-<!-- PUSH THE CAPACITY UP                                                 -->
-<!-- ==================================================================== -->
-
-<!-- 74 -->
-<section class="divider" data-menu-title="◆ More capacity">
-  <p class="kicker">Part three, continued</p>
-  <h1>Now push it</h1>
+<section class="divider" data-menu-title="◆ Thread 3">
+  <p class="kicker">Mathematical thread 3</p>
+  <h1>The bias&ndash;variance<br>decomposition</h1>
   <p class="clock">20 minutes</p>
 </section>
 
-<!-- 75 -->
-<section data-menu-title="Why push">
-  <h2>Why push at all?</h2>
-  <p>Because the boundary is straight and the world is not, and because
-  <code>0.468</code> is not obviously good.</p>
-  <ul class="tight small">
-    <li>A linear model in the log-odds cannot represent &ldquo;very young or very old&rdquo;</li>
-    <li>It cannot represent &ldquo;third class <em>and</em> travelling alone&rdquo; as anything other than the sum of two effects</li>
-    <li>Both are expressible as <strong>polynomial features</strong>, and they leave the model linear in its parameters</li>
-  </ul>
-  <p class="small muted">This is the same device as Chapter 4's polynomial
-  regression, applied to a classifier.</p>
+<!-- 5 -->
+<section data-menu-title="The question">
+  <h2>The question</h2>
+  <p class="lead">Your held-out error is 0.467 and your training error is
+  0.395.</p>
+  <p class="lead">Where does the difference come from &mdash; and how far down
+  could it ever go?</p>
+  <div class="panel panel-math">
+    <span class="panel-title">Why you need the answer</span>
+    The two questions have different repairs. Attack the wrong one and you will
+    spend an afternoon making the model worse.
+  </div>
 </section>
 
-<!-- 76 -->
-<section data-menu-title="Polynomial features">
-  <h2>Polynomial features</h2>
-  <pre><code class="language-python" data-trim>
-num = make_pipeline(SimpleImputer(strategy="median"),
-                    StandardScaler(),
-                    PolynomialFeatures(degree=d, include_bias=False))
-  </code></pre>
-  <p class="small">Applied to the four numeric columns only. Squaring a one-hot
-  indicator returns the indicator, so expanding the categorical block would add
-  columns that are exact copies &mdash; and we have just spent twenty minutes
-  removing exact copies.</p>
-  <p class="small"><code>degree=2</code> on
-  <code>Age, Fare, SibSp, Parch</code> gives every square and every pairwise
-  product: $\text{Age}^2$, $\text{Age}\cdot\text{Fare}$, and so on.</p>
+<!-- 6 -->
+<section data-menu-title="What is random">
+  <h2>First: what is random here?</h2>
+  <p>Not the passenger. Fix one passenger $x$ and ask about them repeatedly.</p>
+  <ul class="tight small">
+    <li>The <strong>training set</strong> $D$ is random &mdash; you happened to
+        get these 712 rows out of the 891</li>
+    <li>The <strong>label</strong> $y$ of the passenger is random &mdash; two
+        people with identical recorded values did not both survive</li>
+  </ul>
+  <p class="small">Everything in this thread is an expectation over those two
+  sources, and over nothing else. The model is deterministic given $D$.</p>
+  <aside class="notes">This slide is where the room splits. Ask explicitly:
+  "when I write E, what am I averaging over?" Someone will say "the test set".
+  That is the answer to a different question.</aside>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="Three predictions">
+  <h2>Three numbers for one passenger</h2>
+  <table class="smaller">
+    <tr><th>Symbol</th><th>Meaning</th><th>Observed?</th></tr>
+    <tr><td>$\hat{p}_D(x)$</td><td>what <em>your</em> model predicts, having seen $D$</td><td class="hit">yes</td></tr>
+    <tr><td>$\bar{p}(x) = \mathbb{E}_D[\hat{p}_D(x)]$</td><td>the average prediction over all training sets you could have drawn</td><td class="miss">no &mdash; estimated</td></tr>
+    <tr><td>$p^{*}(x)$</td><td>the true probability that this passenger survives</td><td class="miss">never</td></tr>
+  </table>
+  <p class="small">$y \in \{0, 1\}$ is what actually happened. It is never
+  $p^{*}$, and that gap is the third term we are about to derive.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="The error we care about">
+  <h2>The quantity to decompose</h2>
+  <div class="eqn-box">
+    $$\mathbb{E}_{D,\,y}\!\left[\left(y - \hat{p}_D(x)\right)^{2}\right]$$
+  </div>
+  <p class="eqn-label">Expected squared error at one passenger</p>
+  <p class="small">Averaged over passengers this is the <strong>Brier
+  score</strong> you already report. We decompose it at a single $x$ and then
+  average &mdash; the decomposition is linear, so nothing is lost.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="Add and subtract">
+  <h2>Step 1 &middot; Add and subtract the average prediction</h2>
+  <p class="derive-step">Condition on $y$ for a moment and average over $D$ only:</p>
+  <div class="eqn-box">
+    $$\left(y - \hat{p}_D\right)^{2}
+      = \left(\underbrace{y - \bar{p}}_{\text{does not depend on } D}
+             + \underbrace{\bar{p} - \hat{p}_D}_{\text{mean } 0}\right)^{2}$$
+  </div>
+  <p class="small">Expand the square. The cross term is
+  $2\,(y - \bar{p})\,\mathbb{E}_D[\bar{p} - \hat{p}_D] = 0$, because
+  $\bar{p}$ is <em>defined</em> as $\mathbb{E}_D[\hat{p}_D]$.</p>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="Two terms">
+  <h2>Step 2 &middot; Two terms, exactly</h2>
+  <div class="eqn-box">
+    $$\mathbb{E}_{D}\!\left[\left(y - \hat{p}_D\right)^{2}\right]
+      = \left(y - \bar{p}\right)^{2}
+      + \underbrace{\mathbb{E}_{D}\!\left[\left(\hat{p}_D - \bar{p}\right)^{2}\right]}_{\textbf{variance}}$$
+  </div>
+  <p>The second term is the variance of your predictor. It says how much the
+  answer moves when the 712 rows move &mdash; and it does not mention the truth
+  at all.</p>
+  <p class="fix small">This step is an identity, not an approximation. We check
+  it numerically later in this lecture, and the residual is zero to machine
+  precision.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="Now average over y">
+  <h2>Step 3 &middot; Now average over the label as well</h2>
+  <p class="derive-step">Repeat the trick on $(y - \bar{p})^{2}$, this time
+  inserting $p^{*}$:</p>
+  <div class="eqn-box">
+    $$\mathbb{E}_{y}\!\left[\left(y - \bar{p}\right)^{2}\right]
+      = \underbrace{\left(p^{*} - \bar{p}\right)^{2}}_{\textbf{squared bias}}
+      + \underbrace{p^{*}\!\left(1 - p^{*}\right)}_{\textbf{noise}}$$
+  </div>
+  <p class="small">Same cancellation: $\mathbb{E}_y[y] = p^{*}$, so the cross
+  term vanishes again. And $\operatorname{Var}(y) = p^{*}(1-p^{*})$ because $y$
+  is Bernoulli.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="The decomposition">
+  <h2>The decomposition</h2>
+  <div class="eqn-box">
+    $$\mathbb{E}\!\left[\left(y - \hat{p}_D\right)^{2}\right]
+      \;=\; \left(p^{*} - \bar{p}\right)^{2}
+      \;+\; \mathbb{E}_{D}\!\left[\left(\hat{p}_D - \bar{p}\right)^{2}\right]
+      \;+\; p^{*}\!\left(1 - p^{*}\right)$$
+  </div>
+  <table class="smaller">
+    <tr><th>Term</th><th>Means</th><th>Cured by</th></tr>
+    <tr><td>squared bias</td><td>wrong <em>on average</em> &mdash; the model family cannot reach the truth</td><td>more capacity</td></tr>
+    <tr><td>variance</td><td>unstable &mdash; a different sample gives a different answer</td><td>less capacity, or more data</td></tr>
+    <tr><td>noise</td><td>the label is not a function of the recorded columns</td><td class="fail">nothing</td></tr>
+  </table>
+  <p class="small fail">The two repairs point in opposite directions. That is
+  the whole difficulty.</p>
 </section>
 
 <!-- FIG -->
-<section class="figslide" data-menu-title="◆ How fast it grows">
-  <h2>How fast the column count grows</h2>
+<section class="figslide" data-menu-title="◆ The decomposition">
+  <h2>The whole thread, in one picture</h2>
   <figure class="fig fig-wide">
-    <img src="../assets/figures/l05-degree-features.svg"
-         alt="Bar chart of the number of model columns against polynomial degree, rising from 22 at degree 1 to 227 at degree 6, with a line marking the 712 training rows.">
+    <img src="../assets/figures/d-biasvariance.svg"
+         alt="Several training sets D1, D2, D3 feed the same fitting procedure, producing a spread of predicted probabilities for one passenger; the spread's centre is p-bar, the truth p-star sits elsewhere on the axis, and the three labelled terms of the identity are written underneath.">
   </figure>
-  <p class="takeaway">At degree 6 the model has 227 weights to determine from
-  712 passengers &mdash; about three rows per weight.</p>
+  <p class="takeaway muted">Bias is the distance from the centre of the spread
+  to the truth. Variance is the width of the spread. Neither is visible from one
+  training set.</p>
 </section>
 
-<!-- 78 -->
-<section data-menu-title="Record both curves">
-  <h2>Record <em>both</em> curves</h2>
+<!-- 13 -->
+<section data-menu-title="Squared error, not log loss">
+  <h2>An honest caveat before we measure anything</h2>
+  <p class="small">The identity above is exact for <strong>squared
+  error</strong>. Your committed metric is log loss, and log loss does
+  <em>not</em> decompose into three additive terms like this.</p>
+  <div class="panel panel-math">
+    <span class="panel-title">What we do about it</span>
+    The decomposition is measured on the Brier score &mdash; which the previous
+    lecture already reported alongside log loss, and which is the squared error
+    of a probability. The <em>shape</em> of the answer transfers; the numbers
+    are Brier numbers and are labelled as such.
+  </div>
+  <p class="small muted">Saying &ldquo;bias&ndash;variance&rdquo; about a log
+  loss curve is common and slightly wrong. Doing it knowingly, and saying which
+  metric you decomposed, is the difference.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="The third term, measured">
+  <h2>Start with the term you cannot fix</h2>
+  <p class="small">$p^{*}$ is never observed &mdash; but where several
+  passengers share <em>exactly</em> the same recorded values, every model of
+  those columns must give them the same number. Whatever their outcomes do
+  inside that cell is a floor.</p>
   <pre><code class="language-python" data-trim>
-for d in range(1, 7):
-    r = cross_validate(pipeline(degree=d), X_train, y_train, cv=cv,
-                       scoring="neg_log_loss", return_train_score=True)
-    train.append(-r["train_score"].mean())
-    valid.append(-r["test_score"].mean())
+keys = ["Sex", "Pclass", "AgeBand", "FamBand", "Embarked"]
+cells = full.groupby(keys, observed=True)["Survived"].agg(["sum", "count"])
+
+# k(m-k)/(m(m-1)) is the unbiased estimator of p(1-p) from m Bernoulli draws
+multi = cells[cells["count"] >= 2]
+var   = multi["sum"] * (multi["count"] - multi["sum"]) / (
+        multi["count"] * (multi["count"] - 1))
+noise = (var * multi["count"]).sum() / multi["count"].sum()
   </code></pre>
-  <p><code>return_train_score=True</code> is not on by default, and it is the
-  whole experiment. One curve tells you nothing.</p>
-  <p class="small muted">About four minutes on a free Colab CPU runtime.
+  <p class="small">133 distinct cells; 102 of them contain at least two
+  passengers, covering 858 people.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Identical inputs">
+  <h2>Identical inputs, different outcomes</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l06-noise-cells.svg"
+         alt="Four horizontal bars, one per cell of identical recorded values, each split into a died segment and a survived segment; the largest cell holds 75 third-class men travelling alone, of whom 6 survived.">
+  </figure>
+  <p class="takeaway fail">62 third-class men aged 26 to 40, travelling alone
+  from Southampton, with every recorded value identical. 13 of them survived.
+  No model of these columns can separate them.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="The floor">
+  <h2>The floor</h2>
+  <p class="big-num">0.121</p>
+  <p class="lead">Brier score. Measured, not assumed.</p>
+  <p class="small">56 of the 102 shared cells are mixed &mdash; 657 passengers
+  sit in a cell where the outcome went both ways. That is 74% of everyone on
+  board, living inside a cell whose answer cannot be certain.</p>
+  <p class="small muted">It is an <em>under</em>-estimate of the true noise: two
+  passengers in the same cell may still differ in ways the Titanic&rsquo;s
+  manifest never recorded. The real floor is at least this high.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="Measure the other two">
+  <h2>Now measure the other two terms &mdash; on your own pipeline</h2>
+  <pre><code class="language-python" data-trim>
+rng   = np.random.default_rng(42)
+draws = [rng.choice(len(X_train), size=400, replace=False)
+         for _ in range(200)]
+
+P = np.array([pipeline(degree=d).fit(X_train.iloc[s], y_train.iloc[s])
+                                 .predict_proba(X_test)[:, 1]
+              for s in draws])                       # 200 x 179
+
+pbar     = P.mean(axis=0)
+variance = ((P - pbar) ** 2).mean(axis=0)
+bias2_pn = (y_test.values - pbar) ** 2               # bias^2 + noise
+total    = ((y_test.values - P) ** 2).mean(axis=0)
+  </code></pre>
+  <p class="small">200 training sets of 400 rows each, drawn from the 712 you
+  hold. Every fit uses the pipeline from the previous lecture, unchanged.</p>
+  <p class="smaller muted">About three minutes on a free Colab CPU runtime.
   Timings are <strong>not examinable</strong>.</p>
 </section>
 
+<!-- 17 -->
+<section data-menu-title="The identity holds">
+  <h2>Check the identity before believing the plot</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; abs(total.mean() - variance.mean() - bias2_pn.mean())
+2.7755575615628914e-17
+  </code></pre>
+  <p>Machine epsilon on a double. The three columns you are about to see are not
+  a model of the error &mdash; they <em>are</em> the error, rearranged.</p>
+  <p class="fix small">Do this every time you implement a decomposition. If the
+  residual is not at floating-point noise, you have a bug, and the picture will
+  still look plausible.</p>
+</section>
+
 <!-- FIG -->
-<section class="figslide" data-menu-title="◆ The two curves">
-  <h2>The two curves</h2>
+<section class="figslide" data-menu-title="◆ Bias and variance">
+  <h2>Your degree sweep, taken apart</h2>
   <figure class="fig fig-wide">
-    <img src="../assets/figures/l05-degree-curves.svg"
-         alt="Left: training and held-out log loss against polynomial degree; training falls steadily while held-out rises sharply from degree three. Right: the same in accuracy, on a much smaller vertical scale.">
+    <img src="../assets/figures/l06-bias-variance.svg"
+         alt="Stacked area chart against polynomial degree: a wide bias-squared-plus-noise band that grows slowly, and a variance band that grows fast from degree three onward, with the total drawn as a black line and a dashed horizontal line at the measured noise floor of 0.121.">
   </figure>
-  <p class="takeaway fail">The training curve never stops improving. The
-  held-out curve turns at degree 2 and then falls off a cliff.</p>
+  <p class="takeaway">Between degree 1 and degree 6 the variance term is
+  multiplied by <strong>twelve</strong>. Everything else is nearly flat.</p>
 </section>
 
-<!-- 80 -->
-<section data-menu-title="The table">
-  <h2>The same thing, as a table</h2>
+<!-- 18 -->
+<section data-menu-title="The numbers">
+  <h2>The same figure, as numbers</h2>
   <table class="smaller">
-    <tr><th class="num">Degree</th><th class="num">Columns</th><th class="num">Training log loss</th><th class="num">Held-out log loss</th><th class="num">Held-out accuracy</th></tr>
-    <tr><td class="num">1</td><td class="num">22</td><td class="num">0.395</td><td class="num">0.468</td><td class="num">81.5%</td></tr>
-    <tr><td class="num">2</td><td class="num">32</td><td class="num">0.381</td><td class="num hit">0.467</td><td class="num hit">82.2%</td></tr>
-    <tr><td class="num">3</td><td class="num">52</td><td class="num">0.355</td><td class="num">0.538</td><td class="num">79.6%</td></tr>
-    <tr><td class="num">4</td><td class="num">87</td><td class="num">0.310</td><td class="num fail">1.390</td><td class="num">77.4%</td></tr>
-    <tr><td class="num">5</td><td class="num">143</td><td class="num">0.286</td><td class="num fail">1.922</td><td class="num">76.0%</td></tr>
-    <tr><td class="num">6</td><td class="num">227</td><td class="num">0.284</td><td class="num fail">1.836</td><td class="num">76.7%</td></tr>
+    <tr><th class="num">Degree</th><th class="num">bias² + noise</th><th class="num">variance</th><th class="num">total</th></tr>
+    <tr><td class="num">1</td><td class="num">0.130</td><td class="num hit">0.006</td><td class="num hit">0.136</td></tr>
+    <tr><td class="num">2</td><td class="num">0.134</td><td class="num">0.011</td><td class="num">0.146</td></tr>
+    <tr><td class="num">3</td><td class="num">0.138</td><td class="num">0.029</td><td class="num">0.167</td></tr>
+    <tr><td class="num">4</td><td class="num">0.163</td><td class="num">0.059</td><td class="num">0.222</td></tr>
+    <tr><td class="num">5</td><td class="num">0.180</td><td class="num fail">0.068</td><td class="num fail">0.249</td></tr>
+    <tr><td class="num">6</td><td class="num">0.182</td><td class="num fail">0.072</td><td class="num fail">0.254</td></tr>
   </table>
-  <p class="small">Degrees 1 and 2 differ by 0.0010 in held-out log loss, and
-  the fold-to-fold spread is two hundred times that. <span class="fail">Those
-  two are a tie</span>, and reporting degree 2 as the winner would be reporting
-  noise.</p>
+  <p class="small">Read the first column: 0.130 at degree 1, against a measured
+  noise floor of 0.121. <strong>Almost all of it is noise.</strong> The squared
+  bias of a degree-1 logistic model on these features is under 0.01.</p>
+  <p class="small fail">So there was never much bias to buy back. Every extra
+  degree bought variance and nothing else.</p>
 </section>
 
-<!-- 81 -->
-<section data-menu-title="Log loss vs accuracy">
-  <h2>Log loss saw it first</h2>
-  <p>From degree 2 to degree 5, held-out accuracy falls by about 7 points.
-  Held-out log loss is multiplied by more than <strong>four</strong>.</p>
-  <ul class="tight small">
-    <li>Accuracy only notices when a prediction crosses the cut-off</li>
-    <li>Log loss notices a confident prediction becoming a confidently wrong one</li>
-    <li>The failure is not that the model gets more passengers wrong &mdash; it is that it becomes <em>certain</em> about the ones it gets wrong</li>
+<!-- 19 -->
+<section data-menu-title="Map it onto your curves">
+  <h2>Now put it back on the two curves you drew</h2>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>The training curve</strong></p>
+      <p class="smaller">Falls forever. It is measured on the rows that were fitted, so it sees no variance term at all &mdash; the model was tuned to those exact rows.</p>
+    </div>
+    <div>
+      <p class="small"><strong>The held-out curve</strong></p>
+      <p class="smaller">Turns at degree 2 and climbs. It is the sum of all three terms, and from degree 3 the variance term dominates.</p>
+    </div>
+  </div>
+  <div class="panel panel-math">
+    <span class="panel-title">The identification, stated once</span>
+    <strong>The vertical gap between your two curves is the variance
+    term.</strong> Degree 1: gap 0.073. Degree 5: gap 1.672. The gap grew by a
+    factor of 23 while the model family stayed the same size in every other
+    respect.
+  </div>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="Two shapes">
+  <h2>Two shapes, two diagnoses</h2>
+  <ul class="tight">
+    <li>Both curves plateau <strong>high and together</strong> &rarr; bias. The
+        model is too rigid; more data changes nothing</li>
+    <li>A gap that is <strong>still open</strong> at the last point &rarr;
+        variance. More data would help, and you may not be able to get any</li>
   </ul>
-  <p class="small fix">Requirement 1 was for probabilities. The metric that
-  matches the requirement is the metric that saw the damage.</p>
+  <p class="small">These are the only two shapes, and telling them apart takes
+  ten seconds once you know what you are looking at.</p>
 </section>
 
-<!-- 82 -->
-<section data-menu-title="A warning we should read">
-  <h2>A warning worth reading</h2>
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Reading a curve">
+  <h2>The two shapes, drawn</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-curve-reading.svg"
+         alt="Two schematic learning-curve panels side by side: on the left both curves rise to meet at a high plateau above the irreducible error, labelled bias; on the right the two curves stay far apart at the right-hand edge, labelled variance, each with its own repair written underneath.">
+  </figure>
+  <p class="takeaway muted">The repairs are written on the diagram because they
+  are opposites. Applying the left-hand repair to a right-hand curve is the most
+  common wasted afternoon in applied machine learning.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Learning curves in code">
+  <h2>Drawing them on your own model</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.model_selection import learning_curve
+
+n, train, valid = learning_curve(
+    pipeline(degree=d), X_train, y_train, cv=cv,
+    train_sizes=np.linspace(0.12, 1.0, 8),
+    scoring="neg_log_loss", shuffle=True, random_state=42)
+  </code></pre>
+  <p class="small">The x-axis is now the <strong>number of training rows</strong>,
+  not the degree. Same two curves, a different knob &mdash; and the shape answers
+  a question the degree sweep cannot: <em>would more data help?</em></p>
+  <p class="smaller muted">Note <code>shuffle=True</code>. Without it the
+  sub-samples are the first $n$ rows of the frame, in whatever order your frame
+  happens to be in.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Learning curves">
+  <h2>Degree 1 and degree 5, as the data grows</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l06-learning-curve.svg"
+         alt="Two panels sharing a y-axis: on the left, degree one, the training and held-out log loss converge to within 0.078 of each other by 640 passengers; on the right, degree five, the held-out curve starts near ten and is still 1.599 above the training curve at the last point.">
+  </figure>
+  <p class="takeaway">Left: the curves have met. Right: they have not, and the
+  gap is still falling &mdash; the model is starved of rows, not of capacity.</p>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Reading the panels">
+  <h2>Reading those two panels</h2>
+  <table class="smaller">
+    <tr><th></th><th class="num">Degree 1</th><th class="num">Degree 5</th></tr>
+    <tr><td>Training log loss at 640 rows</td><td class="num">0.395</td><td class="num">0.286</td></tr>
+    <tr><td>Held-out log loss at 640 rows</td><td class="num">0.474</td><td class="num fail">1.885</td></tr>
+    <tr><td>Gap</td><td class="num hit">0.078</td><td class="num fail">1.625</td></tr>
+    <tr><td>Held-out at 76 rows</td><td class="num">2.853</td><td class="num fail">9.889</td></tr>
+  </table>
+  <p class="small">The degree-5 held-out curve falls from 9.8 to 1.9 as rows
+  arrive, and is still falling steeply at 640. Extrapolating it, this model
+  would need <em>several times</em> our dataset before it became competitive.</p>
+  <p class="fix small">There are 891 passengers on the Titanic. There will never
+  be more. <strong>Rows are not a knob we can turn</strong>, so the only repair
+  left is to shrink the model.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="The trade-off">
+  <h2>Why it is called a trade-off</h2>
+  <p>Increasing a model&rsquo;s complexity typically increases its variance and
+  reduces its bias. Reducing complexity does the reverse.</p>
+  <div class="eqn-box">
+    $$\text{total} \;=\; \underbrace{\text{bias}^{2}}_{\downarrow\ \text{with capacity}}
+      \;+\; \underbrace{\text{variance}}_{\uparrow\ \text{with capacity}}
+      \;+\; \underbrace{\text{noise}}_{\text{fixed}}$$
+  </div>
+  <p class="small">You are minimising a sum of two terms that move in opposite
+  directions. The minimum is interior, and on this dataset it sits at degree 1
+  or 2 &mdash; which is exactly where your held-out curve turned.</p>
+  <p class="small muted">The word &ldquo;trade-off&rdquo; is doing real work.
+  There is no setting that is good at both.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Thread 3 summary">
+  <h2>Thread 3 &middot; Summary</h2>
+  <ul class="tight smaller">
+    <li>Expected squared error at a point splits <em>exactly</em> into squared
+        bias, variance, and $p^{*}(1-p^{*})$</li>
+    <li>The expectation is over the <strong>training set</strong> and the
+        <strong>label</strong>, not over test points</li>
+    <li>Bias is being wrong on average; variance is being unstable; noise is
+        neither and cannot be reduced</li>
+    <li>The gap between a training curve and a held-out curve is the variance
+        term made visible</li>
+    <li>Curves plateauing high together mean bias; a gap still open at the last
+        point means variance</li>
+    <li>On this dataset the floor is <strong>0.121</strong> Brier, and the
+        degree-1 model is already within 0.01 of it in squared bias</li>
+  </ul>
+  <p class="small muted">Examinable: derive the three terms; state what each
+  expectation is over; read a diagnosis off a pair of curves.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- DIAGNOSE (20 min)                                                    -->
+<!-- ==================================================================== -->
+
+<!-- 25 -->
+<section class="divider" data-menu-title="◆ Diagnose">
+  <p class="kicker">Part two</p>
+  <h1>Diagnose</h1>
+  <p class="clock">20 minutes &middot; three faults, one shape</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Score the sheet">
+  <h2>Take out the sheet</h2>
+  <div class="commit">
+    <span class="commit-label">From the previous lecture</span>
+    <p class="small">
+      Log loss for a system I would sign off: <span class="blank"></span><br>
+      Log loss I expect from the model we build today: <span class="blank"></span><br>
+      Best log loss I obtained: <span class="blank"></span>
+    </p>
+  </div>
+  <table class="smaller">
+    <tr><th>Reality, cross-validated on the training set</th><th class="num">Log loss</th></tr>
+    <tr><td>Report the base rate to everyone &mdash; the anchor</td><td class="num">0.666</td></tr>
+    <tr><td>Best degree you found</td><td class="num hit">0.467</td></tr>
+    <tr><td>Degree 5, where the sweep ended</td><td class="num fail">1.922</td></tr>
+  </table>
+  <p class="small muted">Read your three numbers out loud before the next slide.
+  The interesting question is not whether you were close.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="The suspect">
+  <h2>The suspect</h2>
+  <p class="big-num bad">1.922</p>
+  <p class="lead">Degree 5 is <strong>three times worse than saying nothing at
+  all</strong>.</p>
+  <p>Not worse than the best model. Worse than the anchor &mdash; worse than a
+  model that has learned only how many people died.</p>
+  <aside class="notes">Let this land. Almost nobody expects a more expressive
+  model to be beaten by a constant, and the number is large enough that they
+  cannot argue it is noise.</aside>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="How that is possible">
+  <h2>How is that even possible?</h2>
+  <p class="small">Accuracy at degree 5 was 75.4% &mdash; poor, but not absurd.
+  Log loss went to 1.922. The two metrics disagree because they measure
+  different things.</p>
+  <div class="eqn-box">
+    $$-\log(0.01) \;\approx\; 4.6 \qquad\text{one confident mistake}$$
+  </div>
+  <p>A single passenger given probability 0.01 who then survives contributes 4.6
+  to the average, on its own. Accuracy records that passenger as one error out of
+  179 and moves on.</p>
+  <p class="fix small">Log loss is unbounded above. That is not a defect &mdash;
+  it is the metric telling you that confident-and-wrong is a different failure
+  from wrong.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Diagnosis 1">
+  <h2>Diagnosis 1 &middot; Variance, straight off the decomposition</h2>
+  <table class="smaller">
+    <tr><th></th><th class="num">Degree 1</th><th class="num">Degree 5</th></tr>
+    <tr><td>Columns</td><td class="num">22</td><td class="num fail">143</td></tr>
+    <tr><td>Training rows</td><td class="num">712</td><td class="num">712</td></tr>
+    <tr><td>Rows per weight</td><td class="num">32</td><td class="num fail">5</td></tr>
+    <tr><td>Variance term, Brier</td><td class="num">0.006</td><td class="num fail">0.068</td></tr>
+  </table>
+  <p>Five rows per weight. Move one passenger between folds and the fitted
+  surface moves with them.</p>
+  <p class="small muted">This is the diagnosis the thread was built to deliver,
+  and it is not yet the whole story. Two more faults are hiding underneath it.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Diagnosis 2">
+  <h2>Diagnosis 2 &middot; The warning you were told to read</h2>
   <pre><code class="language-text" data-trim>
 ConvergenceWarning: lbfgs failed to converge after 4000 iteration(s)
   </code></pre>
   <table class="smaller">
     <tr><th class="num">Degree</th><th class="num">1</th><th class="num">2</th><th class="num">3</th><th class="num">4</th><th class="num">5</th><th class="num">6</th></tr>
     <tr><td>Converged</td><td class="num good">yes</td><td class="num good">yes</td><td class="num good">yes</td><td class="num fail">no</td><td class="num fail">no</td><td class="num fail">no</td></tr>
-    <tr><td>Iterations used</td><td class="num">74</td><td class="num">256</td><td class="num">935</td><td class="num">4000</td><td class="num">4000</td><td class="num">4000</td></tr>
+    <tr><td>Largest $|\theta_j|$</td><td class="num">4.87</td><td class="num">5.43</td><td class="num">6.32</td><td class="num fail">18.70</td><td class="num fail">11.07</td><td class="num">3.98</td></tr>
   </table>
-  <p class="small">The reflex is to raise <code>max_iter</code>. It will not
-  help, and understanding why is the point.</p>
+  <p class="small">The reflex is <code>max_iter=100000</code>. It will not help,
+  because the optimiser is not converging slowly. <strong>It is looking for
+  something that does not exist.</strong></p>
 </section>
 
-<!-- 83 -->
-<section data-menu-title="Why it cannot converge">
-  <h2>Why more iterations cannot help</h2>
-  <p>In a space with 87 columns and 712 rows, the two classes eventually become
-  <strong>linearly separable</strong>. Suppose some $\boldsymbol\theta$
-  separates them perfectly. Then for every passenger</p>
+<!-- 31 -->
+<section data-menu-title="Separation">
+  <h2>Why the minimiser does not exist</h2>
+  <p class="small">Suppose that in the expanded feature space some vector
+  $\boldsymbol\theta$ separates the two classes perfectly: every survivor has
+  $\boldsymbol\theta^{\intercal}\mathbf{x} &gt; 0$ and every casualty has
+  $\boldsymbol\theta^{\intercal}\mathbf{x} &lt; 0$.</p>
   <div class="eqn-box">
-    $$c \to \infty \;\Longrightarrow\; J(c\,\boldsymbol\theta) \to 0$$
+    $$\sigma\!\left(c\,\boldsymbol\theta^{\intercal}\mathbf{x}\right)
+      \;\longrightarrow\; \begin{cases}1 & \text{if } \boldsymbol\theta^{\intercal}\mathbf{x} > 0\\
+                                       0 & \text{if } \boldsymbol\theta^{\intercal}\mathbf{x} < 0\end{cases}
+      \qquad \text{as } c \to \infty$$
   </div>
-  <p>so the likelihood has no maximum: scaling the weights up always improves
-  it. There is no optimum for lbfgs to find.</p>
-  <p class="small fail">The warning is not a numerical nuisance. It is the
-  solver telling you the estimate you asked for <em>does not exist</em>.</p>
+  <p>So the training log loss falls monotonically towards zero as
+  $\lVert\boldsymbol\theta\rVert \to \infty$. The infimum is never attained.
+  There is no minimum to find.</p>
+  <p class="fail small">143 columns and 712 rows makes separation easy. lbfgs
+  runs out of iterations because we told it to stop, not because it arrived.</p>
 </section>
 
-<!-- 84 -->
-<section data-menu-title="Two failures, one shape">
-  <h2>Both of today&rsquo;s failures have the same shape</h2>
+<!-- 32 -->
+<section data-menu-title="One shape, twice">
+  <h2>Two symptoms of one thing</h2>
   <table>
-    <tr><th>Symptom</th><th>What it means</th></tr>
-    <tr><td>Rank 23 of 29 columns</td><td>the minimiser is not <strong>unique</strong></td></tr>
-    <tr><td>lbfgs will not converge at degree 4</td><td>the minimiser does not <strong>exist</strong></td></tr>
+    <tr><th>Symptom</th><th>Underlying statement</th></tr>
+    <tr><td>Enormous coefficients, no convergence</td><td>$\lVert\boldsymbol\theta\rVert$ is unbounded &mdash; the minimiser does not <strong>exist</strong></td></tr>
+    <tr><td>Rank 23 of 29 columns, from the previous lecture</td><td>the minimiser is not <strong>unique</strong></td></tr>
   </table>
-  <p>Both are statements about the optimisation problem, not about the data.
-  Both are repaired by the same one-line change, and you have not seen it
-  yet.</p>
-  <aside class="notes">Do not name ridge. If someone names it, say &ldquo;hold
-  that&rdquo; and move on &mdash; it is the second half of the next
-  lecture.</aside>
+  <p>Both are statements about the optimisation problem, not about the
+  passengers. Both are repaired by adding one term to the objective.</p>
+  <aside class="notes">If someone shouts "ridge" here, that is the right answer
+  and it arrives in twelve minutes. Do not let it arrive early, because the
+  third diagnosis is the one that makes the callback land.</aside>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="Diagnosis 3">
+  <h2>Diagnosis 3 &middot; Thread 1, returning</h2>
+  <p class="lead">You engineered a column that is an exact linear combination of
+  two others.</p>
+  <div class="eqn-box">
+    $$\texttt{FamilySize} \;=\; \texttt{SibSp} \;+\; \texttt{Parch} \;+\; 1$$
+  </div>
+  <pre><code class="language-python" data-trim>
+&gt;&gt;&gt; (X_train["SibSp"] + X_train["Parch"] + 1
+...  - X_train["FamilySize"]).abs().max()
+0.0
+  </code></pre>
+  <p class="small">Not approximately. Exactly, on every row &mdash; because you
+  wrote the line that made it.</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="What Thread 1 said">
+  <h2>What Thread 1 said would happen</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Lecture 2, on the normal equation</span>
+    &ldquo;If one column is a linear combination of others, the columns are
+    dependent and $\mathbf{X}^{\intercal}\mathbf{X}$ is singular.&rdquo; And:
+    &ldquo;when creating new combined features, avoid simple weighted sums of
+    existing features.&rdquo;
+  </div>
+  <p class="small">A weighted sum with weights $1, 1$ and an intercept is still
+  a weighted sum. The singularity was manufactured by hand, in a feature
+  engineering cell, and it looked like good practice at the time.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="The eigenvalue">
+  <h2>Look at the spectrum</h2>
+  <p class="small">Standardise the five numeric columns and form
+  $\mathbf{X}^{\intercal}\mathbf{X}$. Its eigenvalues:</p>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; np.linalg.eigvalsh(Z.T @ Z)
+array([1.81e-12, 4.29e+02, 5.43e+02, 7.90e+02, 1.80e+03])
+  </code></pre>
+  <p>The smallest eigenvalue is $1.8\times10^{-12}$ &mdash; zero, to the
+  precision the arithmetic allows. Four columns of information in five columns of
+  data.</p>
+  <p class="fail">Condition number: about $9\times10^{14}$. A double has about
+  $10^{16}$ of relative precision, so roughly two significant digits survive the
+  solve.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Adding alpha I">
+  <h2>What adding $\alpha\mathbf{I}$ does to that spectrum</h2>
+  <p class="derive-step">If $\mathbf{X}^{\intercal}\mathbf{X}\,\mathbf{v} = \lambda\mathbf{v}$, then</p>
+  <div class="eqn-box">
+    $$\left(\mathbf{X}^{\intercal}\mathbf{X} + \alpha\mathbf{I}\right)\mathbf{v}
+      \;=\; \left(\lambda + \alpha\right)\mathbf{v}$$
+  </div>
+  <ul class="tight small">
+    <li>Same eigenvectors; every eigenvalue moved up by exactly $\alpha$</li>
+    <li>$\mathbf{X}^{\intercal}\mathbf{X}$ is positive semi-definite, so
+        $\lambda \ge 0$, so $\lambda + \alpha \ge \alpha &gt; 0$</li>
+    <li>No eigenvalue is zero &rArr; <strong>the matrix is invertible for every
+        $\alpha &gt; 0$</strong></li>
+  </ul>
+  <div class="panel panel-math">
+    <span class="panel-title">The callback, stated outright</span>
+    Lecture 2 promised that ridge regression makes
+    $\mathbf{X}^{\intercal}\mathbf{X}$ invertible for every $\alpha &gt; 0$.
+    That is the promise, and this is its two-line proof.
+  </div>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="The condition bound">
+  <h2>And it bounds the conditioning</h2>
+  <div class="eqn-box">
+    $$\kappa\!\left(\mathbf{X}^{\intercal}\mathbf{X} + \alpha\mathbf{I}\right)
+      \;=\; \frac{\lambda_{\max} + \alpha}{\lambda_{\min} + \alpha}
+      \;\le\; \frac{\lambda_{\max} + \alpha}{\alpha}$$
+  </div>
+  <p class="small">The bound on the right does not mention $\lambda_{\min}$ at
+  all. Whatever the data do &mdash; exact collinearity included &mdash; the
+  conditioning is controlled by a number you choose.</p>
+  <p class="fix">At $\alpha = 1$ the condition number of our singular matrix
+  falls from $9\times10^{14}$ to 1798.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Conditioning">
+  <h2>Condition number against $\alpha$</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l06-condition.svg"
+         alt="Log-log plot of the condition number of X-transpose-X plus alpha-I against alpha, falling from about nine times ten to the fourteen at tiny alpha along a straight line of slope minus one, with the value at alpha equal to one marked at 1798.">
+  </figure>
+  <p class="takeaway">A straight line of slope $-1$ over twelve decades: in this
+  regime the condition number is simply $\lambda_{\max}/\alpha$. The dependence
+  the data has is not repaired &mdash; it is <em>dominated</em>.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="Diagnosis">
+  <h2>Diagnosis</h2>
+  <table class="smaller">
+    <tr><th>Fault</th><th>Evidence</th><th>Statement about</th></tr>
+    <tr><td>Variance</td><td>held-out minus training gap of 1.672 at degree 5</td><td>the estimator</td></tr>
+    <tr><td>No minimiser</td><td>lbfgs stops at the iteration cap from degree 4 up</td><td>the objective</td></tr>
+    <tr><td>No unique minimiser</td><td>rank 23 of 29; an eigenvalue at $10^{-12}$</td><td>the design matrix</td></tr>
+  </table>
+  <p class="lead fix">Three faults. One term repairs all three.</p>
 </section>
 
 <!-- ==================================================================== -->
-<!-- CLOSE                                                                -->
+<!-- FIX (35 min)                                                         -->
 <!-- ==================================================================== -->
 
-<!-- 85 -->
-<section data-menu-title="Where we are">
-  <h2>Where we are</h2>
+<!-- 39 -->
+<section class="divider" data-menu-title="◆ Fix">
+  <p class="kicker">Part three</p>
+  <h1>Fix</h1>
+  <p class="clock">35 minutes</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="★ Colab notebook">
+  <h2>Today&rsquo;s notebook</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-06.ipynb">
+       Open Lecture 6 in Google Colab</a>
+  </p>
+  <p class="small muted">It rebuilds the previous lecture&rsquo;s degree sweep
+  from scratch, so you can reproduce 1.922 before repairing it.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="The idea">
+  <h2>The idea, in one sentence</h2>
+  <p class="lead">Stop asking for the best fit. Ask for the best fit
+  <em>among small models</em>.</p>
+  <div class="eqn-box">
+    $$J(\boldsymbol\theta) \;=\; \underbrace{L(\boldsymbol\theta)}_{\text{fit the data}}
+      \;+\; \underbrace{\alpha\,\Omega(\boldsymbol\theta)}_{\text{stay small}}$$
+  </div>
+  <p class="small">$\Omega$ penalises the size of the weights. $\alpha$ says how
+  much you care. Setting $\alpha = 0$ recovers exactly what you did in the
+  previous lecture.</p>
+  <p class="fix small">Constraining a model is one of the three cures for
+  variance, and the only one available when the dataset is fixed at 891 rows.</p>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Ridge">
+  <h2>Fix 1 &middot; Ridge &mdash; the $\ell_2$ penalty</h2>
+  <div class="eqn-box">
+    $$J(\boldsymbol\theta) \;=\; \mathrm{MSE}(\boldsymbol\theta)
+      \;+\; \frac{\alpha}{m}\sum_{j=1}^{n}\theta_j^{2}$$
+  </div>
+  <ul class="tight small">
+    <li>The sum starts at $j = 1$: <strong>the bias term $\theta_0$ is not
+        penalised</strong>. Shrinking the intercept would shift every prediction
+        towards zero rather than towards the mean</li>
+    <li>Equivalently, $\Omega(\boldsymbol\theta) = \tfrac12\lVert\mathbf{w}\rVert_2^2$
+        where $\mathbf{w}$ is $\boldsymbol\theta$ without the bias</li>
+  </ul>
+  <p class="small muted">Also called Tikhonov regularisation. The book gives both
+  names.</p>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="Ridge closed form">
+  <h2>Ridge has a closed form too</h2>
+  <p class="derive-step">Differentiate and set to zero, exactly as in Thread 1:</p>
+  <div class="eqn-box">
+    $$\hat{\boldsymbol\theta} \;=\; \left(\mathbf{X}^{\intercal}\mathbf{X} + \alpha\mathbf{A}\right)^{-1}\mathbf{X}^{\intercal}\,y$$
+  </div>
+  <p class="small">$\mathbf{A}$ is the identity with a zero in the top-left cell
+  &mdash; the identity, minus the row and column belonging to the bias term.</p>
+  <div class="panel panel-math">
+    <span class="panel-title">This is Thread 1&rsquo;s failure condition, closed</span>
+    The normal equation could fail to be solvable in two ways: $m &lt; n$, or
+    collinear columns. <strong>Adding $\alpha\mathbf{A}$ removes both, for every
+    $\alpha &gt; 0$.</strong> Ridge is not only a bias&ndash;variance device; it
+    is what makes the linear algebra work.
+  </div>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Ridge for logistic">
+  <h2>The same term, on our loss</h2>
+  <div class="eqn-box">
+    $$\begin{aligned}
+      J(\boldsymbol\theta) \;=\;
+        &\underbrace{-\frac{1}{m}\sum_{i} \left[y^{(i)}\log \hat{p}^{(i)}
+          + (1-y^{(i)})\log(1-\hat{p}^{(i)})\right]}
+          _{\text{log loss, from the previous lecture}} \\[8pt]
+        &\;+\; \frac{\alpha}{m}\lVert\mathbf{w}\rVert_2^{2}
+      \end{aligned}$$
+  </div>
+  <p>Now the objective is <strong>coercive</strong>: as
+  $\lVert\mathbf{w}\rVert \to \infty$ the penalty $\to \infty$ while the log loss
+  is bounded below by zero. A minimiser exists, and strict convexity makes it
+  unique.</p>
+  <p class="fix small">Both of Diagnosis 2 and Diagnosis 3 are gone, and we have
+  not looked at the data once.</p>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="C not alpha">
+  <h2>A trap in the API</h2>
+  <p>Scikit-Learn&rsquo;s <code>LogisticRegression</code> does not take $\alpha$.
+  It takes <code>C</code>.</p>
+  <div class="eqn-box">
+    $$C \;=\; \frac{1}{\alpha}$$
+  </div>
+  <ul class="tight small">
+    <li>Small <code>C</code> &rarr; large $\alpha$ &rarr; <strong>strong</strong> regularisation</li>
+    <li>Large <code>C</code> &rarr; weak regularisation; <code>C=1e6</code> is what we used to switch it off</li>
+    <li>The default is <code>C=1.0</code>, and <code>penalty="l2"</code>. <strong>Logistic regression in Scikit-Learn is regularised unless you say otherwise</strong></li>
+  </ul>
+  <p class="small fail">Reviewer question five: <em>what is the default I did not
+  ask for?</em> Here it was regularisation, and the previous lecture turned it
+  off on purpose to have something to repair.</p>
+</section>
+
+<!-- 46 -->
+<section data-menu-title="Scale first">
+  <h2>Ridge requires scaling. Not as a nicety</h2>
+  <p class="small">The penalty $\sum \theta_j^2$ treats every weight
+  identically. If <code>Fare</code> is in pounds and <code>SibSp</code> is a
+  count of people, then a &ldquo;weight of 1&rdquo; means two unrelated things
+  and the penalty falls unequally on them.</p>
+  <div class="panel">
+    Rescale a column by $c$ and its fitted weight scales by $1/c$ &mdash; so its
+    contribution to the penalty scales by $1/c^{2}$. Measuring fares in pence
+    instead of pounds changes which coefficients ridge decides to shrink.
+  </div>
+  <p class="fix small">We already have <code>StandardScaler</code> inside the
+  pipeline, fitted per fold. Regularisation is the reason it is not optional.</p>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="Lasso">
+  <h2>Fix 2 &middot; Lasso &mdash; the $\ell_1$ penalty</h2>
+  <div class="eqn-box">
+    $$J(\boldsymbol\theta) \;=\; \mathrm{MSE}(\boldsymbol\theta)
+      \;+\; 2\alpha\sum_{j=1}^{n}\left|\theta_j\right|$$
+  </div>
+  <p><em>Least Absolute Shrinkage and Selection Operator.</em> The word
+  <strong>selection</strong> is the point: lasso drives weights to exactly zero,
+  so it performs feature selection as a side effect of fitting.</p>
+  <p class="small muted">Ridge shrinks everything and eliminates nothing.</p>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="Why l1 gives zeros">
+  <h2>Why $\ell_1$ produces exact zeros and $\ell_2$ does not</h2>
+  <p class="small">Look at the gradient of the penalty near $\theta_j = 0$.</p>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>Ridge</strong></p>
+      <div class="eqn-box"><small>$$\frac{\partial}{\partial\theta_j}\,\theta_j^{2} = 2\theta_j \;\to\; 0$$</small></div>
+      <p class="smaller">The push towards zero fades as you approach zero. You get there only in the limit.</p>
+    </div>
+    <div>
+      <p class="small"><strong>Lasso</strong></p>
+      <div class="eqn-box"><small>$$\frac{\partial}{\partial\theta_j}\,\left|\theta_j\right| = \pm 1$$</small></div>
+      <p class="smaller">The push has constant size right up to zero. If the data pulls with less than $\alpha$, the weight arrives at zero and stops.</p>
+    </div>
+  </div>
+  <p class="small">At $\theta_j = 0$ the absolute value is not differentiable;
+  the subgradient is the whole interval $[-1, 1]$, and any data pull inside that
+  interval is held at exactly zero.</p>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="Elastic net">
+  <h2>Fix 3 &middot; Elastic net &mdash; both at once</h2>
+  <div class="eqn-box">
+    $$J(\boldsymbol\theta) \;=\; \mathrm{MSE}
+      \;+\; 2 r \alpha \sum_j \left|\theta_j\right|
+      \;+\; \frac{(1-r)\alpha}{m} \sum_j \theta_j^{2}$$
+  </div>
+  <p class="small">$r$ is the mix &mdash; <code>l1_ratio</code> in
+  Scikit-Learn. $r = 0$ is ridge, $r = 1$ is lasso.</p>
+  <div class="panel panel-book">
+    Prefer some regularisation to none. Ridge is a good default; if only a few
+    features matter, prefer lasso or elastic net &mdash; and prefer elastic net
+    to lasso when features are correlated or outnumber the instances, because
+    lasso behaves erratically there.
+  </div>
+  <p class="small fail">Both conditions hold for us: 143 columns from 712 rows,
+  and $\text{Age}$ and $\text{Age}^2$ are about as correlated as two columns
+  get.</p>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="The sweep">
+  <h2>Sweep $\alpha$ &mdash; on the degree-5 model that failed</h2>
+  <pre><code class="language-python" data-trim>
+Cs = np.logspace(-4, 4, 17)
+
+for name, kw in (("ridge",   dict(penalty="l2", solver="lbfgs")),
+                 ("lasso",   dict(penalty="l1", solver="saga")),
+                 ("elastic", dict(penalty="elasticnet", solver="saga",
+                                  l1_ratio=0.5, max_iter=3000))):
+    for C in Cs:
+        s = cross_val_score(pipeline(degree=5, C=C, **kw),
+                            X_train, y_train, cv=cv,
+                            scoring="neg_log_loss")
+  </code></pre>
+  <p class="small">Three penalties, 17 values of <code>C</code>, ten folds each.
+  Note <code>solver=</code> changes: not every solver supports every penalty, and
+  Scikit-Learn raises rather than silently ignoring the request.</p>
+  <p class="smaller muted">About five minutes on a free Colab CPU runtime.
+  Timings are <strong>not examinable</strong>.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ The penalty sweep">
+  <h2>What the penalty buys at degree 5</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l06-alpha-curve.svg"
+         alt="Cross-validated log loss against C on a log axis for ridge, lasso and elastic net, each with its minimum marked; a black dashed line at 1.96 marks the unregularised degree-5 model and a green dotted line at 0.468 marks the best unregularised degree.">
+  </figure>
+  <p class="takeaway">Every curve is far below the dashed line. None of them
+  reaches the dotted one.</p>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="Reading the sweep">
+  <h2>Reading it</h2>
+  <table class="smaller">
+    <tr><th>Penalty at degree 5</th><th class="num">Best <code>C</code></th><th class="num">Log loss</th><th class="num">Non-zero weights</th></tr>
+    <tr><td>none &mdash; what you built</td><td class="num">&mdash;</td><td class="num fail">1.922</td><td class="num">143</td></tr>
+    <tr><td>ridge</td><td class="num">0.01</td><td class="num">0.706</td><td class="num">143</td></tr>
+    <tr><td>elastic net, $r = 0.5$</td><td class="num">0.0001</td><td class="num">0.684</td><td class="num">3</td></tr>
+    <tr><td>lasso</td><td class="num">0.00032</td><td class="num hit">0.683</td><td class="num">3</td></tr>
+  </table>
+  <p class="small">Ridge alone removes 1.251 of log
+  loss. Lasso removes 1.274 and throws away
+  140 of the 143 columns while doing it.</p>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="The uncomfortable result">
+  <h2>And now the uncomfortable part</h2>
+  <table class="smaller">
+    <tr><th>Model</th><th class="num">Cross-validated log loss</th></tr>
+    <tr><td>Degree 5, lasso, tuned</td><td class="num">0.683</td></tr>
+    <tr><td>Degree 2, no penalty at all</td><td class="num hit">0.467</td></tr>
+  </table>
+  <p class="lead fail">The best regularised degree-5 model does not beat the
+  plain degree-2 model you already had.</p>
+  <p class="small">Regularisation repaired an over-complex model. It did not turn
+  it into a better one than the simple model, because there was never much bias
+  to buy back &mdash; the decomposition said so an hour ago, and this is what
+  that sentence looks like in a table.</p>
+  <aside class="notes">Resist the urge to soften this. The honest result is the
+  interesting one: regularisation is a repair, not an upgrade, and choosing the
+  right capacity in the first place beats penalising the wrong one.</aside>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="What regularisation is for">
+  <h2>So what is regularisation actually for?</h2>
+  <ul class="tight small">
+    <li><strong>It makes the problem well-posed.</strong> A unique minimiser
+        exists for every $\alpha &gt; 0$, whatever the columns do</li>
+    <li><strong>It makes capacity a continuous dial.</strong> Degree is an
+        integer; $\alpha$ is not, so you can sit between two degrees</li>
+    <li><strong>It is insurance.</strong> When you cannot know the right capacity
+        in advance &mdash; which is usually &mdash; it bounds the damage</li>
+    <li><strong>It selects.</strong> Lasso&rsquo;s 32 columns are a hypothesis
+        about which features matter, generated by the fit</li>
+  </ul>
+  <p class="small muted">What it is <em>not</em> is a way to make an
+  over-parameterised model beat a well-chosen one on a dataset this small.</p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="Coefficient paths">
+  <h2>Watch the weights as $\alpha$ moves</h2>
+  <pre><code class="language-python" data-trim>
+paths = []
+for C in np.logspace(-3, 3, 25):
+    m = pipeline(degree=5, C=C, penalty=pen, solver=sol).fit(X_train, y_train)
+    paths.append(m[-1].coef_[0].copy())          # 143 weights per row
+  </code></pre>
+  <p class="small">One row of 143 weights per value of <code>C</code>. Plot each
+  weight against <code>C</code> and the two penalties become visibly different
+  objects.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Coefficient paths">
+  <h2>Ridge shrinks; lasso selects</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l06-paths.svg"
+         alt="Two panels of coefficient paths against C on a log axis: on the left the ridge paths fan out smoothly from zero without any reaching zero, on the right the lasso paths leave zero one at a time, with a green line showing the count of non-zero weights rising from 3 to 143.">
+  </figure>
+  <p class="takeaway">Left, every path approaches zero and none arrives. Right,
+  paths sit at exactly zero and leave one at a time as the penalty weakens.</p>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="Reading the paths">
+  <h2>Two things to read off those paths</h2>
+  <ul class="tight small">
+    <li><strong>At the strong-penalty end both panels are flat near zero.</strong>
+        That is the high-bias regime: the model is being told to ignore the data,
+        and it obeys</li>
+    <li><strong>At the weak-penalty end the ridge paths fan out to $\pm 6$ and
+        beyond.</strong> That is the separation of Diagnosis 2 reasserting itself
+        as the penalty stops holding it down</li>
+  </ul>
+  <div class="panel">
+    The lasso count rises from 3 non-zero weights to all 143 across six decades
+    of <code>C</code>. Every point on that line is a different model, and
+    cross-validation is what picks one.
+  </div>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="Early stopping">
+  <h2>Fix 4 &middot; Early stopping</h2>
+  <p>A different way to keep the weights small: fit iteratively, and
+  <strong>stop before the optimiser gets where it is going</strong>.</p>
+  <ul class="tight small">
+    <li>Gradient descent starts at $\boldsymbol\theta = \mathbf{0}$ &mdash; the
+        smallest possible model</li>
+    <li>Each epoch moves the weights outward, fitting more of the training set</li>
+    <li>Held-out error falls, reaches a minimum, and then rises</li>
+  </ul>
+  <p class="fix small">Géron calls it a &ldquo;beautiful free lunch&rdquo;: no
+  penalty term, no extra hyperparameter in the objective &mdash; just a stopping
+  rule.</p>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="Early stopping in code">
+  <h2>In code, one epoch at a time</h2>
+  <pre><code class="language-python" data-trim>
+clf = SGDClassifier(loss="log_loss", penalty=None, learning_rate="constant",
+                    eta0=0.0015, random_state=42,
+                    warm_start=True, max_iter=1, tol=None)
+
+for epoch in range(500):
+    clf.fit(Z_train, y_a)                 # warm_start: resume, do not restart
+    train.append(log_loss(y_a, clf.predict_proba(Z_train)[:, 1], labels=[0, 1]))
+    valid.append(log_loss(y_b, clf.predict_proba(Z_valid)[:, 1], labels=[0, 1]))
+  </code></pre>
+  <p class="small"><code>warm_start=True</code> with <code>max_iter=1</code> is
+  what makes each call one epoch of the <em>same</em> fit.
+  <code>penalty=None</code> is deliberate: we want early stopping to be the only
+  regularisation in the room.</p>
+  <p class="smaller muted">The transform is fitted on the training part only,
+  outside the loop, and applied to both. Refitting it inside the loop would be
+  the previous application&rsquo;s leak, 500 times over.</p>
+</section>
+
+<!-- FIG -->
+<section class="figslide" data-menu-title="◆ Early stopping">
+  <h2>The point where the two curves disagree</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l06-early-stopping.svg"
+         alt="Training and validation log loss against epoch over 500 epochs of stochastic gradient descent on the degree-5 features; the validation curve reaches its minimum at epoch 105 and then rises while the training curve keeps falling.">
+  </figure>
+  <p class="takeaway">Epoch 105 is the best model this run ever holds. Running to
+  epoch 500 costs 1.274 of log loss and never announces it.</p>
+</section>
+
+<!-- 58 -->
+<section data-menu-title="Reading the stopping curve">
+  <h2>Reading it honestly</h2>
+  <table class="smaller">
+    <tr><th></th><th class="num">Epoch 105</th><th class="num">Epoch 500</th></tr>
+    <tr><td>Training log loss</td><td class="num">2.458</td><td class="num">2.219</td></tr>
+    <tr><td>Validation log loss</td><td class="num hit">2.371</td><td class="num fail">3.645</td></tr>
+  </table>
+  <ul class="tight small">
+    <li>These are bad numbers in absolute terms. Plain SGD at a constant learning
+        rate on 143 correlated columns is a poor optimiser, and we are showing
+        <em>the shape</em>, not a competitive model</li>
+    <li>The training curve is noisy &mdash; each epoch shuffles &mdash; so
+        &ldquo;stop at the minimum&rdquo; needs a patience rule in practice, not
+        a single-epoch comparison</li>
+  </ul>
+  <p class="small fail">The stopping epoch is chosen by looking at held-out data.
+  It is a hyperparameter like any other, and it must be chosen on validation
+  rows, never on the test set.</p>
+</section>
+
+<!-- 59 -->
+<section data-menu-title="Four repairs">
+  <h2>Four repairs, one idea</h2>
+  <table class="smaller">
+    <tr><th>Repair</th><th>Keeps $\lVert\boldsymbol\theta\rVert$ small by</th><th>Zeros?</th></tr>
+    <tr><td>Ridge</td><td>penalising $\sum\theta_j^2$</td><td class="miss">no</td></tr>
+    <tr><td>Lasso</td><td>penalising $\sum\left|\theta_j\right|$</td><td class="hit">yes</td></tr>
+    <tr><td>Elastic net</td><td>both, mixed by $r$</td><td class="hit">yes</td></tr>
+    <tr><td>Early stopping</td><td>starting at zero and not going far</td><td class="miss">no</td></tr>
+  </table>
+  <p class="small">All four reduce variance by reducing the set of models the fit
+  is allowed to reach. All four increase bias. Which is why all four need
+  $\alpha$ &mdash; or an epoch count &mdash; chosen by cross-validation.</p>
+</section>
+
+<!-- 60 -->
+<section data-menu-title="Weak vs usable prompt">
+  <h2>The assistant, asked badly</h2>
+  <div class="cols">
+    <div>
+      <div class="panel panel-fail small">
+        &ldquo;Find the best value of <code>C</code> for my logistic regression
+        and tell me how well it does.&rdquo;
+      </div>
+    </div>
+    <div>
+      <p class="small">Every word is reasonable. Nothing in it says
+      <em>on what data</em> the best <code>C</code> is to be found, or
+      <em>on what data</em> &ldquo;how well it does&rdquo; is to be measured.</p>
+    </div>
+  </div>
+  <p class="small muted">This is the failure this lecture is about: choosing a
+  hyperparameter is choosing a model, and it consumes whatever data it looks at.</p>
+</section>
+
+<!-- 61 -->
+<section data-menu-title="What it returns">
+  <h2>What it returns &mdash; and it runs</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>
+best_C, best_score = None, np.inf
+
+for C in np.logspace(-4, 4, 17):
+    m = pipeline(degree=3, C=C).fit(X_train, y_train)
+    score = log_loss(y_test, m.predict_proba(X_test)[:, 1])
+    if score < best_score:
+        best_C, best_score = C, score
+
+print(f"best C = {best_C:g}, log loss = {best_score:.4f}")
+  </code></pre>
+  <p class="small">No exception, no warning, a plausible number, and a variable
+  named <code>best_score</code> that a reader will quote in a report.</p>
+</section>
+
+<!-- 62 -->
+<section data-menu-title="The review question">
+  <h2>The review question that catches it</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">Reviewer question 1</span>
+    <strong>What touched the test set?</strong>
+  </div>
+  <p class="small">Answer: seventeen models did, and then we reported the score of
+  whichever one it liked best. <code>best_score</code> is a
+  <strong>minimum over seventeen noisy estimates</strong>, and the minimum of
+  noisy estimates is biased downward even if every estimate is individually
+  unbiased.</p>
+  <p class="small fail">The code never writes to the test set. It reads it
+  eighteen times, and reading is enough.</p>
+</section>
+
+<!-- 63 -->
+<section data-menu-title="Measure the damage">
+  <h2>Measure the damage &mdash; do not assert it</h2>
+  <p class="small">20 seeds. For each: split, run the loop above, and also run the
+  honest version that picks <code>C</code> by 5-fold cross-validation inside the
+  training part. Score both on the same held-out rows.</p>
+  <table class="smaller">
+    <tr><th>Reported number</th><th class="num">Log loss</th><th class="num">Spread over 20 seeds</th></tr>
+    <tr><td>Chosen on the test set, scored on the test set</td><td class="num fail">0.451</td><td class="num">0.049</td></tr>
+    <tr><td>Chosen by cross-validation, scored on the test set</td><td class="num hit">0.470</td><td class="num">0.045</td></tr>
+  </table>
+  <p><strong>Optimism: 0.019 of log loss, about 4.1%.</strong> On 13 seeds of 20
+  the dishonest number is the flattering one, and the two procedures picked the
+  same <code>C</code> on 7 seeds of 20.</p>
+</section>
+
+<!-- 64 -->
+<section data-menu-title="Read the damage carefully">
+  <h2>Read that result carefully &mdash; both halves</h2>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>It is small.</strong></p>
+      <p class="smaller">0.019 against a fold spread of 0.045. On a single split you would never see it. Seventeen candidates is a small search.</p>
+    </div>
+    <div>
+      <p class="small"><strong>It is real, and it is one-sided.</strong></p>
+      <p class="smaller">13 seeds of 20 flattered. It never averages away, and it grows with the number of candidates you try.</p>
+    </div>
+  </div>
+  <div class="panel panel-fail">
+    <span class="panel-title">The decision rule</span>
+    Small search, small bias. Search a thousand configurations &mdash; which a
+    randomised search does in an afternoon &mdash; and the same procedure will
+    hand you a number that is confidently wrong. The size of the lie scales with
+    how hard you looked.
+  </div>
+  <p class="small muted">Reporting &ldquo;the effect is small here&rdquo; is the
+  lesson only if you also say <em>why</em> it is small here.</p>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="The corrected spec">
+  <h2>The specification that would have prevented it</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">Say this instead</span>
+    &ldquo;Choose <code>C</code> by 10-fold cross-validation <strong>on the
+    training set only</strong>, using <code>GridSearchCV</code> over a pipeline.
+    Refit the winner on the full training set. Then evaluate once on the test
+    set and report both numbers separately, with the fold spread.&rdquo;
+  </div>
+  <pre><code class="language-python" data-trim>
+gs = GridSearchCV(pipeline(degree=3), {"clf__C": np.logspace(-4, 4, 17)},
+                  scoring="neg_log_loss", cv=cv).fit(X_train, y_train)
+
+print(-gs.best_score_)                                    # the honest estimate
+print(log_loss(y_test, gs.predict_proba(X_test)[:, 1]))   # the test set, once
+  </code></pre>
+  <p class="small muted">Same seventeen candidates, same runtime, two numbers
+  instead of one. The second is allowed to be worse than the first.</p>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="The lesson">
+  <h2>The lesson</h2>
+  <p class="lead">A hyperparameter chosen on a set of rows makes that set part of
+  the training procedure.</p>
+  <p>It is in the silent-failure catalogue, it was diagnosed once already in
+  Lecture 2, and it came back in a lecture whose entire subject is choosing a
+  hyperparameter. That is not a coincidence &mdash; it is what makes it worth
+  a catalogue.</p>
+  <p class="small muted">The assistant did exactly what was asked. The
+  specification was the defect.</p>
+</section>
+
+<!-- ==================================================================== -->
+<!-- RE-MEASURE (15 min)                                                  -->
+<!-- ==================================================================== -->
+
+<!-- 67 -->
+<section class="divider" data-menu-title="◆ Re-measure">
+  <p class="kicker">Part four</p>
+  <h1>Re-measure</h1>
+  <p class="clock">15 minutes</p>
+</section>
+
+<!-- 68 -->
+<section data-menu-title="The test set, once">
+  <h2>The test set. Once</h2>
+  <pre><code class="language-python" data-trim>
+for name, m in candidates.items():
+    m.fit(X_train, y_train)
+    p = m.predict_proba(X_test)[:, 1]
+    print(name,
+          log_loss(y_test, p, labels=[0, 1]),
+          brier_score_loss(y_test, p),
+          accuracy_score(y_test, p >= 0.5))
+  </code></pre>
+  <p class="small">179 passengers, untouched since the split in the previous
+  lecture. Five candidates, all of whose hyperparameters were fixed before this
+  cell ran.</p>
+</section>
+
+<!-- 69 -->
+<section data-menu-title="The final table">
+  <h2>The honest numbers</h2>
+  <table class="smaller">
+    <tr><th>Model</th><th class="num">Log loss</th><th class="num">Brier</th><th class="num">Accuracy</th></tr>
+    <tr><td>Degree 5, no penalty &mdash; where the sweep ended</td><td class="num fail">1.727</td><td class="num">0.189</td><td class="num">74.9%</td></tr>
+    <tr><td>Degree 5, ridge, tuned</td><td class="num">0.804</td><td class="num">0.173</td><td class="num">77.1%</td></tr>
+    <tr><td>Degree 5, lasso, tuned</td><td class="num">0.677</td><td class="num">0.244</td><td class="num">65.9%</td></tr>
+    <tr><td>Degree 1, Scikit-Learn defaults</td><td class="num">0.433</td><td class="num">0.134</td><td class="num hit">82.7%</td></tr>
+    <tr><td>Degree 2, no penalty &mdash; <strong>the winner</strong></td><td class="num hit">0.427</td><td class="num hit">0.134</td><td class="num hit">82.7%</td></tr>
+  </table>
+  <p class="small">The winner improves on the degree-5 model you finished the
+  previous lecture with by <strong>1.285</strong> of log loss.</p>
+</section>
+
+<!-- 70 -->
+<section data-menu-title="The awkward winner">
+  <h2>The winner is a model with no repair in it</h2>
+  <p class="lead">Degree 2, no penalty, chosen by reading a held-out curve.</p>
+  <p class="small">Row four is worth as much attention: <code>LogisticRegression()</code>
+  with every default left alone &mdash; degree 1, <code>C=1.0</code>,
+  <code>penalty="l2"</code> &mdash; scores 0.433. Statistically it is the same
+  model as the winner.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">The result nobody wanted</span>
+    Ninety minutes of ridge, lasso, elastic net and early stopping, and the best
+    system on the test set is a two-line model that any of you could have written
+    before Lecture 5 started.
+  </div>
+  <p class="small fix">Report it anyway. The alternative is choosing the
+  interesting model over the better one, which is the failure this whole course
+  is built to prevent.</p>
+</section>
+
+<!-- 71 -->
+<section data-menu-title="What was it all for">
+  <h2>Then what was any of it for?</h2>
+  <ul class="tight small">
+    <li>You now know <strong>why</strong> degree 2 wins, and can say it in three
+        terms rather than as a preference</li>
+    <li>You know the floor is about <strong>0.121</strong> Brier and that no
+        model of these columns goes below it</li>
+    <li>You know that the degree-5 model was not merely worse but
+        <em>ill-posed</em>, and exactly which term repairs that</li>
+    <li>You have four repairs, measured, for the next dataset &mdash; where 143
+        columns will arrive with a hundred times as many rows and the answer will
+        be different</li>
+  </ul>
+  <p class="small muted">A negative result that you can explain is a result. A
+  positive result you cannot explain is a liability.</p>
+</section>
+
+<!-- 72 -->
+<section data-menu-title="★ Your numbers">
+  <h2>Compare with your sheet</h2>
   <table>
     <tr><th>Quantity</th><th class="num">Value</th></tr>
-    <tr><td>Held-out log loss, best degree</td><td class="num hit">0.468</td></tr>
-    <tr><td>Held-out accuracy at that degree</td><td class="num">82.3%</td></tr>
     <tr><td>Anchor &mdash; report the base rate to everyone</td><td class="num">0.666</td></tr>
-    <tr><td>Chosen cut-off, from the 10 : 1 costs</td><td class="num">0.83</td></tr>
+    <tr><td>Best cross-validated log loss</td><td class="num">0.467</td></tr>
+    <tr><td>Final, on the test set</td><td class="num hit">0.427</td></tr>
+    <tr><td>Test accuracy at a 0.5 cut-off</td><td class="num">82.7%</td></tr>
+    <tr><td>Majority-class accuracy on the test set</td><td class="num">61.5%</td></tr>
   </table>
-  <p class="fix">Write your best log loss on the same sheet of paper, next to
-  what you predicted.</p>
-  <p class="small muted">The test set has not been touched. It will not be
-  until the very end of the next lecture.</p>
+  <p class="small">Compare like with like: on the cross-validated numbers you
+  beat the anchor by 0.198 of log loss, and the majority class by 20.6 points of
+  accuracy. Both are real. Neither is what you wrote down.</p>
+  <aside class="notes">Ask for a show of hands: who predicted a number below
+  0.427? Who below 0.467? Most will have been optimistic, and that is the point
+  to name out loud rather than the accuracy.</aside>
 </section>
 
-<!-- 86 -->
-<section data-menu-title="What to bring">
-  <h2>What to bring to the next lecture</h2>
-  <ol class="tight">
-    <li>Your commitment sheet, with the measured number beside the predicted one</li>
-    <li>Both curves from the degree sweep, on the same axes</li>
-    <li>The sentence about <code>Sex</code> and <code>Title</code> saying the same thing twice</li>
+<!-- 73 -->
+<section data-menu-title="Is that good">
+  <h2>Is that good?</h2>
+  <p class="small">The brief asked for calibrated probabilities and a defensible
+  cut-off, not for a headline. Against that brief:</p>
+  <ul class="tight small">
+    <li>Log loss 0.427 against an anchor of 0.666 &mdash; the model has genuinely
+        learned something beyond the base rate</li>
+    <li>Brier 0.134 against a measured floor of about 0.121. <strong>There is
+        roughly 0.013 of Brier score left on the table</strong>, total, for any
+        model of these columns</li>
+    <li>179 test passengers, so a difference of a point or two of accuracy is
+        three or four people and is not a difference</li>
+  </ul>
+  <p class="fix small">That third bullet is the one to put in the report. A test
+  set of 179 cannot support the comparisons people will want to make with it.</p>
+</section>
+
+<!-- 74 -->
+<section data-menu-title="Red-team">
+  <h2>Red-team exercise</h2>
+  <p>Swap notebooks with the team beside you. You have eight minutes.</p>
+  <ol class="tight small">
+    <li>What touched the test set? Count every read, not every write</li>
+    <li>What was fitted, and on what? Is the scaler inside the cross-validated
+        pipeline, or fitted once outside it?</li>
+    <li>What is the shape here? How many columns does the degree-5 pipeline
+        actually produce, and how many rows are there?</li>
+    <li>What was dropped? Which passengers have an imputed <code>Age</code>, and
+        how many?</li>
+    <li>What is the default you did not ask for? Find every
+        <code>LogisticRegression</code> whose <code>C</code> was never stated</li>
   </ol>
-  <p>We open on those two curves and spend twenty minutes on what they are made
-  of.</p>
-  <p class="small muted">Do not fix anything. The shape of the failure is the
-  material.</p>
+  <p class="fail small">Report what you found, not what you would have done
+  differently.</p>
 </section>
 
-<!-- 87 -->
+<!-- 75 -->
+<section data-menu-title="Regularisation checklist">
+  <h2>Regularisation checklist &mdash; keep this</h2>
+  <ul class="tight small">
+    <li>Is the data scaled, <em>inside</em> the pipeline, before a penalty is applied?</li>
+    <li>Is the bias term excluded from the penalty?</li>
+    <li>Was $\alpha$ (or <code>C</code>) chosen on validation folds, never on the test set?</li>
+    <li>If the search sat at the edge of the grid, was the grid widened?</li>
+    <li>Is the unregularised model in the comparison table, so the penalty has to earn its place?</li>
+    <li>Was the stopping epoch, if any, chosen on held-out rows?</li>
+  </ul>
+  <p class="small muted">Six questions. The fifth is the one people skip, and it
+  is the one that would have saved us an hour today.</p>
+</section>
+
+<!-- 76 -->
+<section data-menu-title="Red-teaming with the assistant">
+  <h2>Can the assistant red-team this one?</h2>
+  <div class="cols">
+    <div>
+      <div class="panel panel-fail small">
+        &ldquo;Review my hyperparameter tuning.&rdquo;
+        <br><span class="small muted">Returns a lecture on grid search. Finds nothing.</span>
+      </div>
+    </div>
+    <div>
+      <div class="panel panel-fix small">
+        &ldquo;This notebook reports log loss 0.451. Assume it is optimistic.
+        List every line at which <code>X_test</code> or <code>y_test</code> is
+        read, in order, and say what was decided after each read.&rdquo;
+      </div>
+    </div>
+  </div>
+  <p class="small">The second prompt names a number to disbelieve and asks for an
+  <em>ordered</em> list. Ordering is what turns &ldquo;the test set is used
+  here&rdquo; into &ldquo;the test set is used before the choice&rdquo;.</p>
+</section>
+
+<!-- 77 -->
+<section data-menu-title="What it will and will not catch">
+  <h2>What that catches &mdash; and what it does not</h2>
+  <table class="smaller">
+    <tr><th>Defect</th><th>Found from the code alone?</th></tr>
+    <tr><td>Scoring candidates on <code>X_test</code> inside a loop</td><td class="hit">yes</td></tr>
+    <tr><td>Scaler fitted outside the cross-validated pipeline</td><td class="hit">yes</td></tr>
+    <tr><td><code>C</code> left at its default and then reported as &ldquo;unregularised&rdquo;</td><td class="hit">yes</td></tr>
+    <tr><td><code>FamilySize = SibSp + Parch + 1</code> being collinear</td><td class="miss">no &mdash; that is arithmetic about your columns</td></tr>
+    <tr><td>Whether 0.427 is good enough to deploy</td><td class="miss">no &mdash; that is the stakeholder&rsquo;s</td></tr>
+  </table>
+  <p class="small fail">The two it misses are the two that needed a mathematician
+  and a conversation. Those are yours.</p>
+</section>
+
+<!-- 78 -->
+<section data-menu-title="The prompt that prevents it">
+  <h2>Moving the check upstream</h2>
+  <p>Add one clause to the standing constraint you wrote down in Lecture 2:</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">Standing constraint, extended</span>
+    &ldquo;Split before anything is fitted. All preprocessing lives inside a
+    <code>Pipeline</code> passed to cross-validation. Nothing derived from the
+    test set may appear in the training path &mdash; <strong>including the choice
+    of any hyperparameter</strong>. Fixed random seed. Print the fold scores, not
+    just the mean.&rdquo;
+  </div>
+  <p class="small muted">Eleven added words. They are the whole of today&rsquo;s
+  assistant failure.</p>
+</section>
+
+<!-- 79 -->
+<section data-menu-title="★ All notebooks">
+  <h2>Every notebook in the course</h2>
+  <div class="nb-index">
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-01.ipynb">01 &middot; What machine learning is, and how we will work</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-02.ipynb">02 &middot; The end-to-end project</a></p>
+    <p class="done"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-03.ipynb">03 &middot; Classification and its metrics</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-04.ipynb">04 &middot; Training models</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-05.ipynb">05 &middot; Regularisation and the bias–variance trade-off</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-06.ipynb">06 &middot; Decision trees</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-07.ipynb">07 &middot; Ensembles and random forests</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-08.ipynb">08 &middot; Dimensionality reduction and unsupervised learning</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-09.ipynb">09 &middot; Neural networks, from the perceptron up</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">10 &middot; PyTorch</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-11.ipynb">11 &middot; Training deep networks</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-12.ipynb">12 &middot; Convolutional networks</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-13.ipynb">13 &middot; Transfer learning</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-14.ipynb">14 &middot; Detection and segmentation</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-15.ipynb">15 &middot; Time series</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-16.ipynb">16 &middot; Recurrent networks</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-17.ipynb">17 &middot; Text</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-18.ipynb">18 &middot; Attention and transformers</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-19.ipynb">19 &middot; Information retrieval: the lexical foundation</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-20.ipynb">20 &middot; Information retrieval: dense retrieval</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-21.ipynb">21 &middot; Recommender systems: from ratings to factors</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-22.ipynb">22 &middot; Recommender systems: neural, and evaluated honestly</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-23.ipynb">23 &middot; Vision transformers and multimodal retrieval</a></p>
+    <p class="todo"><a target="_blank" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-24.ipynb">24 &middot; Generation, retrieval-augmented systems, and where this leaves you</a></p>
+  </div>
+</section>
+
+<!-- 80 -->
 <section data-menu-title="Summary">
-  <h2>Summary</h2>
-  <ul class="tight small">
-    <li>A brief that says &ldquo;how likely&rdquo; forces a probability, and a probability forces a proper scoring rule</li>
-    <li>Logistic regression predicts the <strong>log-odds</strong> linearly; coefficients multiply the odds</li>
-    <li>A rank-deficient design gives coefficients that are not unique &mdash; Thread 1, on your own matrix</li>
-    <li>The cut-off is a decision made from costs, on out-of-fold predictions, and written down</li>
-    <li>Accuracy and log loss disagree, and the brief says which one wins</li>
-    <li>Capacity improves the training curve monotonically and the honest curve for exactly one step</li>
-  </ul>
+  <h2>What we learned</h2>
+  <ol class="tight smaller">
+    <li>Expected squared error splits exactly into squared bias, variance and
+        irreducible noise, over the training set and the label</li>
+    <li>The gap between a training curve and a held-out curve <em>is</em> the
+        variance term; curves plateauing together mean bias instead</li>
+    <li>The noise floor is measurable: 0.121 Brier, from passengers whose
+        recorded values are identical</li>
+    <li>Degree 5 failed three ways at once &mdash; high variance, no minimiser,
+        and no unique minimiser</li>
+    <li>Adding $\alpha\mathbf{A}$ fixes the last two for every $\alpha &gt; 0$,
+        which is Thread 1&rsquo;s open question answered</li>
+    <li>Ridge shrinks, lasso selects, elastic net does both, early stopping does
+        it by not arriving</li>
+    <li>None of them beat choosing the right degree. Regularisation is a repair,
+        not an upgrade</li>
+    <li>A hyperparameter chosen on the test set costs 0.019 of log loss here, and
+        the cost grows with the size of the search</li>
+  </ol>
 </section>
 
-<!-- 88 -->
+<!-- 81 -->
 <section data-menu-title="References">
-  <h2>References</h2>
-  <ul class="tight small">
-    <li>Géron, <em>Hands-On Machine Learning</em>, 2025 &mdash; Chapter 4: logistic regression, the cost function, polynomial features, and the learning-curve diagnostic</li>
-    <li>Chapter 3 &mdash; the precision/recall material this lecture assumes</li>
-    <li>Chapter 2 &mdash; <code>ColumnTransformer</code> and the pipeline discipline, unchanged</li>
-  </ul>
-  <p class="small muted">Nothing on this deck comes from outside Chapters 1&ndash;16.
-  The cost-ratio formula $t^\ast = c_{\text{FN}}/(c_{\text{FN}}+c_{\text{FP}})$
-  is a one-line consequence of the definitions and is examinable; decision
-  theory in general is not.</p>
+  <h2>In the book</h2>
+  <table>
+    <tr><th>Topic</th><th>Chapter</th></tr>
+    <tr><td>Learning curves; the bias/variance trade-off</td><td>4</td></tr>
+    <tr><td>Ridge, lasso, elastic net</td><td>4</td></tr>
+    <tr><td>Early stopping</td><td>4</td></tr>
+    <tr><td>Regularised logistic regression; <code>C</code></td><td>4</td></tr>
+    <tr><td>The normal equation and its invertibility</td><td>4</td></tr>
+    <tr><td>Cross-validation and grid search</td><td>2</td></tr>
+    <tr><td>Overfitting, underfitting, generalisation error</td><td>1</td></tr>
+  </table>
 </section>
 
-<!-- 89 -->
+<!-- 82 -->
 <section class="divider" data-menu-title="Next">
-  <p class="kicker">Next lecture</p>
-  <h1>Reading a<br>learning curve</h1>
-  <p class="clock">Bring the commitment sheet, and both curves</p>
+  <p class="kicker">Lecture 7 &middot; Build</p>
+  <h1>A model the<br>regulator will accept</h1>
+  <p class="small">
+    A new application, and a new kind of constraint<br>
+    The stakeholder does not care how accurate it is<br>
+    until you can tell them <em>why</em> it said that
+  </p>
+  <p class="clock">Bring a fresh commitment sheet</p>
 </section>
 
 </div>
@@ -1569,8 +1531,8 @@ ConvergenceWarning: lbfgs failed to converge after 4000 iteration(s)
 
 <div class="deck-footer">
   Applications of Machine Learning
-  <span class="sep">&middot;</span> Lecture 5
-  <span class="sep">&middot;</span> Who survives, and how sure are we?
+  <span class="sep">&middot;</span> Lecture 6
+  <span class="sep">&middot;</span> Reading a learning curve
 </div>
 
 <script src="../lib/reveal.js/dist/reveal.js"></script>

@@ -71,6 +71,38 @@ invented. If a slide states a figure, the script that produced it writes it into
 `assets/figures/figures.json`, and the two must agree. **If a slide and the
 script disagree, the script is right and the slide is a bug.**
 
+### 3.2a A wall-clock second is not a figure.
+
+`figures.json` is the authority for every number on a slide — except a
+duration, which is a property of a machine and cannot be reproduced by anyone
+else's. Three rules follow, and they are not optional in the GPU lectures,
+which are full of timings:
+
+1. **A duration on a slide is stated to one significant figure and labelled**
+   as one machine's measurement. "About 80 seconds" is honest; "78.3 s" claims
+   a precision the number does not have.
+2. **Never put a duration in a column that invites a comparison the timing
+   cannot support.** Lecture 8 shipped a table where full SVD beat randomised
+   PCA by 0.007 s; on another machine the order reverses. A reader takes an
+   ordering from a table whether or not the prose claims one. If two timings
+   are within noise of each other, **say that** — it is the finding.
+3. **A ratio is safer than a second, and still not safe.** The same sweep
+   measured 37× faster on one machine and 22× on another. Quote the order of
+   magnitude, and make the *shape* the claim: a large saving bought at no cost
+   in quality.
+
+The notebook must agree with whatever the slide says, which in practice means
+the notebook prints its own timing and says in the surrounding prose that the
+reader's number will differ. A notebook that reports durations should cap BLAS
+threads before importing numpy, so at least its own numbers are repeatable on
+one machine:
+
+```python
+import os
+os.environ["OMP_NUM_THREADS"] = "2"      # read at import time; setting this
+os.environ["OPENBLAS_NUM_THREADS"] = "2" # after `import numpy` does nothing
+```
+
 ### 3.3 The failure conditions
 
 Every method gets a slide naming what it cannot do and what breaks it —
