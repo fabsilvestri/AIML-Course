@@ -65,9 +65,9 @@ LECTURES = [
     (22, "Recommender systems: neural, and evaluated honestly", "",
      "MovieLens", "", True),
     (23, "Vision transformers and multimodal retrieval", "Ch 15–16", "COCO",
-     "The contrastive objective and its temperature", False),
+     "The contrastive objective and its temperature", True),
     (24, "Generation, retrieval-augmented systems, and where this leaves you",
-     "Ch 15–16", "COCO and the Part V corpora", "", False),
+     "Ch 15–16", "COCO and the Part V corpora", "", True),
 ]
 
 PARTS = [

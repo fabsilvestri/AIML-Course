@@ -27,11 +27,18 @@ Definition of done, per lecture, all of it:
 
 ## Where this stands
 
-**All 24 decks and all 24 notebooks are on the new design.** Lectures 19-22 —
-Part V, search and recommendation — were written from nothing, with three new
-figure scripts behind them. What remains is the verification half of the goal:
-`check_consistency.py` is clean on lectures 1-10 and 19-22, and the run for
-11-18, 23 and 24 is the outstanding work.
+**All 24 decks and all 24 notebooks are on the new design, all 24 are published
+on the site, and `check_consistency.py` is clean on 23 of them.** Lectures 19-22
+— Part V, search and recommendation — were written from nothing, with three new
+figure scripts behind them. Lecture 16 is the last outstanding verification: its
+notebook now runs the six-model ladder its deck reports, which takes about ten
+minutes, and the check was still executing at the last checkpoint.
+
+`tools/check_names.py` was added along the way and belongs in the fast set: it
+joins a notebook's code cells and asks pyflakes for undefined names, which found
+twelve real defects in six notebooks in 0.3 seconds — the class that splitting
+and reordering older modules keeps producing, and that compiling each cell in
+isolation cannot see.
 
 ## How to resume
 
@@ -99,14 +106,14 @@ run it again, until it is clean. See §7 of AUTHORING.md.
 
 | lecture | consistency | deck | notebook |
 |---|---|---|---|
-| 1 | **clean** | done | done |
-| 2 | **clean** | done | done |
-| 3 | **clean** | done | done |
+| 1–3 | **clean** | done | done |
 | 4–8 | **clean** (first run) | done | done |
 | 9, 10 | **clean** | done | done |
-| 11–18 | running | **done** | done |
+| 11–15 | **clean** | done | done |
+| 16 | running | done | done |
+| 17, 18 | **clean** | done | done |
 | 19–22 | **clean** | **done** | **done** |
-| 23, 24 | running | **done** | done |
+| 23, 24 | **clean** | done | done |
 
 **Lectures 4-8 passed the consistency check on the first run, with no
 intervention.** All five were agent-drafted against `tools/AGENT_BRIEF.md`.
