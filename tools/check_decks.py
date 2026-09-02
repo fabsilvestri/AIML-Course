@@ -88,6 +88,36 @@ def eaten_currency(run: str) -> str | None:
     return None
 
 
+def unbalanced_math(run: str) -> str | None:
+    """Return the offending text if `$` opens inline maths and never closes it.
+
+    `eaten_currency` above asks whether a *closed* pair should have been
+    currency. It cannot see the opposite mistake -- a `$` that was never closed
+    -- and it skips the very case that hides one: a run containing `=` is taken
+    for maths and returned early. Lecture 10 shipped
+    `<li>The kneedle rule picked $k = 19</li>` on that path, and it rendered as
+    a literal dollar and `k = 19` on the projector for a whole lecture.
+
+    A leftover `$` is not itself the bug -- `<span class="usd">$500,001</span>`
+    is one on purpose, and KaTeX leaves an unpaired delimiter alone. So pair
+    the delimiters the way KaTeX does, then look at what is left: a leftover
+    followed by an amount is currency, and a leftover followed by anything else
+    is maths that will not render.
+    """
+    rest = re.sub(r"\$\$[^$]*\$\$", "", run)          # display pairs first
+    # Inline pairs may span source lines -- the newline is just whitespace to
+    # KaTeX -- so this must NOT exclude \n, or every multi-line $...$ reads as
+    # two loose delimiters. Non-greedy, so "$12,500 and $350,000" pairs at the
+    # first closer and leaves nothing dangling.
+    rest = re.sub(r"\$[^$]*?\$", "", rest, flags=re.S)  # then inline pairs
+    for m in re.finditer(r"\$(.*)", rest):
+        tail = m.group(1)
+        if re.match(r"\s?\d[\d,]*(?:\.\d+)?", tail):  # an amount: currency
+            continue
+        return ("$" + tail).strip()[:70]
+    return None
+
+
 def check(path: Path) -> list[str]:
     src = path.read_text()
     rel = path.relative_to(ROOT)
@@ -98,6 +128,10 @@ def check(path: Path) -> list[str]:
         if (bad := eaten_currency(run)):
             out.append(f"{rel}:{line}: KaTeX will eat this as maths — wrap the "
                        f"amount in <span class=\"usd\">: ${' '.join(bad.split())[:60]}$")
+        # 1b. an inline $ that was never closed
+        if (bad := unbalanced_math(run)):
+            out.append(f"{rel}:{line}: inline $ never closed — KaTeX renders "
+                       f"the rest as literal text: {bad}")
         # 2. weekdays
         if (m := WEEKDAYS.search(run)):
             out.append(f"{rel}:{line}: names a weekday ({m.group()}) — "

@@ -694,23 +694,34 @@ body {
   padding-left: 0;
   margin: var(--sp-3) 0;
 }
+/* The number sits in a gutter and the step flows beside it. This was a
+   two-column grid until the first shipped derivation hit the trap: a grid
+   makes EVERY child a grid item, so a step written as the obvious
+   `<li>math <span class="why">reason</span></li>` put .why in a third column,
+   wrapping it into the 2.1em number gutter and taking the slide to 1519px in a
+   720px canvas. Nothing warned; the deck simply scaled down to illegible.
+
+   Float-in-gutter instead. It has no notion of "how many children", so a step
+   may hold any markup — bare text, a .why, several paragraphs, a display
+   equation — and still line up. Authors should not have to know a layout rule
+   to write a list item. */
 .derivation > li {
   counter-increment: dstep;
-  display: grid;
-  grid-template-columns: 2.1em 1fr;
-  align-items: baseline;
-  column-gap: 0.5em;
-  padding: 0.42em 0 0.42em 0;
+  position: relative;
+  padding: 0.42em 0 0.42em 2.6em;
   border-bottom: 1px solid var(--aiml-rule-faint);
 }
 .derivation > li:last-child { border-bottom: none; }
 .derivation > li::before {
   content: counter(dstep);
+  position: absolute;
+  left: 0;
+  width: 2.1em;
+  text-align: right;
   font-family: var(--r-code-font);
   font-size: var(--t-sm);
   font-weight: 700;
   color: var(--aiml-math);
-  text-align: right;
 }
 /* The justification for the step, not a second thought about it. */
 .derivation .why {

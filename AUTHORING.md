@@ -188,6 +188,13 @@ If a slide needs two sentences of explanation to be readable, it is two slides.
 Plots come from `tools/make_figures.py`. Diagrams (`d-*.svg`) are hand-authored
 in the theme palette, and are for structure a plot cannot show.
 
+### 5.3a Escape `<` and `>` in prose and in inline maths.
+
+`$t_1 < \dots < t_k$` written with bare angle brackets is invalid HTML that
+browsers happen to recover from, and it also truncates the deck checkers'
+notion of a text run at the `<`, which hides other faults on the same line.
+Write `&lt;` and `&gt;`, as `$z_i &gt; z_j$` already does.
+
 ### 5.4 Nothing overflows.
 
 `python3 tools/check_overflow.py` before committing. A slide that overflows on
