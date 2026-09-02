@@ -639,8 +639,8 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import root_mean_squared_error
-from sklearn.model_selection import (GridSearchCV, KFold, cross_val_score,
-                                     train_test_split)
+from sklearn.model_selection import (GridSearchCV, KFold, cross_val_predict,
+                                     cross_val_score, train_test_split)
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler, add_dummy_feature
 from sklearn.tree import DecisionTreeRegressor
@@ -965,13 +965,15 @@ you have is the number you report.
                       "story from the ten under-predictions."}),
         code('''
 worst = pd.DataFrame({
-    "actual":    y_test.values,
-    "predicted": final_pred,
+    "actual":     y_test.values,
+    "predicted":  final_pred,
+    "income":     test_set["median_income"].values,
+    "ocean":      test_set["ocean_proximity"].values,
 }).assign(error=lambda d: d.predicted - d.actual)
 worst["abs_error"] = worst["error"].abs()
 
 print(worst.nlargest(10, "abs_error").to_string(
-    index=False, float_format=lambda v: f"${v:,.0f}"))
+    index=False, float_format=lambda v: f"{v:,.4f}"))
 '''),
         md("""
 Every one of the ten is a district at or near the **$500,001** cap, and every
@@ -1033,6 +1035,138 @@ deployed unqualified for the poorest districts, for the capped ones, or for
 """),
 
         md("""
+## 9 · Two comparisons that look like improvements and are not
+"""),
+        prompt(
+            label="dropping the capped districts",
+            input="the test predictions, with and without the capped rows",
+            output="n, model RMSE and constant-baseline RMSE for each",
+            constraint="recompute the BASELINE on each subset too — a model "
+                       "score that moves while its baseline moves with it has "
+                       "not improved, and only the pair shows that",
+            check="the model's RMSE falls. Work out before running it whether "
+                  "the baseline falls by more or less, in percentage terms",
+            **{"try": "drop the cheapest 5% instead of the capped districts. "
+                      "The RMSE falls again, for a third unrelated reason."}),
+        code('''
+def scored(mask, label):
+    y, p = y_test.values[mask], final_pred[mask]
+    base = np.full(mask.sum(), y_train.mean())
+    print(f"{label:26s} n={mask.sum():>5,}   "
+          f"model ${root_mean_squared_error(y, p):>8,.0f}   "
+          f"baseline ${root_mean_squared_error(y, base):>8,.0f}")
+
+capped = y_test.values >= 500_000
+scored(np.ones(len(y_test), bool), "all test districts")
+scored(~capped,                    "capped districts removed")
+'''),
+        md("""
+The model looks **$4,840 better** with the capped districts gone. It is not: the
+baseline fell by about 15% at the same time, because the question changed. We
+did not improve the model, we asked it an easier question — *how well does it do
+on districts below the cap?* Two numbers measured on different rows are not
+comparable, whatever the column headings say.
+"""),
+        prompt(
+            label="dollars or ratios — measured, not argued",
+            input="the same pipeline, trained on the price and on its log",
+            output="each one's cross-validated RMSE in dollars, its median "
+                   "error as a percentage of price, and the share within 30%",
+            constraint="compare on the TRAINING folds — choosing between two "
+                       "differently-trained models is a choice, and choices are "
+                       "not made on the test set",
+            check="one wins in dollars and the other in percentage terms. Decide "
+                  "which the stakeholder's brief actually asked for before you "
+                  "look at the numbers",
+            **{"try": "report the mean percentage error instead of the median. "
+                      "It is much worse for both, because the capped districts "
+                      "have percentage errors that no average survives."}),
+        code('''
+# Five folds, and the MEAN OF THE PER-FOLD RMSEs -- not the RMSE of the pooled
+# out-of-fold predictions, which is a different (smaller) number. The slides
+# quote the first, so this must too.
+kf5 = KFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+
+def target_arm(on_log):
+    rmses, apes = [], []
+    for tr, va in kf5.split(X_train):
+        Xa, Xb = X_train.iloc[tr], X_train.iloc[va]
+        ya, yb = y_train.iloc[tr], y_train.iloc[va]
+        # A fresh preprocessor per fit: a Pipeline fits the object it holds, so
+        # reusing one would carry the previous fold's statistics across.
+        prep = ColumnTransformer([
+            ("num", make_pipeline(SimpleImputer(strategy="median"),
+                                  StandardScaler()), num_cols),
+            ("cat", OneHotEncoder(handle_unknown="ignore"), ["ocean_proximity"]),
+        ])
+        m = Pipeline([("prep", prep),
+                      ("model", RandomForestRegressor(
+                          n_estimators=200, max_features=8,
+                          random_state=RANDOM_STATE, n_jobs=-1))])
+        m.fit(Xa, np.log(ya) if on_log else ya)
+        p = m.predict(Xb)
+        if on_log:
+            p = np.exp(p)
+        rmses.append(root_mean_squared_error(yb, p))
+        apes.append(np.abs(p - yb.values) / yb.values)
+    ape = np.concatenate(apes)
+    return np.mean(rmses), 100 * np.median(ape), 100 * np.mean(ape <= 0.30)
+
+for on_log, label in ((False, "the price (what we did)"), (True, "log of the price")):
+    rmse, med, within = target_arm(on_log)
+    print(f"{label:26s} ${rmse:>8,.0f}   median {med:5.1f}%   within 30% {within:5.1f}%")
+'''),
+        md("""
+The brief asked for a **relative** criterion — within 30% of the price — and we
+optimised an **absolute** one. Regressing the log wins on the criterion the
+client stated and loses on the one we chose. Note that we compared these on the
+training folds: picking between two differently-trained models is a choice, and
+the test set is not where choices are made.
+"""),
+        prompt(
+            label="where the error lives",
+            input="the test predictions and the actual prices",
+            output="RMSE for the cheapest tenth of districts and the dearest",
+            constraint="split by the ACTUAL price, not the predicted one — "
+                       "bucketing by the prediction hides exactly the districts "
+                       "the model got most wrong",
+            check="the dearest tenth has a far larger RMSE. Now divide each by "
+                  "its bucket's median price and see which way the ordering goes",
+            **{"try": "use the predicted price to form the deciles instead. The "
+                      "dearest bucket's RMSE falls sharply — the capped "
+                      "districts are no longer in it, because the model never "
+                      "predicts that high."}),
+        code('''
+# Threshold on the quantile rather than bucketing with qcut: the cap puts many
+# districts on exactly the same price, and qcut has to break that tie somewhere,
+# which moves the boundary and the RMSE with it.
+for q, op, name in ((0.1, "le", "cheapest tenth"), (0.9, "ge", "dearest tenth")):
+    thr = y_test.quantile(q)
+    m = (y_test <= thr) if op == "le" else (y_test >= thr)
+    print(f"{name:16s} n={m.sum():>4,}   "
+          f"RMSE ${root_mean_squared_error(y_test[m], final_pred[m.values]):>8,.0f}"
+          f"   median price ${y_test[m].median():>8,.0f}")
+
+# And the pair the deck shows in order to say it decides NOTHING: the same two
+# targets compared on the test set. The comparison above, on the training
+# folds, is the one that chose. This is a report, not a decision -- which is
+# exactly what the specimen exam answer marks wrong when it is used as one.
+log_model = Pipeline([("prep", preprocessing),
+                      ("model", RandomForestRegressor(
+                          n_estimators=200, max_features=8,
+                          random_state=RANDOM_STATE, n_jobs=-1))])
+log_model.fit(X_train, np.log(y_train))
+log_test = root_mean_squared_error(y_test, np.exp(log_model.predict(X_test)))
+print(f"\\non the test set:  price ${final_rmse:,.0f}   log ${log_test:,.0f}")
+print("Two numbers on the sealed test set, and they chose nothing.")
+'''),
+        md("""
+In dollars the model is worst where the money is. Divide each by its bucket's
+median price and the ordering reverses: in *percentage* terms it is worst where
+the money is not. Which of those two sentences you put in the report is the
+whole of the absolute-versus-relative question, and the brief already answered
+it.
+
 ## 9 · Where we are
 
 - Fitting a linear model is orthogonal projection, and you verified the
