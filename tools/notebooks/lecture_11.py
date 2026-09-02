@@ -1,15 +1,17 @@
+#!/usr/bin/env python3
 """
-Lecture 14 — Making it train.
+Lecture 11 — Training deep networks. CIFAR-10, Géron Chapter 11.
 
-Fix. Géron Chapter 11. Mathematical thread 7: variance propagation through
-layers.
+Derivation: variance propagation through layers.
 
-Exports build() -> list[nbformat cell]. Self-contained: it reloads and re-splits
-the data rather than assuming Lecture 13's kernel is still alive.
+Merges the old lectures 13 and 14, which built a twenty-layer network that
+would not train and then repaired it across two sessions. Here it is one
+lecture: measure the failure, derive why, repair it, and ablate the repairs.
 
-The thread is derived first and then *checked against the previous lecture's
-own logged numbers*, which is the only reason it is in the course. Every repair
-is measured on its own before any of them are combined.
+Exports build() -> list[nbformat cell]. Self-contained. Runs on CPU: CIFAR-10 is
+subsampled and the stack is narrow, because what has to survive the shrink is
+the SHAPE of the gradient curve — a straight line on a log axis — and not any
+particular accuracy.
 """
 
 from __future__ import annotations
@@ -27,37 +29,50 @@ def code(text: str) -> nbf.NotebookNode:
 
 
 HEADER = """
-# Making it train
+# Training deep networks
 
-**Lecture 14 · Fix** · Géron, Chapter 11 · *Mathematical thread: variance
-propagation through layers*
+**Lecture 11** · Géron, Chapter 11
 
 Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
 
 ---
 
-**How to use this notebook.** Read before you run. Cells marked
-**⚠ read before running** contain a defect on purpose.
+**How to use this notebook.** Read before you run. You are not expected to type
+the code; you are expected to be able to say what every line does and what
+would break if it changed.
 
-Have the previous lecture's sheet of paper beside you. Section 3 predicts a
-number you already measured, from the shapes of the weight matrices alone, and
-the comparison is the point of the whole lecture.
+Every code cell is preceded by the specification that would produce it — input,
+output, constraint, check. Read the box, work out what the check should say,
+*then* run the cell.
+
+The notebook deliberately builds a network that **does not train**, measures
+why, derives the reason, and then repairs it. The broken network is labelled as
+such throughout; nothing here is wrong unannounced.
+
+Runs on CPU: 10,000 of the 50,000 images, a narrow stack, and a short run, so a
+free Colab session finishes in minutes. What survives the shrink is the *shape*
+— the gradient falling by a constant factor per layer — and every comparison
+below uses the same subset, the same seed and the same number of epochs, so the
+rows can be read against one another.
 """
+
 
 
 def build() -> list:
     return [
         md(HEADER),
 
-        md("## 1 · Setup, and the same data as last time"),
+        md("## 1 · Setup"),
         prompt(
             label="setup",
             input="nothing",
-            output="versions, seeds, device",
-            constraint="same seeds as the previous lecture, so the rebuild below is a rebuild and not a new experiment",
-            check="if a notebook exists to measure a repair, its setup must be byte-identical to the notebook that measured the fault."),
+            output="versions, seeds, and the device",
+            constraint="pick the device by asking, and say what to do if the answer is cpu",
+            check="everything below still runs on cpu; it is slower. Say so, or a student with no GPU will read the wall clocks as a bug."),
         code('''
 # --- setup -------------------------------------------------------------------
+# Not examinable: engineering hygiene, not machine learning. It is here because
+# a device mismatch produces a confusing error twenty cells later.
 import math, sys, time
 import numpy as np
 import torch
@@ -65,124 +80,625 @@ import torch.nn as nn
 import torchvision
 import matplotlib.pyplot as plt
 
-print(f"python  {sys.version.split()[0]}   torch {torch.__version__}")
+print(f"python       {sys.version.split()[0]}")
+print(f"torch        {torch.__version__}")
+print(f"torchvision  {torchvision.__version__}")
 
 RANDOM_STATE = 42
 torch.manual_seed(RANDOM_STATE)
 np.random.seed(RANDOM_STATE)
 
 if torch.cuda.is_available():
-    device = "cuda"
+    device = "cuda"                       # NVIDIA, and Colab
 elif torch.backends.mps.is_available():
-    device = "mps"
+    device = "mps"                        # Apple Silicon
 else:
     device = "cpu"
-print(f"device  {device}")
+print(f"\\ndevice       {device}")
+if device == "cpu":
+    print("no accelerator found. Everything runs; it is slower.")
+    print("In Colab: Runtime -> Change runtime type -> T4 GPU.")
 '''),
+
+        md("""
+## 2 · The data
+
+CIFAR-10: 60,000 colour photographs, 32 × 32 pixels, ten classes, split 50,000
+train and 10,000 test by the people who built it. Every class has exactly the
+same number of images — remember that, it decides the metric in section 4.
+
+⏱ **1–3 minutes the first time** — about 170 MB over the network. Instant
+afterwards, because `download=True` checks before it fetches.
+"""),
         prompt(
-            label="the same 10,000 images",
+            label="⏱ 1-3 min first time — the data",
             input="CIFAR-10",
-            output="the identical fit / validation / test split and scaling",
-            constraint="recompute mu and sd from the FIT subset, exactly as before — if your split differs from the previous lecture's by one image, none of the comparisons below mean anything",
-            check="assert the shapes and that the test set is still balanced. An assert immediately before a hard-coded constant is how you make a shortcut safe. Without it, 0.1 is a number someone remembered."),
+            output="50,000 train and 10,000 test images as uint8, and the class names",
+            constraint="assert the class counts are EXACTLY balanced in both splits — that fact decides the metric two sections down",
+            check="assert both shapes and both balance conditions. `download=True` checks before it fetches, so re-running is instant. A cell that re-downloads 170 MB every run is a cell people stop running."),
         code('''
-# The same 10,000 images, the same seed, the same scaling. If your split
-# differs from the previous lecture's by one image, none of the comparisons
-# below mean anything.
-# ⏱ instant if you ran Lecture 13 in this runtime; 1-3 minutes otherwise.
 train_ds = torchvision.datasets.CIFAR10("datasets", train=True,  download=True)
 test_ds  = torchvision.datasets.CIFAR10("datasets", train=False, download=True)
 CLASSES  = train_ds.classes
 
-Xtr_u8, Xte_u8 = train_ds.data, test_ds.data
+Xtr_u8 = train_ds.data                            # (50000, 32, 32, 3) uint8
+Xte_u8 = test_ds.data
 ytr = np.asarray(train_ds.targets, dtype=np.int64)
 yte = np.asarray(test_ds.targets,  dtype=np.int64)
 
-N_FIT, N_VAL = 10_000, 5_000
-rng   = np.random.default_rng(RANDOM_STATE)
-order = rng.permutation(len(Xtr_u8))
-val_idx, fit_idx = order[:N_VAL], order[N_VAL:N_VAL + N_FIT]
+assert Xtr_u8.shape == (50_000, 32, 32, 3), f"unexpected shape {Xtr_u8.shape}"
+assert Xte_u8.shape == (10_000, 32, 32, 3)
+assert set(np.bincount(ytr)) == {5_000}, "the training set is not balanced"
+assert set(np.bincount(yte)) == {1_000}, "the test set is not balanced"
 
-flat = lambda a: a.reshape(len(a), -1).astype(np.float32) / 255.0
-X_fit_raw = flat(Xtr_u8[fit_idx])
-mu, sd = X_fit_raw.mean(axis=0), X_fit_raw.std(axis=0) + 1e-7
-std = lambda a: (flat(a) - mu) / sd
-
-X_fit,  y_fit  = std(Xtr_u8[fit_idx]), ytr[fit_idx]
-X_val,  y_val  = std(Xtr_u8[val_idx]), ytr[val_idx]
-X_test, y_test = std(Xte_u8), yte
-
-assert X_fit.shape == (N_FIT, 3072) and X_test.shape == (10_000, 3072)
-assert set(np.bincount(y_test)) == {1_000}
-baseline = 0.1
-print(f"fit {len(X_fit):,}  val {len(X_val):,}  test {len(X_test):,}   "
-      f"baseline {baseline:.4f}")
+print(f"{len(Xtr_u8):,} train + {len(Xte_u8):,} test, {len(CLASSES)} classes")
+print(f"one image is {Xtr_u8.shape[1]}x{Xtr_u8.shape[2]}x{Xtr_u8.shape[3]} "
+      f"= {Xtr_u8[0].size:,} numbers")
+print(CLASSES)
 '''),
 
         md("""
-## 2 · Where we left off
+### Look at it
 
-Twenty hidden layers, a logistic activation, whatever `nn.Linear` chose for the
-weights, and a training loop with no bugs in it. The result was
-indistinguishable from guessing, and the gradient norm fell by fifteen orders
-of magnitude between the last layer and the first.
-
-Rebuild exactly that network, so the repairs have something to be measured
-against.
+Four examples of each class. Two things to notice: the objects are not centred
+or aligned the way the garments in Fashion MNIST were, and the backgrounds vary
+enormously. A pixel at a fixed position means much less here.
 """),
         prompt(
-            label="one factory, every variant",
-            input="depth, width, activation, initialisation, normalisation, dropout",
-            output="a fresh network built to that specification",
-            constraint="ONE function that can build every configuration in the notebook — every row of every table below differs from its neighbour in exactly one argument to this call",
-            check="assert the layer count, so a change to the builder cannot silently change the architecture. If your ablation table is built from more than one constructor, it is not an ablation table."),
+            label="look at it",
+            input="four examples of each class",
+            output="a 4 by 10 grid titled by class",
+            constraint="no `cmap` — these are colour images, and forcing a greyscale colormap on a three-channel array either errors or silently shows you one channel",
+            check="look at the data with the model's assumptions in mind. We are about to flatten to 3,072 numbers, and the grid shows exactly what that throws away."),
         code('''
-DEPTH, WIDTH, N_IN, N_OUT = 20, 100, 3072, 10
-EPOCHS, BATCH, LR = 20, 128, 1e-3
-
-ACTS = {"sigmoid": nn.Sigmoid, "tanh": nn.Tanh, "relu": nn.ReLU,
-        "elu": nn.ELU, "selu": nn.SELU,
-        "leaky": lambda: nn.LeakyReLU(0.01)}
-
-def make_net(depth=DEPTH, width=WIDTH, act="sigmoid", init="torch",
-             norm=None, dropout=0.0, n_in=N_IN, n_out=N_OUT,
-             dtype=torch.float32):
-    layers, prev = [], n_in
-    for _ in range(depth):
-        layers.append(nn.Linear(prev, width))
-        if norm == "batch":
-            layers.append(nn.BatchNorm1d(width))
-        elif norm == "layer":
-            layers.append(nn.LayerNorm(width))
-        layers.append(ACTS[act]())
-        if dropout:
-            layers.append(nn.Dropout(dropout))
-        prev = width
-    layers.append(nn.Linear(prev, n_out))
-
-    net = nn.Sequential(*layers).to(dtype)
-    for m in net:
-        if not isinstance(m, nn.Linear):
-            continue
-        if init == "torch":
-            pass                                  # whatever the default is
-        elif init == "glorot":
-            nn.init.xavier_normal_(m.weight); nn.init.zeros_(m.bias)
-        elif init == "he":
-            nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
-            nn.init.zeros_(m.bias)
-        elif init == "normal1":
-            nn.init.normal_(m.weight, 0.0, 1.0); nn.init.zeros_(m.bias)
-        else:
-            raise ValueError(init)
-    return net
-
-assert len([m for m in make_net() if isinstance(m, nn.Linear)]) == DEPTH + 1
-print(f"{sum(p.numel() for p in make_net().parameters()):,} parameters")
+chosen = np.concatenate([np.where(ytr == c)[0][:4] for c in range(10)])
+fig, axes = plt.subplots(4, 10, figsize=(13, 5.6))
+for k, ax in enumerate(axes.T.ravel()):
+    ax.imshow(Xtr_u8[chosen[k]])
+    ax.set_xticks([]); ax.set_yticks([])
+for c in range(10):
+    axes[0, c].set_title(CLASSES[c], fontsize=9)
+plt.tight_layout(); plt.show()
 '''),
 
         md("""
-## 3 · Thread 7 — variance propagation
+## 3 · Split, then scale — in that order
+
+The rule from Lecture 2 has not been repealed by anything in Part II. The
+scaling statistics are computed on the **fit** subset only, and then applied to
+validation and test.
+
+We flatten each image to a vector of 3,072 numbers. That throws away the fact
+that neighbouring pixels are neighbours — which is the whole subject of Lecture
+15. Today it is deliberate: we are studying depth, not vision.
+"""),
+        prompt(
+            label="split, THEN scale",
+            input="the training images",
+            output="standardised fit, validation and test matrices",
+            constraint="compute mu and sd on the FIT subset only, then apply them to all three — the rule from Lecture 2 has not been repealed by anything in Part II",
+            check="assert the fit subset is standardised, and print the validation mean and sd, which will NOT be exactly 0 and 1. The `+ 1e-7` on the standard deviation. CIFAR has no constant pixels, but a dataset with one gives a divide-by-zero that propagates NaN through every layer and shows up as a loss of nan five cells later."),
+        code('''
+N_FIT, N_VAL = 10_000, 5_000
+
+rng   = np.random.default_rng(RANDOM_STATE)
+order = rng.permutation(len(Xtr_u8))
+val_idx = order[:N_VAL]
+fit_idx = order[N_VAL:N_VAL + N_FIT]
+
+assert set(val_idx).isdisjoint(fit_idx), "the split overlaps"
+
+flat = lambda a: a.reshape(len(a), -1).astype(np.float32) / 255.0
+
+X_fit_raw = flat(Xtr_u8[fit_idx])
+mu = X_fit_raw.mean(axis=0)                 # fitted on the FIT subset only
+sd = X_fit_raw.std(axis=0) + 1e-7
+
+std   = lambda a: (flat(a) - mu) / sd
+X_fit, y_fit = std(Xtr_u8[fit_idx]), ytr[fit_idx]
+X_val, y_val = std(Xtr_u8[val_idx]), ytr[val_idx]
+X_test, y_test = std(Xte_u8), yte
+
+assert X_fit.shape == (N_FIT, 3072) and X_val.shape == (N_VAL, 3072)
+assert X_test.shape == (10_000, 3072)
+assert abs(X_fit.mean()) < 1e-4 and abs(X_fit.std() - 1) < 1e-2, \\
+    "the fit subset should now be standardised"
+print(f"fit {len(X_fit):,}   val {len(X_val):,}   test {len(X_test):,}")
+print(f"fit mean {X_fit.mean():+.2e}   sd {X_fit.std():.4f}")
+print(f"val mean {X_val.mean():+.2e}   sd {X_val.std():.4f}   "
+      f"<- not exactly 0 and 1, and that is correct")
+'''),
+        md("""
+The validation mean is not exactly zero. It should not be: those statistics
+came from a different set of images. A pipeline in which every split has mean
+exactly zero is a pipeline that fitted the scaler on everything.
+"""),
+
+        md("""
+## 4 · The metric, and the number to beat
+
+Ten classes, exactly balanced, and no class is more expensive to get wrong than
+another. Under those three conditions — and only under them — plain accuracy is
+defensible. Lecture 4 was about what happens when they do not hold.
+
+So compute the trivial baseline **before** committing to anything.
+"""),
+        prompt(
+            label="the metric, and the number to beat",
+            input="the test labels",
+            output="the majority-class accuracy and the loss of a model that has learned nothing",
+            constraint="print BOTH anchors — the accuracy baseline and ln(10), because the loss curve is what you will actually be staring at",
+            check="a loss anchor is as important as an accuracy anchor and almost nobody prints one. ln(k) for k balanced classes, one line, before anything trains."),
+        code('''
+counts = np.bincount(y_test, minlength=10)
+baseline = counts.max() / counts.sum()
+print("test images per class:", counts.tolist())
+print(f"\\nalways predict the commonest class -> accuracy {baseline:.4f}")
+print(f"the loss of a model that has learned nothing: "
+      f"ln(10) = {math.log(10):.4f}")
+'''),
+
+        md("""
+## 5 · Build the stack
+
+Twenty hidden layers of a hundred units, a logistic activation, and a linear
+head. Note what the specification does **not** say: nothing about how the
+weights start out. That is not an omission we are hiding — it is the ordinary
+case, and it is the subject of the next lecture.
+"""),
+        prompt(
+            label="build the stack",
+            input="twenty hidden layers of a hundred units, logistic activation",
+            output="the network, its parameter count, and where the parameters are",
+            constraint="break the parameter count down by layer — the first matrix is 3,072 × 100 and the other nineteen are 100 × 100, so most of the parameters are in one place",
+            check="assert there are DEPTH+1 weight matrices, one per layer plus the head. Count the weight matrices with an assert rather than trusting the loop. An off-by-one in a layer-building loop gives a network that trains and is not the one you described."),
+        code('''
+DEPTH, WIDTH, N_IN, N_OUT = 20, 100, 3072, 10
+
+def make_net(depth=DEPTH, width=WIDTH, act=nn.Sigmoid, n_in=N_IN, n_out=N_OUT):
+    layers, prev = [], n_in
+    for _ in range(depth):
+        layers += [nn.Linear(prev, width), act()]
+        prev = width
+    layers.append(nn.Linear(prev, n_out))
+    return nn.Sequential(*layers)
+
+net = make_net()
+n_params = sum(p.numel() for p in net.parameters())
+lins = [m for m in net if isinstance(m, nn.Linear)]
+
+assert len(lins) == DEPTH + 1, "one weight matrix per layer, plus the head"
+print(f"{len(lins)} weight matrices, {n_params:,} parameters")
+print(f"  first  {N_IN} x {WIDTH} + {WIDTH} = {N_IN*WIDTH + WIDTH:,}")
+print(f"  each hidden {WIDTH} x {WIDTH} + {WIDTH} = {WIDTH*WIDTH + WIDTH:,}"
+      f"  (x {DEPTH-1})")
+print(f"  head   {WIDTH} x {N_OUT} + {N_OUT} = {WIDTH*N_OUT + N_OUT:,}")
+'''),
+        md("""
+### What did `nn.Linear` put in those matrices?
+
+Nobody said. Look.
+"""),
+        prompt(
+            label="what did nn.Linear put in there",
+            input="one hidden weight matrix",
+            output="its min, max, mean and standard deviation, against the documented default",
+            constraint="check the sd against b/√3, the standard deviation of a uniform on (−b, b) — that identity is what turns 'it looks uniform' into a verified claim",
+            check="assert the measured sd matches to within 0.002. Reviewer question 5 applied to weights. Any tensor you did not fill yourself was filled by someone, according to a rule you can look up and check."),
+        code('''
+w = lins[1].weight.detach()
+bound = 1 / math.sqrt(WIDTH)
+print(f"hidden weight matrix: {tuple(w.shape)}")
+print(f"  min {w.min():+.4f}   max {w.max():+.4f}")
+print(f"  mean {w.mean():+.5f}   sd {w.std():.5f}")
+print(f"\\nthat is U(-1/sqrt(fan_in), +1/sqrt(fan_in)) = "
+      f"U({-bound:.4f}, {bound:+.4f})")
+print(f"  a uniform on (-b, b) has sd b/sqrt(3) = "
+      f"{bound/math.sqrt(3):.5f}   <- matches")
+assert abs(float(w.std()) - bound / math.sqrt(3)) < 0.002
+'''),
+
+        md("""
+## 6 · Train it
+
+The loop is Lecture 10's, unchanged, with the three defences that lecture
+ended on: `zero_grad()` inside the batch loop, `eval()` before every
+measurement, and accuracy counted over the set rather than averaged over
+batches.
+
+⏱ **about 40–90 seconds** for 20 epochs, depending on the runtime.
+"""),
+        prompt(
+            label="⏱ 40-90 s — train it",
+            input="the twenty-layer stack",
+            output="the loss curve, validation and test accuracy, against the baseline",
+            constraint="the loop is the previous lecture's with all three defences — zero_grad inside the batch loop, eval() before every measurement, accuracy counted over the set",
+            check="print the loss at epoch 1 and at epoch 20 beside ln(10). Three numbers, and they say the whole thing before any plot."),
+        code('''
+EPOCHS, BATCH, LR = 20, 128, 1e-3
+
+Xf = torch.tensor(X_fit,  device=device); yf = torch.tensor(y_fit,  device=device)
+Xv = torch.tensor(X_val,  device=device); yv = torch.tensor(y_val,  device=device)
+Xt = torch.tensor(X_test, device=device); yt = torch.tensor(y_test, device=device)
+
+@torch.no_grad()
+def accuracy(net, X, y, batch=2000):
+    """Counted over the whole set, not averaged per batch — Lecture 10."""
+    net.eval()
+    hits = sum(int((net(X[i:i+batch]).argmax(1) == y[i:i+batch]).sum())
+               for i in range(0, len(X), batch))
+    net.train()
+    return hits / len(X)
+
+def train(net, epochs=EPOCHS, lr=LR, batch=BATCH, seed=RANDOM_STATE,
+          track_grads=False):
+    torch.manual_seed(seed)
+    net = net.to(device)
+    opt   = torch.optim.Adam(net.parameters(), lr=lr)
+    lossf = nn.CrossEntropyLoss()
+    lins  = [m for m in net if isinstance(m, nn.Linear)]
+    g = torch.Generator().manual_seed(seed)
+    hist = {"loss": [], "val_acc": [], "grad": []}
+    t0 = time.perf_counter()
+    for _ in range(epochs):
+        net.train()
+        perm = torch.randperm(len(Xf), generator=g).to(device)
+        total, nb = 0.0, 0
+        for i in range(0, len(Xf), batch):
+            idx = perm[i:i + batch]
+            opt.zero_grad()                                   # 1
+            loss = lossf(net(Xf[idx]), yf[idx])               # 2, 3
+            loss.backward()                                   # 4
+            opt.step()                                        # 5
+            total += float(loss.item()); nb += 1
+        hist["loss"].append(total / nb)
+        hist["val_acc"].append(accuracy(net, Xv, yv))
+        if track_grads:
+            hist["grad"].append([float(m.weight.grad.norm()) for m in lins])
+    hist["seconds"] = time.perf_counter() - t0
+    return net, hist
+
+torch.manual_seed(RANDOM_STATE)
+deep = make_net()
+deep, hist = train(deep, track_grads=True)
+
+print(f"{hist['seconds']:.1f} s on {device}")
+print(f"loss  epoch 1 {hist['loss'][0]:.4f}  ->  "
+      f"epoch {EPOCHS} {hist['loss'][-1]:.4f}")
+print(f"chance loss ln(10) = {math.log(10):.4f}")
+print(f"validation accuracy {hist['val_acc'][-1]:.4f}")
+print(f"TEST accuracy       {accuracy(deep, Xt, yt):.4f}")
+print(f"baseline            {baseline:.4f}")
+'''),
+        prompt(
+            label="the curves that show nothing happening",
+            input="the recorded history",
+            output="training loss with ln(10) marked, and validation accuracy with 10% marked",
+            constraint="draw BOTH anchor lines, and cap the accuracy axis at 30% — autoscaling a flat line at 10% produces a dramatic-looking chart of noise",
+            check="fix the axis limits when you are showing that something did NOT happen. Autoscale is for exploring; a fixed axis is for claiming."),
+        code('''
+fig, ax = plt.subplots(1, 2, figsize=(12, 3.6))
+ax[0].plot(range(1, EPOCHS+1), hist["loss"], marker="o")
+ax[0].axhline(math.log(10), ls=":", color="grey")
+ax[0].set_xlabel("epoch"); ax[0].set_ylabel("training loss")
+ax[1].plot(range(1, EPOCHS+1), [100*a for a in hist["val_acc"]], marker="o")
+ax[1].axhline(10, ls="--", color="grey")
+ax[1].set_xlabel("epoch"); ax[1].set_ylabel("validation accuracy, %")
+ax[1].set_ylim(0, 30)
+plt.tight_layout(); plt.show()
+'''),
+
+        md("""
+## 7 · Before blaming the architecture, rule out the bugs
+
+Lecture 10 ended with a checklist of failures that run, produce a plausible
+number and never raise. All of them would look exactly like this. Check them
+rather than assuming.
+"""),
+        prompt(
+            label="rule out the bugs before blaming the architecture",
+            input="the checklist from the previous lecture",
+            output="a label-image alignment check, and a deliberate overfit of 200 images",
+            constraint="check that the SAME loop can memorise 200 images with 2 layers — if it cannot, the loop is the bug and the depth is irrelevant",
+            check="the overfit test is the strongest single diagnostic in deep learning. A loop that cannot memorise a tiny sample is broken; a loop that can is not the reason your model does not learn."),
+        code('''
+# 1. is zero_grad inside the batch loop?  Read `train` above: yes, line 1.
+# 2. is eval() used for every measurement? `accuracy` calls it: yes.
+# 3. is the metric counted over the set?   `accuracy` counts hits: yes.
+# 4. are the labels aligned with the images?
+k = 3
+print("label check:", CLASSES[y_fit[k]], "for the image below")
+plt.figure(figsize=(1.6, 1.6))
+plt.imshow(Xtr_u8[fit_idx[k]]); plt.xticks([]); plt.yticks([]); plt.show()
+
+# 5. can the SAME loop fit anything at all?  Overfit 200 images on purpose:
+torch.manual_seed(RANDOM_STATE)
+tiny = make_net(depth=2).to(device)
+opt, lossf = torch.optim.Adam(tiny.parameters(), lr=1e-3), nn.CrossEntropyLoss()
+for _ in range(200):
+    opt.zero_grad(); lossf(tiny(Xf[:200]), yf[:200]).backward(); opt.step()
+print(f"\\n2 layers, 200 images, 200 steps -> training accuracy "
+      f"{accuracy(tiny, Xf[:200], yf[:200]):.3f}")
+print("The loop can memorise. So the loop is not the bug.")
+'''),
+
+        md("""
+### The control: the same code, two layers instead of twenty
+
+One variable changes.
+
+⏱ **about 2 minutes** for the whole sweep.
+"""),
+        prompt(
+            label="⏱ 2 min — the control",
+            input="the same code at depths 1, 2, 5, 10 and 20",
+            output="final loss and test accuracy at each depth",
+            constraint="re-seed before every fit so the only variable is depth",
+            check="assert depth 2 beats depth 20 — if it does not, depth is not the variable and the rest of the lecture is about the wrong thing. An assert that encodes the premise of the lecture. If it fires, stop and re-diagnose rather than continuing to instrument the wrong thing."),
+        code('''
+sweep = {}
+for k in (1, 2, 5, 10, 20):
+    torch.manual_seed(RANDOM_STATE)
+    m, h = train(make_net(depth=k))
+    sweep[k] = accuracy(m, Xt, yt)
+    print(f"depth {k:2d}: final loss {h['loss'][-1]:.4f}   "
+          f"test accuracy {sweep[k]:.4f}")
+
+plt.figure(figsize=(7, 3.2))
+plt.bar([str(k) for k in sweep], [100*v for v in sweep.values()])
+plt.axhline(10, ls="--", color="grey")
+plt.xlabel("hidden layers"); plt.ylabel("test accuracy, %")
+plt.tight_layout(); plt.show()
+
+assert sweep[2] > sweep[20], "if this fails, depth is not the variable"
+print("\\nAdding layers made it worse. That is not what capacity is supposed "
+      "to do.")
+'''),
+
+        md("""
+## 8 · Instrument it
+
+We have a loop we wrote, so we can put a probe anywhere in it. Two probes:
+what each layer **outputs** on the way forward, and what each weight matrix
+**receives** on the way back.
+
+Start with the forward pass.
+"""),
+        prompt(
+            label="instrument the forward pass",
+            input="512 training images through the trained network",
+            output="mean, sd over the whole tensor, sd down the batch, and a saturation fraction, per layer",
+            constraint="report TWO standard deviations — over the whole tensor and down the BATCH — because they say opposite things and only one is about the signal",
+            check="assert one row per hidden layer before reading anything off it. The saturated column is worse than useless here, and the notebook says so. It asks whether |h − 0.5| > 0.45 while the activations sit in a band of sd 0.071 — 6.3 standard deviations away, unreachable, and 0.000 at every depth reads as reassurance."),
+        code('''
+@torch.no_grad()
+def activation_stats(net, X, n=512):
+    """Mean, sd and saturated fraction of every hidden layer's output."""
+    net.eval()
+    h = X[:n]
+    rows = []
+    for m in net:
+        h = m(h)
+        if isinstance(m, nn.Sigmoid):
+            rows.append({"mean": float(h.mean()),
+                         # sd over the WHOLE tensor is dominated by the spread
+                         # of this layer's random biases across units, which
+                         # does not change with depth — so it stays near 0.07
+                         # for twenty layers and the network looks alive.
+                         "sd_all": float(h.std()),
+                         # What actually carries information: how much a unit's
+                         # output moves when the INPUT changes. sd down the
+                         # batch, averaged over units.
+                         "sd": float(h.std(dim=0).mean()),
+                         "saturated": float(((h - 0.5).abs() > 0.45)
+                                            .float().mean())})
+    net.train()
+    return rows
+
+stats = activation_stats(deep, Xf)
+assert len(stats) == DEPTH
+print(f"{'layer':>6}{'mean':>9}{'sd (all)':>11}{'sd (signal)':>14}"
+      f"{'saturated':>11}")
+for i in (0, 1, 4, 9, 14, 19):
+    s = stats[i]
+    print(f"{i+1:>6}{s['mean']:>9.4f}{s['sd_all']:>11.4f}"
+          f"{s['sd']:>14.2e}{s['saturated']:>11.3f}")
+
+ratio = stats[19]["sd"] / stats[0]["sd"]
+print(f"\\nsignal at layer 20, relative to layer 1: {ratio:.2e}")
+print(f"per layer that is a factor of {ratio ** (1/19):.3f}")
+'''),
+        prompt(
+            label="the same layers, on the axis that matters",
+            input="the activation statistics",
+            output="two plots — the misleading one on a linear axis, then the signal on a log axis",
+            constraint="draw BOTH, in that order. The first is what you would have plotted; the second is what is true",
+            check="when a quantity might span orders of magnitude, try a log axis before concluding it is constant. Flat on linear and flat on log are very different findings."),
+        code('''
+plt.figure(figsize=(7, 3.2))
+plt.plot(range(1, DEPTH+1), [s["mean"] for s in stats], marker="o", label="mean")
+plt.plot(range(1, DEPTH+1), [s["sd_all"] for s in stats], marker="s",
+         label="sd over the whole tensor")
+plt.xlabel("hidden layer"); plt.ylabel("activation"); plt.ylim(0, 0.62)
+plt.legend(); plt.tight_layout(); plt.show()
+
+# The same layers, on the axis that matters. Note the log scale.
+plt.figure(figsize=(7, 3.2))
+plt.semilogy(range(1, DEPTH+1), [s["sd"] for s in stats], marker="s",
+             color="#c0392b", label="sd down the batch (the signal)")
+plt.xlabel("hidden layer"); plt.ylabel("input-dependent spread")
+plt.legend(); plt.tight_layout(); plt.show()
+'''),
+        md("""
+Read that carefully before going on, because it rules out the answer most
+people reach for first.
+
+**Read the two sd columns against each other.** The first is flat and the
+second falls off a cliff, and only one of them is about the signal.
+
+`h.std()` over the whole tensor barely moves with depth — it stays near 0.07 at
+layer 20 — because it is dominated by the spread of that layer's random
+**biases** across units, and that spread does not care how deep the layer is.
+Reading it, you would conclude the forward pass is healthy and go looking
+elsewhere. **That conclusion would be wrong.**
+
+What carries information is how much a unit's output moves when the *input*
+changes: the sd **down the batch**, averaged over units. That is the second
+column, and it collapses by a factor of **0.149 per layer** — from
+1.29e-01 at layer 1 to **2.42e-17** at layer 20. Sixteen orders of magnitude.
+By layer 20 every input produces essentially the same activation, which is
+another way of saying the network has stopped being a function of its input.
+
+**And the saturated column is worse than useless.** It asks whether
+$|h - 0.5| > 0.45$ — but the activations sit in a band whose sd is about
+**0.071**, so that threshold is **6.3 standard deviations** away, and 3.4 even
+at layer 1. Nothing could ever have crossed it. `0.000 at every depth` is a
+statement about the width of the band, not about saturation, and it read as
+reassurance.
+
+**So the forward signal does die.** It dies quietly, and both obvious probes say
+otherwise. 0.149 is not a coincidence either — it is exactly the per-layer factor
+the mathematical thread predicts from the fan-in, and exactly the rate at which
+the gradient vanishes on the way back.
+"""),
+
+        md("""
+### Now the backward pass
+
+The gradient of the loss with respect to each weight matrix, averaged over
+eight batches — one batch of 128 is a noisy estimate of anything, and a course
+that says so should not then quote one.
+
+Measured on the CPU in float64. Not superstition: a norm is a sum of squares,
+and if the smallest gradients were near 1e-20 then squaring them would underflow
+to exactly zero in float32 and the plot would be a lie. We check that it does
+not, rather than assuming.
+"""),
+        prompt(
+            label="the backward pass, in float64",
+            input="eight batches through a freshly initialised network",
+            output="the mean gradient norm per weight matrix, in both precisions",
+            constraint="average over EIGHT batches — one batch of 128 is a noisy estimate of anything, and a course that says so should not then quote one",
+            check="assert no float32 gradient underflowed to exactly zero, and report the largest disagreement between the two precisions. When you plot something tiny on a log axis, check it did not underflow. A log plot of zeros is blank, and a log plot of denormals is noise."),
+        code('''
+def grad_profile(net_factory, X, y, n_batches=8, dtype=torch.float64):
+    torch.manual_seed(RANDOM_STATE)
+    net = net_factory().to(dtype)
+    lossf = nn.CrossEntropyLoss()
+    lins = [m for m in net if isinstance(m, nn.Linear)]
+    acc = np.zeros(len(lins))
+    g = torch.Generator().manual_seed(RANDOM_STATE)
+    for _ in range(n_batches):
+        idx = torch.randperm(len(X), generator=g)[:128].numpy()
+        net.zero_grad()
+        lossf(net(torch.as_tensor(X[idx], dtype=dtype)),
+              torch.as_tensor(y[idx])).backward()
+        acc += np.array([float(m.weight.grad.norm()) for m in lins])
+    return acc / n_batches
+
+g64 = grad_profile(make_net, X_fit, y_fit, dtype=torch.float64)
+g32 = grad_profile(make_net, X_fit, y_fit, dtype=torch.float32)
+
+print(f"largest relative disagreement between float32 and float64: "
+      f"{np.max(np.abs(g32 - g64) / g64):.2e}")
+print(f"layers whose float32 gradient underflowed to exactly zero: "
+      f"{int((g32 == 0).sum())}")
+assert (g32 > 0).all(), "if this ever fails, the float32 plot is meaningless"
+
+for i in (0, 4, 9, 14, 19, 20):
+    name = "head" if i == DEPTH else f"layer {i+1}"
+    print(f"{name:>8s}   ||dL/dW|| = {g64[i]:.4e}")
+'''),
+        prompt(
+            label="a straight line on a log axis",
+            input="the gradient profile",
+            output="the norm per layer, and the per-layer attenuation factor",
+            constraint="compute the per-layer factor as a GEOMETRIC mean of the consecutive ratios, and verify it by raising it to the 19th power",
+            check="the self-check in the last print. If the per-layer factor to the 19th does not reproduce the measured end-to-end ratio, one of the two is wrong and you have found out in one line."),
+        code('''
+plt.figure(figsize=(8, 3.4))
+plt.semilogy(range(1, len(g64)+1), g64, marker="o")
+plt.xlabel("layer  (1 = nearest the input)")
+plt.ylabel("||dL/dW||")
+plt.title("Gradient norm per weight matrix, at initialisation")
+plt.tight_layout(); plt.show()
+
+atten = g64[19] / g64[0]
+ratios = g64[1:20] / g64[0:19]
+gain = float(np.exp(np.mean(np.log(ratios))))      # geometric mean
+print(f"layer 20 : layer 1  =  {atten:.4e}   "
+      f"({math.log10(atten):.1f} orders of magnitude)")
+print(f"per layer, going down: x {1/gain:.4f}")
+print(f"check: {1/gain:.4f} ** 19 = {(1/gain)**19:.4e}   "
+      f"and 1/{atten:.4e} = {1/atten:.4e}")
+'''),
+        md("""
+**That is a straight line on a log axis.** Which means the attenuation is not
+an accident of one layer: it is the *same factor, applied nineteen times*.
+
+Write down the two numbers — the per-layer factor and the end-to-end ratio.
+They are what the next lecture derives from first principles.
+"""),
+
+        md("""
+### Does training rescue it?
+
+We logged the per-layer gradient norms at every epoch. If the first layers were
+merely slow to start, the profile would flatten as the network learns.
+"""),
+        prompt(
+            label="does training rescue it",
+            input="the per-layer gradient norms recorded at every epoch",
+            output="the profile at epochs 1, 5, 10 and 20",
+            constraint="plot several epochs on ONE axis — the question is whether the shape changes, and one epoch per panel cannot answer it",
+            check="this is why the instrumentation had to go in before the first training run. The question 'did it change over time' cannot be asked retroactively."),
+        code('''
+G = np.array(hist["grad"])            # (epochs, layers)
+plt.figure(figsize=(8, 3.4))
+for ep in (0, 4, 9, 19):
+    plt.semilogy(range(1, G.shape[1]+1), G[ep], marker="o",
+                 label=f"epoch {ep+1}")
+plt.xlabel("layer"); plt.ylabel("||dL/dW||"); plt.legend()
+plt.tight_layout(); plt.show()
+
+print(f"layer 1 gradient, epoch 1  {G[0][0]:.3e}")
+print(f"layer 1 gradient, epoch {EPOCHS} {G[-1][0]:.3e}")
+print("\\nTwenty epochs of Adam did not move the first layer's gradient into a "
+      "range where a learning rate of 1e-3 could do anything with it.")
+'''),
+
+        md("""
+### What that means for the update
+
+Adam divides by a running estimate of the gradient's own magnitude, so it is
+not simply "small gradient, small step". But the first layers are being driven
+by a signal that is fifteen orders of magnitude below the last ones, and it is
+almost entirely noise from the eight-batch spread. Check what the weights
+actually did over twenty epochs.
+"""),
+        prompt(
+            label="what the weights actually did",
+            input="the initial weights, reproduced, against the trained ones",
+            output="the relative change in each layer's weights over twenty epochs",
+            constraint="reproduce the initial weights by RE-SEEDING — `train` does not re-initialise the network it is handed, so the same seed gives exactly the tensors `deep` started from",
+            check="relative change, not absolute. A weight matrix with small entries and one with large entries cannot be compared by the norm of their differences."),
+        code('''
+# Re-seeding reproduces exactly the weights `deep` started from, because
+# `train` does not re-initialise the network it is handed.
+torch.manual_seed(RANDOM_STATE)
+before = make_net()
+w_before = [m.weight.detach().clone() for m in before if isinstance(m, nn.Linear)]
+after = [m.weight.detach().cpu() for m in deep if isinstance(m, nn.Linear)]
+
+for i in (0, 9, 19, 20):
+    rel = float((after[i] - w_before[i]).norm() / w_before[i].norm())
+    name = "head" if i == DEPTH else f"layer {i+1}"
+    print(f"{name:>8s}: relative change in the weights over "
+          f"{EPOCHS} epochs = {rel:.4f}")
+'''),
+
+        md("""
+## 9 · The derivation — variance propagation
 
 One layer, written without the activation for a moment:
 
@@ -352,7 +868,7 @@ for k, v in theory.items():
 '''),
 
         md("""
-## 4 · Now measure it, on the network you built last time
+## 10 · Measure the prediction against the network above
 
 The prediction above used nothing but the shapes of the matrices and one
 expectation. If it is right, it should reproduce the attenuation you logged in
@@ -470,9 +986,9 @@ gradient are not exactly uncorrelated.
 
 **This is the whole lecture.** Everything below is applying it.
 
-### But that is not the number on your sheet
+### But that is not the number section 8 logged
 
-The previous lecture logged `||dL/dW||`, not `||dL/dz||`. They differ, because
+Section 8 logged `||dL/dW||`, not `||dL/dz||`. They differ, because
 
     || dL/dW_l ||  ~  || delta_l || . || a_(l-1) ||
 
@@ -482,7 +998,7 @@ coincide. For an unnormalised ReLU stack they do not — and that is not a
 technicality, as the next cell shows.
 """),
         prompt(
-            label="why the previous lecture's diagnostic is not enough",
+            label="why the weight-gradient diagnostic is not enough",
             input="ρ, the forward scale, and the weight-gradient ratio per scheme",
             output="all four columns side by side",
             constraint="show ρ and the forward factor SEPARATELY as well as their product — the product is what the previous lecture measured",
@@ -503,7 +1019,7 @@ print("number. A flat gradient profile does NOT certify an initialisation.")
 '''),
 
         md("""
-## 5 · The training harness
+## 11 · The training harness
 
 One function, one seed, one subset, one epoch count. Every row in every table
 below differs from its neighbour in exactly one argument.
@@ -582,7 +1098,7 @@ print(f"harness check: a 2-layer ReLU network reaches "
 '''),
 
         md("""
-## 6 · Each repair, alone
+## 12 · Each repair, alone
 
 Resist applying everything at once. A stack of seven changes that works tells
 you nothing about which of the seven mattered — and two of them will turn out
@@ -598,7 +1114,7 @@ to make things worse on their own.
             check="clipping bounds a gradient that is too large; ours is fifteen orders of magnitude too small. Dropout fights overfitting; a network at chance is not overfitting. Applying a fix whose failure mode you have not measured is how a notebook grows to forty cells and stops being explicable."),
         code('''
 alone = [
-    ("nothing (Lecture 13)",  dict(act="sigmoid", init="torch")),
+    ("nothing (as built above)",  dict(act="sigmoid", init="torch")),
     ("Glorot initialisation", dict(act="sigmoid", init="glorot")),
     ("ReLU, with He",         dict(act="relu",    init="he")),
     ("Batch normalisation",   dict(act="sigmoid", init="torch", norm="batch")),
@@ -629,7 +1145,7 @@ to forty cells and stops being explicable.
 """),
 
         md("""
-## 7 · The ladder
+## 13 · The ladder
 
 Now stack them, in the order the diagnosis suggests: fix the signal first,
 then the optimisation, then the generalisation.
@@ -644,7 +1160,7 @@ then the optimisation, then the generalisation.
             check="assert the repaired network is at least three times chance, and record which rung was actually best. Capture the best row into a variable and use THAT downstream. Hard-coding the last rung's settings in the summary would report 33.4% where the argument requires 43.9% — the notebook committing the mistake the deck forbids."),
         code('''
 ladder = [
-    ("Lecture 13, unchanged",       dict(act="sigmoid", init="torch")),
+    ("as built above, unchanged",   dict(act="sigmoid", init="torch")),
     ("+ Glorot initialisation",     dict(act="sigmoid", init="glorot")),
     ("+ ReLU and He",               dict(act="relu", init="he")),
     ("+ batch normalisation",       dict(act="relu", init="he", norm="batch")),
@@ -697,100 +1213,7 @@ plt.tight_layout(); plt.show()
 '''),
 
         md("""
-## 8 · ⚠ An assistant repairs the network
-
-> *"My 20-layer network isn't learning — the gradients vanish. Switch it to
-> ReLU and initialise the weights properly."*
-
-Here is what comes back. It runs, the loss falls, the accuracy is several times
-the baseline, and it looks like the problem is solved.
-"""),
-        prompt(
-            label="⚠ what the assistant returns",
-            input="'my 20-layer network isn't learning — switch it to ReLU and initialise the weights properly'",
-            output="a trained network and its test accuracy",
-            constraint="run it exactly as returned. The loss falls, the accuracy is several times the baseline, and it looks like the problem is solved",
-            check="a repair that improves the number is not thereby the right repair. Put the constant back into the ρ table and see what it predicts."),
-        code('''
-def assistant_fix(depth=20, width=100, n_in=3072, n_out=10):
-    layers, prev = [], n_in
-    for _ in range(depth):
-        layers += [nn.Linear(prev, width), nn.ReLU()]
-        prev = width
-    layers.append(nn.Linear(prev, n_out))
-    model = nn.Sequential(*layers)
-    for m in model:
-        if isinstance(m, nn.Linear):
-            nn.init.xavier_uniform_(m.weight)      # "proper initialisation"
-            nn.init.zeros_(m.bias)
-    return model
-
-torch.manual_seed(RANDOM_STATE)
-model = assistant_fix().to(device)
-optim, lossf = torch.optim.Adam(model.parameters(), lr=1e-3), nn.CrossEntropyLoss()
-g = torch.Generator().manual_seed(RANDOM_STATE)
-for ep in range(EPOCHS):
-    model.train()
-    perm = torch.randperm(len(Xf), generator=g).to(device)
-    for i in range(0, len(Xf), BATCH):
-        idx = perm[i:i+BATCH]
-        optim.zero_grad(); lossf(model(Xf[idx]), yf[idx]).backward(); optim.step()
-xavier_relu = accuracy(model, Xt, yt)
-print(f"the assistant's repair: test accuracy {xavier_relu:.4f}")
-print(f"the baseline:                          {baseline:.4f}")
-print("It moved. So it worked?")
-'''),
-        md("""
-### The review question that catches it
-
-*Xavier* and *Glorot* are the same person and the same formula. So the
-assistant did do something defensible — but it used the initialisation derived
-**for a roughly linear activation** on an activation that throws away half the
-variance.
-
-Put it back in the table from section 3: with ReLU, Glorot gives
-$\\rho = \\sqrt{1\\cdot\\tfrac12} = 0.707$, not 1. Over nineteen layers that is
-$0.707^{19}$ — three orders of magnitude, not fifteen. Enough to train
-visibly, and far from correct.
-
-Measure the difference rather than arguing about it.
-"""),
-        prompt(
-            label="measure the difference rather than arguing about it",
-            input="both initialisations with ReLU",
-            output="the measured ρ against theory for each, and the accuracy cost",
-            constraint="report the measured ρ beside the PREDICTED one — 0.707 and 1.0 were both derived before this cell ran",
-            check="ask any repair to produce the diagnostic that would show it worked. An accuracy that went up is compatible with a great many wrong repairs."),
-        code('''
-gx = grad_profile(act="relu", init="glorot")
-gh = grad_profile(act="relu", init="he")
-rx = float(np.exp(np.mean(np.log(gx[1:DEPTH] / gx[0:DEPTH-1]))))
-rh = float(np.exp(np.mean(np.log(gh[1:DEPTH] / gh[0:DEPTH-1]))))
-print(f"Glorot + ReLU  rho {1/rx:.4f}  (theory {math.sqrt(0.5):.4f})   "
-      f"end to end {gx[0]/gx[DEPTH-1]:.3e}")
-print(f"He     + ReLU  rho {1/rh:.4f}  (theory {1.0:.4f})   "
-      f"end to end {gh[0]/gh[DEPTH-1]:.3e}")
-
-_, h_he = train(act="relu", init="he")
-print(f"\\nXavier + ReLU  test {xavier_relu:.4f}")
-print(f"He     + ReLU  test {h_he['test_acc']:.4f}")
-print(f"cost of the wrong constant: "
-      f"{100*(h_he['test_acc'] - xavier_relu):+.2f} accuracy points")
-'''),
-        md("""
-### The corrected specification
-
-> *"Switch to ReLU and use the initialisation derived for ReLU — He normal,
-> `Var(w) = 2/fan_in`. **Then print the per-layer gradient norm ratio and show
-> me it is within 20% of 1.0**, so I can see the initialisation did what it
-> claims."*
-
-The last sentence is the important one. "Initialise it properly" is not a
-specification; a per-layer ratio near 1 is.
-"""),
-
-        md("""
-## 9 · Batch normalisation, and layer normalisation
+## 14 · Batch normalisation, and layer normalisation
 
 Initialisation fixes the variance **at step zero**. It says nothing about step
 five thousand, by which time the weights have moved. Normalisation enforces the
@@ -829,7 +1252,7 @@ Layer normalisation standardises across the *features of one example*, so it
 has no such dependence. It arrives properly in Chapter 13; it is here for the
 contrast.
 
-Watch the two modes disagree, which is the failure Lecture 12 warned about and
+Watch the two modes disagree, which is the failure Lecture 10 warned about and
 which is now much harder to see, because batch normalisation does not
 fluctuate:
 """),
@@ -857,7 +1280,7 @@ print("\\nUnlike dropout it does not wobble between calls, so running the "
         md("""
 ### The row we do not explain
 
-Applied on their own to the Lecture 13 network, batch normalisation rescues it
+Applied on their own to the failing network, batch normalisation rescues it
 completely and layer normalisation does nothing at all — yet on the *repaired*
 network the two are within a point of each other.
 
@@ -885,7 +1308,7 @@ print("trying to replace.")
 '''),
 
         md("""
-## 10 · Gradient clipping
+## 15 · Gradient clipping
 
 Clipping rescales the whole gradient vector when its norm exceeds a threshold.
 It is a defence against the *other* failure — the one where $\\rho > 1$.
@@ -928,7 +1351,7 @@ plt.tight_layout(); plt.show()
 '''),
 
         md("""
-## 11 · Faster optimisers, and schedules
+## 16 · Faster optimisers, and schedules
 
 Now that the gradient reaches every layer, the optimiser has something to work
 with. Compare six on the *repaired* network — comparing them on the broken one
@@ -964,7 +1387,7 @@ for name in (None, "cosine", "onecycle"):
 '''),
 
         md("""
-## 12 · Re-measure
+## 17 · Re-measure
 
 The same twenty layers, the same 10,000 images, the same twenty epochs, the
 same seed. Only the four lines that decide how the signal propagates have
@@ -986,7 +1409,7 @@ _, repaired = train(**BEST_KW)
 
 print("=" * 60)
 print(f"{'baseline (majority class)':34s} {baseline:.4f}")
-print(f"{'Lecture 13, 20 layers':34s} {base['test_acc']:.4f}")
+print(f"{'as built, 20 layers':34s} {base['test_acc']:.4f}")
 print(f"{'the same 20 layers, repaired':34s} {repaired['test_acc']:.4f}")
 print(f"{'  (best rung: ' + BEST_LABEL + ')':34s}")
 print(f"{'improvement, accuracy points':34s} "
@@ -1000,22 +1423,33 @@ print("and the ceiling this network is running into is the subject there.")
 '''),
 
         md("""
-## 13 · Red-team
+## 18 · Where we are
 
-Swap notebooks. Ten minutes. The five questions, and three that are new:
+- A twenty-layer stack on default initialisation does not train, and the reason
+  is measurable: the gradient shrinks by a constant factor per layer, which is
+  a straight line on a log axis.
+- The derivation says what that factor is — fan-in and weight variance — and
+  that preserving the forward signal and the backward gradient want *different*
+  variances. Glorot splits the difference; He corrects for ReLU halving it.
+- The error compounds geometrically, so twenty layers multiply it twenty times.
+  That is why depth, and not width, is what breaks.
+- Seven repairs, each measured alone. Most of the gain is in the first two.
 
-1. What touched the test set?
-2. What was fitted, and on what?
-3. What is the shape here?
-4. What was dropped — rows, columns, NaNs? Count them.
-5. What is the default I did not ask for?
-6. **Which initialisation is on each layer, and which activation was it
-   derived for?**
-7. **If there is a normalisation layer, is there a `model.eval()` before every
-   measurement?** Running the evaluation twice will not catch a missing one.
-8. **Is every row of the ablation table one change away from its neighbour?**
-   Two changes in one row is not a measurement.
+**Four questions to ask of a network that will not train:**
 
-Report what you **found**, not what you would have done differently.
+1. Is it the harness? Overfit ten examples first — if it cannot, the bug is not
+   in the architecture.
+2. What do the per-layer gradient norms look like on a log axis? A straight
+   line is initialisation; a cliff is something else.
+3. What is the activation's effect on variance, and does the initialisation
+   account for it?
+4. Is anything downstream — normalisation, clipping — masking the diagnosis
+   rather than fixing it?
+
+**Before the next lecture:** run this notebook top to bottom. Then set the
+initialisation back to PyTorch's default and re-run the gradient probe alone.
+The straight line comes back, and its slope is the per-layer factor the
+derivation predicts.
 """),
     ]
+    return cells
