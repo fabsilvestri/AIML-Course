@@ -154,7 +154,12 @@ def stated_facts(deck: Path, own) -> list[tuple[int, float, str, str]]:
     considered, with no list of exceptions to maintain.
     """
     src = deck.read_text(encoding="utf-8")
-    src = re.sub(r"<pre.*?</pre>", "", src, flags=re.S)   # code is not a claim
+    # Code shown on a slide is not a claim about a measurement -- but replace
+    # it with its own newlines rather than deleting it, or every line number
+    # after the first <pre> is wrong by the height of that block. The first
+    # version deleted, and reported figures against unrelated slides.
+    src = re.sub(r"<pre.*?</pre>", lambda m: "\n" * m.group(0).count("\n"),
+                 src, flags=re.S)
     hits: list[tuple[int, float, str, str]] = []
     for m in re.finditer(r">([^<]+)<", src):
         run = m.group(1)

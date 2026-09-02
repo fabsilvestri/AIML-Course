@@ -298,7 +298,32 @@ import matplotlib.pyplot as plt
 housing_full.hist(bins=50, figsize=(12, 8))
 plt.tight_layout(); plt.show()
 '''),
+        prompt(
+            label="the range of every column",
+            input="the full frame",
+            output="the minimum and maximum of every numeric column",
+            constraint="print the EXTREMES, not `describe()`'s quartiles — the "
+                       "two ends are where the capping and the scaling show, "
+                       "and the middle of a distribution hides both",
+            check="two columns end on a suspiciously exact value. Find them "
+                  "before reading on: one is the income, one is the target",
+            **{"try": "add `.median()` to the frame. The medians are "
+                      "unremarkable, which is why the histogram and this table "
+                      "are worth more than a summary of the middle."}),
+        code('''
+ranges = pd.DataFrame({
+    "min": housing_full.min(numeric_only=True),
+    "max": housing_full.max(numeric_only=True),
+})
+print(ranges.to_string(float_format=lambda v: f"{v:,.4f}"))
+'''),
         md("""
+`median_income` runs from **0.4999** to **15.0001**, and `median_house_value`
+stops dead at **500,001**. Neither is a number nature produces: both are the
+signature of a cap applied when the data was recorded. `total_rooms` runs from
+2 to 39,320, which is not a cap — it is a district-size effect, and it is why
+the totals need turning into ratios later in this notebook.
+
 **The income is not in dollars** — it is scaled, and capped at 15.0001.
 
 **The target is capped too**, and the target is our label — so those districts
@@ -609,6 +634,7 @@ prompt(
 # Every import this notebook needs, in one place — a notebook that only runs
 # because a previous one is still in memory is not reproducible.
 from sklearn.compose import ColumnTransformer
+from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression
@@ -688,13 +714,15 @@ section exists.
         prompt(
             label="a training score on a model that can memorise",
             input="a ColumnTransformer, and an unconstrained decision tree",
-            output="the tree's RMSE on the rows it was fitted to",
-            constraint="score it on the TRAINING rows, deliberately, and say in "
-                       "the output what that means — this is a demonstration, "
-                       "not a result",
-            check="work out the number before running it: an unconstrained tree "
+            output="the training RMSE of a constant, a linear model, an "
+                   "unconstrained tree and a forest",
+            constraint="score every one on the TRAINING rows, deliberately — "
+                       "this is a demonstration, not a result, and the tree's "
+                       "number only means something beside the other three",
+            check="work out the tree's before running it: an unconstrained tree "
                   "splits until every leaf is pure, so what can it score on the "
-                  "rows it split on?",
+                  "rows it split on? And the constant's, which cannot overfit, "
+                  "should be about the spread of the prices",
             **{"try": "set `max_depth=4` and run it again. The training RMSE "
                       "stops being zero — what has changed about the model, and "
                       "has anything changed about the measurement?"}),
@@ -705,12 +733,26 @@ preprocessing = ColumnTransformer([
     ("cat", OneHotEncoder(handle_unknown="ignore"), ["ocean_proximity"]),
 ])
 
-tree = Pipeline([("prep", preprocessing),
-                 ("model", DecisionTreeRegressor(random_state=RANDOM_STATE))])
-tree.fit(X_train, y_train)
-print(f"RMSE on the data it was fitted to: "
-      f"${root_mean_squared_error(y_train, tree.predict(X_train)):,.0f}")
-print("An unconstrained tree can put every training row in its own leaf.")
+# All four, scored on the rows they were fitted to. Only the tree's number is
+# surprising, and it is only surprising beside the other three.
+candidates = {
+    "Predict a constant": DummyRegressor(strategy="mean"),
+    "Linear regression":  LinearRegression(),
+    "Decision tree":      DecisionTreeRegressor(random_state=RANDOM_STATE),
+    "Random forest":      RandomForestRegressor(n_estimators=100,
+                                                random_state=RANDOM_STATE,
+                                                n_jobs=-1),
+}
+
+train_rmse = {}
+for name, model in candidates.items():
+    pipe = Pipeline([("prep", preprocessing), ("model", model)])
+    pipe.fit(X_train, y_train)
+    train_rmse[name] = root_mean_squared_error(y_train, pipe.predict(X_train))
+    print(f"{name:20s} ${train_rmse[name]:>10,.0f}")
+
+print("\\nAn unconstrained tree can put every training row in its own leaf.")
+print("The constant cannot overfit anything, so its number is already honest.")
 '''),
 
         md("""
@@ -764,14 +806,51 @@ prompt(
        check="the paired standard deviation should be much smaller than either model's own; and the win count, '10 of 10 folds', is an argument that a mean difference alone is not",
        **{"try": "compare the two models the unpaired way instead — mean ± std against mean ± std. The intervals overlap and the comparison looks inconclusive. The paired version is not."}),
         code('''
-diff = results["Random forest"] - results["Linear regression"]
-# ddof=1: ten folds are a sample, and the slides quote the sample sd
-print(f"forest − linear, per fold:  mean ${diff.mean():,.0f}  "
-      f"sd ${diff.std(ddof=1):,.0f}")
-print(f"folds where the forest wins: {(diff < 0).sum()}/10")
+# ddof=1 throughout: ten folds are a sample, not the population.
+for name in ("Decision tree", "Random forest"):
+    d = results[name] - results["Linear regression"]
+    wins = (d < 0).sum()
+    verdict = "same sign in all 10" if wins in (0, 10) else "sign changes"
+    print(f"{name:15s} − linear:  mean ${d.mean():+,.0f}   "
+          f"sd ${d.std(ddof=1):,.0f}   wins {wins}/10   {verdict}")
+
+print("\\nOnly a difference whose sign survives every fold is a difference.")
 '''),
 
+        prompt(
+            label="the preprocessing is a hyperparameter too",
+            input="the same pipeline, with three imputation strategies",
+            output="the cross-validated RMSE of each",
+            constraint="vary ONLY the imputer, on the same folds, so the "
+                       "difference is attributable to it and nothing else",
+            check="the three land within a few hundred dollars of each other. "
+                  "Before running it, decide what you would conclude if they "
+                  "did — and what the fold spread from section 4 says about "
+                  "whether such a gap is a gap at all",
+            **{"try": "add `strategy='constant'` with `fill_value=0`. It is "
+                      "worse, and by enough to see — which tells you the other "
+                      "three were not close by accident."}),
+        code('''
+for strategy in ("median", "mean", "most_frequent"):
+    prep = ColumnTransformer([
+        ("num", make_pipeline(SimpleImputer(strategy=strategy), StandardScaler()),
+         num_cols),
+        ("cat", OneHotEncoder(handle_unknown="ignore"), ["ocean_proximity"]),
+    ])
+    pipe = Pipeline([("prep", prep),
+                     ("model", RandomForestRegressor(n_estimators=200,
+                                                     max_features=8,
+                                                     random_state=RANDOM_STATE,
+                                                     n_jobs=-1))])
+    rmse = -cross_val_score(pipe, X_train, y_train, cv=cv,
+                            scoring="neg_root_mean_squared_error").mean()
+    print(f"{strategy:15s} ${rmse:,.0f}")
+'''),
         md("""
+Three strategies, a few hundred dollars apart, on folds that themselves span
+thousands. The honest reading is that the choice does not matter here — which
+is worth knowing, because it is the kind of knob people spend a week on.
+
 ## 5 · Tune — on validation folds, never on the test set
 
 ⏱ **2–4 minutes.** Fifteen combinations × five folds = 75 forest fits. The
@@ -860,7 +939,8 @@ lo, hi = np.sqrt(stats.bootstrap([squared], np.mean,
                                  random_state=RANDOM_STATE).confidence_interval)
 
 print(f"test RMSE  ${final_rmse:,.0f}")
-print(f"95% interval  ${lo:,.0f} – ${hi:,.0f}")
+print(f"95% interval  ${lo:,.0f} – ${hi:,.0f}   (±${(hi - lo) / 2:,.0f})")
+print(f"the cap the test set stops at: ${y_test.max():,.0f}")
 print(f"\\ncross-validated estimate was ${-search.best_score_:,.0f}")
 print("The two agree within the interval. A gap smaller than the interval is "
       "not evidence of anything.")
@@ -871,7 +951,34 @@ are fitting the test set, and the improvement will not generalise. The number
 you have is the number you report.
 """),
 
+        prompt(
+            label="the ten worst predictions",
+            input="the final model's test predictions",
+            output="the ten districts with the largest absolute error, with "
+                   "actual, predicted and error",
+            constraint="sort by ABSOLUTE error, not by error — the ten worst "
+                       "misses matter whichever direction they run in",
+            check="before running it, predict what the actual column will hold. "
+                  "The cap was 4.8% of the data and the model cannot exceed it",
+            **{"try": "sort by signed error instead and take the ten smallest. "
+                      "Those are the over-predictions, and they are a different "
+                      "story from the ten under-predictions."}),
+        code('''
+worst = pd.DataFrame({
+    "actual":    y_test.values,
+    "predicted": final_pred,
+}).assign(error=lambda d: d.predicted - d.actual)
+worst["abs_error"] = worst["error"].abs()
+
+print(worst.nlargest(10, "abs_error").to_string(
+    index=False, float_format=lambda v: f"${v:,.0f}"))
+'''),
         md("""
+Every one of the ten is a district at or near the **$500,001** cap, and every
+one is *under*-predicted. The model cannot exceed the cap because nothing in
+its training data ever did — so these are not mistakes it could learn its way
+out of. They are the labelling decision from Lecture 1, arriving as error.
+
 ## 8 · One number for 4,128 districts is a summary, not a finding
 
 Analysing the final model's errors is not tuning, and it is the part of the
