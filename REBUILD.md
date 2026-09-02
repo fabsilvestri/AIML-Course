@@ -37,6 +37,30 @@ so far, and no other check catches any of them:
 So it is now a tool, `tools/check_consistency.py`, not a habit. Run it, fix,
 run it again, until it is clean. See §7 of AUTHORING.md.
 
+**Verification loop, state at last checkpoint:**
+
+| lecture | first run | after fixes | status |
+|---|---|---|---|
+| 1 | 4 | **0** | clean |
+| 2 | 28 → 24 → 9 | in progress | fixing |
+| 3 | not yet run | | |
+| 8 | not yet run (draft at `lecture-08-NEW`) | | |
+
+The fixes are almost never "correct a wrong number". They are "the notebook
+never computed this at all" — a slide asserting something no cell produces. So
+the repair is to add the computation, which is also the right thing
+pedagogically: a student running the notebook can now check the claim in front
+of them. Lecture 2 gained six cells this way (all four training RMSEs, both
+paired comparisons, the three imputation strategies, the bootstrap half-width,
+the ten worst predictions, the capped-districts trap and the
+absolute-versus-relative arms).
+
+**A trap in the loop.** Some deck numbers are there to show a procedure that is
+*wrong* — Lecture 2 quotes a test-set pair to say it decides nothing. Computing
+those in the notebook models the bad practice. Compute them, but label the cell
+with what the deck says about them; do not quietly drop the number from either
+side.
+
 ### The per-lecture routine — every lecture, without being asked
 
 Standing instruction from the lecturer. All five steps, in order, before
