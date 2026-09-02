@@ -117,9 +117,11 @@ NAMESPACES: dict[int, tuple[str, ...]] = {
     16: ("app10",),                  # old 20, recurrent networks
     17: ("l21",),                   # old 21, IMDb
     18: ("l22",),                   # old 22, IMDb / transformers
-    # 19-22 are Part V and own no keys yet -- their figures do not exist.
-    # Left OUT deliberately so they are skipped loudly rather than checked
-    # against an empty pool, which would pass and mean nothing.
+    19: ("l19",),                    # SciFact, lexical retrieval — figures_ir.py
+    20: ("l20",),                    # SciFact, dense retrieval — figures_ir.py
+    # 21-22 are Part V RecSys and own no keys yet. Left OUT deliberately so
+    # they are skipped loudly rather than checked against an empty pool, which
+    # would pass and mean nothing.
     23: ("l23",),                   # old 23, COCO multimodal
     24: ("l24",),                   # old 24, RAG and closing
 }
