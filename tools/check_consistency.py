@@ -101,6 +101,12 @@ CROSS_LECTURE: dict[str, str] = {
         "ladder, row 'Simple RNN, 32 units'.",
     "l15:app10/margins/rnn/gap":
         "the difference between those two, so it inherits their provenance.",
+    "l16:app10/linear/random_cv":
+        "L16 contrasts the recurrent model's two protocols against the linear "
+        "model's. The linear numbers are Lecture 15's, reproduced there over "
+        "the same twenty seeds.",
+    "l16:app10/linear/honest_split":
+        "same slide, same lecture: the linear model's forward-split MAE.",
 }
 
 # Units that make a figure a duration rather than a result.

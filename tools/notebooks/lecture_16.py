@@ -50,11 +50,12 @@ Runs on CPU. Nothing here needs an accelerator.
 parameters. If Colab offers you a GPU, decline it — for sequences this short the
 transfers cost more than the arithmetic saves.
 
-**Time.** Most of this notebook is seconds a cell. Section 6 runs the six-model
-ladder the slides report, under the same protocol, and takes about **ten
-minutes** — six architectures, each offered two training recipes. It is the
-lecture's result rather than a detour, which is why it is here rather than
-quoted.
+**Time.** Most of this notebook is seconds a cell. Section 6 runs the whole
+experimental programme the slides report — the six-model ladder, the same model
+under a random split, fourteen horizons, a convolutional alternative, and the
+2020 regime change — under one protocol. Expect **five to fifteen minutes** for
+that section, depending on the machine. It is the lecture's result rather than a
+detour, which is why it is run here rather than quoted.
 """
 
 SETUP = '''
@@ -583,12 +584,27 @@ def build_model(kind, input_size, output_size=1):
             o, _ = self.rnn(x)
             return self.head(o[:, -1])
 
+    class ConvGru(nn.Module):
+        """A 1D convolution halves the sequence before the recurrent layer."""
+
+        def __init__(self, hidden=32):
+            super().__init__()
+            self.conv = nn.Conv1d(input_size, hidden, kernel_size=4, stride=2)
+            self.gru = nn.GRU(hidden, hidden, batch_first=True)
+            self.head = nn.Linear(hidden, output_size)
+
+        def forward(self, x):
+            z = torch.relu(self.conv(x.permute(0, 2, 1))).permute(0, 2, 1)
+            o, _ = self.gru(z)
+            return self.head(o[:, -1])
+
     if kind == "linear":
         return nn.Sequential(nn.Flatten(), nn.LazyLinear(output_size))
-    return {"rnn":  lambda: Rnn(nn.RNN),
-            "deep": lambda: Rnn(nn.RNN, layers=3),
-            "gru":  lambda: Rnn(nn.GRU),
-            "lstm": lambda: Rnn(nn.LSTM)}[kind]()
+    return {"rnn":     lambda: Rnn(nn.RNN),
+            "deep":    lambda: Rnn(nn.RNN, layers=3),
+            "gru":     lambda: Rnn(nn.GRU),
+            "lstm":    lambda: Rnn(nn.LSTM),
+            "convgru": ConvGru}[kind]()
 
 
 # optimiser, learning rate, epochs. Two recipes, and every architecture is
@@ -689,6 +705,116 @@ for kind, X, y, dates, label in ladder:
 
 print(f"\\n{'copy last week':28s}{NAIVE_MAE:>10,.0f}")
 '''),
+        prompt(
+            label="the recurrent model under a random split",
+            input="the univariate windows, five shuffled folds",
+            output="the RNN's MAE under the protocol Lecture 15 showed was wrong",
+            constraint="the same architecture and the same recipe as the ladder's row — only the splitter changes, or the comparison is not about the splitter",
+            check="compare it with the ladder's forward-split row. The gap is the protocol, and it is larger than every architectural difference in the table above."),
+        code('''
+from sklearn.model_selection import KFold
+
+folds = []
+for tr_i, te_i in KFold(5, shuffle=True, random_state=RANDOM_STATE).split(Xu):
+    m = fit_torch("rnn", Xu[tr_i], yu[tr_i], "sgd")
+    folds.append(mae_1e6(predict_torch(m, Xu[te_i])[:, 0], yu[te_i, 0]))
+RNN_RANDOM_CV = float(np.mean(folds))
+
+forward = [r for r in rows if r[0] == "Simple RNN, 32 units"][0][1]
+print(f"simple RNN, random 5-fold   MAE {RNN_RANDOM_CV:>10,.0f}")
+print(f"simple RNN, forward split   MAE {forward:>10,.0f}")
+print(f"the protocol is worth        {forward - RNN_RANDOM_CV:>10,.0f}")
+'''),
+
+        md("""
+### Several steps ahead
+
+One output was a choice. A system that plans staffing needs a fortnight, not a
+day — so give the model fourteen outputs and read the error at each horizon.
+"""),
+        prompt(
+            label="fourteen horizons from one model",
+            input="the multivariate windows, labelled with the next fourteen days",
+            output="MAE at each horizon, beside a naive forecast at the same horizon",
+            constraint="the naive reference has to be honest at every horizon — the last value of the SAME weekday still inside the window, which is a different window position for each h",
+            check="the error should rise with the horizon and then flatten. If it is flat from the start, the model is predicting the weekly pattern and nothing else."),
+        code('''
+Xa, ya, da = make_arrays(mul_f, horizon=14)
+model, best, _ = select_and_fit("gru", Xa, ya, da)
+te = da >= CUT_END
+P = predict_torch(model, Xa[te])
+
+# Window position 55 is day t, so the same weekday before t+h sits at 48+h for
+# h <= 7 and at 41+h for h <= 14.
+naive_pos = [48 + h if h <= 7 else 41 + h for h in range(1, 15)]
+ahead = [mae_1e6(P[:, h], ya[te, h]) for h in range(14)]
+ahead_naive = [mae_1e6(Xa[te, naive_pos[h], 0], ya[te, h]) for h in range(14)]
+
+print(f"recipe chosen: {best}")
+print(f"{'horizon':>8s}{'GRU':>10s}{'naive':>10s}")
+for h in (0, 6, 13):
+    print(f"{'t+' + str(h + 1):>8s}{ahead[h]:>10,.0f}{ahead_naive[h]:>10,.0f}")
+print(f"\\nt+1 {ahead[0]:,.0f} rises to t+14 {ahead[13]:,.0f}")
+'''),
+
+        prompt(
+            label="a convolutional alternative on the same task",
+            input="the same fourteen-horizon task, on a 112-day window",
+            output="MAE at each horizon",
+            constraint="give it a LONGER window — the convolution halves the sequence before the recurrent layer, so it can afford one, and a fair comparison lets each architecture have the input it is built for",
+            check="report where it wins and where it loses rather than a single mean. It is better at the near horizons and worse at the far ones, and a mean would hide both."),
+        code('''
+Xc, yc, dc = make_arrays(mul_f, w=112, horizon=14)
+model_c, best_c, _ = select_and_fit("convgru", Xc, yc, dc)
+tec = dc >= CUT_END
+Pc = predict_torch(model_c, Xc[tec])
+conv = [mae_1e6(Pc[:, h], yc[tec, h]) for h in range(14)]
+
+print(f"recipe chosen: {best_c}, window 112 days")
+print(f"{'horizon':>8s}{'conv+GRU':>11s}{'GRU':>10s}")
+for h in (0, 6, 13):
+    print(f"{'t+' + str(h + 1):>8s}{conv[h]:>11,.0f}{ahead[h]:>10,.0f}")
+'''),
+
+        md("""
+### Regime change, and the one case where the protocols disagree by a factor
+
+A regime change is not a leak — it is a fact about the world. It is here because
+it is the case where a random split cannot see the problem at all.
+"""),
+        prompt(
+            label="what each protocol says when the world changes",
+            input="the series extended through 2021, and the spring of 2020",
+            output="a shuffled cross-validation over the whole span, and a forward fit scored on March to June 2020",
+            constraint="score the naive forecast on the same 2020 rows — it needs no fitting, so it separates 'the model was wrong' from 'the days were unlike anything before them'",
+            check="report the level as well as the error. A model can be wrong by 84,000 on days whose mean is 141,000, and that ratio is the whole story."),
+        code('''
+from sklearn.model_selection import cross_val_score
+
+pool21 = df["rail"]["2016-01":"2021-11"]
+v21 = pool21.values / 1e6
+X21 = np.stack([v21[i:i + WINDOW] for i in range(len(v21) - WINDOW)])
+y21 = v21[WINDOW:]
+d21 = pool21.index[WINDOW:]
+
+shuffled = -cross_val_score(
+    LinearRegression(), X21, y21, scoring="neg_mean_absolute_error",
+    cv=KFold(5, shuffle=True, random_state=RANDOM_STATE)).mean() * 1e6
+
+tr21 = d21 < "2020-01-01"
+te21 = (d21 >= "2020-03-01") & (d21 < "2020-07-01")
+fit21 = LinearRegression().fit(X21[tr21], y21[tr21])
+
+print(f"shuffled 5-fold over 2016-2021   MAE {shuffled:>10,.0f}")
+print(f"forward fit, scored on 2020      MAE "
+      f"{mae_1e6(fit21.predict(X21[te21]), y21[te21]):>10,.0f}")
+print(f"copy last week, same 2020 rows   MAE "
+      f"{mae_1e6(X21[te21, -7], y21[te21]):>10,.0f}")
+print(f"the actual level on those days       {1e6 * y21[te21].mean():>10,.0f}")
+print(f"\\nThe shuffled protocol reports a number close to the ladder's and")
+print("sees nothing at all. Every fold of it contains 2020 in its training set.")
+'''),
+
         md("""
 **Read the train column beside the test column.** The deep RNN is worse on
 *both* than the single-layer one, so this is not overfitting — it is a harder
