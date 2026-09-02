@@ -43,8 +43,11 @@ Standing instruction from the lecturer. All five steps, in order, before
 starting the next lecture:
 
 1. **Build** the deck and the notebook.
-2. **Check** — `check_decks.py`, `check_overflow.py`, `check_notebooks.py`, and
-   restart-and-run-all on the notebook from a cold kernel.
+2. **Check** — `check_consistency.py` FIRST (it executes the notebook and
+   diffs every figure the deck states against what the notebook prints; this is
+   the check that finds things), then `check_decks.py`, `check_overflow.py`,
+   `check_notebooks.py`. Add the lecture to `NAMESPACES` in
+   `check_consistency.py` or it is skipped rather than checked.
 3. **Update `index.html`** so the site matches what the lecture now says. The
    site is student-facing: a lecture that is done and a page that still
    describes the old one is worse than neither.

@@ -38,6 +38,13 @@ FAST = [
 ]
 
 FULL = [
+    # The one that finds things. Every FAST check verifies an artefact against
+    # itself; this is the only one that compares a deck with its notebook, and
+    # it has caught a real defect in every lecture converted so far. It is here
+    # rather than in FAST only because it executes notebooks -- though it caches
+    # them by content hash, so a repeat run costs seconds.
+    ("consistency", ["tools/check_consistency.py"],
+     "every slide figure is one its own notebook prints  [executes notebooks]"),
     ("overflow",    ["tools/check_overflow.py"],
      "nothing taller than the canvas or off its side  [Chrome]"),
     ("diagrams",    ["tools/check_diagrams.py"],
