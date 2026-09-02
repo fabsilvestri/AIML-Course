@@ -303,15 +303,40 @@ prompt(
        constraint="predict from the identity Var(X_t - X_t-h) = 2 gamma(0)(1 - rho(h)) BEFORE measuring, so the theory is exposed to the data",
        check="flag any lag where differencing makes the spread larger, which is the point of the cell. Print predicted/measured as a ratio and expect 1.00 to within a per cent  at every lag. If lag 7 agrees and lag 1 does not, suspect your estimate of  rho, not the identity."),
         code('''
+from statsmodels.tsa.stattools import acf
+
+# Two standard estimators of the same rho disagree here, and which one you used
+# has to be stated. statsmodels' acf divides by n at every lag (the "biased"
+# estimator, which keeps the autocovariance sequence positive semi-definite);
+# pandas' Series.autocorr computes a Pearson correlation on the overlapping
+# pairs, dividing by n - h. At lag 7 they differ in the third decimal, which is
+# enough to move the predicted spread by about two thousand boardings. We use
+# statsmodels, and the slides quote the same.
+rho_all = acf(pool.values, nlags=60, fft=False)
+
 sd = pool.std()
 print(f"{'series':28s} sd {sd:>10,.0f}")
 for h in (1, 7, 14):
-    rho = pool.autocorr(lag=h)
+    rho = rho_all[h]
     predicted = np.sqrt(2 * sd**2 * (1 - rho))
     measured = pool.diff(h).std()
     flag = "  <- WORSE than not differencing" if measured > sd else ""
     print(f"lag {h:>2d}: rho {rho:+.3f}   predicted sd {predicted:>10,.0f}"
           f"   measured {measured:>10,.0f}{flag}")
+
+print(f"\\npandas Series.autocorr at lag 7 would give "
+      f"{pool.autocorr(lag=7):+.3f} instead of {rho_all[7]:+.3f}")
+
+# A standard deviation is not a mean absolute error, and converting one into
+# the other assumes a shape. For a Gaussian, E|X| = sqrt(2/pi) * sigma.
+d7 = pool.diff(7).dropna()
+gaussian_mae = float(np.sqrt(2 / np.pi) * d7.std())
+print(f"\\nif the 7-day difference were Gaussian, its MAE would be "
+      f"{gaussian_mae:>10,.0f}")
+print(f"the measured MAE is                                 "
+      f"{d7.abs().mean():>10,.0f}")
+print(f"excess kurtosis of the difference: {d7.kurtosis():.1f} — most days are")
+print("far calmer than a Gaussian of that spread, and a few are far worse.")
 '''),
         md("""
 **Read the first row.** At lag 1 the autocorrelation is well under a half, so
@@ -401,6 +426,29 @@ def mae(truth, forecast):
 print(f"mae against itself      {mae(pool, pool):.1f}")
 print(f"mae against a shift     {mae(pool, pool.shift(7)):,.0f} boardings")
 '''),
+        prompt(
+            label="the same baseline on the window the book plots",
+            input="March to May 2019, rail and bus",
+            output="MAE and MAPE for copy-last-week on each",
+            constraint="quote the window in the same sentence as the number — the same forecast scores very differently over three spring months than over three years",
+            check="also report the single worst day. One holiday costs more than eight ordinary days put together, and a mean absolute error hides that entirely."),
+        code('''
+for name, col in (("rail", "rail"), ("bus", "bus")):
+    part  = df[col]["2019-03":"2019-05"]
+    naive = df[col].shift(7)["2019-03":"2019-05"]
+    err   = (part - naive)
+    mae_w  = float(err.abs().mean())
+    mape_w = float((err.abs() / part).mean() * 100)
+    print(f"{name:5s} 2019-03 to 2019-05:  MAE {mae_w:>9,.0f}   MAPE {mape_w:>5.1f}%")
+
+part  = df["rail"]["2019-03":"2019-05"]
+err   = part - df["rail"].shift(7)["2019-03":"2019-05"]
+worst = err.abs().idxmax()
+print(f"\\nworst single day: {worst.date()}, error {abs(err.loc[worst]):,.0f}")
+print(f"that one day is {abs(err.loc[worst]) / err.abs().mean():.0f} times the "
+      f"mean absolute error over the window")
+'''),
+
         md("""
 ### The baselines
 
@@ -592,7 +640,60 @@ folds_random = -cross_val_score(model, X, y, cv=cv,
                                 scoring="neg_mean_absolute_error") * 1e6
 print(f"random 5-fold   MAE {folds_random.mean():>10,.0f}   "
       f"folds {np.round(folds_random).astype(int)}")
+
+# One shuffled split is one draw. The slides quote the mean over twenty seeds,
+# because a single seed of this splitter moves by more than the effect we are
+# about to attribute to the splitter itself.
+seed_means = np.array([
+    -cross_val_score(model, X, y, cv=KFold(5, shuffle=True, random_state=s),
+                     scoring="neg_mean_absolute_error").mean() * 1e6
+    for s in range(20)])
+RANDOM_CV = float(seed_means.mean())
+print(f"over 20 seeds   MAE {RANDOM_CV:>10,.0f}   "
+      f"sd across seeds {seed_means.std():>7,.0f}")
 '''),
+        prompt(
+            label="the split a deployed system actually faces",
+            input="the same windows, fit on everything up to the end of 2018",
+            output="MAE on the five months that follow, and the naive forecast on the same rows",
+            constraint="score the naive baseline on the SAME test rows — otherwise a gap between protocols could be the rows being harder rather than the protocol being honest",
+            check="report both, and their ratio. The ratio is a skill score, and it is the only thing comparable between two protocols that scored different days."),
+        code('''
+dates = pool.index[WINDOW:]
+tr = dates < "2019-01-01"
+
+fit = LinearRegression().fit(X[tr], y[tr])
+HONEST_SPLIT = 1e6 * float(np.abs(fit.predict(X[~tr]) - y[~tr]).mean())
+HONEST_NAIVE = 1e6 * float(np.abs(X[~tr, -7] - y[~tr]).mean())
+
+print(f"train {tr.sum():,} days, test {(~tr).sum():,} days")
+print(f"linear, forecasting forward   MAE {HONEST_SPLIT:>10,.0f}")
+print(f"copy last week, same rows     MAE {HONEST_NAIVE:>10,.0f}")
+print(f"skill (model / naive)             {HONEST_SPLIT / HONEST_NAIVE:>10.2f}")
+print(f"\\nrandom split, same model      MAE {RANDOM_CV:>10,.0f}")
+print("The naive forecast needs no fitting, so its MAE measures only how hard")
+print("the rows are. That is what makes the two protocols comparable at all.")
+'''),
+
+        prompt(
+            label="the matched random split",
+            input="twenty random splits with the SAME training and test sizes as the rolling backtest",
+            output="the mean MAE",
+            constraint="match the sizes — TimeSeriesSplit's first fold trains on a fifth of the data, so a comparison against it confounds the protocol with the training-set size",
+            check="this is the row that isolates the protocol. Same model, same sizes, same metric; only the ordering differs."),
+        code('''
+from sklearn.model_selection import ShuffleSplit
+
+L, T = 700, 98          # the rolling backtest's training and test sizes
+matched = np.array([
+    1e6 * np.abs(LinearRegression().fit(X[a], y[a]).predict(X[b]) - y[b]).mean()
+    for a, b in ShuffleSplit(20, train_size=L, test_size=T,
+                             random_state=RANDOM_STATE).split(X)])
+MATCHED_RANDOM = float(matched.mean())
+print(f"matched random split, 20 draws  MAE {MATCHED_RANDOM:>10,.0f}")
+print(f"(train {L}, test {T} — the same sizes the forward backtest uses)")
+'''),
+
         md("""
 ### The same model, split by time
 
