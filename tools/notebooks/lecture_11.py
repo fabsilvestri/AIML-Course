@@ -255,13 +255,18 @@ case, and it is the subject of the next lecture.
         code('''
 DEPTH, WIDTH, N_IN, N_OUT = 20, 100, 3072, 10
 
-def make_net(depth=DEPTH, width=WIDTH, act=nn.Sigmoid, n_in=N_IN, n_out=N_OUT):
+def make_net(depth=DEPTH, width=WIDTH, act=nn.Sigmoid, n_in=N_IN, n_out=N_OUT,
+             dtype=None):
+    # dtype is here because the variance measurements later in this notebook
+    # run in float64: the ratios we are checking span many orders of magnitude,
+    # and in float32 the smallest of them underflow to zero.
     layers, prev = [], n_in
     for _ in range(depth):
         layers += [nn.Linear(prev, width), act()]
         prev = width
     layers.append(nn.Linear(prev, n_out))
-    return nn.Sequential(*layers)
+    net = nn.Sequential(*layers)
+    return net if dtype is None else net.to(dtype)
 
 net = make_net()
 n_params = sum(p.numel() for p in net.parameters())
@@ -865,6 +870,73 @@ theory = {
 }
 for k, v in theory.items():
     print(f"{k:18s}  rho = {v:.4f}   over 19 layers: {v**19:.3e}")
+'''),
+
+        md("""
+### One builder, extended — and said out loud
+
+Everything from here on varies the initialisation, the activation, the
+normalisation and the dropout, so `make_net` needs to take all four. The next
+cell **redefines it**.
+
+Redefining a function halfway down a notebook is a genuine hazard: every cell
+above still refers to the name, so re-running an early cell after this point
+silently uses the new definition. It is done here because the alternative — two
+names for one idea — is worse, and it is announced because the dangerous version
+of this is the unannounced one. The defaults reproduce the original exactly.
+"""),
+        prompt(
+            label="the builder, taking every knob this lecture turns",
+            input="depth, width, activation, initialisation scheme, normalisation, dropout",
+            output="the network, on the requested dtype",
+            constraint="the DEFAULTS must reproduce the simple version from section 1 exactly — a redefinition that changes the baseline invalidates every table above it",
+            check="assert the default build still has DEPTH+1 weight matrices and the same parameter count as the network built in section 1.",
+            **{"try": "pass init='normal1' — a normal of standard deviation 1, which is what the vanishing-gradient section uses as its counter-example. Check what rho that predicts before you run it."}),
+        code('''
+ACTS = {"sigmoid": nn.Sigmoid, "relu": nn.ReLU, "tanh": nn.Tanh}
+
+def init_linear(m, scheme, act):
+    """The four schemes this lecture compares, plus PyTorch's own default."""
+    if scheme == "torch":
+        return                                    # leave nn.Linear as it built it
+    fan_in, fan_out = m.weight.shape[1], m.weight.shape[0]
+    if scheme == "glorot":
+        std = math.sqrt(2.0 / (fan_in + fan_out))
+    elif scheme == "he":
+        std = math.sqrt(2.0 / fan_in)
+    elif scheme == "normal1":
+        std = 1.0                                 # the counter-example, deliberately
+    else:
+        raise ValueError(f"unknown init {scheme!r}")
+    nn.init.normal_(m.weight, 0.0, std)
+    nn.init.zeros_(m.bias)
+
+def make_net(depth=DEPTH, width=WIDTH, act="sigmoid", init="torch",
+             norm=None, dropout=0.0, n_in=N_IN, n_out=N_OUT, dtype=None):
+    layers, prev = [], n_in
+    for _ in range(depth):
+        lin = nn.Linear(prev, width)
+        init_linear(lin, init, act)
+        layers.append(lin)
+        if norm == "batch":
+            layers.append(nn.BatchNorm1d(width))
+        elif norm == "layer":
+            layers.append(nn.LayerNorm(width))
+        layers.append(ACTS[act]())
+        if dropout:
+            layers.append(nn.Dropout(dropout))
+        prev = width
+    head = nn.Linear(prev, n_out)
+    init_linear(head, init, act)
+    layers.append(head)
+    net = nn.Sequential(*layers)
+    return net if dtype is None else net.to(dtype)
+
+# the defaults must still be the network section 1 built
+check = make_net()
+assert len([m for m in check if isinstance(m, nn.Linear)]) == DEPTH + 1
+assert sum(p.numel() for p in check.parameters()) == n_params
+print(f"redefined: defaults reproduce section 1 — {n_params:,} parameters")
 '''),
 
         md("""

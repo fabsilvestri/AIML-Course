@@ -180,6 +180,210 @@ def main() -> int:
     common = sorted(df.items(), key=lambda kv: -kv[1])[:5]
     facts["l19_common_terms"] = [[t, int(n), float(bm.idf[t])] for t, n in common]
 
+    # A worked example for the derivation: one real claim, BM25's real ranking.
+    # Selection rule, stated on the slide: the first test claim for which BM25
+    # places at least three relevant abstracts in the top ten. It is chosen to
+    # make the arithmetic visible -- a single hit gives a one-term sum and shows
+    # nothing about the discount -- and it is therefore better than typical. The
+    # mean over all 300 claims is the table, not this.
+    def _hits10(q):
+        r = [docs_id[i] for i in np.argsort(-bm.scores(tok(qtext[q])))][:10]
+        return sum(1 for d in r if d in rel[q])
+    ex_q = next(q for q in qids if len(rel[q]) >= 3 and _hits10(q) >= 3)
+    ex_ranked = [docs_id[i] for i in np.argsort(-bm.scores(tok(qtext[ex_q])))]
+    ex_pat = [1 if d in rel[ex_q] else 0 for d in ex_ranked[:10]]
+    ex_ranks = [i for i, h in enumerate(ex_pat, 1) if h]
+    dcg_terms = [{"rank": i, "gain": 1, "discount": math.log2(i + 1),
+                  "term": 1.0 / math.log2(i + 1)} for i in ex_ranks]
+    idcg_terms = [{"rank": i, "term": 1.0 / math.log2(i + 1)}
+                  for i in range(1, min(len(rel[ex_q]), 10) + 1)]
+    facts["l19_worked"] = {
+        "claim": qtext[ex_q],
+        "n_rel": len(rel[ex_q]),
+        "pattern": ex_pat,
+        "hit_ranks": ex_ranks,
+        "rr": 1.0 / ex_ranks[0],
+        "ap_terms": [{"rank": r, "prec": (j + 1) / r} for j, r in enumerate(ex_ranks)],
+        "ap": sum((j + 1) / r for j, r in enumerate(ex_ranks)) / len(rel[ex_q]),
+        "dcg_terms": dcg_terms,
+        "dcg": sum(t["term"] for t in dcg_terms),
+        "idcg_terms": idcg_terms,
+        "idcg": sum(t["term"] for t in idcg_terms),
+        "ndcg": sum(t["term"] for t in dcg_terms) / sum(t["term"] for t in idcg_terms),
+    }
+    print(f"      worked example: pattern {ex_pat}, ndcg@10 "
+          f"{facts['l19_worked']['ndcg']:.4f}")
+
+    # why order matters: same documents retrieved, different positions.
+    # Both rankings hold one relevant document in the top ten.
+    facts["l19_order_matters"] = [
+        {"rank": r, "rr": 1.0 / r, "ndcg@10": (1.0 / math.log2(r + 1))}
+        for r in (1, 2, 5, 10)
+    ]
+
+    # --- the method, taken apart -------------------------------------------
+    # What a "term" is, on a real claim from the corpus.
+    ex_tok_q = qids[0]
+    ex_toks = tok(qtext[ex_tok_q])
+    facts["l19_tok_example"] = {
+        "claim": qtext[ex_tok_q],
+        "tokens": ex_toks,
+        "n_tokens": len(ex_toks),
+        "df": {t: len(bm.post.get(t, [])) for t in dict.fromkeys(ex_toks)},
+    }
+
+    # Boolean retrieval: how many documents contain EVERY query term?
+    # Run over the test claims, because the failure mode is the lesson.
+    def _and_count(q):
+        sets = [set(i for i, _ in bm.post.get(t, [])) for t in dict.fromkeys(tok(qtext[q]))]
+        if not sets:
+            return 0
+        out = sets[0]
+        for x in sets[1:]:
+            out &= x
+        return len(out)
+    ands = [_and_count(q) for q in qids]
+    facts["l19_boolean"] = {
+        "mean_matching": float(np.mean(ands)),
+        "frac_zero": float(np.mean([a == 0 for a in ands])),
+        "frac_over_100": float(np.mean([a > 100 for a in ands])),
+        "max": int(max(ands)),
+    }
+
+    # The k1 saturation parameter, measured the same way as b.
+    k1s = []
+    for k1 in (0.5, 0.9, 1.2, 2.0):
+        m = BM25(toks, k1=k1, b=0.4)
+        sc = [rank_metrics([docs_id[i] for i in np.argsort(-m.scores(tok(qtext[q])))], rel[q])
+              for q in qids[:150]]
+        k1s.append({"k1": k1, "ndcg@10": float(np.mean([r["ndcg@10"] for r in sc]))})
+        print(f"      k1={k1}  ndcg@10 {k1s[-1]['ndcg@10']:.4f}")
+    facts["l19_k1_sweep"] = k1s
+
+    # How tf saturates: what the tf factor is worth at each occurrence count,
+    # for a document of exactly average length.
+    facts["l19_saturation"] = [
+        {"tf": t, "factor": t * (0.9 + 1) / (t + 0.9)} for t in (1, 2, 3, 5, 10, 20)
+    ]
+
+    # Ablation: each correction removed in turn, on the full test set.
+    def _eval(scorer):
+        return float(np.mean([rank_metrics(
+            [docs_id[i] for i in np.argsort(-scorer(tok(qtext[q])))], rel[q])["ndcg@10"]
+            for q in qids]))
+
+    def _raw_tf(q):
+        s = np.zeros(bm.N)
+        for t in q:
+            for i, tf in bm.post.get(t, []):
+                s[i] += tf
+        return s
+
+    def _no_idf(q):
+        s = np.zeros(bm.N)
+        for t in q:
+            for i, tf in bm.post.get(t, []):
+                d = tf + bm.k1 * (1 - bm.b + bm.b * bm.len[i] / bm.avgdl)
+                s[i] += tf * (bm.k1 + 1) / d
+        return s
+
+    def _no_sat(q):  # idf-weighted tf, no saturation, no length term
+        s = np.zeros(bm.N)
+        for t in q:
+            if t in bm.post:
+                for i, tf in bm.post[t]:
+                    s[i] += bm.idf[t] * tf
+        return s
+
+    bm_b0 = BM25(toks, k1=0.9, b=0.0)
+    facts["l19_ablation"] = [
+        {"name": "raw term frequency", "ndcg@10": _eval(_raw_tf)},
+        {"name": "no idf", "ndcg@10": _eval(_no_idf)},
+        {"name": "no saturation, no length", "ndcg@10": _eval(_no_sat)},
+        {"name": "no length normalisation", "ndcg@10": _eval(bm_b0.scores)},
+        {"name": "BM25", "ndcg@10": facts["l19_bm25"]["ndcg@10"]},
+    ]
+    for a in facts["l19_ablation"]:
+        print(f"      {a['name']:<28} ndcg@10 {a['ndcg@10']:.4f}")
+
+    # One query scored term by term, so the sum on the slide is a real sum.
+    wq = ex_q
+    wq_toks = [t for t in dict.fromkeys(tok(qtext[wq])) if t in bm.post]
+    wq_scores = bm.scores(tok(qtext[wq]))
+    wq_top = int(np.argmax(wq_scores))
+    contrib = []
+    for t in wq_toks:
+        tf = dict(bm.post[t]).get(wq_top, 0)
+        if tf:
+            d = tf + bm.k1 * (1 - bm.b + bm.b * bm.len[wq_top] / bm.avgdl)
+            contrib.append({"term": t, "tf": int(tf), "idf": float(bm.idf[t]),
+                            "contribution": float(bm.idf[t] * tf * (bm.k1 + 1) / d)})
+    contrib.sort(key=lambda c: -c["contribution"])
+    facts["l19_scoring"] = {
+        "claim": qtext[wq],
+        "doc_len": int(bm.len[wq_top]),
+        "terms": contrib,
+        "total": float(wq_scores[wq_top]),
+        "is_relevant": docs_id[wq_top] in rel[wq],
+    }
+
+    # The failure that motivates Lecture 20: a claim whose relevant abstract
+    # BM25 buries. Reported with the term overlap, because the overlap is the
+    # explanation -- the abstract says the same thing in different words.
+    worst = None
+    for q in qids:
+        if len(rel[q]) != 1:
+            continue
+        order = [docs_id[i] for i in np.argsort(-bm.scores(tok(qtext[q])))]
+        r = order.index(next(iter(rel[q]))) + 1
+        if worst is None or r > worst[1]:
+            worst = (q, r)
+    wq, wrank = worst
+    gold = next(iter(rel[wq]))
+    gold_toks = set(toks[docs_id.index(gold)])
+    q_terms = [t for t in dict.fromkeys(tok(qtext[wq])) if t in bm.post]
+    shared = [t for t in q_terms if t in gold_toks]
+    facts["l19_mismatch"] = {
+        "claim": qtext[wq],
+        "rank_of_relevant": int(wrank),
+        "n_query_terms": len(q_terms),
+        "n_shared": len(shared),
+        "shared": shared,
+        "missing": [t for t in q_terms if t not in gold_toks],
+        "shared_idf_mean": float(np.mean([bm.idf[t] for t in shared])) if shared else 0.0,
+        "missing_idf_mean": float(np.mean([bm.idf[t] for t in q_terms if t not in gold_toks])),
+    }
+    print(f"      worst single-relevant claim: rank {wrank}, "
+          f"{len(shared)}/{len(q_terms)} query terms shared")
+
+    # How often the lexical assumption is strained, over the whole test set:
+    # the fraction of query terms the relevant document does not contain.
+    fr = []
+    for q in qids:
+        qt = [t for t in dict.fromkeys(tok(qtext[q])) if t in bm.post]
+        if not qt:
+            continue
+        for d in rel[q]:
+            dt = set(toks[docs_id.index(d)])
+            fr.append(sum(1 for t in qt if t not in dt) / len(qt))
+    facts["l19_missing_terms"] = {
+        "mean_fraction": float(np.mean(fr)),
+        "frac_pairs_over_half": float(np.mean([x > 0.5 for x in fr])),
+    }
+
+    # What a document in this corpus actually looks like, and what stemming
+    # would and would not merge -- both quoted rather than described.
+    facts["l19_doc_example"] = {
+        "title": str(corpus["title"].iloc[0]),
+        "text_head": " ".join(str(corpus["text"].iloc[0]).split()[:45]),
+        "n_tokens": len(toks[0]),
+    }
+    fam = [("cell", "cells", "cellular"), ("infect", "infects", "infection", "infected")]
+    facts["l19_stemming"] = [
+        {"forms": [{"term": t, "df": len(bm.post.get(t, []))} for t in group]}
+        for group in fam
+    ]
+
     out = OUT / "figures.json"
     existing = json.loads(out.read_text()) if out.is_file() else {}
     clash = {k for k in facts if k in existing and existing[k] != facts[k]}

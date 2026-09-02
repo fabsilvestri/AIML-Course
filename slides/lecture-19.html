@@ -1,0 +1,1406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 19 — Information retrieval: the lexical foundation</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Information retrieval:<br>the lexical foundation</h1>
+  <p class="subtitle">SciFact</p>
+  <p><span class="badge badge-lec">Lecture 19</span>
+     <span class="badge badge-notes">Lecture notes</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Part V opens. Say clearly at the start that this is
+  outside the textbook and fully examinable — students will ask.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Part V begins">
+  <h2>Part V begins</h2>
+  <table>
+    <tr><th>Part</th><th class="num">Lectures</th><th>Source</th></tr>
+    <tr><td>I&ndash;IV &middot; the textbook</td><td class="num">1&ndash;18</td><td>G&eacute;ron, Chapters 1&ndash;15</td></tr>
+    <tr class="hit"><td><strong>V &middot; Search and recommendation</strong></td><td class="num">19&ndash;22</td><td><strong>these lecture notes</strong></td></tr>
+    <tr><td>VI &middot; Multimodal models</td><td class="num">23&ndash;24</td><td>G&eacute;ron, Chapters 15&ndash;16</td></tr>
+  </table>
+  <div class="panel">
+    <span class="panel-title">Outside the book, and examinable</span>
+    Four lectures the textbook does not cover, because search and recommendation
+    are the two applications of machine learning most of you will actually meet,
+    and because they are where the embeddings of Part&nbsp;IV earn their living.
+    They are examined on exactly the same terms as everything else.
+  </div>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Eighteen lectures of <em>prediction</em>: given an input,
+  produce a label, a number or a sequence.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Retrieval is not that</span>
+    The input is a <strong>query</strong> and a <strong>corpus</strong>, and the
+    output is a <strong>ranking</strong> of the corpus. There is no fixed set of
+    classes — the corpus changes daily. There is no single right answer — several
+    documents may be relevant, and their order matters. And you cannot score the
+    whole corpus with a neural network for every query, because there are
+    millions of documents and the user is waiting.
+  </div>
+  <p class="small">So the metrics are different, the baselines are different,
+  and the first method is not a model at all.</p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>The retrieval problem, and the corpus
+        <span class="muted small">(10 min)</span></li>
+    <li><strong>The method</strong> &mdash; the inverted index, term weighting,
+        and BM25 <span class="muted small">(35 min)</span></li>
+    <li><strong>The mathematics</strong> &mdash; evaluating a ranking: MRR, AP
+        and NDCG <span class="muted small">(30 min)</span></li>
+    <li>Where the judgements come from, and what pooling misses
+        <span class="muted small">(15 min)</span></li>
+  </ol>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="What you should be able to do afterwards">
+  <h2>What you should be able to do afterwards</h2>
+  <ul class="tight small">
+    <li>State why retrieval is not classification, in terms of what the output is</li>
+    <li>Build an inverted index, and say what it costs and what it saves</li>
+    <li>Write BM25 down, and say what each of its three parts corrects for</li>
+    <li>Compute P@k, R@k, RR, AP and NDCG@k by hand from a relevance pattern</li>
+    <li>Choose between them from the question being asked, and defend the choice</li>
+    <li>Say what a reported retrieval score does <em>not</em> tell you</li>
+  </ul>
+  <p class="small muted">The oral examination asks the fourth and fifth of these
+  more often than any other content in Part&nbsp;V.</p>
+</section>
+
+<!-- 6 -->
+<section class="divider" data-menu-title="◆ The problem,<br>and the corpus">
+  <p class="kicker">First ten minutes</p>
+  <h1>The problem,<br>and the corpus</h1>
+  <p class="clock">10 minutes</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="The task">
+  <h2>The task</h2>
+  <p class="lead">A <strong>claim</strong> arrives. Find the scientific
+  abstracts that bear on it.</p>
+  <ul class="tight small">
+    <li>&ldquo;0-dimensional biomaterials lack inductive properties.&rdquo;</li>
+    <li>&ldquo;Breast cancer development is determined exclusively by genetic factors.&rdquo;</li>
+  </ul>
+  <p class="small">Nobody wants a yes or no. They want the <em>evidence</em>,
+  ranked, so a human can read the top few and decide. That is the whole shape of
+  the problem, and it is why the output is an ordering.</p>
+  <div class="panel">
+    <span class="panel-title">Why this corpus</span>
+    SciFact is small enough that we can score <strong>every</strong> document
+    for <strong>every</strong> query exactly, with no approximate index in the
+    way. Every number in this lecture and the next is therefore a property of
+    the method, not of an index we did not examine.
+  </div>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="Two questions that look alike">
+  <h2>Two questions that look alike</h2>
+  <table>
+    <tr><th></th><th>Classification</th><th>Retrieval</th></tr>
+    <tr><td>Input</td><td class="small">one document</td><td class="small">a query <em>and</em> a corpus</td></tr>
+    <tr><td>Output</td><td class="small">a label from a fixed set</td><td class="small">an ordering of the corpus</td></tr>
+    <tr><td>Classes</td><td class="small">fixed, known at training time</td><td class="small">the corpus, changing daily</td></tr>
+    <tr><td>Right answer</td><td class="small">one</td><td class="small">several, and their order matters</td></tr>
+    <tr><td>Cost per prediction</td><td class="small">one forward pass</td><td class="small">the whole corpus, if you are naive</td></tr>
+  </table>
+  <p class="small">You could phrase retrieval as classification &mdash; one class
+  per document &mdash; and it would be useless: the classes change every time a
+  document is added, and there are millions of them with a handful of examples
+  each.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="The shape of every search system">
+  <h2>The shape of every search system</h2>
+  <div class="pipeline">
+    <div class="stage"><span class="stage-n">1</span> <strong>Retrieve</strong>
+      <span class="small">millions &rarr; hundreds. Must be cheap.</span></div>
+    <div class="stage"><span class="stage-n">2</span> <strong>Re-rank</strong>
+      <span class="small">hundreds &rarr; tens. Can be expensive.</span></div>
+    <div class="stage"><span class="stage-n">3</span> <strong>Present</strong>
+      <span class="small">tens &rarr; ten. Diversity, freshness, policy.</span></div>
+  </div>
+  <p class="small">Today is stage&nbsp;1, and it is stage&nbsp;1 that decides
+  the ceiling: <strong>a document the first stage never returns cannot be
+  recovered by any later stage</strong>. Stage&nbsp;2 is Lecture&nbsp;20.
+  Stage&nbsp;3 is mostly not machine learning, and mostly not in this course.</p>
+  <p class="small muted">This is why we will keep looking at recall@100 for a
+  system whose output is ten results. The first stage is not judged on what the
+  user sees; it is judged on what it makes possible.</p>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="Attention falls off a results page">
+  <h2>Attention falls off a results page</h2>
+  <p class="small">Whatever we build, its output is read by a person, and that
+  person&rsquo;s attention is not uniform:</p>
+  <ul class="tight small">
+    <li>The first result is examined far more often than the second</li>
+    <li>Almost nobody reaches the tenth</li>
+    <li>The second page effectively does not exist</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Consequence for the mathematics</span>
+    A metric that treats ranks 1 and 10 alike is <strong>measuring something
+    nobody experiences</strong>. Every metric in this lecture&rsquo;s derivation
+    is an attempt to encode that decay &mdash; and the differences between them
+    are differences of opinion about its shape.
+  </div>
+  <p class="small muted">Nothing in this lecture measures user attention: it is
+  an assumption we import, and I am flagging it as one.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="What we will not use">
+  <h2>What we will not use</h2>
+  <ul class="tight small">
+    <li><strong>No search library.</strong> The index is a Python dictionary
+        built in the notebook; BM25 is a sum you can read</li>
+    <li><strong>No approximate index.</strong> Every document is scored for
+        every query, exactly &mdash; so a number is a property of the method,
+        never of a recall/latency setting we did not inspect</li>
+    <li><strong>No training.</strong> Nothing in this lecture has a parameter
+        fitted to data. That is next lecture&rsquo;s subject, and the comparison
+        only means something if today&rsquo;s baseline is honest</li>
+  </ul>
+  <p class="small">In production you would use none of these choices. They are
+  here so that nothing between you and the arithmetic is opaque.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="The corpus, counted">
+  <h2>The corpus, counted</h2>
+  <table class="smaller">
+    <tr><th>Quantity</th><th class="num">SciFact</th></tr>
+    <tr><td>Abstracts</td><td class="num">5,183</td></tr>
+    <tr><td>Claims with judgements (test)</td><td class="num">300</td></tr>
+    <tr><td>Mean abstract length, in tokens</td><td class="num">225.2</td></tr>
+    <tr><td>Median abstract length</td><td class="num">213</td></tr>
+    <tr><td>Vocabulary</td><td class="num">35,734</td></tr>
+    <tr><td>Relevant documents per claim, mean</td><td class="num">1.13</td></tr>
+    <tr><td>Claims with exactly one relevant document</td><td class="num">92.3%</td></tr>
+  </table>
+  <p class="small">That last row matters more than it looks. With one relevant
+  document per claim most of the time, <strong>recall@10 and the reciprocal rank
+  are measuring nearly the same thing</strong> &mdash; and on a corpus where
+  each query had twenty relevant documents they would not be.</p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="What a document looks like">
+  <h2>What a document looks like</h2>
+  <p class="small"><strong>Microstructural development of human newborn cerebral white matter assessed in vivo by diffusion tensor magnetic resonance imaging.</strong></p>
+  <blockquote class="small">Alterations of the architecture of cerebral white matter in the developing human brain can affect cortical development and result in functional disabilities. A line scan diffusion-weighted magnetic resonance imaging (MRI) sequence with diffusion tensor analysis was applied to measure the apparent diffusion coefficient, to calculate&nbsp;&hellip;</blockquote>
+  <p class="small">311 tokens of title and abstract, and nothing
+  else &mdash; no full text, no citations, no authors. Whatever a system knows
+  about this paper, it knows from this.</p>
+  <p class="small">Notice how it is written: &ldquo;diffusion-weighted magnetic
+  resonance imaging&rdquo;, not &ldquo;MRI scan&rdquo;. A claim written by
+  someone else about the same result may share very few of these words, and
+  that observation will return, with a number attached, before this lecture
+  ends.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="The baseline: return the corpus unranked">
+  <h2>The baseline: return the corpus unranked</h2>
+  <p class="small">Rule&nbsp;2 of this course, in a new place. Before any
+  method, what does <em>no</em> method score? Return every document in corpus
+  order, the same order for every query:</p>
+  <table class="smaller">
+    <tr><th>Metric</th><th class="num">Fixed order</th></tr>
+    <tr><td>Recall@10</td><td class="num fail">0.3%</td></tr>
+    <tr><td>Reciprocal rank</td><td class="num fail">0.0017</td></tr>
+    <tr><td>NDCG@10</td><td class="num fail">0.0012</td></tr>
+  </table>
+  <p class="small">Effectively zero, and that is the point: unlike accuracy under
+  imbalance in Lecture&nbsp;3, a ranking metric has an honest floor near zero.
+  <strong>Any</strong> number you report is above the baseline, so &ldquo;better
+  than nothing&rdquo; is not an argument here &mdash; the comparison that matters
+  is against the <em>previous method</em>.</p>
+</section>
+
+<!-- 15 -->
+<section class="divider" data-menu-title="◆ The inverted index,<br>and BM25">
+  <p class="kicker">The method</p>
+  <h1>The inverted index,<br>and BM25</h1>
+  <p class="clock">35 minutes · examinable</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="First: what is a term?">
+  <h2>First: what is a term?</h2>
+  <p class="small">Before any weighting, a decision nobody writes up: how the
+  text becomes a list of things to count. On a real claim from our corpus:</p>
+  <p class="lead small">&ldquo;0-dimensional biomaterials show inductive properties.&rdquo;</p>
+  <div class="rank-strip">
+    <div class="tok-row"><span class="tok">0</span><span class="tok">dimensional</span><span class="tok">biomaterials</span><span class="tok">show</span><span class="tok">inductive</span><span class="tok">properties</span></div>
+  </div>
+  <p class="small">6 tokens, lower-cased, split on non-letters.
+  Which is already three decisions &mdash; and
+  <code>0-dimensional</code> has just become <code>0</code> and
+  <code>dimensional</code>, two terms that mean nothing apart.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="Tokenisation decides what can be found">
+  <h2>Tokenisation decides what can be found</h2>
+  <table class="smaller">
+    <tr><th>Term</th><th class="num">Documents containing it</th></tr>
+    <tr><td><code>0</code></td><td class="num">951</td></tr>
+    <tr><td><code>dimensional</code></td><td class="num">72</td></tr>
+    <tr><td><code>biomaterials</code></td><td class="num">1</td></tr>
+    <tr><td><code>show</code></td><td class="num">1,012</td></tr>
+    <tr><td><code>inductive</code></td><td class="num">2</td></tr>
+    <tr><td><code>properties</code></td><td class="num">211</td></tr>
+  </table>
+  <p class="small"><code>biomaterials</code> occurs in
+  <strong>1</strong> abstract of
+  5,183, and <code>show</code> in
+  1,012. One of those terms decides the answer; the other decides
+  nothing.</p>
+  <p class="small fail">Note what has already happened: a query term appearing in
+  one document makes the task nearly trivial, and a term appearing in a fifth of
+  the corpus makes it nearly impossible. <strong>The weighting scheme has not
+  been chosen yet, and the outcome is already largely determined by the
+  tokeniser.</strong></p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="What we are not doing: stemming">
+  <h2>What we are not doing: stemming</h2>
+  <p class="small">Our tokeniser treats these as unrelated terms:</p>
+  <table class="smaller">
+    <tr><td><code>cell</code> <span class="muted">1,837</span></td><td><code>cells</code> <span class="muted">1,969</span></td><td><code>cellular</code> <span class="muted">514</span></td></tr>
+    <tr><td><code>infect</code> <span class="muted">10</span></td><td><code>infects</code> <span class="muted">7</span></td><td><code>infection</code> <span class="muted">337</span></td><td><code>infected</code> <span class="muted">166</span></td></tr>
+  </table>
+  <p class="small">A stemmer would merge each row, pooling the evidence:
+  a query for <code>infect</code> would then match the
+  337 abstracts containing
+  <code>infection</code> instead of only
+  10.</p>
+  <p class="small">It also merges things that should not be merged, and the net
+  effect on scores is corpus-dependent and usually small. We leave it out because
+  <strong>every unexplained step between the text and the number is somewhere a
+  result can hide</strong> &mdash; and because the mismatch it half-solves has a
+  better answer next lecture.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="The obvious first idea: Boolean retrieval">
+  <h2>The obvious first idea: Boolean retrieval</h2>
+  <p class="small">Return the documents that contain <em>all</em> the query
+  terms. It is exact, it is fast with an inverted index, and it was how search
+  worked for thirty years.</p>
+  <div class="eqn-box compact">
+    $$\text{result} = \bigcap_{t \in q} \text{postings}(t)$$
+  </div>
+  <p class="small">It also needs no notion of a score, which is either elegant
+  or fatal. Before reading on: on a corpus of scientific abstracts and claims
+  written by scientists, how many abstracts do you expect to contain
+  <em>every</em> word of a claim?</p>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="Boolean retrieval, measured">
+  <h2>Boolean retrieval, measured</h2>
+  <table class="smaller">
+    <tr><th>Over all 300 test claims</th><th class="num"></th></tr>
+    <tr><td>Claims matching <strong>no</strong> document at all</td><td class="num fail">98.0%</td></tr>
+    <tr><td>Mean documents matching every term</td><td class="num">0.023</td></tr>
+    <tr><td>Most any claim matched</td><td class="num">2</td></tr>
+  </table>
+  <p class="small fail">98.0% of claims return an
+  <strong>empty page</strong>. Not a bad ranking &mdash; nothing at all.</p>
+  <p class="small">The conjunction is brittle: one word of the claim absent from
+  an otherwise perfect abstract, and the abstract is excluded. And the failure is
+  silent, because an empty result set looks like &ldquo;no such document
+  exists&rdquo;.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">The lesson that reorganises everything</span>
+    Stop <strong>filtering</strong> and start <strong>scoring</strong>. Every
+    document gets a number, the user gets the largest, and a missing term costs
+    something rather than everything.
+  </div>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Why retrieval is cheap">
+  <h2>Why retrieval is cheap</h2>
+  <p class="small">Scoring 5,183 documents per query by reading
+  each one is hopeless at scale. The trick is 50 years old and it is a data
+  structure, not a model.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">The inverted index</span>
+    For every <em>term</em>, store the list of documents containing it, with the
+    count. A query of four words then touches only the documents containing at
+    least one of those four &mdash; not the corpus.
+  </div>
+  <table class="smaller">
+    <tr><td>Vocabulary (distinct terms)</td><td class="num">35,734</td></tr>
+    <tr><td>Postings (term&ndash;document pairs)</td><td class="num">633,514</td></tr>
+    <tr><td>Full matrix, were it dense</td><td class="num">185 million cells</td></tr>
+  </table>
+  <p class="small">The postings list is <strong>0.3%</strong>
+  of the dense matrix. Sparsity is not an optimisation here; it is the reason
+  the whole field is possible.</p>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Term frequency, and why it is not enough">
+  <h2>Term frequency, and why it is not enough</h2>
+  <p class="small">A document mentioning &ldquo;biomaterials&rdquo; five times
+  is probably more about biomaterials than one mentioning it once. So score by
+  how often the query terms occur.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Two failures, immediately</span>
+    <strong>Common words dominate.</strong> Every abstract contains
+    &ldquo;of&rdquo; and &ldquo;the&rdquo;, so a query containing them matches
+    everything equally.<br><br>
+    <strong>Long documents win.</strong> A 900-word abstract contains more of
+    everything than a 100-word one, and is not thereby more relevant.
+  </div>
+  <p class="small">The rest of the method is two corrections, one for each
+  failure &mdash; and each has a parameter, so each can be measured.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="Scoring: the cost problem, stated">
+  <h2>Scoring: the cost problem, stated</h2>
+  <p class="small">Scoring every document sounds worse than filtering, not
+  better. Naively, per query:</p>
+  <table class="smaller">
+    <tr><td>Documents to touch</td><td class="num">5,183</td></tr>
+    <tr><td>Tokens to read</td><td class="num">1.17 million</td></tr>
+  </table>
+  <p class="small">And this is a <em>tiny</em> corpus. A web index is
+  $10^{10}$ documents, and the user is waiting 200&nbsp;ms.</p>
+  <p class="small">But almost every one of those documents shares
+  <strong>no term at all</strong> with the query, and contributes exactly zero to
+  any sensible score. Reading them is the waste.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Building the index">
+  <h2>Building the index</h2>
+  <p class="small">One pass over the corpus, counting:</p>
+  <pre><code class="language-python">post = defaultdict(list)
+for i, doc in enumerate(docs):
+    for term, tf in Counter(doc).items():
+        post[term].append((i, tf))</code></pre>
+  <p class="small">Four lines, and it is the entire data structure the field
+  is built on. Scoring then visits only
+  $\bigcup_{t \in q} \text{postings}(t)$ &mdash; the documents that can
+  possibly score above zero:</p>
+  <pre><code class="language-python">s = np.zeros(N)
+for t in query:
+    for i, tf in post.get(t, []):
+        s[i] += weight(t, tf, len[i])</code></pre>
+  <p class="small muted">The weighting function is the only thing left to
+  decide, and the next four slides decide it.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Saturation, and the parameter k₁">
+  <h2>Saturation, and the parameter k₁</h2>
+  <p class="small">The first correction to raw counting: the tenth occurrence
+  of a word should not count ten times the first.</p>
+  <div class="eqn-box compact">
+    $$\frac{\text{tf}\,(k_1+1)}{\text{tf} + k_1}
+    \;\longrightarrow\; k_1 + 1 \ \text{ as tf} \to \infty$$
+  </div>
+  <table class="smaller">
+    <tr><th class="num">tf</th><th class="num">1</th><th class="num">2</th><th class="num">3</th><th class="num">5</th><th class="num">10</th><th class="num">20</th></tr>
+    <tr><td>factor</td><td class="num">1.000</td><td class="num">1.310</td><td class="num">1.462</td><td class="num">1.610</td><td class="num">1.743</td><td class="num">1.818</td></tr>
+  </table>
+  <p class="small">From 1 to 2 occurrences the factor rises
+  0.310; from
+  10 to 20 it rises
+  0.075. The
+  curve is bounded, so no single word can dominate a score by repetition
+  &mdash; which is also, incidentally, the first anti-spam device in search.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Choosing k₁ by measurement">
+  <h2>Choosing k₁ by measurement</h2>
+  <p class="small">$k_1$ sets how fast the saturation bites: small $k_1$
+  saturates almost immediately, large $k_1$ approaches raw counting. Measured
+  over 150 claims, $b$ held at 0.4:</p>
+  <table class="smaller">
+    <tr><th class="num">$k_1$</th><th class="num">0.5</th><th class="num">0.9</th><th class="num">1.2</th><th class="num">2.0</th></tr>
+    <tr><td>NDCG@10</td><td class="num">0.6883</td><td class="num">0.6937</td><td class="num">0.6944</td><td class="num">0.6926</td></tr>
+  </table>
+  <p class="small">The spread across a fourfold change in $k_1$ is
+  0.0061. Which is
+  the honest finding, and not the one you would guess from how much has been
+  written about tuning it: <strong>on abstracts, this parameter barely
+  matters</strong>.</p>
+  <p class="small muted">It matters on long documents, where a term can occur
+  fifty times. Report the corpus with the parameter, always.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Inverse document frequency">
+  <h2>Inverse document frequency</h2>
+  <div class="eqn-box compact">
+    $$\mathrm{idf}(t) = \log\!\left(1 + \frac{N - n_t + 0.5}{n_t + 0.5}\right)$$
+    <p class="eqn-label">$N$ documents, $n_t$ of them containing $t$</p>
+  </div>
+  <table class="smaller">
+    <tr><th>Term</th><th class="num">Documents</th><th class="num">idf</th></tr>
+    <tr><td><code>of</code></td><td class="num">5,173</td><td class="num">0.0020</td></tr>
+    <tr><td><code>the</code></td><td class="num">5,159</td><td class="num">0.0047</td></tr>
+    <tr><td><code>and</code></td><td class="num">5,158</td><td class="num">0.0049</td></tr>
+  </table>
+  <p class="small"><code>of</code> appears in 5,173 of
+  5,183 abstracts and earns a weight of 0.0020.
+  <strong>No stop-word list was needed</strong>: the weighting derives the stop
+  words from the corpus it is given.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Stop words, derived rather than declared">
+  <h2>Stop words, derived rather than declared</h2>
+  <p class="small">Classical systems shipped a hand-written list of words to
+  delete: <em>the, of, and, in, to</em>&nbsp;&hellip; It works, and it is a
+  liability:</p>
+  <ul class="tight small">
+    <li>The list is language-specific, and someone must maintain it</li>
+    <li>It is corpus-blind &mdash; in a corpus about the band The Who, deleting
+        <em>the</em> and <em>who</em> destroys the query</li>
+    <li>The decision is <strong>binary</strong>: a word is deleted or kept, with
+        nothing in between</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">idf replaces the list</span>
+    A weight of 0.0020 is not deletion, it is
+    near-deletion &mdash; and it is <em>computed from this corpus</em>. If a
+    word is common here, it is discounted here. Nobody maintains anything.
+  </div>
+  <p class="small muted">This is the same move as learning a representation
+  instead of engineering features, arriving thirty years earlier.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Length normalisation, and the parameter b">
+  <h2>Length normalisation, and the parameter $b$</h2>
+  <div class="eqn-box compact">
+    $$\text{tf}' = \frac{\text{tf}}{\text{tf} + k_1\left(1 - b + b\,\frac{|d|}{\text{avgdl}}\right)}$$
+  </div>
+  <ul class="tight small">
+    <li>$b = 0$ &mdash; no normalisation; long documents keep their advantage</li>
+    <li>$b = 1$ &mdash; length divided out completely</li>
+  </ul>
+  <table class="smaller">
+    <tr><th class="num">$b$</th><th class="num">0.0</th><th class="num">0.4</th><th class="num">0.75</th><th class="num">1.0</th></tr>
+    <tr><td>NDCG@10</td><td class="num">0.6861</td><td class="num">0.6937</td><td class="num">0.6917</td><td class="num">0.7011</td></tr>
+  </table>
+  <p class="small muted">The spread is small, and that is the finding: SciFact
+  abstracts are of similar length (225 tokens on average), so
+  there is little for this correction to correct. On web pages there would be.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="BM25, assembled">
+  <h2>BM25, assembled</h2>
+  <div class="eqn-box">
+    $$\text{BM25}(q,d) \;=\; \sum_{t \in q} \mathrm{idf}(t)\;
+    \frac{\text{tf}_{t,d}\,(k_1+1)}{\text{tf}_{t,d} + k_1\!\left(1-b+b\frac{|d|}{\text{avgdl}}\right)}$$
+  </div>
+  <ul class="tight small">
+    <li>The <strong>idf</strong> factor: rare terms count for more</li>
+    <li>The <strong>saturating tf</strong>: the tenth occurrence adds far less
+        than the second, because $k_1$ bounds the growth</li>
+    <li>The <strong>length term</strong>: $b$ decides how much of the document's
+        length is divided out</li>
+  </ul>
+  <p class="small fail">Every piece is there because a specific failure demanded
+  it. That is why BM25 has survived thirty years of replacement attempts, and it
+  is the baseline every neural retriever is measured against &mdash; including
+  the one in Lecture&nbsp;20.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="One document, scored term by term">
+  <h2>One document, scored term by term</h2>
+  <p class="small">The claim &ldquo;Incidence rates of cervical cancer have decreased.&rdquo; against the abstract
+  BM25 ranked first (274 tokens):</p>
+  <table class="smaller">
+    <tr><th>Term</th><th class="num">tf</th><th class="num">idf</th><th class="num">contribution</th></tr>
+    <tr class="hit"><td><code>cervical</code></td><td class="num">3</td><td class="num">4.736</td><td class="num">6.786</td></tr>
+    <tr class="hit"><td><code>incidence</code></td><td class="num">5</td><td class="num">3.238</td><td class="num">5.145</td></tr>
+    <tr><td><code>rates</code></td><td class="num">2</td><td class="num">2.979</td><td class="num">3.802</td></tr>
+    <tr><td><code>cancer</code></td><td class="num">5</td><td class="num">1.902</td><td class="num">3.023</td></tr>
+    <tr><td><code>have</code></td><td class="num">3</td><td class="num">1.008</td><td class="num">1.445</td></tr>
+    <tr><td><code>of</code></td><td class="num">6</td><td class="num">0.002</td><td class="num">0.003</td></tr>
+    <tr><td><strong>Total</strong></td><td class="num"></td><td class="num"></td><td class="num"><strong>20.204</strong></td></tr>
+  </table>
+  <p class="small"><code>cervical</code> occurs
+  3 times and is worth
+  6.786. <code>of</code>
+  occurs 6 times &mdash; twice as often &mdash; and is
+  worth 0.003.</p>
+  <p class="small">That ratio is the whole method working. And this abstract
+  <strong>is</strong> one of the judged-relevant ones.</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="BM25, measured">
+  <h2>BM25, measured</h2>
+  <table>
+    <tr><th>Metric</th><th class="num">Fixed order</th><th class="num">BM25</th></tr>
+    <tr><td>Precision@1</td><td class="num">0.0000</td><td class="num hit">0.5433</td></tr>
+    <tr><td>Recall@10</td><td class="num">0.0033</td><td class="num hit">0.7784</td></tr>
+    <tr><td>Recall@100</td><td class="num">0.0117</td><td class="num hit">0.8852</td></tr>
+    <tr><td>MRR</td><td class="num">0.0017</td><td class="num hit">0.6350</td></tr>
+    <tr><td>NDCG@10</td><td class="num">0.0012</td><td class="num hit">0.6611</td></tr>
+  </table>
+  <p class="small">The right abstract is in the top ten for
+  <strong>77.8%</strong> of claims, and top of the list for
+  <strong>54.3%</strong>. No training, no labels, no gradient
+  &mdash; a data structure and two corrections.</p>
+  <p class="small muted">Worth holding on to: <strong>recall@100 is
+  88.5%</strong>. Almost everything relevant is retrieved
+  <em>somewhere</em> in the first hundred. That gap between @10 and @100 is
+  exactly what re-ranking exists to close, in the next lecture.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="Which correction was doing the work?">
+  <h2>Which correction was doing the work?</h2>
+  <p class="small">Three corrections were argued for. Rule&nbsp;4: an argument
+  is not a measurement. Each removed in turn, full test set:</p>
+  <table class="smaller">
+    <tr><th>Scoring function</th><th class="num">NDCG@10</th></tr>
+    <tr><td>raw term frequency</td><td class="num">0.0944</td></tr>
+    <tr><td>no idf</td><td class="num">0.5350</td></tr>
+    <tr><td>no saturation, no length</td><td class="num">0.4801</td></tr>
+    <tr><td>no length normalisation</td><td class="num">0.6490</td></tr>
+    <tr class="hit"><td>BM25</td><td class="num">0.6611</td></tr>
+  </table>
+  <p class="small">Counting raw words scores
+  0.0944 &mdash; barely above returning the corpus
+  in its stored order.</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="What the ablation actually says">
+  <h2>What the ablation actually says</h2>
+  <ul class="tight small">
+    <li><strong>idf is most of the method.</strong> Removing it costs
+        0.1261; without it, common words drown
+        the rare ones that identify the document</li>
+    <li><strong>Saturation earns its place</strong>: idf alone on raw counts
+        scores 0.4801, 0.1809
+        below the full method</li>
+    <li><strong>Length normalisation is nearly free here</strong>, worth
+        0.0120 &mdash; consistent with the $b$
+        sweep, and with abstracts being of similar length</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">The transferable part</span>
+    Not the ordering &mdash; that is a fact about SciFact. It is that
+    <strong>each term of a formula can be removed and priced</strong>, and that a
+    component nobody has priced is a component nobody has justified. The same
+    procedure applies to every architecture in Part&nbsp;IV.
+  </div>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Where we are, halfway">
+  <h2>Where we are, halfway</h2>
+  <ul class="tight small">
+    <li>Retrieval returns an ordering, not a label &mdash; and the first stage
+        sets the ceiling for everything after it</li>
+    <li>Filtering fails: 98.0% of claims match no
+        document under conjunction</li>
+    <li>Scoring works, and the index makes it cheap</li>
+    <li>BM25 = idf &times; saturating tf &times; length normalisation, scoring
+        <strong>0.6611</strong> with no training</li>
+  </ul>
+  <p class="small">Two things remain. First, the honest limit of what we have
+  built &mdash; because it has one, and it is severe. Then the mathematics of
+  how any of these numbers were computed at all.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="The failure BM25 cannot fix">
+  <h2>The failure BM25 cannot fix</h2>
+  <p class="lead small">&ldquo;In mice, P. chabaudi parasites are able to proliferate faster early in infection when inoculated at lower numbers than when inoculated at high numbers.&rdquo;</p>
+  <p class="small">This claim has exactly one relevant abstract in the corpus.
+  BM25 ranks it <strong class="fail">4,999</strong> of
+  5,183 &mdash; the worst placement of any single-evidence claim in
+  the test set.</p>
+  <table class="smaller">
+    <tr><td>Query terms in the vocabulary</td><td class="num">19</td></tr>
+    <tr><td>Terms the relevant abstract contains</td><td class="num fail">2</td></tr>
+    <tr><td>Which terms</td><td class="num"><code>in</code>, <code>to</code></td></tr>
+    <tr><td>Mean idf of the shared terms</td><td class="num">0.0378</td></tr>
+    <tr><td>Mean idf of the missing terms</td><td class="num">3.2928</td></tr>
+  </table>
+  <p class="small fail">The abstract shares <code>in</code> and
+  <code>to</code> with the claim it is evidence for, and those
+  carry an idf of 0.0378. There is <strong>nothing for BM25
+  to match on</strong>. No parameter setting rescues this.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Vocabulary mismatch, in general">
+  <h2>Vocabulary mismatch, in general</h2>
+  <p class="small">That was the worst case. It is not an isolated one &mdash;
+  over every judged claim&ndash;abstract pair in the test set:</p>
+  <table class="smaller">
+    <tr><td>Mean fraction of query terms <em>absent</em> from the relevant abstract</td><td class="num">40.9%</td></tr>
+    <tr><td>Pairs sharing fewer than half the query terms</td><td class="num">28.6%</td></tr>
+  </table>
+  <p class="small">A relevant document is missing
+  <strong>40.9%</strong> of the query&rsquo;s words on
+  average. People restate, abbreviate, use the Latin name, or describe the
+  mechanism instead of naming it &mdash; and a method whose only evidence is
+  shared strings cannot follow them.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">The structural limit</span>
+    BM25 matches <strong>strings</strong>. Relevance is about
+    <strong>meaning</strong>. That gap is not a tuning problem, and it is exactly
+    what an embedding is for &mdash; which is Lecture&nbsp;20, and why Part&nbsp;V
+    comes after Part&nbsp;IV rather than before it.
+  </div>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="The ceiling, and what is left on the table">
+  <h2>The ceiling, and what is left on the table</h2>
+  <table class="smaller">
+    <tr><th>Metric</th><th class="num">BM25</th><th class="num">Perfect</th><th class="num">Gap</th></tr>
+    <tr><td>Recall@10</td><td class="num">0.7784</td><td class="num">1.0000</td><td class="num">0.2216</td></tr>
+    <tr><td>Recall@100</td><td class="num">0.8852</td><td class="num">1.0000</td><td class="num">0.1148</td></tr>
+    <tr><td>NDCG@10</td><td class="num">0.6611</td><td class="num">1.0000</td><td class="num">0.3389</td></tr>
+  </table>
+  <p class="small">Two different opportunities, and they need different methods.
+  Between recall@10 (77.8%) and recall@100
+  (88.5%) sit documents BM25 <em>found</em> but ranked too low
+  &mdash; a <strong>re-ranking</strong> problem, solvable by an expensive model
+  on a hundred candidates.</p>
+  <p class="small">The remaining 11.5% were never retrieved at
+  all. No re-ranker can reach them; only a first stage that matches on something
+  other than words can. Those are the two halves of Lecture&nbsp;20.</p>
+</section>
+
+<!-- 39 -->
+<section class="divider" data-menu-title="◆ Derivation 19">
+  <p class="kicker">Derivation 19 &middot; examinable</p>
+  <h1>Evaluating<br>a ranking</h1>
+  <p class="clock">30 minutes</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="The example we will use throughout">
+  <h2>The example we will use throughout</h2>
+  <p class="lead small">&ldquo;Incidence rates of cervical cancer have decreased.&rdquo;</p>
+  <p class="small">3 abstracts in the corpus are relevant to this
+  claim. Here is where BM25 actually put them, in its top ten:</p>
+  <div class="rank-strip">
+    <div class="rank-row"><span class="hit-cell">&#10003;</span><span class="hit-cell">&#10003;</span><span class="miss-cell">&middot;</span><span class="miss-cell">&middot;</span><span class="miss-cell">&middot;</span><span class="miss-cell">&middot;</span><span class="miss-cell">&middot;</span><span class="hit-cell">&#10003;</span><span class="miss-cell">&middot;</span><span class="miss-cell">&middot;</span></div>
+    <div class="rank-nums"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span></div>
+  </div>
+  <p class="small">Relevant at ranks <strong>1, 2, 8</strong>.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">How this example was chosen</span>
+    It is the first test claim for which BM25 puts at least three relevant
+    abstracts in the top ten. Chosen so the arithmetic is <em>visible</em>: a
+    single hit gives a one-term sum and demonstrates nothing about a discount.
+    It is therefore better than typical, and the honest summary of the method is
+    the mean over all 300 claims &mdash; the table you saw,
+    not this slide.
+  </div>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="Step 0 · What we are given">
+  <h2>Step 0 · What we are given</h2>
+  <p class="small">A derivation needs its inputs named. For one query:</p>
+  <ul class="tight small">
+    <li>A <strong>ranked list</strong> $d_1, d_2, \ldots, d_n$ &mdash; the
+        system&rsquo;s output, an ordering of the corpus</li>
+    <li>A set $R$ of <strong>relevant documents</strong> &mdash; the judgements,
+        made by people, treated as truth for now</li>
+  </ul>
+  <p class="small">Everything that follows is a function of those two objects
+  and nothing else. No scores, no probabilities, no model &mdash; which is why
+  the same metrics apply to BM25 today and to a transformer next lecture.</p>
+  <div class="panel">
+    <span class="panel-title">The one assumption</span>
+    That $R$ is correct and complete. It is neither, and the last section of
+    this lecture is about what that costs.
+  </div>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Step 1 · Precision and recall, at a cutoff">
+  <h2>Step 1 · Precision and recall, at a cutoff</h2>
+  <div class="derivation">
+    <ul>
+      <li>$\text{P}@k = \dfrac{|\{\text{relevant}\} \cap \text{top-}k|}{k}$
+        <span class="why">of what I showed you, how much was good</span></li>
+      <li>$\text{R}@k = \dfrac{|\{\text{relevant}\} \cap \text{top-}k|}{|\{\text{relevant}\}|}$
+        <span class="why">of what was good, how much I showed you</span></li>
+    </ul>
+  </div>
+  <p class="small">On our example, with $k=10$: all 3 relevant
+  abstracts are inside the top ten, so
+  $\text{R}@10 = \tfrac{3}{3} = 1$ &mdash;
+  <strong>perfect recall</strong>.</p>
+  <p class="small fail">And that is the problem. The third abstract is at rank
+  8, where a user may never look, and recall@10 cannot say so.
+  It counts a set; it does not read an order.</p>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="Step 2 · The cutoff is arbitrary">
+  <h2>Step 2 · The cutoff is arbitrary</h2>
+  <p class="small">Every fixed $k$ hides the same thing in a different place:</p>
+  <ul class="tight small">
+    <li>$k$ too small &mdash; a method that fills ranks 11&ndash;20 with the
+        answer scores zero, identically to one that never finds it at all</li>
+    <li>$k$ too large &mdash; rank 1 and rank 100 count the same, and the
+        metric stops rewarding the ordering it is supposed to measure</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">What we actually want</span>
+    A number that <strong>decreases smoothly as a relevant document moves
+    down</strong>, rather than falling off a cliff at one chosen position. Every
+    metric that follows is a different answer to that one requirement.
+  </div>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Step 3 · Reciprocal rank: where is the first one?">
+  <h2>Step 3 · Reciprocal rank: where is the first one?</h2>
+  <div class="eqn-box">
+    $$\text{RR} = \frac{1}{\text{rank of the first relevant document}}$$
+  </div>
+  <p class="small">Our example finds one at rank 1, so
+  $\text{RR} = 1/1 = 1.0000$. Averaged over queries
+  this is <strong>MRR</strong>, and over all
+  300 claims BM25 scores 0.6350.</p>
+  <table class="smaller">
+    <tr><th class="num">First hit at rank</th><th class="num">1</th><th class="num">2</th><th class="num">5</th><th class="num">10</th></tr>
+    <tr><td>RR</td><td class="num">1.0000</td><td class="num">0.5000</td><td class="num">0.2000</td><td class="num">0.1000</td></tr>
+  </table>
+  <p class="small">Smooth, bounded, and it moves when the order moves. But it
+  stops reading after the first hit &mdash; our ranking would score
+  1.0000 whether the other two abstracts were at ranks 2 and
+  8 or nowhere at all.</p>
+  <p class="small muted">Which makes MRR right for one kind of question &mdash;
+  &ldquo;is there a good answer near the top?&rdquo; &mdash; and wrong for
+  &ldquo;did I find the evidence?&rdquo;</p>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="Step 4 · Average precision: read every hit">
+  <h2>Step 4 &middot; Average precision: read every hit</h2>
+  <div class="eqn-box compact">
+    $$\text{AP} = \frac{1}{|R|}\sum_{i \,:\, d_i \in R} \text{P}@i$$
+    <p class="eqn-label">the precision at each rank where a relevant document appears</p>
+  </div>
+  <table class="smaller">
+    <tr><th class="num">Hit at rank $i$</th><th class="num">Relevant so far</th><th class="num">P@$i$</th></tr>
+    <tr><td class="num">1</td><td class="num">1</td><td class="num">1.0000</td></tr>
+    <tr><td class="num">2</td><td class="num">2</td><td class="num">1.0000</td></tr>
+    <tr><td class="num">8</td><td class="num">3</td><td class="num">0.3750</td></tr>
+  </table>
+  <p class="small">$\text{AP} = \tfrac{1}{3}\left(1.0000 + 1.0000 + 0.3750\right) = 0.7917$ &mdash; every hit
+  contributes, and one further down contributes less, because the precision
+  above it is worse.</p>
+</section>
+
+<!-- 46 -->
+<section data-menu-title="Step 5 · Where AP stops">
+  <h2>Step 5 · Where AP stops</h2>
+  <p class="small">AP assumes relevance is <strong>binary</strong>: a document
+  is relevant or it is not. Often it is not that simple.</p>
+  <ul class="tight small">
+    <li>An abstract that directly tests the claim, and one that mentions it in
+        passing, are both &ldquo;relevant&rdquo; &mdash; and AP cannot prefer
+        the first</li>
+    <li>Web search judgements are routinely graded: perfect, excellent, good,
+        fair, bad</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Two requirements now</span>
+    A <strong>gain</strong> that depends on <em>how</em> relevant a document is,
+    and a <strong>discount</strong> that depends on <em>where</em> it sits.
+    Separating those two is the whole idea of the last metric.
+  </div>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="Interlude · Why a logarithm, and not something else">
+  <h2>Interlude · Why a logarithm, and not something else</h2>
+  <p class="small">The discount could be any decreasing function. Three
+  candidates, with what each implies:</p>
+  <table class="smaller">
+    <tr><th>Discount</th><th>Rank 1 vs 2</th><th>Rank 9 vs 10</th><th>Says</th></tr>
+    <tr><td>$1$ (none)</td><td class="num">equal</td><td class="num">equal</td><td class="small">position is irrelevant</td></tr>
+    <tr><td>$1/i$</td><td class="num">halves</td><td class="num">&minus;10%</td><td class="small">position is nearly everything</td></tr>
+    <tr><td>$1/\log_2(i{+}1)$</td><td class="num">&minus;37%</td><td class="num">&minus;4%</td><td class="small">position matters, mildly</td></tr>
+  </table>
+  <p class="small">No derivation picks one; they encode different beliefs about
+  a user. The logarithm is convention, chosen because it is gentle enough that
+  positions 5 and 10 remain distinguishable while rank 1 still leads.</p>
+  <p class="small fail">Convention is not truth. If you report NDCG, you have
+  adopted this curve, and you should be able to say so out loud.</p>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="Step 6 · Gain, discounted">
+  <h2>Step 6 &middot; Gain, discounted</h2>
+  <div class="eqn-box compact">
+    $$\text{DCG}@k = \sum_{i=1}^{k} \frac{g_i}{\log_2(i+1)}$$
+  </div>
+  <p class="small">Two independent parts: a <strong>gain</strong> $g_i$ saying
+  how relevant the document is, and a <strong>discount</strong> saying how far
+  down it sits. Separating them is the idea.</p>
+  <table class="smaller">
+    <tr><th class="num">Hit at rank $i$</th><th class="num">$\log_2(i+1)$</th><th class="num">contribution</th></tr>
+    <tr><td class="num">1</td><td class="num">1.0000</td><td class="num">1.0000</td></tr>
+    <tr><td class="num">2</td><td class="num">1.5850</td><td class="num">0.6309</td></tr>
+    <tr><td class="num">8</td><td class="num">3.1699</td><td class="num">0.3155</td></tr>
+    <tr class="hit"><td><strong>DCG@10</strong></td><td class="num">&mdash;</td><td class="num"><strong>1.9464</strong></td></tr>
+  </table>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="Step 7 · The number is not yet comparable">
+  <h2>Step 7 · The number is not yet comparable</h2>
+  <p class="small">DCG@10 $= 1.9464$. Is that good? The question has no
+  answer, because DCG depends on <strong>how many relevant documents exist</strong>
+  &mdash; a claim with ten relevant abstracts can reach a far larger DCG than one
+  with three, however well both are ranked.</p>
+  <p class="small">So divide by the best that this query could possibly have
+  scored: the <strong>ideal</strong> ranking, all relevant documents first.</p>
+  <table class="smaller">
+    <tr><th class="num">Ideal rank</th><th class="num">contribution</th></tr>
+    <tr><td class="num">1</td><td class="num">1.0000</td></tr>
+    <tr><td class="num">2</td><td class="num">0.6309</td></tr>
+    <tr><td class="num">3</td><td class="num">0.5000</td></tr>
+    <tr class="hit"><td><strong>IDCG@10</strong></td><td class="num"><strong>2.1309</strong></td></tr>
+  </table>
+  <p class="small">3 relevant documents, so the ideal puts them at
+  ranks 1&ndash;3, and no ranking of this corpus can beat
+  2.1309.</p>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Step 8 · NDCG, and what it saw">
+  <h2>Step 8 &middot; NDCG, and what it saw</h2>
+  <div class="eqn-box compact">
+    $$\text{NDCG}@k = \frac{\text{DCG}@k}{\text{IDCG}@k}
+    = \frac{1.9464}{2.1309} = 0.9134$$
+  </div>
+  <table class="smaller">
+    <tr><th>Same ranking, four metrics</th><th class="num">Value</th></tr>
+    <tr><td>Recall@10</td><td class="num fail">1.0000</td></tr>
+    <tr><td>RR</td><td class="num">1.0000</td></tr>
+    <tr><td>AP</td><td class="num">0.7917</td></tr>
+    <tr class="hit"><td><strong>NDCG@10</strong></td><td class="num"><strong>0.9134</strong></td></tr>
+  </table>
+  <p class="small fail">Recall calls this ranking perfect. It is not: one
+  abstract sits at rank 8. <strong>The metric you report
+  decides what you are allowed to notice.</strong></p>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="Interlude · One relevant document, moved">
+  <h2>Interlude · One relevant document, moved</h2>
+  <p class="small">The simplest possible ranking: one relevant document, and
+  the only question is where it sits.</p>
+  <table class="smaller">
+    <tr><th class="num">Rank</th><th class="num">1</th><th class="num">2</th><th class="num">5</th><th class="num">10</th></tr>
+    <tr><td>RR</td><td class="num">1.0000</td><td class="num">0.5000</td><td class="num">0.2000</td><td class="num">0.1000</td></tr>
+    <tr><td>NDCG@10</td><td class="num">1.0000</td><td class="num">0.6309</td><td class="num">0.3869</td><td class="num">0.2891</td></tr>
+    <tr><td>Recall@10</td><td class="num">1.0000</td><td class="num">1.0000</td><td class="num">1.0000</td><td class="num">1.0000</td></tr>
+  </table>
+  <p class="small">Recall@10 is constant at 1 across the whole row: it cannot
+  distinguish the best possible ranking from the worst one that still makes the
+  page. RR falls fastest; NDCG falls more gently, by construction.</p>
+  <p class="small muted">With 92.3% of our claims having
+  exactly one relevant abstract, this row <em>is</em> our corpus, most of the
+  time.</p>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="Step 9 · Which one to report">
+  <h2>Step 9 · Which one to report</h2>
+  <table class="smaller">
+    <tr><th>Question</th><th>Metric</th></tr>
+    <tr><td>Is there a good answer at the top?</td><td>MRR</td></tr>
+    <tr><td>Did I find everything, order aside?</td><td>Recall@k</td></tr>
+    <tr><td>Did I find everything, order counted?</td><td>AP</td></tr>
+    <tr><td>Graded relevance, position counted?</td><td>NDCG@k</td></tr>
+    <tr><td>Will the second stage have anything to work with?</td><td>Recall@100</td></tr>
+  </table>
+  <div class="panel panel-fix">
+    <span class="panel-title">The rule</span>
+    Choose the metric from the <strong>question</strong>, before you see any
+    scores. Choosing it afterwards, from the numbers, is how a paper reports
+    recall@100 for the system that lost on NDCG@10 &mdash; and it is the single
+    commonest dishonesty in this literature.
+  </div>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="Step 10 · Averaging over queries">
+  <h2>Step 10 · Averaging over queries</h2>
+  <p class="small">One more choice, and it is usually made silently. Given per-query
+  scores, do you average the <strong>scores</strong>, or pool the
+  <strong>counts</strong>?</p>
+  <ul class="tight small">
+    <li><strong>Macro</strong> &mdash; mean of the per-query metric. Every query
+        counts equally, including one with a single relevant document</li>
+    <li><strong>Micro</strong> &mdash; pool hits and totals across queries first.
+        Queries with many relevant documents dominate</li>
+  </ul>
+  <p class="small">Every number in this lecture is <strong>macro</strong>: the
+  mean over 300 claims of that claim&rsquo;s own metric.
+  MRR and NDCG are essentially always reported that way; precision and recall
+  sometimes are not, and the two can differ substantially.</p>
+  <p class="small muted">The variance across queries is large and almost never
+  reported. A mean NDCG of 0.6611 contains claims scoring 1 and
+  claims scoring 0.</p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="Step 11 · What none of these metrics measure">
+  <h2>Step 11 · What none of these metrics measure</h2>
+  <ul class="tight small">
+    <li><strong>Latency.</strong> A ranking that takes a minute has a real score
+        of zero, and no metric here notices</li>
+    <li><strong>Redundancy.</strong> Ten identical relevant documents score
+        perfectly and serve the user once</li>
+    <li><strong>The unjudged.</strong> Anything the pool never saw is counted as
+        irrelevant, which is the next section</li>
+    <li><strong>Harm.</strong> A confidently ranked wrong answer and a merely
+        absent one score identically</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">Rule 5, in this setting</span>
+    Every one of these is a real requirement that the reported number is silent
+    about. A metric is a <em>choice of what to look at</em>, and it is therefore
+    also a choice of what to ignore.
+  </div>
+</section>
+
+<!-- 55 -->
+<section class="divider" data-menu-title="◆ Where the judgements come from">
+  <p class="kicker">Last fifteen minutes</p>
+  <h1>Where the judgements<br>come from</h1>
+  <p class="clock">15 minutes</p>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="Every number so far assumed a set of relevant documents">
+  <h2>Every number so far assumed a set of relevant documents</h2>
+  <p class="small">NDCG, AP, MRR &mdash; each takes
+  $\{\text{relevant}\}$ as given. Somebody had to decide, for
+  300 claims against 5,183 abstracts, which
+  pairs are relevant.</p>
+  <p class="small">Judging all of them is
+  <strong>1.55 million</strong>
+  decisions for this small corpus. For a web collection it is not large, it is
+  impossible.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">So nobody does</span>
+    Judgements are made on a <strong>pool</strong>: run several systems, take the
+    top $k$ from each, judge the union, and treat everything unjudged as
+    <strong>not relevant</strong>. That last clause is an assumption, and it is
+    doing a great deal of work.
+  </div>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="What pooling misses">
+  <h2>What pooling misses</h2>
+  <ul class="tight small">
+    <li>A document no pooled system ranked highly is <strong>unjudged</strong>,
+        and therefore counted as irrelevant &mdash; whether or not it is</li>
+    <li>So a genuinely new method, which finds documents the pool never saw, is
+        <strong>penalised for succeeding</strong></li>
+    <li>And the pool was built from the systems of its day, which means an old
+        collection quietly encodes the assumptions of old methods</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">This is not a footnote</span>
+    Reported gains on a mature benchmark are partly gains at <em>matching the
+    pool</em>. It is why a method can win on the benchmark and disappoint in
+    production &mdash; and why a leaderboard difference of a point or two is
+    rarely worth defending.
+  </div>
+  <p class="small muted">The same shape as the label noise of Lecture&nbsp;3 and
+  the survivorship of Lecture&nbsp;2: the ground truth is a measurement, made by
+  someone, under constraints.</p>
+</section>
+
+<!-- 58 -->
+<section data-menu-title="SciFact specifically">
+  <h2>SciFact specifically</h2>
+  <ul class="tight small">
+    <li>Judgements come from the authors of the claims, who cited the abstracts
+        &mdash; so they are <em>unusually</em> reliable, and unusually
+        <strong>sparse</strong></li>
+    <li>92.3% of claims have exactly one relevant
+        abstract, mean 1.13</li>
+    <li>An abstract that supports a claim but was not cited is unjudged, and
+        scored as a miss</li>
+  </ul>
+  <p class="small fail">Which means our
+  0.6611 is a <strong>lower bound</strong> on what a reader would
+  call the quality of this ranking, not an estimate of it. Reporting it as
+  &ldquo;BM25 achieves 0.6611&rdquo; without that sentence is the
+  kind of claim this course exists to stop.</p>
+</section>
+
+<!-- 59 -->
+<section data-menu-title="Graded relevance changes the answer">
+  <h2>Graded relevance changes the answer</h2>
+  <p class="small">SciFact judgements are binary. Where they are graded, the
+  gain in DCG is usually taken as $g_i = 2^{\,\text{rel}_i} - 1$ rather than
+  $\text{rel}_i$ itself.</p>
+  <table class="smaller">
+    <tr><th class="num">Grade</th><th class="num">Linear gain</th><th class="num">$2^{\text{rel}}-1$</th></tr>
+    <tr><td class="num">0 &mdash; bad</td><td class="num">0</td><td class="num">0</td></tr>
+    <tr><td class="num">1 &mdash; fair</td><td class="num">1</td><td class="num">1</td></tr>
+    <tr><td class="num">2 &mdash; good</td><td class="num">2</td><td class="num">3</td></tr>
+    <tr><td class="num">3 &mdash; excellent</td><td class="num">3</td><td class="num">7</td></tr>
+  </table>
+  <p class="small">The exponential says an excellent document at rank 3 is worth
+  more than two fair ones at ranks 1 and 2 &mdash; a claim about users, not about
+  mathematics, and one you should be prepared to defend when you make it.</p>
+  <p class="small muted">Two systems can trade places when the gain function
+  changes and nothing else does. State which you used.</p>
+</section>
+
+<!-- 60 -->
+<section data-menu-title="Five questions to ask of any retrieval result">
+  <h2>Five questions to ask of any retrieval result</h2>
+  <ol class="tight small">
+    <li><strong>Which metric, and at what cutoff?</strong> &ldquo;Better
+        retrieval&rdquo; with no metric named is not a claim</li>
+    <li><strong>Against which baseline?</strong> If BM25 is absent from the
+        table, ask why &mdash; it is free, and it is often close</li>
+    <li><strong>Whose judgements, produced how?</strong> Pooled from which
+        systems, and how long ago?</li>
+    <li><strong>Same corpus, same queries, same preprocessing?</strong> A
+        different tokeniser is a different experiment</li>
+    <li><strong>How large is the difference against the spread across
+        queries?</strong> A gain of 0.005 on 300 queries is not a finding</li>
+  </ol>
+  <p class="small muted">These are the questions of Lecture&nbsp;2 and
+  Lecture&nbsp;3, restated for a task where the ground truth is itself a
+  sample.</p>
+</section>
+
+<!-- 61 -->
+<section data-menu-title="Where students lose marks on this material">
+  <h2>Where students lose marks on this material</h2>
+  <ul class="tight small">
+    <li>Computing DCG but forgetting to divide by the ideal &mdash; and then
+        comparing across queries</li>
+    <li>Using $\log_2(i)$ rather than $\log_2(i+1)$, which divides by zero at
+        rank 1</li>
+    <li>Dividing AP by the number of <em>retrieved</em> hits instead of
+        $|R|$ &mdash; that gives mean precision, not average precision</li>
+    <li>Quoting a metric with no cutoff: &ldquo;NDCG of 0.66&rdquo; is
+        incomplete</li>
+    <li>Describing BM25 as &ldquo;tf&ndash;idf&rdquo; &mdash; it is tf&ndash;idf
+        with the two corrections that make it work</li>
+  </ul>
+  <p class="small muted">The written paper has asked for a hand-computed NDCG
+  from a relevance pattern in each of the last three years. Section&nbsp;A,
+  four or five marks.</p>
+</section>
+
+<!-- 62 -->
+<section data-menu-title="Where this sits in the course">
+  <h2>Where this sits in the course</h2>
+  <table class="smaller">
+    <tr><td>Lecture&nbsp;2</td><td class="small">a baseline before a method &mdash; here, the corpus unranked</td></tr>
+    <tr><td>Lecture&nbsp;3</td><td class="small">a metric answers a question &mdash; here, five of them do</td></tr>
+    <tr><td>Lecture&nbsp;3</td><td class="small">labels are made by people &mdash; here, by pooling</td></tr>
+    <tr><td>Lecture&nbsp;8</td><td class="small">sparsity as structure &mdash; here, it is what makes retrieval possible</td></tr>
+    <tr><td>Lectures&nbsp;17&ndash;18</td><td class="small">embeddings &mdash; next lecture, the answer to vocabulary mismatch</td></tr>
+  </table>
+  <p class="small">Nothing in this lecture is new machinery. It is the
+  measurement discipline of Part&nbsp;I applied to a task whose output is an
+  order, plus one data structure from 1975.</p>
+</section>
+
+<!-- 63 -->
+<section data-menu-title="Reading">
+  <h2>Reading</h2>
+  <ul class="tight small">
+    <li>These lecture notes are the primary source; the textbook does not cover
+        retrieval</li>
+    <li>Manning, Raghavan and Sch&uuml;tze, <em>Introduction to Information
+        Retrieval</em> &mdash; chapters 1, 2 and 6 for the index and term
+        weighting, chapter 8 for evaluation. Free online</li>
+    <li>Robertson and Zaragoza, <em>The Probabilistic Relevance Framework: BM25
+        and Beyond</em> &mdash; where BM25 comes from, if you want the
+        derivation we skipped</li>
+    <li>The SciFact and BEIR papers, for how these judgements were made</li>
+  </ul>
+  <p class="small muted">Examinable content is what is on these slides and in
+  the notebook. The reading is for depth, not for scope.</p>
+</section>
+
+<!-- 64 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-19.ipynb">Open Lecture 19 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU</strong>, in a couple of minutes. No model is
+        trained &mdash; there is nothing here to train</li>
+    <li>The inverted index built by hand from a dictionary, and BM25 scored
+        exactly against every abstract</li>
+    <li>All four metrics implemented from the derivation, and checked against
+        the worked example on this slide deck</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Set $b = 0$ to switch length normalisation off, and re-score. Then remove
+    the idf factor entirely and see which of the two corrections your corpus
+    actually needed.
+  </div>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="Vocabulary">
+  <h2>Vocabulary</h2>
+  <table class="smaller">
+    <tr><td><strong>Inverted index</strong></td><td class="small">term &rarr; the documents containing it, with counts</td></tr>
+    <tr><td><strong>Postings list</strong></td><td class="small">one term&rsquo;s entry in that index</td></tr>
+    <tr><td><strong>idf</strong></td><td class="small">a term&rsquo;s weight, falling as more documents contain it</td></tr>
+    <tr><td><strong>BM25</strong></td><td class="small">saturating tf, length-normalised, idf-weighted</td></tr>
+    <tr><td><strong>MRR</strong></td><td class="small">mean of $1/(\text{rank of first hit})$</td></tr>
+    <tr><td><strong>NDCG@k</strong></td><td class="small">discounted gain over the best possible discounted gain</td></tr>
+    <tr><td><strong>qrels</strong></td><td class="small">the relevance judgements themselves</td></tr>
+    <tr><td><strong>Pooling</strong></td><td class="small">judging the union of several systems&rsquo; top results</td></tr>
+  </table>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="Scope">
+  <h2>Scope</h2>
+  <ul class="tight small">
+    <li><span class="scope scope-exam">examinable</span> the retrieval problem
+        and why it is not classification; the inverted index and why sparsity
+        makes retrieval possible; idf, saturating tf and length normalisation,
+        and BM25 assembled from them; <strong>Derivation&nbsp;19</strong> in
+        full &mdash; P@k, R@k, RR, AP, DCG, NDCG and which question each answers;
+        pooling and what unjudged documents do to a reported score</li>
+    <li><span class="scope scope-eng">not examinable &mdash; engineering</span>
+        index compression, skip pointers, query parsing, and any particular
+        search library</li>
+    <li><span class="scope scope-context">beyond the syllabus</span> the
+        probabilistic derivation of BM25 from the RSJ model, query expansion and
+        relevance feedback, learning to rank</li>
+  </ul>
+  <p class="small muted">Part&nbsp;V is examined from these lecture notes on
+  exactly the same terms as the textbook parts.</p>
+</section>
+
+<!-- 67 -->
+<section data-menu-title="Summary">
+  <h2>Summary</h2>
+  <ol class="tight small">
+    <li>Retrieval returns an <strong>ordering of a corpus</strong>, not a label;
+        the metrics, baselines and methods all follow from that</li>
+    <li>The inverted index makes it cheap: postings are
+        0.3% of the
+        dense matrix</li>
+    <li>BM25 is three corrections to counting words, each answering a stated
+        failure, and it scores <strong>0.6611</strong> NDCG@10 with
+        no training at all</li>
+    <li>A ranking metric answers a <strong>question</strong>. Recall@10 called
+        our example perfect while an abstract sat at rank 8</li>
+    <li>Every one of those numbers rests on judgements someone made on a pool,
+        with everything unjudged counted as irrelevant</li>
+  </ol>
+</section>
+
+<!-- 68 -->
+<section data-menu-title="One line to keep">
+  <h2>One line to keep</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">The line</span>
+    <strong>A ranking is scored by a question, and the question must be chosen
+    before the scores are seen.</strong>
+  </div>
+  <p class="small">BM25 is thirty years old, needs no labels and no gradient,
+  and reaches 0.6611 on this corpus. Any method you meet next
+  &mdash; including every neural retriever of the next lecture &mdash; is
+  measured against it, on the same judgements, with the metric named in advance.</p>
+</section>
+
+<!-- 69 -->
+<section data-menu-title="Before the next lecture">
+  <h2>Before the next lecture</h2>
+  <ul class="tight small">
+    <li>Run the notebook, and turn off each of BM25&rsquo;s two corrections in
+        turn. One of them barely matters on this corpus &mdash; be able to say
+        which, and why</li>
+    <li>Note the gap we leave open: recall@10 is 77.8% but recall@100
+        is <strong>88.5%</strong>. Almost everything relevant is
+        found <em>somewhere</em> in the first hundred</li>
+    <li>Next lecture is about the two ways to close that gap: retrieving by
+        meaning rather than by word, and re-ranking what a cheap first stage
+        returned</li>
+  </ul>
+</section>
+
+<!-- 70 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 20 &middot; Lecture notes</p>
+  <h1>Information retrieval:<br>dense retrieval</h1>
+  <p class="small">
+    Vocabulary mismatch, and why an inverted index cannot solve it<br>
+    Bi-encoders, in-batch negatives, and why the negatives are most of the work<br>
+    Cross-encoders and re-ranking &mdash; why the accurate model cannot go first<br>
+    All of it against today&rsquo;s BM25, on the same judgements
+  </p>
+  <p class="clock">Part V &middot; Lecture notes &middot; examinable</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 19
+  <span class="sep">&middot;</span> Information retrieval: the lexical foundation
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>
