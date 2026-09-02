@@ -68,6 +68,15 @@ def build() -> list:
             constraint="the same constants as the previous lecture, so the numbers are comparable",
             check="`torch.nn.functional as Fn` rather than `F` — `F` is already the feature matrix in the previous notebook's namespace, and a collision there is the kind of bug that produces a confident wrong number."),
         code('''
+# Not examinable, and only needed on some machines: PyTorch, numpy and
+# torchvision can each end up loading their own OpenMP runtime, and with more
+# than one loaded a training cell can deadlock -- no error, no output, and no
+# CPU use. These have to be set BEFORE torch is imported, because they are read
+# at import time and after that they do nothing.
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 # --- setup -------------------------------------------------------------------
 import ast, re, sys, time, urllib.request
 from pathlib import Path

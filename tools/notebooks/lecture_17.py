@@ -66,6 +66,15 @@ def build() -> list:
             constraint="say what to do if there is no accelerator — the GRU cells here are the slowest in the course on CPU",
             check="when a notebook is deliberately smaller than the deck, say by how much and say what is preserved. 'The ordering is the point' is a claim you can check."),
         code('''
+# Not examinable, and only needed on some machines: PyTorch, numpy and
+# torchvision can each end up loading their own OpenMP runtime, and with more
+# than one loaded a training cell can deadlock -- no error, no output, and no
+# CPU use. These have to be set BEFORE torch is imported, because they are read
+# at import time and after that they do nothing.
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 # --- setup -------------------------------------------------------------------
 # Not examinable: engineering hygiene. It is here because a version mismatch
 # produces a confusing error twenty cells later.

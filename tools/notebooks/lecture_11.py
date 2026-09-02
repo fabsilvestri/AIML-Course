@@ -70,6 +70,15 @@ def build() -> list:
             constraint="pick the device by asking, and say what to do if the answer is cpu",
             check="everything below still runs on cpu; it is slower. Say so, or a student with no GPU will read the wall clocks as a bug."),
         code('''
+# Not examinable, and only needed on some machines: PyTorch, numpy and
+# torchvision can each end up loading their own OpenMP runtime, and with more
+# than one loaded a training cell can deadlock -- no error, no output, and no
+# CPU use. These have to be set BEFORE torch is imported, because they are read
+# at import time and after that they do nothing.
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 # --- setup -------------------------------------------------------------------
 # Not examinable: engineering hygiene, not machine learning. It is here because
 # a device mismatch produces a confusing error twenty cells later.

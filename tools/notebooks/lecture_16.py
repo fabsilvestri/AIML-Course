@@ -139,6 +139,15 @@ Count the duplicates rather than assuming there are none.
                constraint="drop `total` — it is exactly bus + rail — and drop duplicate rows, reporting how many",
                check="print the count removed and the date range that survives"),
         code('''
+# Not examinable, and only needed on some machines: PyTorch, numpy and
+# torchvision can each end up loading their own OpenMP runtime, and with more
+# than one loaded a training cell can deadlock -- no error, no output, and no
+# CPU use. These have to be set BEFORE torch is imported, because they are read
+# at import time and after that they do nothing.
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 df = raw.copy()
 df.columns = ["date", "day_type", "bus", "rail", "total"]
 df = df.sort_values("date").set_index("date")

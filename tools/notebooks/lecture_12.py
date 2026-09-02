@@ -67,6 +67,15 @@ def build() -> list:
             check="a version mismatch here produces a confusing error twenty cells later, in a cell that has nothing to do with versions. Print them.",
             **{"try": "force `device = \"cpu\"`. Everything in this notebook is sized to run there, and the wall clock tells you whether the accelerator was buying anything."}),
         code('''
+# Not examinable, and only needed on some machines: PyTorch, numpy and
+# torchvision can each end up loading their own OpenMP runtime, and with more
+# than one loaded a training cell can deadlock -- no error, no output, and no
+# CPU use. These have to be set BEFORE torch is imported, because they are read
+# at import time and after that they do nothing.
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 # --- setup -------------------------------------------------------------------
 # Not examinable: engineering hygiene, not machine learning. It is here because
 # a version mismatch produces a confusing error twenty cells later.

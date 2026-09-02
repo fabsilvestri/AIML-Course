@@ -209,6 +209,15 @@ the corpus.
             constraint="print `person` as a SHARE of every annotated object, not just as a count",
             check="only some of the 80 categories appear in 128 images. Any per-category metric will have empty categories in it, and what you do about those changes the mean."),
         code('''
+# Not examinable, and only needed on some machines: PyTorch, numpy and
+# torchvision can each end up loading their own OpenMP runtime, and with more
+# than one loaded a training cell can deadlock -- no error, no output, and no
+# CPU use. These have to be set BEFORE torch is imported, because they are read
+# at import time and after that they do nothing.
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import collections
 
 freq = collections.Counter()
