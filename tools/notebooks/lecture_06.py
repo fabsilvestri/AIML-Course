@@ -52,9 +52,7 @@ def build() -> list:
             input="nothing",
             output="every import this notebook needs",
             constraint="repeat them — do NOT rely on the previous notebook's kernel",
-            left_open="that this looks like duplication and is not. Two notebooks that share a kernel are one notebook with a confusing file layout.",
-            student="opening this straight after the build session, running from section 2, and having everything work. It then fails for the person you send it to, who did not run the other one first.",
-            catch="Restart-and-run-all. If a notebook cannot start from a cold kernel it is not reproducible, however many times it has worked for you."),
+            check="Restart-and-run-all. If a notebook cannot start from a cold kernel it is not reproducible, however many times it has worked for you."),
         code('''
 # Every import this notebook needs, in one place. A notebook that only runs
 # because a previous one is still in memory is not reproducible.
@@ -84,10 +82,7 @@ NJ = 4
             input="the same tarball",
             output="891 rows, with the shape and the label domain asserted",
             constraint="download-if-absent again, so this notebook stands alone",
-            check="assert the shape and that Survived holds only 0 and 1",
-            left_open="that this is byte-identical to the build session's loader. It is deliberate: the repair has to start from exactly the state the build session ended in, or the comparison means nothing.",
-            student="pickling the frame at the end of the last notebook and loading it here. It works until the pickle is stale, and a stale pickle looks exactly like a fresh one.",
-            catch="if two notebooks must agree on a dataset, they should agree by rebuilding it, not by passing it."),
+            check="assert the shape and that Survived holds only 0 and 1. If two notebooks must agree on a dataset, they should agree by rebuilding it, not by passing it."),
         code('''
 # --- the data ----------------------------------------------------------------
 # A function, not a manual download. ~5 s the first time, instant afterwards.
@@ -112,10 +107,7 @@ print(f"{len(full)} passengers, {full['Survived'].sum()} of whom survived")
             input="the raw frame",
             output="Title, FamilySize, IsAlone, Deck — unchanged from the build session",
             constraint="keep FamilySize even though we know it is the fault, so the diagnosis in section 3 has something to find",
-            check="assert the dependence is still exactly zero, and that the title set is the expected five",
-            left_open="that the assert on line 3 is not a health check, it is a load-bearing part of the argument four sections from now. The comment above it says so.",
-            student="quietly fixing the bug here, because they remember it from last time. The notebook then diagnoses a fault that is no longer present and every downstream number changes.",
-            catch="when a notebook exists to repair something, resist repairing it in the setup. Reproduce the broken state first, deliberately."),
+            check="assert the dependence is still exactly zero, and that the title set is the expected five. When a notebook exists to repair something, resist repairing it in the setup. Reproduce the broken state first, deliberately."),
         code('''
 # --- the four engineered columns, exactly as in the build session ------------
 def engineer(d):
@@ -142,10 +134,7 @@ print(full["Title"].value_counts().to_dict())
             input="the engineered frame",
             output="the same 712/179 stratified split as the build session",
             constraint="FamilySize stays in the FRAME (in ALL) but out of the numeric block — section 3 needs the column to demonstrate the dependence, and the pipeline needs it excluded",
-            check="assert the sizes, the disjointness, and the identical column sets",
-            left_open="the difference between a column existing and a column being modelled. ALL and NUM differ by exactly one name, and that is the whole of the third repair.",
-            student="dropping FamilySize from the frame entirely, which makes the dependence undemonstrable, or leaving it in NUM, which reproduces the singular design matrix.",
-            catch="the same seed and the same stratification as the notebook you are comparing against. A repair measured on a different split is not a measured repair."),
+            check="assert the sizes, the disjointness, and the identical column sets. The same seed and the same stratification as the notebook you are comparing against. A repair measured on a different split is not a measured repair."),
         code('''
 # --- split first, stratified on the label ------------------------------------
 NUM = ["Age", "Fare", "SibSp", "Parch"]     # FamilySize is left out on purpose
@@ -170,10 +159,7 @@ print(f"train rate {y_train.mean():.4f}   test rate {y_test.mean():.4f}")
             input="a degree and a penalty setting",
             output="a fresh unfitted pipeline, plus the 0.666 anchor recomputed",
             constraint="a FUNCTION returning a new pipeline each call — a single shared object refitted in a loop carries the previous iteration's state into the next",
-            check="assert the anchor is still 0.666, so this notebook and the build session are provably on the same footing",
-            left_open="that `C=1e6` is the default here. That switches the penalty off, which is the state we are about to repair, and it is stated in the signature rather than hidden.",
-            student="building `m = pipeline()` once at the top and reusing it everywhere. Scikit-learn refits in place, so the tenth cross-validation is not measuring what the first one measured.",
-            catch="recompute the anchor rather than copying 0.666 across from the other notebook. If it comes out different, the two notebooks are not on the same data and everything below is incomparable."),
+            check="assert the anchor is still 0.666, so this notebook and the build session are provably on the same footing. Recompute the anchor rather than copying 0.666 across from the other notebook. If it comes out different, the two notebooks are not on the same data and everything below is incomparable."),
         code('''
 # --- the pipeline, and the anchor --------------------------------------------
 def prep(degree=1):
@@ -216,10 +202,7 @@ diagnosis, not noise.
             input="degrees 1 to 6",
             output="columns, training log loss and held-out log loss at each degree",
             constraint="`return_train_score=True` — it is off by default and it is the whole experiment",
-            check="assert the ARGUMENT, not three decimals of it: that a low degree wins on held-out score, and that degree 5 is far worse than the anchor",
-            left_open="why the asserts are loose. Pinning the exact number makes the cell fail whenever the pipeline legitimately changes — which it just did, when the encoder was repaired.",
-            student="`assert sweep[5]['valid'] == 1.957`, which is true today and turns every future improvement into a red cell. An assert should encode the claim, not the current output.",
-            catch="ask what your assert would do if someone improved the code. If it would break, it is pinning a number rather than checking a fact."),
+            check="assert the ARGUMENT, not three decimals of it: that a low degree wins on held-out score, and that degree 5 is far worse than the anchor. Ask what your assert would do if someone improved the code. If it would break, it is pinning a number rather than checking a fact."),
         code('''
 DEGREES = [1, 2, 3, 4, 5, 6]
 sweep = {}
@@ -292,10 +275,7 @@ number, so whatever their outcomes do inside that cell is a floor.
             input="passengers grouped by five banded columns",
             output="the noise floor, as a Brier score",
             constraint="use the UNBIASED estimator k(m−k)/(m(m−1)), not the plain variance — with cells of size 2 the biased version understates the floor by half",
-            check="assert 133 cells, 102 with two or more passengers, and a floor of 0.121",
-            left_open="that this is a lower bound on the achievable error and not the true noise. Passengers sharing these five banded columns may still differ in ways the columns do not record.",
-            student="estimating noise as the residual of their best model, which measures the model rather than the problem. This estimate uses no model at all — where inputs are identical, every model must agree.",
-            catch="a floor computed without fitting anything is the only one you can compare a fitted model against. If your 'irreducible error' fell when you improved the model, it was never irreducible."),
+            check="assert 133 cells, 102 with two or more passengers, and a floor of 0.121. A floor computed without fitting anything is the only one you can compare a fitted model against. If your 'irreducible error' fell when you improved the model, it was never irreducible."),
         code('''
 d = full.copy()
 d["AgeBand"] = pd.cut(d["Age"], [0, 12, 25, 40, 60, 100],
@@ -329,9 +309,7 @@ assert abs(noise - 0.121) < 0.001
             input="the mixed cells",
             output="the four where identical inputs disagree most loudly",
             constraint="rank by k(m−k), the count of disagreeing pairs — not by cell size, which would just find the biggest groups",
-            left_open="what to conclude. Nothing here is fixable by modelling: these passengers are identical in every recorded column and some lived and some died.",
-            student="treating the noise floor as an abstraction. Printing four actual groups of people is what makes it a fact about the ship rather than a term in an equation.",
-            catch="when a bound looks suspiciously convenient, print the rows it came from. A floor you can read is a floor you can defend."),
+            check="when a bound looks suspiciously convenient, print the rows it came from. A floor you can read is a floor you can defend."),
         code('''
 # The four cells where identical inputs disagree most loudly.
 worst = mixed.assign(mix=lambda t: t["k"] * (t["m"] - t["k"])).nlargest(4, "mix")
@@ -360,10 +338,7 @@ committed to.
             input="200 training sets of 400 rows, drawn without replacement",
             output="variance, bias²+noise and total expected Brier at degrees 1, 2, 3, 5",
             constraint="draw WITHOUT replacement — a bootstrap with replacement gives each fit ~253 distinct rows, and the variance you measure is then partly the variance of the resampling scheme",
-            check="assert the prediction matrix is exactly (200, 179) before anything is averaged",
-            left_open="why four degrees and not six. Degrees 4 and 6 are the two most expensive fits and neither carries the argument; the docstring says so rather than the reader guessing.",
-            student="reusing one fitted pipeline across the 200 draws, or fitting on X_train and predicting on X_train. Both give a variance term near zero, which is the answer you wanted and not the one that is true.",
-            catch="the shape assert. A silently broadcast array here produces a beautifully wrong stackplot and no error."),
+            check="assert the prediction matrix is exactly (200, 179) before anything is averaged. The shape assert. A silently broadcast array here produces a beautifully wrong stackplot and no error."),
         code('''
 def boot_fit(deg, sel):
     with warnings.catch_warnings():
@@ -401,10 +376,7 @@ plausible.
             input="the three measured terms",
             output="the residual of total − variance − (bias²+noise), per degree",
             constraint="assert it is below 1e-12 — these three columns are not a MODEL of the error, they are the error rearranged, so anything above floating-point noise is a bug",
-            check="also assert the variance grows by more than 10x from degree 1 to 5",
-            left_open="that the decomposition is exact for squared error and not for log loss. Everything in this section is therefore a Brier number, stated before the first number appeared.",
-            student="plotting the three terms and interpreting them without checking they sum. A broken decomposition still produces a plausible stacked area chart, which is the problem.",
-            catch="whenever you decompose a quantity, assert the parts add up. It is one line and it is the difference between a measurement and an illustration."),
+            check="also assert the variance grows by more than 10x from degree 1 to 5. Whenever you decompose a quantity, assert the parts add up. It is one line and it is the difference between a measurement and an illustration."),
         code('''
 for deg in BV_DEGREES:
     resid = abs(bv[deg]["total"] - bv[deg]["variance"] - bv[deg]["bias2_noise"])
@@ -424,9 +396,7 @@ assert growth > 10
             input="the three terms at four degrees",
             output="a stackplot with the total overlaid and the measured floor drawn in",
             constraint="draw the noise floor as a horizontal line — the point of the picture is how much of the bottom band is unreachable",
-            left_open="that the bias band barely moves. The squared bias at degree 1 is under 0.01, so almost the whole bottom band is the floor, and there was never much bias for extra capacity to buy back.",
-            student="reading the growing total as 'the model got worse' without seeing WHICH term grew. The stack is what turns that into a diagnosis.",
-            catch="if a stacked plot has a term you cannot separately measure, it is a diagram, not data. Every band here was measured independently and checked to sum."),
+            check="if a stacked plot has a term you cannot separately measure, it is a diagram, not data. Every band here was measured independently and checked to sum."),
         code('''
 fig, ax = plt.subplots(figsize=(7.5, 3.6))
 ax.stackplot(BV_DEGREES,
@@ -456,10 +426,7 @@ vertical gap between them is the variance term.**
             input="the degree sweep",
             output="held-out minus training log loss, at degree 1 and degree 5",
             constraint="report the GAP, not the two numbers separately",
-            check="assert the gap at degree 5 is more than ten times the gap at degree 1",
-            left_open="why the gap is the variance term. The training curve is measured on the rows that were fitted, so it carries no variance at all; the held-out curve carries all three terms.",
-            student="looking at the two curves and saying 'it overfits' without quantifying. The factor of ten is what connects the picture back to the decomposition you just measured.",
-            catch="the vertical gap between a training and a held-out curve IS the variance term. That is the sentence to remember from this lecture."),
+            check="assert the gap at degree 5 is more than ten times the gap at degree 1. The vertical gap between a training and a held-out curve IS the variance term. That is the sentence to remember from this lecture."),
         code('''
 for deg in (1, 5):
     gap = sweep[deg]["valid"] - sweep[deg]["train"]
@@ -489,10 +456,7 @@ frame, in whatever order your frame happens to be in.
             input="training subsets from 12% to 100% of the 712 rows",
             output="training and held-out log loss against the number of rows, at degrees 1 and 5",
             constraint="`shuffle=True` — without it the sub-samples are the first n rows of the frame, in whatever order the frame happens to be in",
-            check="assert eight sizes and that the largest is 640",
-            left_open="that this answers a question the degree sweep cannot. The degree sweep varies capacity; this varies data, and only one of those is something you can go and buy.",
-            student="forgetting shuffle and getting a learning curve of a sorted prefix. The curve is smooth, the shape is wrong, and nothing warns you.",
-            catch="check what the first point is measured on. At 12% of 712 that is 85 passengers, and a held-out log loss from 85 rows is noisy enough to read as a trend."),
+            check="assert eight sizes and that the largest is 640. Check what the first point is measured on. At 12% of 712 that is 85 passengers, and a held-out log loss from 85 rows is noisy enough to read as a trend."),
         code('''
 lc = {}
 with warnings.catch_warnings():
@@ -516,9 +480,7 @@ for deg in (1, 5):
             input="the learning curves at degrees 1 and 5",
             output="both panels, sharing a y-axis",
             constraint="`sharey=True` — the panels are being compared, and independent y-axes would make a gap of 1.6 and a gap of 0.05 look alike",
-            left_open="what to do about the right panel. It is still falling at 640 rows, which normally means get more data. There are 891 passengers on the Titanic, and there will never be more.",
-            student="reading two separately-scaled panels as if they were comparable. It is the most common way a true plot tells a false story.",
-            catch="curves that have met mean more data changes nothing. Curves still far apart and falling mean starved of rows, not of capacity — and the two diagnoses have opposite remedies."),
+            check="curves that have met mean more data changes nothing. Curves still far apart and falling mean starved of rows, not of capacity — and the two diagnoses have opposite remedies."),
         code('''
 fig, axes = plt.subplots(1, 2, figsize=(9, 3.4), sharey=True)
 for ax, deg, title in zip(axes, (1, 5),
@@ -556,10 +518,7 @@ rows is five rows per weight.
             input="each degree, fitted with warnings captured",
             output="convergence, iterations, and the largest absolute coefficient",
             constraint="`record=True` with `simplefilter('always')` — the cell exists to READ a warning, so suppressing it defeats the purpose",
-            check="assert degrees 1 and 3 converge and degree 4 does not",
-            left_open="why raising max_iter will not help. If some θ separates the classes then scaling it up drives the training loss towards zero, so the infimum is never attained: the optimiser is not slow, it is looking for something that does not exist.",
-            student="`max_iter=100000` and a coffee. The largest-coefficient column is the evidence — it grows without bound, which is what non-existence looks like numerically.",
-            catch="two symptoms, one shape: the minimiser does not EXIST (separation) and the minimiser is not UNIQUE (rank 23 of 29). Both are about the optimisation problem, neither is about the passengers."),
+            check="assert degrees 1 and 3 converge and degree 4 does not. Two symptoms, one shape: the minimiser does not EXIST (separation) and the minimiser is not UNIQUE (rank 23 of 29). Both are about the optimisation problem, neither is about the passengers."),
         code('''
 sep = {}
 for deg in DEGREES:
@@ -599,10 +558,7 @@ linear combination of two others.
             input="SibSp, Parch, FamilySize, Age and Fare, scaled",
             output="the eigenvalues of XᵀX and its condition number",
             constraint="use `eigvalsh`, not `eigvals` — XᵀX is symmetric, and the general routine returns complex numbers with tiny imaginary parts that then have to be explained away",
-            check="assert the smallest eigenvalue is below 1e-9 — the dependence must show up as a zero, not merely as a small number",
-            left_open="that an exact zero eigenvalue and 'highly correlated columns' are different claims. This one is an identity, by construction, from a line of feature engineering.",
-            student="reporting the condition number without the eigenvalues. 1e+15 tells you something is wrong; the zero eigenvalue tells you what.",
-            catch="a zero eigenvalue of XᵀX is a direction in which your coefficients can move without changing a single prediction."),
+            check="assert the smallest eigenvalue is below 1e-9 — the dependence must show up as a zero, not merely as a small number. A zero eigenvalue of XᵀX is a direction in which your coefficients can move without changing a single prediction."),
         code('''
 print("FamilySize − (SibSp + Parch + 1), largest absolute value over 712 rows:")
 print((X_train["SibSp"] + X_train["Parch"] + 1
@@ -636,10 +592,7 @@ does not mention $\\lambda_{\\min}$ at all.
             input="the same eigenvalues",
             output="the condition number at four values of α, beside its bound",
             constraint="compute it from the SHIFTED eigenvalues (λ+α), not by refitting — the point is that ridge moves every eigenvalue up by exactly α and leaves the eigenvectors alone",
-            check="assert α=1 brings a 1e15 condition number under 2000",
-            left_open="that this is a two-line proof, not an empirical finding. XᵀX is positive semi-definite, so λ+α ≥ α > 0 and the matrix is invertible for every α > 0.",
-            student="believing ridge 'removes multicollinearity'. It does not. The dependence is still exactly there; it is dominated, and the printout says so in as many words.",
-            catch="the bound (λmax+α)/α does not mention λmin at all. That is why ridge works on a singular design and no amount of column-dropping is needed first."),
+            check="assert α=1 brings a 1e15 condition number under 2000. The bound (λmax+α)/α does not mention λmin at all. That is why ridge works on a singular design and no amount of column-dropping is needed first."),
         code('''
 for alpha in (0.0, 1e-6, 1e-3, 1.0):
     if alpha == 0.0:
@@ -681,9 +634,7 @@ regression is regularised unless you say otherwise. The build session set
             input="eight values of C, and three penalty configurations",
             output="the grid and the penalty dictionary, nothing fitted yet",
             constraint="C = 1/α in scikit-learn, so SMALL C is STRONG regularisation — and the default is C=1.0 with an L2 penalty, so logistic regression is regularised unless you say otherwise",
-            left_open="the solver choice on the lasso row. liblinear is the obvious pick for an L1 penalty and it is wrong here: it implements the intercept as a synthetic constant column and penalises it like any other weight, fitting an intercept of exactly 0.0000 at C=0.001 where saga fits 4.90.",
-            student="reading a coefficient table without checking which solver produced it. This lecture states that the bias term is not penalised, and with the wrong solver that statement is false in your own output.",
-            catch="check the intercept. If it is suspiciously near zero under a strong penalty, your solver is penalising it, and every coefficient in the table is compensating for that."),
+            check="check the intercept. If it is suspiciously near zero under a strong penalty, your solver is penalising it, and every coefficient in the table is compensating for that."),
         code('''
 # The deck sweeps 17 values from 1e-4 to 1e4 with 10 folds. We stop at
 # C = 0.316 and use 5 folds here, for a reason worth knowing: coordinate
@@ -714,10 +665,7 @@ PENALTIES = {
             input="degree 5, the eight C values, ridge / lasso / elastic net",
             output="the best C per penalty, its log loss, and how many weights survive",
             constraint="count the NON-ZERO weights as well as the score — the difference between ridge and lasso is not visible in the score alone",
-            check="assert lasso zeroes something and ridge zeroes nothing",
-            left_open="why the grid stops at C = 0.316. Coordinate descent at degree 5 takes 163 s for a single value at C = 1 and 1.6 s at C = 0.01 — the cost of a solver is not uniform over its hyperparameter.",
-            student="sweeping to C = 1e4 because the deck does, and waiting twenty minutes for values that are all worse than the minimum already found. Grid ranges have costs as well as coverage.",
-            catch="the nnz column is the check that the penalty you asked for is the penalty you got. An L1 run with 143 of 143 weights non-zero did not apply an L1 penalty."),
+            check="assert lasso zeroes something and ridge zeroes nothing. The nnz column is the check that the penalty you asked for is the penalty you got. An L1 run with 143 of 143 weights non-zero did not apply an L1 penalty."),
         code('''
 reg = {}
 with warnings.catch_warnings():
@@ -757,10 +705,7 @@ not an upgrade.
             input="the sweep and the three tuned penalties",
             output="all four numbers in one column, with degree 2 at the bottom",
             constraint="put the unregularised degree-2 model in the SAME list — a comparison between three repairs and no baseline is not a comparison",
-            check="assert no penalty beats degree 2, and say in the message that if one ever does, the story changes and you must say so",
-            left_open="that this is the intended result. Every penalty takes the worst model in the sweep and makes it respectable, and none of them beats the plain model you already had.",
-            student="presenting the ridge improvement as the finding. The improvement is real and it is a repair, not an upgrade — the decomposition predicted exactly this an hour earlier.",
-            catch="an assert that encodes the ARGUMENT, with a message saying what to do if it fires. That is the difference between a test and a tripwire."),
+            check="assert no penalty beats degree 2, and say in the message that if one ever does, the story changes and you must say so. An assert that encodes the ARGUMENT, with a message saying what to do if it fires. That is the difference between a test and a tripwire."),
         code('''
 print(f"degree 5, no penalty      {sweep[5]['valid']:.3f}")
 for name in PENALTIES:
@@ -791,10 +736,7 @@ application's leak, 500 times over.
             input="a 75/25 split of the training rows, degree 5, no penalty at all",
             output="training and validation log loss at each of 500 epochs, and the epoch that minimises the validation curve",
             constraint="fit the transform on the training part ONLY and OUTSIDE the loop — refitting it inside would be the first application's leak, five hundred times over",
-            check="assert the minimum is interior, since a minimum at epoch 500 would mean there was nothing to stop early",
-            left_open="that `warm_start=True` with `max_iter=1` is what makes each fit call one epoch of the SAME fit rather than 500 independent one-epoch models.",
-            student="`max_iter=1` without `warm_start`, which silently restarts from zero every epoch and produces a flat curve that looks like a model that cannot learn.",
-            catch="`penalty=None` is deliberate. If you leave the default L2 on, early stopping is not the only regulariser in the room and the experiment measures two things at once."),
+            check="assert the minimum is interior, since a minimum at epoch 500 would mean there was nothing to stop early. `penalty=None` is deliberate. If you leave the default L2 on, early stopping is not the only regulariser in the room and the experiment measures two things at once."),
         code('''
 A, B, y_a, y_b = train_test_split(X_train, y_train, test_size=0.25,
                                   random_state=RANDOM_STATE, stratify=y_train)
@@ -830,9 +772,7 @@ assert best + 1 < 500, "the minimum must be interior or there is nothing to see"
             input="the two epoch curves",
             output="both curves with the chosen epoch marked",
             constraint="say out loud that these are bad numbers in absolute terms — plain SGD at a constant learning rate on 143 correlated columns is a poor optimiser",
-            left_open="that the stopping epoch is a hyperparameter chosen on held-out rows, exactly like C. It is not free regularisation; it is regularisation whose knob happens to be time.",
-            student="quoting this validation log loss beside the tuned ridge number, as if the two were competing. This cell is showing a shape.",
-            catch="when a demonstration is deliberately not competitive, print that in the cell. A number left unqualified on a slide will be quoted qualified."),
+            check="when a demonstration is deliberately not competitive, print that in the cell. A number left unqualified on a slide will be quoted qualified."),
         code('''
 fig, ax = plt.subplots(figsize=(7.5, 3.2))
 ax.plot(train_curve, color="#0b3d62", label="training subset")
@@ -868,9 +808,7 @@ number a reader will quote.
             input="'find the best value of C and tell me how well it does'",
             output="the best C and its log loss",
             constraint="score each candidate on the test set and report the best — which is what the prompt literally asks for",
-            left_open="what touched the test set. Seventeen models did, and then we reported the score of whichever one it liked best. The code never WRITES to the test set; it reads it eighteen times, and reading is enough.",
-            student="exactly this. It runs, it warns about nothing, and it prints a number a reader will quote — and the number is a minimum over seventeen noisy estimates, which is biased downward even when every estimate is individually unbiased.",
-            catch="count reads of the test set, not writes. One read at the very end is the budget; anything that selects between models is a read."),
+            check="count reads of the test set, not writes. One read at the very end is the budget; anything that selects between models is a read."),
         code('''
 # ⚠ WRONG — this is the failure, not the fix
 best_C, best_score = None, np.inf
@@ -907,10 +845,7 @@ with a wider interval, and the interval is the point.
             input="8 seeds, 17 candidates each",
             output="the dishonest score and the honest score on the same held-out rows",
             constraint="score BOTH choices on the same rows — the difference has to come from the selection procedure and nothing else",
-            check="assert the bias is positive, since it is one-sided by construction",
-            left_open="how the effect scales. About 0.02 of log loss against a seed-to-seed spread of 0.05: on a single split you would never see it. Seventeen candidates is a small search, and a randomised search over a thousand does the same thing much louder.",
-            student="running this once, seeing a difference smaller than the noise, and concluding the leak does not matter. It never averages away and it grows with how hard you looked.",
-            catch="report how often the two procedures picked the SAME C. When they agree the leak costs nothing on that seed, and the count tells you how much of the effect is selection rather than scoring."),
+            check="assert the bias is positive, since it is one-sided by construction. Report how often the two procedures picked the SAME C. When they agree the leak costs nothing on that seed, and the count tells you how much of the effect is selection rather than scoring."),
         code('''
 def one_seed(seed):
     A, B, ya, yb = train_test_split(X, y, test_size=0.2, random_state=seed,
@@ -972,9 +907,7 @@ looked.
             input="the same 17 candidates",
             output="the cross-validated estimate with its fold spread, and one test score",
             constraint="GridSearchCV over the whole PIPELINE, so the preprocessing is refitted inside every fold, and the test set is touched exactly once at the end",
-            left_open="that the test number is allowed to be worse than the CV number. The cell says so, because the instinct when it is worse is to go back and adjust something.",
-            student="grid-searching the classifier alone on pre-transformed data. The search is then honest about C and dishonest about the scaler.",
-            catch="report both numbers separately with the fold spread beside them. One number that has been through a selection is not the same kind of object as one that has not."),
+            check="report both numbers separately with the fold spread beside them. One number that has been through a selection is not the same kind of object as one that has not."),
         code('''
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -1007,10 +940,7 @@ candidates, every one of whose hyperparameters was fixed before this cell ran.
             input="179 passengers untouched since the split, and five fixed candidates",
             output="log loss, Brier and accuracy for each",
             constraint="every hyperparameter must have been fixed BEFORE this cell ran — no selection happens here, only measurement",
-            check="assert the winner beats the anchor",
-            left_open="that the winner is the model with no repair in it. Degree 2, no penalty, chosen by reading a held-out curve.",
-            student="adding a sixth candidate after seeing the table. That is the assistant failure from section 5, committed by hand and one cell later.",
-            catch="if you find yourself editing this cell after reading its output, stop. The test set has now been read twice."),
+            check="assert the winner beats the anchor. If you find yourself editing this cell after reading its output, stop. The test set has now been read twice."),
         code('''
 candidates = {
     "degree 5, no penalty":   pipeline(degree=5),
@@ -1044,10 +974,7 @@ assert final[winner]["log_loss"] < constant_log_loss, \
             input="everything measured",
             output="anchor, best cross-validated, final test, majority accuracy, and the Brier score against the measured floor",
             constraint="put the noise floor beside the final Brier — the gap between them is what is actually left to win",
-            check="assert the final model beats the anchor",
-            left_open="what the ninety minutes bought. Not a better number: the winner is a two-line model you could have written before the build session started. It bought knowing WHY it wins, in three terms.",
-            student="concluding the session was wasted because the simple model won. The alternative is choosing the interesting model over the better one, which is the failure this course exists to prevent.",
-            catch="0.013 of Brier left on the table, in total, for any model of these columns. A remaining-headroom number is the most honest thing you can put at the end of a report."),
+            check="assert the final model beats the anchor. 0.013 of Brier left on the table, in total, for any model of these columns. A remaining-headroom number is the most honest thing you can put at the end of a report."),
         code('''
 committed = final["degree 5, no penalty"]["log_loss"]
 best      = final[winner]["log_loss"]
@@ -1103,10 +1030,7 @@ on your neighbour's.
             input="the degree-5 pipeline and the two splits",
             output="columns against rows, rows per weight, and how many ages were imputed",
             constraint="answer them on THIS notebook first, then run the equivalent on your neighbour's",
-            check="assert 143 columns and that no passenger was dropped — the imputer fills, and it is fitted per fold",
-            left_open="questions 1, 2 and 5 of the checklist, which no cell can answer for you: what touched the test set, what was fitted on what, and which `LogisticRegression` had its C left unstated.",
-            student="running the red team on someone else's notebook and not their own. Five rows per weight is the kind of thing that is obvious in another person's code and invisible in yours.",
-            catch="rows per weight, printed. 712 rows over 143 columns is 5.0, and no amount of tuning repairs a ratio like that."),
+            check="assert 143 columns and that no passenger was dropped — the imputer fills, and it is fitted per fold. Rows per weight, printed. 712 rows over 143 columns is 5.0, and no amount of tuning repairs a ratio like that."),
         code('''
 n_cols = prep(5).fit(X_train).transform(X_train).shape[1]
 print(f"degree-5 columns: {n_cols}   training rows: {len(X_train)}   "

@@ -55,9 +55,7 @@ def build() -> list:
             input="nothing",
             output="versions, seeds, device",
             constraint="same seeds as the previous lecture, so the rebuild below is a rebuild and not a new experiment",
-            left_open="nothing here is examinable. It is the same four lines every notebook in Part II opens with, and they are worth being bored by.",
-            student="changing the seed between the broken and the repaired run. Every comparison in this notebook is a difference of two numbers, and a changed seed puts noise in that difference.",
-            catch="if a notebook exists to measure a repair, its setup must be byte-identical to the notebook that measured the fault."),
+            check="if a notebook exists to measure a repair, its setup must be byte-identical to the notebook that measured the fault."),
         code('''
 # --- setup -------------------------------------------------------------------
 import math, sys, time
@@ -86,10 +84,7 @@ print(f"device  {device}")
             input="CIFAR-10",
             output="the identical fit / validation / test split and scaling",
             constraint="recompute mu and sd from the FIT subset, exactly as before — if your split differs from the previous lecture's by one image, none of the comparisons below mean anything",
-            check="assert the shapes and that the test set is still balanced",
-            left_open="that `baseline = 0.1` is hard-coded here rather than recomputed. The balance assert on the line above is what earns that.",
-            student="reusing variables from the previous notebook's kernel. It works in the lecture room and nowhere else.",
-            catch="an assert immediately before a hard-coded constant is how you make a shortcut safe. Without it, 0.1 is a number someone remembered."),
+            check="assert the shapes and that the test set is still balanced. An assert immediately before a hard-coded constant is how you make a shortcut safe. Without it, 0.1 is a number someone remembered."),
         code('''
 # The same 10,000 images, the same seed, the same scaling. If your split
 # differs from the previous lecture's by one image, none of the comparisons
@@ -140,10 +135,7 @@ against.
             input="depth, width, activation, initialisation, normalisation, dropout",
             output="a fresh network built to that specification",
             constraint="ONE function that can build every configuration in the notebook — every row of every table below differs from its neighbour in exactly one argument to this call",
-            check="assert the layer count, so a change to the builder cannot silently change the architecture",
-            left_open="that `init='torch'` is a deliberate no-op branch. It means 'whatever nn.Linear chose', and naming it makes the default a choice rather than an absence.",
-            student="writing a separate model class per experiment. Two classes that differ in three places cannot support a claim about one of them.",
-            catch="if your ablation table is built from more than one constructor, it is not an ablation table."),
+            check="assert the layer count, so a change to the builder cannot silently change the architecture. If your ablation table is built from more than one constructor, it is not an ablation table."),
         code('''
 DEPTH, WIDTH, N_IN, N_OUT = 20, 100, 3072, 10
 EPOCHS, BATCH, LR = 20, 128, 1e-3
@@ -213,9 +205,7 @@ That is the whole object. Everything in this lecture is a consequence of it.
             input="random weight matrices at four weight variances",
             output="the predicted and measured variance of the output",
             constraint="unit-variance inputs, so `Var(z) = n_in · Var(w)` can be read directly against the measurement",
-            left_open="the assumptions that make the identity true: weights drawn independently with mean zero, independent of the inputs, and inputs with mean zero. Every one of them is approximately true in a real network, and the residual error later is exactly where they are weakest.",
-            student="taking the boxed formula on faith. It is one line to check and every result in the lecture is a consequence of it.",
-            catch="20,000 samples, not 100. This is a claim about a variance, and a variance estimated from a small sample has a variance of its own."),
+            check="20,000 samples, not 100. This is a claim about a variance, and a variance estimated from a small sample has a variance of its own."),
         code('''
 torch.manual_seed(RANDOM_STATE)
 n_in, n_out, N = 100, 100, 20_000
@@ -272,9 +262,7 @@ and accept an error in both directions rather than a large error in one.
             input="the three layer shapes in this network",
             output="what the forward pass wants, what the backward pass wants, and what Glorot gives",
             constraint="show all THREE columns per row — the point is that the first two disagree and the third is a compromise, not a derivation",
-            left_open="that the two conditions are the same condition ONLY when n_in = n_out. Every real network changes width somewhere, and ours starts at 3072 → 100.",
-            student="learning 'Glorot is 2/(fan_in+fan_out)' as a formula. It is a harmonic mean of two irreconcilable demands, and knowing that tells you when it will be close and when it will not.",
-            catch="on the 100 → 100 layers the two demands agree and Glorot is exact. On the first layer they differ by a factor of 30 and nothing can fix that."),
+            check="on the 100 → 100 layers the two demands agree and Glorot is exact. On the first layer they differ by a factor of 30 and nothing can fix that."),
         code('''
 for (nin, nout) in [(3072, 100), (100, 100), (100, 10)]:
     fwd = 1 / nin
@@ -308,9 +296,7 @@ Check the factor of two rather than taking it:
             input="half a million standard normal samples",
             output="E[z²], E[relu(z)²] and their ratio",
             constraint="measure the ratio rather than quoting 1/2 — it is one line, and the whole He correction rests on it",
-            left_open="why it is exactly a half. ReLU zeroes the negative half of a symmetric zero-mean distribution, so exactly half the second moment survives.",
-            student="memorising `2/fan_in` without the reason. When you meet an activation that is not ReLU — ELU, SELU, GELU — you then have no way to work out its constant.",
-            catch="the logistic's derivative never exceeds 1/4, which is the other half of the story and the direct cause of the previous lecture's failure."),
+            check="the logistic's derivative never exceeds 1/4, which is the other half of the story and the direct cause of the previous lecture's failure."),
         code('''
 z = torch.randn(500_000)
 print(f"E[z^2]            {(z**2).mean():.4f}")
@@ -350,9 +336,7 @@ uniform on $(-b,b)$ has variance $b^2/3$ — hence the 3.
             input="the weight variance and E[φ′²] of each scheme",
             output="ρ per layer, and ρ to the 19th",
             constraint="compute it from the SHAPES of the matrices and one expectation — no network is built and no data is touched",
-            left_open="that only ρ = 1 survives depth. If ρ < 1 the gradient disappears and if ρ > 1 it explodes; there is no regime in which a constant repeated L times is safe.",
-            student="not noticing where the 3 comes from. The nn.Linear default is a uniform on (−b, b) with b = 1/√fan_in, and a uniform on (−b, b) has variance b²/3.",
-            catch="a prediction made before the measurement is worth ten made after it. Write these four numbers down before running the next cell."),
+            check="a prediction made before the measurement is worth ten made after it. Write these four numbers down before running the next cell."),
         code('''
 def rho(var_w, Ephi2, n_out=WIDTH):
     return math.sqrt(n_out * var_w * Ephi2)
@@ -383,10 +367,7 @@ float64.
             input="four initialisation and activation schemes",
             output="predicted ρ, measured ρ, the error, the forward scale, and the end-to-end ratio",
             constraint="measure ||dL/dz|| — the DELTA — not ||dL/dW||. They are different quantities and confusing them is the single easiest way to misread this lecture",
-            check="assert prediction and measurement agree within 15%, per scheme",
-            left_open="where the residual comes from, and the cell says: E[φ′²] is not quite (1/4)² because the pre-activations are not exactly at zero, and successive gradient components are not exactly uncorrelated.",
-            student="profiling the weight gradient and comparing it with a theory about the delta. The two differ by the forward factor, and for an unnormalised ReLU stack that is not a technicality.",
-            catch="`retain_grad()` on the intermediates. Non-leaf tensors do not keep their gradients by default, and without it `z.grad` is None with no error."),
+            check="assert prediction and measurement agree within 15%, per scheme. `retain_grad()` on the intermediates. Non-leaf tensors do not keep their gradients by default, and without it `z.grad` is None with no error."),
         code('''
 def grad_profile(n_batches=8, dtype=torch.float64, **kw):
     torch.manual_seed(RANDOM_STATE)
@@ -471,9 +452,7 @@ for k, v in schemes.items():
             input="the four weight-gradient profiles",
             output="||dL/dW|| per layer, one line per scheme",
             constraint="log y-axis and all four on ONE plot — the schemes span fifteen orders of magnitude between them",
-            left_open="that the prediction came from counting rows and columns of matrices, and the measurement came from a backward pass through twenty layers on real photographs. They agree to a few per cent.",
-            student="reading the flat line as the good one without checking which quantity is plotted. The next cell is about a flat profile that is flat for the wrong reason.",
-            catch="this is the whole lecture. Everything below it is application."),
+            check="this is the whole lecture. Everything below it is application."),
         code('''
 plt.figure(figsize=(8.5, 3.6))
 for k, g in profiles.items():
@@ -507,9 +486,7 @@ technicality, as the next cell shows.
             input="ρ, the forward scale, and the weight-gradient ratio per scheme",
             output="all four columns side by side",
             constraint="show ρ and the forward factor SEPARATELY as well as their product — the product is what the previous lecture measured",
-            left_open="the 'Glorot, ReLU' row. Its weight-gradient ratio is close to 1, so the previous lecture's diagnostic would pass it — because the backward attenuation and the forward attenuation cancel in that one number.",
-            student="using a flat ||dL/dW|| profile as a certificate that the initialisation is right. A flat gradient profile does NOT certify an initialisation, and this row is the counterexample.",
-            catch="||dL/dW_l|| ≈ ||delta_l||·||a_(l−1)||. Two factors in one number, and they can cancel."),
+            check="||dL/dW_l|| ≈ ||delta_l||·||a_(l−1)||. Two factors in one number, and they can cancel."),
         code('''
 print(f"{'':18s} {'rho':>8s} {'fwd':>8s} {'rho/fwd':>9s} {'||dW|| ratio':>13s}")
 for k in schemes:
@@ -536,10 +513,7 @@ below differs from its neighbour in exactly one argument.
             input="every knob the notebook varies",
             output="a trained network and its history, including the test accuracy",
             constraint="ONE function, one seed, one subset, one epoch count — so every row of every table differs from its neighbour in exactly one argument",
-            check="a harness check: a 2-layer ReLU network must reach better than 0.2 in three epochs, or the harness itself cannot learn and every table below is measuring the harness",
-            left_open="that the harness computes the test accuracy on every call. That is defensible only because no configuration in this notebook is chosen by it — the ladder is fixed in advance.",
-            student="skipping the harness check. Twenty rows of 10% would then read as twenty failed repairs rather than one broken loop.",
-            catch="test the instrument before the experiment. Three epochs on two layers costs seconds and rules out the most expensive possible mistake."),
+            check="a harness check: a 2-layer ReLU network must reach better than 0.2 in three epochs, or the harness itself cannot learn and every table below is measuring the harness. Test the instrument before the experiment. Three epochs on two layers costs seconds and rules out the most expensive possible mistake."),
         code('''
 Xf = torch.tensor(X_fit,  device=device); yf = torch.tensor(y_fit,  device=device)
 Xv = torch.tensor(X_val,  device=device); yv = torch.tensor(y_val,  device=device)
@@ -621,9 +595,7 @@ to make things worse on their own.
             input="seven repairs, each applied to the broken network by itself",
             output="test accuracy and final loss for each",
             constraint="ONE change per row, all against the same broken baseline — a stack of seven changes that works tells you nothing about which of the seven mattered",
-            left_open="that three of them do nothing on their own, and that is informative rather than disappointing. Clipping, a schedule and dropout are all answers to problems this network does not have.",
-            student="applying everything at once because it is faster. Two of these repairs make things WORSE alone, and a combined run hides both facts.",
-            catch="clipping bounds a gradient that is too large; ours is fifteen orders of magnitude too small. Dropout fights overfitting; a network at chance is not overfitting. Applying a fix whose failure mode you have not measured is how a notebook grows to forty cells and stops being explicable."),
+            check="clipping bounds a gradient that is too large; ours is fifteen orders of magnitude too small. Dropout fights overfitting; a network at chance is not overfitting. Applying a fix whose failure mode you have not measured is how a notebook grows to forty cells and stops being explicable."),
         code('''
 alone = [
     ("nothing (Lecture 13)",  dict(act="sigmoid", init="torch")),
@@ -669,10 +641,7 @@ then the optimisation, then the generalisation.
             input="the same repairs, stacked in diagnostic order",
             output="each rung's accuracy and its delta from the rung below",
             constraint="stack in the order the DIAGNOSIS suggests — signal first, then optimisation, then generalisation",
-            check="assert the repaired network is at least three times chance, and record which rung was actually best",
-            left_open="that the LAST rung is not the best one. The cell detects that and says so, because otherwise you would ship the bottom row by default.",
-            student="reporting the final row because it has the most repairs in it. The table exists precisely so you can say which rungs you dropped and why.",
-            catch="capture the best row into a variable and use THAT downstream. Hard-coding the last rung's settings in the summary would report 33.4% where the argument requires 43.9% — the notebook committing the mistake the deck forbids."),
+            check="assert the repaired network is at least three times chance, and record which rung was actually best. Capture the best row into a variable and use THAT downstream. Hard-coding the last rung's settings in the summary would report 33.4% where the argument requires 43.9% — the notebook committing the mistake the deck forbids."),
         code('''
 ladder = [
     ("Lecture 13, unchanged",       dict(act="sigmoid", init="torch")),
@@ -712,9 +681,7 @@ if best is not rows[-1]:
             input="the seven rungs",
             output="a bar per rung, and four loss curves",
             constraint="draw the chance line at 10% on the bar panel and ln(10) on the loss panel — every bar has to be read against chance",
-            left_open="why only four curves are plotted. Seven overlapping loss curves are unreadable, and the four chosen are the ones that differ in kind rather than in degree.",
-            student="plotting all seven and producing a figure nobody can read. A selection is a decision; make it deliberately and say what you selected.",
-            catch="horizontal bars with the labels on the axis, not a legend. Seven long labels in a legend is a puzzle."),
+            check="horizontal bars with the labels on the axis, not a legend. Seven long labels in a legend is a puzzle."),
         code('''
 fig, ax = plt.subplots(1, 2, figsize=(13, 4))
 labels = [r[0] for r in rows]
@@ -743,9 +710,7 @@ the baseline, and it looks like the problem is solved.
             input="'my 20-layer network isn't learning — switch it to ReLU and initialise the weights properly'",
             output="a trained network and its test accuracy",
             constraint="run it exactly as returned. The loss falls, the accuracy is several times the baseline, and it looks like the problem is solved",
-            left_open="that Xavier and Glorot are the same person and the same formula, so the assistant did do something defensible — it used the initialisation derived for a roughly LINEAR activation on an activation that throws away half the variance.",
-            student="accepting it because the number moved. With ReLU, Glorot gives ρ = √(1·½) = 0.707, not 1 — over nineteen layers that is three orders of magnitude rather than fifteen. Enough to train visibly, and far from correct.",
-            catch="a repair that improves the number is not thereby the right repair. Put the constant back into the ρ table and see what it predicts."),
+            check="a repair that improves the number is not thereby the right repair. Put the constant back into the ρ table and see what it predicts."),
         code('''
 def assistant_fix(depth=20, width=100, n_in=3072, n_out=10):
     layers, prev = [], n_in
@@ -795,9 +760,7 @@ Measure the difference rather than arguing about it.
             input="both initialisations with ReLU",
             output="the measured ρ against theory for each, and the accuracy cost",
             constraint="report the measured ρ beside the PREDICTED one — 0.707 and 1.0 were both derived before this cell ran",
-            left_open="the corrected specification, whose last sentence is the important one: 'print the per-layer gradient norm ratio and show me it is within 20% of 1.0'. 'Initialise it properly' is not a specification; a per-layer ratio near 1 is.",
-            student="arguing about which initialisation is correct. Both are correct for the activation they were derived for, and the measurement settles it in thirty seconds.",
-            catch="ask any repair to produce the diagnostic that would show it worked. An accuracy that went up is compatible with a great many wrong repairs."),
+            check="ask any repair to produce the diagnostic that would show it worked. An accuracy that went up is compatible with a great many wrong repairs."),
         code('''
 gx = grad_profile(act="relu", init="glorot")
 gh = grad_profile(act="relu", init="he")
@@ -841,9 +804,7 @@ learning a scale and a shift.
             input="the repaired ReLU network with no norm, batch norm, and layer norm",
             output="accuracy, wall clock and parameter count for each",
             constraint="report the PARAMETER COUNT — two learned vectors per layer is 200 numbers against 10,100, under 2%, and the wall clock is the real cost",
-            left_open="what batch normalisation depends on that layer normalisation does not. Batch statistics are computed ACROSS THE BATCH, so the prediction for one image depends on the other images in its batch at training time and on a running average at evaluation time.",
-            student="assuming normalisation is free because the parameter count barely moves. The wall clock is where it is paid, and the batch dependence is where it bites.",
-            catch="initialisation fixes the variance at step ZERO. It says nothing about step five thousand, by which time the weights have moved — that is what normalisation is for."),
+            check="initialisation fixes the variance at step ZERO. It says nothing about step five thousand, by which time the weights have moved — that is what normalisation is for."),
         code('''
 for label, kw in [("none", {}), ("batch", dict(norm="batch")),
                   ("layer", dict(norm="layer"))]:
@@ -877,9 +838,7 @@ fluctuate:
             input="a batch-normalised network, evaluated in both modes",
             output="the accuracy each way, and the difference",
             constraint="use the SAME 2,000 images both times — the difference must come from the mode and nothing else",
-            left_open="why this is harder to catch than the dropout version. Batch normalisation does not FLUCTUATE, so running the evaluation twice gives the same wrong number twice.",
-            student="relying on the wobble test from Lecture 12. It catches dropout because dropout is random; batch norm in training mode is deterministic given the batch, and the tell is gone.",
-            catch="from here on `model.eval()` matters more, not less, and the cheap diagnostic that used to catch a missing one no longer does."),
+            check="from here on `model.eval()` matters more, not less, and the cheap diagnostic that used to catch a missing one no longer does."),
         code('''
 net_bn, _ = train(act="relu", init="he", norm="batch", epochs=3)
 net_bn.train()
@@ -911,9 +870,7 @@ network, and look at where the per-layer backward factor ends up.
             input="the broken network with no norm, batch norm, layer norm",
             output="ρ and the end-to-end delta ratio for each",
             constraint="report the measurement without an explanation attached to it",
-            left_open="the anomaly itself: applied alone to the broken network, batch normalisation rescues it completely and layer normalisation does nothing — yet on the REPAIRED network the two are within a point of each other.",
-            student="inventing an explanation. We have not measured enough to account for it, and this cell is the measurement that would start to.",
-            catch="whatever you conclude, write down the measurement that supports it. An explanation with no number attached is the thing this course is trying to replace."),
+            check="whatever you conclude, write down the measurement that supports it. An explanation with no number attached is the thing this course is trying to replace."),
         code('''
 for label, kw in [("none",  dict(act="sigmoid", init="torch")),
                   ("batch", dict(act="sigmoid", init="torch", norm="batch")),
@@ -941,9 +898,7 @@ below the median silently turns your optimiser into sign descent.
             input="two epochs of gradient norms, under He and under N(0,1)",
             output="the median and maximum for each, and both distributions on a log axis",
             constraint="use `clip_grad_norm_` with an INFINITE threshold to read the norm without clipping it — the measurement must not be the intervention",
-            left_open="that clipping defends against the OTHER failure, the one where ρ > 1. It is in this notebook to be measured, not because this network needs it.",
-            student="picking `clip=1.0` from a tutorial. A clip value below the median silently turns your optimiser into sign descent, and nothing warns you.",
-            catch="log10 of the norms, histogrammed. The two initialisations differ by orders of magnitude and a linear histogram shows one bar."),
+            check="log10 of the norms, histogrammed. The two initialisations differ by orders of magnitude and a linear histogram shows one bar."),
         code('''
 def step_norms(epochs=2, **kw):
     torch.manual_seed(RANDOM_STATE)
@@ -987,9 +942,7 @@ section 6.
             input="SGD, momentum, Nesterov, RMSprop, Adam, AdamW",
             output="test accuracy and final loss for each",
             constraint="different learning rates for the SGD family and the adaptive family — 1e-3 on plain SGD is not a fair test of plain SGD",
-            left_open="why this section is here and not in section 6. Comparing optimisers on the BROKEN network would have measured nothing: none of them can descend a gradient that does not arrive.",
-            student="benchmarking optimisers first, because it is the most obviously tunable thing. Every row would have read 10% and the conclusion would have been that the optimiser does not matter.",
-            catch="fix the signal before tuning the search. An optimiser comparison on a network that cannot learn is a comparison of nothing."),
+            check="fix the signal before tuning the search. An optimiser comparison on a network that cannot learn is a comparison of nothing."),
         code('''
 for name, lr in [("sgd", 1e-2), ("momentum", 1e-2), ("nesterov", 1e-2),
                  ("rmsprop", 1e-3), ("adam", 1e-3), ("adamw", 1e-3)]:
@@ -1002,9 +955,7 @@ for name, lr in [("sgd", 1e-2), ("momentum", 1e-2), ("nesterov", 1e-2),
             input="the repaired network, with and without a schedule",
             output="final test accuracy and BEST validation accuracy for each",
             constraint="report the best validation as well as the final test — a schedule that ends at a low learning rate can finish below its own peak",
-            left_open="that OneCycle raises the learning rate to 10× before lowering it, so the `max_lr` here is not the same knob as `lr` elsewhere in the notebook.",
-            student="comparing a scheduled run against an unscheduled one at the same nominal learning rate and concluding the schedule is what helped. The schedule changed the learning rate; that IS the comparison, and it needs saying.",
-            catch="a schedule is a hyperparameter with a shape rather than a value. Report the curve or at least its peak, not only its endpoint."),
+            check="a schedule is a hyperparameter with a shape rather than a value. Report the curve or at least its peak, not only its endpoint."),
         code('''
 for name in (None, "cosine", "onecycle"):
     _, h = train(act="relu", init="he", norm="batch", clip=1.0, schedule=name)
@@ -1024,9 +975,7 @@ changed.
             input="the broken network and the BEST rung of the ladder",
             output="baseline, both accuracies, the improvement, and how many rungs were dropped",
             constraint="use BEST_KW, captured from the ladder — not the last rung's settings typed out again",
-            left_open="that the ceiling this network is running into is the subject of the next lecture. It is still an MLP on flattened pixels, and no amount of initialisation repairs that.",
-            student="hard-coding the final rung. That would report 33.4% where the argument requires 43.9% — the notebook committing, two pages later, the exact mistake the deck spends a slide forbidding.",
-            catch="when a table selects a winner, carry the winner forward in a variable. Retyping its settings is how the summary and the table drift apart."),
+            check="when a table selects a winner, carry the winner forward in a variable. Retyping its settings is how the summary and the table drift apart."),
         code('''
 _, base = train(act="sigmoid", init="torch")
 # The BEST rung, not the last one. Hard-coding the last rung's settings here

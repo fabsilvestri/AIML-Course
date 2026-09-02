@@ -61,9 +61,7 @@ def build() -> list:
             input="nothing",
             output="versions, seeds, device, N_CATALOGUE",
             constraint="the same constants as the previous lecture, so the numbers are comparable",
-            left_open="what is downloaded on top of the catalogue: a captioner and a small instruction-tuned language model, about 1 GB each. Still not COCO.",
-            student="skipping the setup because it looks identical. It IS identical, and that is what makes the before-and-after legitimate.",
-            catch="`torch.nn.functional as Fn` rather than `F` — `F` is already the feature matrix in the previous notebook's namespace, and a collision there is the kind of bug that produces a confident wrong number."),
+            check="`torch.nn.functional as Fn` rather than `F` — `F` is already the feature matrix in the previous notebook's namespace, and a collision there is the kind of bug that produces a confident wrong number."),
         code('''
 # --- setup -------------------------------------------------------------------
 import ast, re, sys, time, urllib.request
@@ -105,10 +103,7 @@ entries. Cached from the previous lecture if you ran it in this runtime.
             input="the split index and the first 200 images by id",
             output="the identical 200 entries, with descriptions and queries",
             constraint="the same deterministic rule — sorted by cocoid, first 200 — so this notebook and the last are talking about the same corpus",
-            check="assert the count and that the SKUs are unique",
-            left_open="`valid_skus`, built here and not used until section 8. It is the ground truth for the grounding metric, and it has to be the catalogue's SKUs and nothing else.",
-            student="relying on the previous notebook's variables. Cached files are fine to reuse; a live kernel is not.",
-            catch="whitespace-normalise the captions on the way in, exactly as before. Two notebooks that normalise differently have different queries."),
+            check="assert the count and that the SKUs are unique. Whitespace-normalise the captions on the way in, exactly as before. Two notebooks that normalise differently have different queries."),
         code('''
 CACHE = Path("datasets/app12")
 CACHE.mkdir(parents=True, exist_ok=True)
@@ -148,10 +143,7 @@ print(f"catalogue: {len(catalogue)} entries")
             input="the images and queries",
             output="both the RAW features and the unit-normalised ones",
             constraint="keep `I_raw` and `Q_raw` deliberately — the assistant failure in section 6 is about what happens when you use them, and it cannot be demonstrated if they were normalised in place",
-            check="assert both normalised matrices really have unit rows",
-            left_open="that `get_image_features` and `get_text_features` do NOT return unit vectors, and nothing in their names says so.",
-            student="normalising inside the encoder function, which is correct practice and removes the lecture's central demonstration.",
-            catch="`np.allclose(norm, 1.0)` as an assert, not a print. It is two lines, and section 6 is entirely about the run where it would have fired."),
+            check="assert both normalised matrices really have unit rows. `np.allclose(norm, 1.0)` as an assert, not a print. It is two lines, and section 6 is entirely about the run where it would have fired."),
         code('''
 from transformers import CLIPModel, CLIPProcessor
 
@@ -206,9 +198,7 @@ semantics; the length is whatever the last linear layer happened to scale to.
             input="the raw embedding lengths",
             output="their range, for images and for text",
             constraint="report the RATIO of longest to shortest, not just the extremes",
-            left_open="the factorisation: ⟨a,b⟩ = ‖a‖‖b‖cos θ mixes two quantities — which direction the encoder chose, and how loudly it said it. Only the direction carries the semantics; the length is whatever the last linear layer happened to scale to.",
-            student="assuming the lengths are all about the same. They differ by a factor that is large enough to reorder a ranking, which is measured in section 6.",
-            catch="four lines, and they are the setup for the entire assistant failure. Measure the thing you are about to claim matters."),
+            check="four lines, and they are the setup for the entire assistant failure. Measure the thing you are about to claim matters."),
         code('''
 norms = np.linalg.norm(I_raw, axis=1)
 print(f"image embedding lengths: min {norms.min():.2f}   max {norms.max():.2f}"
@@ -239,9 +229,7 @@ share the total equally. So the standard deviation is exactly `1 / sqrt(d)`.
             input="random unit vectors at six dimensionalities",
             output="the measured sd of the cosine against 1/√d, and how often |cos| exceeds 0.5",
             constraint="sweep the DIMENSION — the effect is entirely about d, and a single dimensionality shows a number rather than a law",
-            left_open="the derivation. Fix u = e₁ by rotational symmetry, write v = z/‖z‖ with z ~ N(0, I_d); then u·v = z₁/‖z‖, whose expectation is zero by the symmetry v → −v, and whose second moment is 1/d because the d coordinates share the total equally.",
-            student="answering −1. Most rooms do. For a fixed unit vector there is EXACTLY ONE point at cosine −1, so asking 200 unrelated captions all to sit there is asking for a configuration that does not exist.",
-            catch="in high dimensions two unrelated things are ORTHOGONAL, not opposite. That is why the contrastive loss targets zero for a non-matching pair, and it is the concentration result from application 5 in a new costume."),
+            check="in high dimensions two unrelated things are ORTHOGONAL, not opposite. That is why the contrastive loss targets zero for a non-matching pair, and it is the concentration result from application 5 in a new costume."),
         code('''
 rng = np.random.default_rng(SEED)
 
@@ -275,9 +263,7 @@ Now the same measurement on the trained embeddings themselves.
             input="the CLIP features",
             output="mean, sd and minimum for image-image, image-unrelated-caption and matched pairs, plus the distance between the two centroids",
             constraint="report the MINIMUM as well as the mean — the claim is that nothing is anywhere near −1, and only the minimum tests it",
-            left_open="the modality gap. Unrelated pairs sit near zero and nowhere near −1, exactly as the geometry says — but they are not AT zero either: images occupy one region of the sphere and captions another.",
-            student="tuning an absolute cosine threshold on image-image pairs and applying it to image-text pairs. The two distributions are centred in different places and the threshold means nothing across them.",
-            catch="why the gap exists is an open research question, outside the book and not examinable. THAT it exists is measurable in four lines and is on the exam."),
+            check="why the gap exists is an open research question, outside the book and not examinable. THAT it exists is measurable in four lines and is on the exam."),
         code('''
 off = ~np.eye(N_CATALOGUE, dtype=bool)
 ii, it = I @ I.T, I @ Q.T
@@ -320,9 +306,7 @@ Everything is familiar except `tau`. Set it to 1 and watch.
             input="the similarity matrix at six temperatures",
             output="the loss, p(correct), p(hardest wrong) and top-1 at each",
             constraint="print log B beside the table — a contrastive loss is measured against a batch-dependent ceiling and is meaningless without it",
-            left_open="two readings. At τ=1 the logits are cosines, so a row spans at most 2, exp of a range of 2 is a ratio of at most 7.4 across 200 competitors, and the softmax is nearly uniform whatever the model says. And the TOP-1 COLUMN DOES NOT MOVE.",
-            student="tuning τ to improve accuracy. τ cannot change which column is largest, so it cannot change the accuracy of a fixed model — what it changes is where the gradient goes.",
-            catch="from thread 11, ∂L/∂S_ij = (p_ij − 1[j=i])/τ, so a small τ concentrates the push on the few hardest negatives. That is what the temperature is for."),
+            check="from thread 11, ∂L/∂S_ij = (p_ij − 1[j=i])/τ, so a small τ concentrates the push on the few hardest negatives. That is what the temperature is for."),
         code('''
 def infonce(sim, tau):
     """Symmetric InfoNCE on a matrix of cosines. Returns a dict of diagnostics."""
@@ -370,9 +354,7 @@ The temperature is not a hyperparameter anybody tunes by hand. The model stores
             input="CLIP's own logit_scale parameter",
             output="1/τ, τ, and the loss at that temperature",
             constraint="read it OUT OF THE MODEL rather than choosing one — it is not a hyperparameter anybody tunes by hand",
-            left_open="that the model stores log(1/τ) and learns it by gradient descent, clamped from above. The clamp is there because the loss would otherwise be minimised by driving τ to zero.",
-            student="picking τ = 0.07 from a paper. The checkpoint carries its own, and using a different one silently changes every probability you report.",
-            catch="when a model has learned a hyperparameter, ask it. `clip.logit_scale` is one attribute access and it is the correct value by construction."),
+            check="when a model has learned a hyperparameter, ask it. `clip.logit_scale` is one attribute access and it is the correct value by construction."),
         code('''
 scale = clip.logit_scale.exp().item()
 print(f"learned logit scale 1/tau = {scale:.2f}")
@@ -398,9 +380,7 @@ the number of classes in the problem you are solving, and the chance level is
             input="batches of 2, 8, 32, 128 and 200",
             output="top-1 and loss at each, beside chance 1/B and the ceiling log B",
             constraint="average over many random batches at each size — a single draw at B=2 is one coin flip",
-            left_open="the argument: accuracy falls with B and chance falls FASTER, so the gap — the learning signal — widens. That is the whole case for a large batch.",
-            student="treating batch size as a memory setting. It is the number of classes in the problem you are solving, and doubling it changes the task rather than the gradient noise.",
-            catch="a contrastive loss value is not comparable across papers. It is measured against a batch-dependent ceiling of log B, and almost nobody states their B beside it."),
+            check="a contrastive loss value is not comparable across papers. It is measured against a batch-dependent ceiling of log B, and almost nobody states their B beside it."),
         code('''
 tau = 1 / scale
 print(f"{'B':>5} {'top-1':>8} {'chance 1/B':>12} {'loss':>8} {'log B':>8}")
@@ -439,9 +419,7 @@ One clause missing — the clause section 2 spent five minutes on.
             input="'write the symmetric contrastive loss for a batch of image and text embeddings, with a temperature of 0.01'",
             output="the loss, computed on the RAW features",
             constraint="run it exactly as returned. It runs, the docstring is accurate, and the shapes, the target and the factor of one half are all right",
-            left_open="the review question: is `img @ txt.T` a COSINE? Only if both sides are unit vectors — and `get_image_features` does not return unit vectors.",
-            student="this, verbatim. The entries are ‖a‖‖b‖cos θ, so the temperature is dividing a quantity with no fixed scale, and the row-wise softmax compares lengths as much as directions.",
-            catch="reviewer question 5 again. The default nobody asked for is that a function called `get_*_features` returns something unnormalised."),
+            check="reviewer question 5 again. The default nobody asked for is that a function called `get_*_features` returns something unnormalised."),
         code('''
 # --- what the weak prompt returns --------------------------------------------
 def contrastive_loss(img, txt, tau=0.01):
@@ -472,9 +450,7 @@ Reviewer question 5 again: the default nobody asked for.
             input="the loss and accuracy both ways",
             output="both, plus the rank correlation between embedding length and queries won",
             constraint="show the MECHANISM, not just the loss difference — count how many queries each image wins and correlate that with its length",
-            left_open="the shape of the damage: one image takes a large share of all the queries because it is long, and many images are never ranked first at all.",
-            student="seeing a small loss difference and concluding it does not matter. The ranking is reordered by a quantity that carries no semantics.",
-            catch="the corrected specification's assertion is the part that would have caught it in silence: assert every row of both matrices has unit norm to within 1e-5. Two lines, and the bug becomes a crash."),
+            check="the corrected specification's assertion is the part that would have caught it in silence: assert every row of both matrices has unit norm to within 1e-5. Two lines, and the bug becomes a crash."),
         code('''
 good = infonce(I @ Q.T, tau)
 bad  = infonce(I_raw @ Q_raw.T, tau)
@@ -514,10 +490,7 @@ write the missing ones.
             input="the descriptions and queries through MiniLM",
             output="R@1 on the 60 blanked entries, with and without their descriptions",
             constraint="the same fixed blanking rule as the previous lecture, and the same −inf convention for 'not in the index at all'",
-            check="assert exactly 60 entries were blanked",
-            left_open="that the deleted number is structurally zero rather than merely small. An entry with no text is not in a text index.",
-            student="re-deriving the blanked set with a different rule, which changes which 60 entries are affected and makes the repair below incomparable with the damage above.",
-            catch="reproduce the fault before repairing it, from the same rule and the same seed. A repair measured against a differently-broken baseline is not measured."),
+            check="assert exactly 60 entries were blanked. Reproduce the fault before repairing it, from the same rule and the same seed. A repair measured against a differently-broken baseline is not measured."),
         code('''
 from transformers import AutoTokenizer, BlipForConditionalGeneration, BlipProcessor
 from transformers import AutoModel
@@ -563,10 +536,7 @@ print(f"R@1 on the 60 blanked entries — described: "
             input="the 60 images with no description",
             output="a generated caption for each, with four shown beside their human captions",
             constraint="generate for the BLANKED entries only — captioning all 200 would replace descriptions that already exist and confound the measurement",
-            check="assert one caption came back per blanked entry",
-            left_open="that a generated caption is not evidence about the product. It describes the photograph, and the photograph is not the specification.",
-            student="captioning everything because it is one fewer index to manage. The 60-entry comparison then has no control group.",
-            catch="print human and generated side by side for a few. It is the only way to see that the generated ones are shorter, blander and occasionally wrong."),
+            check="assert one caption came back per blanked entry. Print human and generated side by side for a few. It is the only way to see that the generated ones are shorter, blander and occasionally wrong."),
         code('''
 proc = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
 cap = BlipForConditionalGeneration.from_pretrained(
@@ -594,9 +564,7 @@ for j, g in list(zip(blanked, generated))[:4]:
             input="the description matrix with the generated captions filled in",
             output="R@1 on the 60, four ways, and the overall text-route figure",
             constraint="measure on the SAME 60 entries throughout — the overall number is diluted by the 140 that never changed",
-            left_open="that it recovers PART of the loss, not all of it. Report the part, not the direction.",
-            student="reporting the overall improvement, which is smaller and which attributes to all 200 entries a change that affected 60.",
-            catch="three things not to claim: a generated caption is not evidence about the product; 60 entries is a small sample with a wide interval; and we are scoring generated captions against human captions of the SAME image, which is a friendly test. The failure mode to watch for is an auto-caption that is WRONG, making an entry findable under the wrong query — worse than unfindable, and nothing measured here detects it."),
+            check="three things not to claim: a generated caption is not evidence about the product; 60 entries is a small sample with a wide interval; and we are scoring generated captions against human captions of the SAME image, which is a friendly test. The failure mode to watch for is an auto-caption that is WRONG, making an entry findable under the wrong query — worse than unfindable, and nothing measured here detects it."),
         code('''
 D_filled = D.copy()
 D_filled[blanked] = unit(minilm(generated))
@@ -644,10 +612,7 @@ which one you measured.
             input="six deliberately ambiguous queries",
             output="the model, the prompt helper, and the top-5 shortlist per query",
             constraint="decide how to CHECK it before generating anything — 'the answer is good' is not measurable in a lecture, so require cited SKUs, which either exist in the catalogue or do not",
-            check="assert the shortlist has the shape you expect",
-            left_open="that this measures GROUNDING, not helpfulness, and the notebook says which one it measured.",
-            student="evaluating the recommendations by reading them. Six fluent paragraphs are six anecdotes, and the SKU check is the one thing here that is a measurement.",
-            catch="`do_sample=False`. A sampled generation gives a different answer every run and the grounding rate becomes a random variable you have not characterised."),
+            check="assert the shortlist has the shape you expect. `do_sample=False`. A sampled generation gives a different answer every run and the grounding rate becomes a random variable you have not characterised."),
         code('''
 from transformers import AutoModelForCausalLM
 
@@ -688,9 +653,7 @@ assert top5.shape == (len(AMBIGUOUS), 5)
             input="the same six queries, asked both ways",
             output="how many cited SKUs actually exist, under each condition",
             constraint="identical prompts except for the shortlist — the only difference must be whether the model was given the catalogue",
-            left_open="what the closed-book failure actually is. It is NOT that the model refuses. It is that it does not refuse: it produces a fluent recommendation in exactly the right SKU format, and nothing in the output distinguishes an invented stock number from a real one.",
-            student="concluding that retrieval fixes the problem. Grounding is not correctness — a cited entry can exist and still be a bad recommendation, and we measured the cheap half.",
-            catch="the retriever is now the ceiling. If the right entry is not in the top five, no amount of generation recovers it — which is why the R@5 from the previous lecture is the number that matters here."),
+            check="the retriever is now the ceiling. If the right entry is not in the top five, no amount of generation recovers it — which is why the R@5 from the previous lecture is the number that matters here."),
         code('''
 t0 = time.perf_counter()
 closed_cited, grounded_cited = [], []

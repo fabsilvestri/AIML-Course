@@ -57,9 +57,7 @@ def build() -> list:
             input="nothing",
             output="versions, seeds, device",
             constraint="the same seeds as the previous lecture",
-            left_open="that `torch.nn.functional` is imported here and was not before. The thread measures cosine similarities and pooling directly, outside any module.",
-            student="changing the seed between the from-scratch run and the transfer run. Every headline in this notebook is a difference of two accuracies.",
-            catch="a notebook that exists to compare two approaches must fix everything except the approach."),
+            check="a notebook that exists to compare two approaches must fix everything except the approach."),
         code('''
 # --- setup -------------------------------------------------------------------
 import sys, time
@@ -103,10 +101,7 @@ built and 224 for the pretrained one.
             input="Flowers102",
             output="every split decoded at 128 for your network and at 224 for the pretrained one",
             constraint="decode both sizes up front — the pretrained weights fix their input size, and resizing inside the loop would dominate the wall clock this lecture is measuring",
-            check="assert the pair of tensors per split have equal length, and that the transfer tensors really are 224",
-            left_open="that 224 is not a preference. It is what the ResNet weights were trained at, and it is red-team answer 3 for this application.",
-            student="feeding 128-pixel images to the pretrained network. It runs — ResNet is fully convolutional up to the pool — and the features are computed at a scale the weights never saw.",
-            catch="two resolutions means two tensors and two normalisations. Name them differently, because passing the wrong one raises nothing."),
+            check="assert the pair of tensors per split have equal length, and that the transfer tensors really are 224. Two resolutions means two tensors and two normalisations. Name them differently, because passing the wrong one raises nothing."),
         code('''
 IMG, TRANSFER_IMG, N_CLASSES = 128, 224, 102
 
@@ -149,10 +144,7 @@ print(f"majority baseline {majority:.2%}")
             input="nothing",
             output="the same network, and a batched accuracy function",
             constraint="assert the parameter count EXACTLY matches the previous lecture's 4,807,494 — a re-typed architecture that differs anywhere invalidates the comparison",
-            check="the parameter-count assert is the check",
-            left_open="why `accuracy` normalises one batch at a time. `inorm(T_test)` as a single tensor is 6,149 × 3 × 224 × 224 float32 = 3.5 GB, and that is how a Colab session dies.",
-            student="re-typing the architecture from memory and getting one channel count wrong. The parameter assert catches it in one second; the accuracy comparison would not catch it at all.",
-            catch="when you duplicate code across notebooks, assert an invariant that pins it. A number is a better copy-check than reading."),
+            check="the parameter-count assert is the check. When you duplicate code across notebooks, assert an invariant that pins it. A number is a better copy-check than reading."),
         code('''
 # the architecture from the previous lecture, so this notebook stands alone
 def conv_block(c_in, c_out, k=3):
@@ -168,7 +160,7 @@ def make_net():
         nn.Flatten(),
         nn.Linear(256 * (IMG // 16) ** 2, 256), nn.ReLU(),
         nn.Dropout(0.5),
-        nn.Linear(256, N_CLASSES),
+        nn.Linear(256, N_CLASSES)
     )
 
 @torch.no_grad()
@@ -202,10 +194,7 @@ computing *the same sized thing*: a `3 × 128 × 128` input and a
             input="a 3×128×128 input and a 32×128×128 output",
             output="the weight count for a dense layer and for a convolution computing the same sized thing",
             constraint="fix the input AND output shapes so the comparison is between two ways of computing the SAME object",
-            check="assert the convolutional count is exactly 32·3·7·7, and that the ratio exceeds five million",
-            left_open="that H and W do not appear in the convolutional count. Not approximately absent — genuinely absent.",
-            student="concluding convolutions save arithmetic. They do not: the convolution still computes C_out·H·W outputs, each a sum over C_in·k² terms. What shrank is the number of DISTINCT numbers that have to be stored and learned.",
-            catch="print the dense layer's size in gigabytes. 25 GB of float32 for one layer is the kind of number that ends an argument."),
+            check="assert the convolutional count is exactly 32·3·7·7, and that the ratio exceeds five million. Print the dense layer's size in gigabytes. 25 GB of float32 for one layer is the kind of number that ends an argument."),
         code('''
 H = W = IMG
 n_in, n_out = 3 * H * W, 32 * H * W
@@ -253,10 +242,7 @@ the *operation* and not of the training.
             input="one image and the same image shifted by 16 pixels",
             output="the largest difference between shift-then-convolve and convolve-then-shift, on the interior",
             constraint="drop the border before comparing — zero padding invents input that was not there, and `roll` wraps, so both edges violate the identity for reasons that are not about equivariance",
-            check="assert the relative difference is below 1e-5",
-            left_open="that this is checked on a RANDOMLY INITIALISED convolution, deliberately. The property belongs to the operation and not to the training.",
-            student="comparing the full tensors, seeing a large maximum difference at the edge, and concluding convolutions are not equivariant.",
-            catch="the residue that survives is float32 rounding, not mathematics. Say which one you are looking at, and give the relative figure rather than the absolute."),
+            check="assert the relative difference is below 1e-5. The residue that survives is float32 rounding, not mathematics. Say which one you are looking at, and give the relative figure rather than the absolute."),
         code('''
 torch.manual_seed(RANDOM_STATE)
 conv = nn.Conv2d(3, 32, 7, padding=3, bias=False).eval()
@@ -292,9 +278,7 @@ content. Check that too, rather than taking the caveat on trust.
             input="the same two tensors, at the corner",
             output="the difference there",
             constraint="check the caveat rather than stating it — the previous cell's assert is only meaningful if the excluded region really is different",
-            left_open="why padding breaks it. A shift moves real content into invented content, so the two orders of operations no longer agree.",
-            student="taking the interior-only caveat on trust. It is one cell to demonstrate, and it turns a hedge into a measurement.",
-            catch="when an identity holds only on part of the domain, measure it on the other part too. Orders of magnitude larger is the evidence that your exclusion was necessary rather than convenient."),
+            check="when an identity holds only on part of the domain, measure it on the other part too. Orders of magnitude larger is the evidence that your exclusion was necessary rather than convenient."),
         code('''
 edge_a = y_of_shift[..., :4, :4]
 edge_b = shift_of_y[..., :4, :4]
@@ -318,10 +302,7 @@ same shifted image.
             input="the feature maps of an image and its shift, before and after global pooling",
             output="the cosine similarity of each pair",
             constraint="compare the SAME quantity before and after pooling — cosine similarity on flattened maps and on the pooled vectors",
-            check="assert pooling increased the similarity, which is what buying invariance means",
-            left_open="why classification wants this and per-pixel prediction cannot afford it. 'This is a sunflower' is true wherever the sunflower is; segmentation asks for every pixel which class it is, and the answer IS the position.",
-            student="conflating the two words. Invariance is strictly stronger and strictly lossier — it is what you get by DISCARDING the equivariant structure.",
-            catch="a cosine similarity of 0.98 and one of 0.999 sound alike. Print 1 − cos as a percentage and they do not."),
+            check="assert pooling increased the similarity, which is what buying invariance means. A cosine similarity of 0.98 and one of 0.999 sound alike. Print 1 − cos as a percentage and they do not."),
         code('''
 with torch.no_grad():
     maps      = F.relu(conv(x))
@@ -352,10 +333,7 @@ pixel, which class is it?* — the answer **is** the position.
             input="the network and a dummy input",
             output="the last feature map size, and how many input pixels one cell answers for",
             constraint="find the last pooling output by walking the network, not by arithmetic — four MaxPool2d layers is easy to miscount",
-            check="assert the final grid is IMG // 16",
-            left_open="that two flower boundaries fifteen pixels apart are the same cell. Lecture 18 has to put that resolution back, and its whole architecture is about how.",
-            student="assuming the resolution loss is harmless because classification works. It is harmless FOR CLASSIFICATION, which is the point being made.",
-            catch="express it as input pixels per output cell. '256x resolution lost' is abstract; 'one cell answers for 256 pixels' is not."),
+            check="assert the final grid is IMG // 16. Express it as input pixels per output cell. '256x resolution lost' is abstract; 'one cell answers for 256 pixels' is not."),
         code('''
 net = make_net()
 z = torch.zeros(1, 3, IMG, IMG)
@@ -388,10 +366,7 @@ Commit to an answer before running the next cell.
             input="the network and a batch of 32",
             output="parameter memory, optimiser memory, and activation memory",
             constraint="count FOUR float32 arrays per parameter — weights, gradients, and Adam's two moments — and every module output, which stays alive from the moment it is computed until the backward pass reaches it",
-            check="assert activations exceed everything parameter-shaped, since the whole section depends on that being true",
-            left_open="the question posed above it: your network has 4.8 million parameters and your session died with out-of-memory. WHICH of those two facts caused the other? Commit before running.",
-            student="reducing the parameter count. Activation memory is linear in the batch size and parameter memory does not move at all.",
-            catch="when a run runs out of memory, halve the batch, not the model. In order: smaller batch, then smaller resolution (quadratic), then gradient checkpointing, then mixed precision."),
+            check="assert activations exceed everything parameter-shaped, since the whole section depends on that being true. When a run runs out of memory, halve the batch, not the model. In order: smaller batch, then smaller resolution (quadratic), then gradient checkpointing, then mixed precision."),
         code('''
 BATCH = 32
 net = make_net()
@@ -433,9 +408,7 @@ are the ones nearest the image, which are the ones with almost no parameters.
             input="every convolution's output shape",
             output="the activation memory of each",
             constraint="report the share held by the first two convolutions",
-            left_open="the shape of it: activation cost is C×H×W, channels double as the map quarters, so the total halves at every pooling stage — and the expensive layers are the ones nearest the image, which are the ones with almost no parameters.",
-            student="looking for the memory in the biggest layer by parameter count. It is in the smallest ones.",
-            catch="parameters and activations are anti-correlated across a convolutional stack. Any intuition transferred from dense networks points the wrong way."),
+            check="parameters and activations are anti-correlated across a convolutional stack. Any intuition transferred from dense networks points the wrong way."),
         code('''
 z, rows = torch.zeros(1, 3, IMG, IMG), []
 for i, m_ in enumerate(net):
@@ -460,9 +433,7 @@ A prediction nobody checks is a claim.
             input="one real forward pass on the accelerator",
             output="the predicted activation memory beside the measured one",
             constraint="take ONE optimiser step first, so Adam's state exists and is in the baseline rather than appearing as activation memory",
-            left_open="that the CPU branch prints nan and says so. There is no allocator counter there, and the arithmetic above still holds.",
-            student="measuring without synchronising, on cuda or mps, and reading a number from before the work finished.",
-            catch="a prediction nobody checks is a claim. This is four lines and it converts the whole section from arithmetic into a measurement."),
+            check="a prediction nobody checks is a claim. This is four lines and it converts the whole section from arithmetic into a measurement."),
         code('''
 net_d = make_net().to(device)
 opt_d = torch.optim.Adam(net_d.parameters(), lr=3e-4)
@@ -517,9 +488,7 @@ to compare against.
             input="the previous lecture's network, 20 epochs",
             output="train, validation and test accuracy, the wall clock, and the gap",
             constraint="retrain it IN THIS NOTEBOOK, so the comparison below is between two runs on the same machine",
-            left_open="that a persistent gap between two plateaus is variance, and its two cures are more data and more constraint. We cannot buy labels, so the constraint has to come from somewhere.",
-            student="quoting the previous lecture's number against a transfer run measured today. Different session, possibly different hardware, certainly different epoch count.",
-            catch="the observation that motivates everything below: the first layer learned colour blobs and oriented edges, and none of them is about flowers. We spent 1,020 precious labels rediscovering something not specific to this problem."),
+            check="the observation that motivates everything below: the first layer learned colour blobs and oriented edges, and none of them is about flowers. We spent 1,020 precious labels rediscovering something not specific to this problem."),
         code('''
 EPOCHS_SCRATCH, LR = 20, 3e-4
 
@@ -571,9 +540,7 @@ weights are a download.
             input="nothing",
             output="the weights' own declared preprocessing, and the parameter count",
             constraint="print `weights.transforms()` — the weights come WITH their preprocessing, and it is not the one you computed from the flowers",
-            left_open="what was paid for: 1.28 million labelled photographs, 1,000 classes, none of them our species. Edges, colours, textures and parts are a download.",
-            student="ignoring the declared transform and reusing the flower statistics. The first layer expects inputs on the scale it was trained with, and substituting your own is a silent, uncrashing degradation.",
-            catch="every pretrained checkpoint states its preprocessing. Read it and use it — it is metadata, not a suggestion."),
+            check="every pretrained checkpoint states its preprocessing. Read it and use it — it is metadata, not a suggestion."),
         code('''
 weights = ResNet18_Weights.DEFAULT
 print(weights.transforms())
@@ -590,10 +557,7 @@ degradation.
             input="the transfer-resolution tensors",
             output="a second normalise function",
             constraint="a SEPARATE function with a different name — the notebook now has two normalisations and passing the wrong one raises nothing",
-            check="assert the output shape",
-            left_open="that these constants are famous and are not universal. They are ImageNet's, and using them on a dataset whose statistics differ is a choice with a reason, not a default.",
-            student="one `normalise` function mutated to take the ImageNet constants as defaults. Then every earlier cell in the notebook silently changes meaning.",
-            catch="when two incompatible preprocessings coexist, give them different names and pass them explicitly. `norm=` as a parameter of `accuracy` exists for exactly this."),
+            check="assert the output shape. When two incompatible preprocessings coexist, give them different names and pass them explicitly. `norm=` as a parameter of `accuracy` exists for exactly this."),
         code('''
 IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406])[:, None, None]
 IMAGENET_STD  = torch.tensor([0.229, 0.224, 0.225])[:, None, None]
@@ -617,10 +581,7 @@ style.
             input="the pretrained network",
             output="the trainable and frozen parameter counts",
             constraint="replace `fc` AFTER the freezing loop — a newly constructed module has requires_grad=True, and freezing then replacing is the only order that leaves the head trainable",
-            check="assert the trainable count is exactly 512·102 + 102",
-            left_open="that this is not an accident of style. Reverse the two and every parameter in the network is frozen, including the head, and training runs happily and changes nothing.",
-            student="replacing the head first and then freezing everything, which produces a model whose loss never moves and no error at all.",
-            catch="assert the trainable parameter count against an arithmetic expression. It is the only thing that distinguishes the two orders."),
+            check="assert the trainable count is exactly 512·102 + 102. Assert the trainable parameter count against an arithmetic expression. It is the only thing that distinguishes the two orders."),
         code('''
 torch.manual_seed(RANDOM_STATE)
 net_t = resnet18(weights=weights)
@@ -649,10 +610,7 @@ The 1,020 images pass through the backbone once rather than once per epoch.
             input="all three splits through the frozen backbone",
             output="512-dimensional features per image",
             constraint="`.eval()` on the body and `no_grad()` on the extraction — the backbone has batch norms whose running statistics would otherwise be updated by the extraction pass",
-            check="assert the training features are (1020, 512)",
-            left_open="the saving. The 1,020 images pass through the backbone ONCE rather than once per epoch, which is why the head can then be trained for 60 epochs in seconds.",
-            student="running the full network every epoch with the body frozen. It gives the same answer and costs sixty times the compute.",
-            catch="a frozen prefix is a fixed function. Compute it once and cache the output — that is not an optimisation, it is the definition of frozen."),
+            check="assert the training features are (1020, 512). A frozen prefix is a fixed function. Compute it once and cache the output — that is not an optimisation, it is the definition of frozen."),
         code('''
 body = nn.Sequential(*list(net_t.children())[:-1]).eval()
 
@@ -675,9 +633,7 @@ print(f"{FEATURE_SECONDS:.0f} s   features {tuple(F_train.shape)}")
             input="the 512-dimensional features",
             output="the probe's test accuracy and its total wall clock",
             constraint="count the FEATURE EXTRACTION time in the total — the probe is not free just because the head is",
-            left_open="the arithmetic that explains why it works: 52,326 trainable parameters fitted with 1,020 examples is about 51 parameters per image, against 4,713 before. The 11,176,512 frozen ones were fitted with 1.28 million examples, by somebody else.",
-            student="reporting only the head's training time. The comparison in section 8 is against a from-scratch run, and it has to include everything the probe cost.",
-            catch="the variance problem was not solved. It was MOVED to a dataset large enough to absorb it."),
+            check="the variance problem was not solved. It was MOVED to a dataset large enough to absorb it."),
         code('''
 torch.manual_seed(RANDOM_STATE)
 head = nn.Linear(512, N_CLASSES).to(device)
@@ -727,9 +683,7 @@ layers hold parts and textures, which partly are.
             input="one image repeated seven times",
             output="seven random crops and flips, beside the original",
             constraint="written on tensors rather than as a transform pipeline, so the operation is visible as arithmetic rather than as a class name",
-            left_open="what makes it legitimate at all: the label is the same in all eight. An augmentation that could change the label is not an augmentation, it is a mislabelling.",
-            student="adding vertical flips or large rotations because more augmentation sounds better. For some datasets that changes the class; for flowers it mostly does not, and 'mostly' is worth checking.",
-            catch="look at the augmented images before training on them. A crop scale that occasionally excludes the subject is a labelled photograph of a leaf."),
+            check="look at the augmented images before training on them. A crop scale that occasionally excludes the subject is a labelled photograph of a leaf."),
         code('''
 def augment(x_u8, gen):
     """Random resized crop and a horizontal flip, on a uint8 batch.
@@ -784,9 +738,7 @@ line you should be able to defend:
             input="the pretrained network with layer4 and fc unfrozen",
             output="the validation curve, clean and augmented, and the test accuracy",
             constraint="THREE things that did not happen before, each defensible: layer4 unfrozen and nothing earlier; two parameter groups at two learning rates in one optimiser; and the frozen batch-norms put in eval() — freezing weights does NOT freeze running statistics, because those are buffers updated in the forward pass",
-            left_open="the second generator. Sharing one would mean the augmented-validation diagnostic consumed draws from the stream that shuffles training batches, so the training order would depend on whether the diagnostic ran at all.",
-            student="`for p in ft.parameters(): p.requires_grad = False` and then training, expecting the batch norms to be frozen too. The running means keep moving, on augmented flower data, and the frozen backbone quietly stops being the one that was downloaded.",
-            catch="1e-4 on the pretrained block and 1e-3 on the random head. The head starts from noise and the block starts from something good; one learning rate for both damages whichever it is wrong for."),
+            check="1e-4 on the pretrained block and 1e-3 on the random head. The head starts from noise and the block starts from something good; one learning rate for both damages whichever it is wrong for."),
         code('''
 FT_EPOCHS = 8
 
@@ -845,10 +797,7 @@ print(f"\\nfine-tuned: {FT_TEST:.2%} in {FT_SECONDS:.0f} s")
             input="all five results",
             output="accuracy and wall clock for each",
             constraint="wall clock in the SAME column — the frozen probe's headline is that it is both faster and more accurate, and one of those is invisible without the time",
-            check="assert the fine-tune beat the from-scratch run, with a message pointing at the normalisation if it did not",
-            left_open="that both anchors stay in the table. A transfer result quoted without the majority baseline is missing its denominator.",
-            student="dropping the baselines once the numbers get good. They are what makes 'far more accurate' a measurement.",
-            catch="the assert names the likely cause of failure. `check inorm` is worth more than `assert FT_TEST > SCRATCH_TEST` alone."),
+            check="assert the fine-tune beat the from-scratch run, with a message pointing at the normalisation if it did not. The assert names the likely cause of failure. `check inorm` is worth more than `assert FT_TEST > SCRATCH_TEST` alone."),
         code('''
 rows = [("uniform guess",            1 / N_CLASSES,  None),
         ("commonest species",        majority,       None),
@@ -903,10 +852,7 @@ validation set. The damage is entirely in what the validation number now
             input="'add random resized crops and horizontal flips with ImageNet normalisation, and build the training and validation dataloaders'",
             output="one fixed set of weights scored ten times on the AUGMENTED validation set",
             constraint="score the same weights repeatedly — the wobble is the whole diagnostic",
-            check="assert that the CLEAN evaluation is deterministic, so the wobble is attributable to the augmentation and not to eval mode",
-            left_open="that nothing is leaking. The model never trains on the validation set; the damage is entirely in what the validation number now MEANS.",
-            student="reusing `tf` for both splits, which is one word shorter and is exactly what the prompt's phrasing invites.",
-            catch="Lecture 12's reviewer question arriving again: a deterministic function of fixed weights and fixed data does not wobble."),
+            check="assert that the CLEAN evaluation is deterministic, so the wobble is attributable to the augmentation and not to eval mode. Lecture 12's reviewer question arriving again: a deterministic function of fixed weights and fixed data does not wobble."),
         code('''
 # score ONE fixed set of weights on the augmented validation set, ten times
 gen_w = torch.Generator().manual_seed(RANDOM_STATE)
@@ -934,9 +880,7 @@ And it does not only make the number noisy — it selects a different model.
             input="both validation curves over the fine-tuning run",
             output="the two curves, and the epoch each would early-stop on",
             constraint="report the chosen EPOCH under each rule, not just the curves — the point is that the bug changes which weights you keep",
-            left_open="that a noisy metric is the smaller half of the problem. The larger half is that it is also pessimistic, so the reported number understates the model you shipped.",
-            student="treating this as a cosmetic issue about a wobbly plot. It changes the model selection, which changes what you deploy.",
-            catch="the corrected specification's last sentence is the part that generalises: assert that evaluating the same model twice gives identical numbers. One line, one second, and it catches this bug, a missing eval(), and any accidental shuffling of the labels."),
+            check="the corrected specification's last sentence is the part that generalises: assert that evaluating the same model twice gives identical numbers. One line, one second, and it catches this bug, a missing eval(), and any accidental shuffling of the labels."),
         code('''
 fig, ax = plt.subplots(figsize=(9, 3.2))
 ep = range(1, FT_EPOCHS + 1)
@@ -969,9 +913,7 @@ shuffling of the labels.
             input="the same model, the same data, twice",
             output="the assertion, and the number printed once",
             constraint="assert EXACT equality — floating-point evaluation of a fixed function on fixed data is bit-identical, and any tolerance here would hide the thing being tested",
-            left_open="how many distinct bugs this single line catches: augmented evaluation, a missing model.eval(), a shuffling DataLoader on the validation split, and label misalignment introduced by a re-shuffle.",
-            student="asserting `abs(a - b) < 1e-3`, which passes under all four of those.",
-            catch="put this line at the bottom of every notebook that evaluates a model. It costs a second and it is the highest-yield assertion in the course."),
+            check="put this line at the bottom of every notebook that evaluates a model. It costs a second and it is the highest-yield assertion in the course."),
         code('''
 a = accuracy(ft, T_val, y_val, inorm)
 b = accuracy(ft, T_val, y_val, inorm)

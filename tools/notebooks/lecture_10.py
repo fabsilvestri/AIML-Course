@@ -50,10 +50,7 @@ Run the cells in order. Anything that takes more than a few seconds says so.
             input="nothing",
             output="the corpus, and the identical forty audit indices as the build session",
             constraint="draw the forty from a generator seeded the same way and in the same ORDER — the generator is stateful, so an extra `rng` call inserted above this line silently changes which forty you get",
-            check="assert the shape and that there are forty indices",
-            left_open="that reproducing the forty by re-running the same seeded draw is the only reason the two notebooks are comparable at all.",
-            student="drawing a fresh forty, or using a different seed, and then comparing this notebook's ARI with last week's. Different labelled sample, different denominator, no comparison.",
-            catch="if two notebooks must agree on a random draw, they agree by reproducing the draw. Check the numbers match before trusting any before-and-after."),
+            check="assert the shape and that there are forty indices. If two notebooks must agree on a random draw, they agree by reproducing the draw. Check the numbers match before trusting any before-and-after."),
         code('''
 # --- setup -------------------------------------------------------------------
 # Not examinable. The thread limit makes a measured time repeatable; the default
@@ -118,10 +115,7 @@ Compute it by hand and check that scikit-learn agrees.
             input="the centred data matrix",
             output="the SVD, compared against scikit-learn's PCA",
             constraint="CENTRE before the SVD — `PCA` centres internally, and an uncentred SVD gives a first component that is essentially the mean face and agrees with nothing",
-            check="assert the components agree to 1e-4, comparing ABSOLUTE values — singular vectors are defined only up to a sign",
-            left_open="that the explained variance ratio IS the normalised squared singular values. The cell checks that too, and it is why PCA and the SVD are the same computation.",
-            student="comparing `Vt` with `pca.components_` directly, seeing half the rows negated, and concluding the implementations differ.",
-            catch="`full_matrices=False`. With 400 rows and 4,096 columns the full U is 4,096 × 4,096 — 134 MB of mostly-zero — and it is never needed."),
+            check="assert the components agree to 1e-4, comparing ABSOLUTE values — singular vectors are defined only up to a sign. `full_matrices=False`. With 400 rows and 4,096 columns the full U is 4,096 × 4,096 — 134 MB of mostly-zero — and it is never needed."),
         code('''
 X_centred = X - X.mean(axis=0)
 U, S, Vt = np.linalg.svd(X_centred, full_matrices=False)
@@ -156,10 +150,7 @@ That is a statement you can check to machine precision, so check it.
             input="the rank-100 truncation",
             output="the Frobenius error of the truncation, beside the tail of the spectrum",
             constraint="rebuild X_d from the truncated factors, not from `inverse_transform` — the point is that the two sides are computed by different routes and still agree",
-            check="assert the relative difference is below 1e-5",
-            left_open="what the theorem actually claims. This is the BEST rank-d approximation in Frobenius norm, not merely a good one, and the error it leaves is exactly the discarded singular values.",
-            student="taking 'PCA minimises reconstruction error' on faith. It is a statement you can check to machine precision, so check it — the check is three lines.",
-            catch="when a theorem gives you an identity, assert the identity. It is the cheapest possible test that your implementation of the theorem is the theorem."),
+            check="assert the relative difference is below 1e-5. When a theorem gives you an identity, assert the identity. It is the cheapest possible test that your implementation of the theorem is the theorem."),
         code('''
 d = 100
 Xd = U[:, :d] * S[:d] @ Vt[:d]
@@ -182,9 +173,7 @@ image. That is why the principal components of a face dataset have a name.
             input="the mean face and the first fifteen components",
             output="one tiled image",
             constraint="rescale each component to [0,1] individually — components have negative entries and no common scale, and `vmin=0, vmax=1` would otherwise clip half of every one of them to black",
-            left_open="why they have a name. The components live in the same space as the data, so each one is a 64×64 image — that is a fact about the geometry, not a visualisation trick.",
-            student="plotting the raw component vectors, seeing sixteen mostly-black squares, and concluding PCA found nothing.",
-            catch="show the mean face first. The components are directions AWAY from it, and without it in the frame they are hard to read as faces at all."),
+            check="show the mean face first. The components are directions AWAY from it, and without it in the frame they are hard to read as faces at all."),
         code('''
 def montage(ax, ims, ncol, gap=2):
     ims = np.asarray(ims)
@@ -218,9 +207,7 @@ plt.show()
             input="the explained variance ratios",
             output="the count reaching 95% and 99%, and the cumulative curve",
             constraint="`searchsorted` plus one — the index where the cumulative sum first exceeds the threshold is one less than the number of components kept",
-            left_open="that 95% and 99% are conventions, not findings. The gap between them is large here, and which one you pick changes the dimensionality by a factor of several.",
-            student="an off-by-one on `searchsorted`, which quietly keeps one component too few and is invisible in every downstream number.",
-            catch="print the reduction factor beside the count. '95% needs 118 components, 35x fewer than 4,096' is the sentence; the raw count on its own is not."),
+            check="print the reduction factor beside the count. '95% needs 118 components, 35x fewer than 4,096' is the sentence; the raw count on its own is not."),
         code('''
 cum = np.cumsum(pca.explained_variance_ratio_)
 d95 = int(np.searchsorted(cum, 0.95) + 1)
@@ -243,10 +230,7 @@ plt.show()
             input="one held-out face, reconstructed at eight dimensionalities",
             output="the sequence from 1 component to the original 4,096",
             constraint="fit each PCA on the TRAINING faces only, then reconstruct a held-out one — reconstructing a face the subspace was fitted on flatters every column of this figure",
-            check="assert the split sizes and that every person keeps at least seven training and three test photographs",
-            left_open="what to look for. Identity survives compression long before lighting does, which is the answer to why clustering improves after PCA.",
-            student="fitting on all 400 because it is one line shorter. That is exactly the failure this notebook builds to in section 9.",
-            catch="the stratification assert. With forty people and 120 test photographs, an unstratified split can hand a person zero test rows and the accuracy is then measured on 39 people."),
+            check="assert the split sizes and that every person keeps at least seven training and three test photographs. The stratification assert. With forty people and 120 test photographs, an unstratified split can hand a person zero test rows and the accuracy is then measured on 39 people."),
         code('''
 # what does a face look like as you take components away?
 X_tr, X_te, y_tr, y_te = train_test_split(
@@ -286,9 +270,7 @@ million.
             input="400 points and a million points, at four values of ε",
             output="the guaranteed target dimension in each case",
             constraint="print the two population sizes side by side, so the log n growth is visible rather than asserted",
-            left_open="what the formula does NOT contain. n is there, ε is there, and D — the dimension you start in — is not. Four hundred points need the same target dimension whether they live in 4,096 dimensions or four million.",
-            student="reading the bound at ε=0.1, seeing a number larger than 4,096, and concluding random projection cannot help here. It is a worst-case guarantee over all possible point sets, and ours is not the worst case.",
-            catch="a factor of 2,500 more points costs about twice the dimension. That is what log n means, and it is the reason the theorem is interesting."),
+            check="a factor of 2,500 more points costs about twice the dimension. That is what log n means, and it is the reason the theorem is interesting."),
         code('''
 for eps in (0.1, 0.2, 0.3, 0.5):
     print(f"eps={eps}:  400 points -> {johnson_lindenstrauss_min_dim(400, eps=eps):>7,}"
@@ -313,9 +295,7 @@ Two things students usually miss and one that surprises everybody:
             input="all 79,800 pairwise distances, before and after projection",
             output="the worst and 95th-percentile relative distortion at five target dimensions",
             constraint="report the WORST pair as well as the percentile — the theorem bounds the worst case, so a percentile alone does not test it",
-            left_open="that at d=200 the worst distance is distorted by far less than the ε=0.2 the bound would only guarantee at 1,382 dimensions. The bound is sufficient, not necessary.",
-            student="averaging the distortion. The average is small at every d, including ones where individual pairs are badly wrong.",
-            catch="three seeds per dimension, averaged. One draw of a random projection is one sample from the distribution the theorem is about."),
+            check="three seeds per dimension, averaged. One draw of a random projection is one sample from the distribution the theorem is about."),
         code('''
 iu = np.triu_indices(len(X), k=1)
 D0 = pairwise_distances(X)[iu]
@@ -352,10 +332,7 @@ last time.
             input="the same sweep as the build session, on 4,096 dims and on d95",
             output="best k, silhouette, ARI and wall clock for each",
             constraint="change ONE thing — same k grid, same n_init, same seed, same silhouette. Only what k-means is looking at differs",
-            check="assert the reduced matrix has the shape you think it has before sweeping it",
-            left_open="why the silhouette RISES after compression. Not because the clustering got cleverer, but because the criterion is computed in a space where the distances mean more.",
-            student="reporting the silhouette improvement as the result. The silhouette is computed in a different space before and after, so it is not directly comparable — the ARI is, and it moved the same way.",
-            catch="when a metric changes because its input space changed, report a second metric that does not depend on the representation. Here that is the ARI."),
+            check="assert the reduced matrix has the shape you think it has before sweeping it. When a metric changes because its input space changed, report a second metric that does not depend on the representation. Here that is the ARI."),
         code('''
 def sweep(data, ks=(2, 5, 10, 15, 20, 30, 40, 50, 60), n_init=5):
     t0 = time.perf_counter()
@@ -399,9 +376,7 @@ the data at all.
             input="full SVD, randomised SVD, incremental PCA, random projection",
             output="the fit time and the held-out reconstruction error for each",
             constraint="`batch_size` at least `n_components` for IncrementalPCA — it fits each batch, and a batch smaller than the target dimensionality cannot determine it",
-            left_open="that random projection has no `inverse_transform`, so its reconstruction goes through a pseudo-inverse. The two error columns are therefore not computed identically, and the cell does it rather than hiding it.",
-            student="comparing the timings without the error column and concluding random projection wins. It is essentially free because it never looks at the data, and it pays for that in reconstruction.",
-            catch="which you prefer depends on whether you need the REPRESENTATION or the RECONSTRUCTION. The two columns answer different questions and the table exists so you pick deliberately."),
+            check="which you prefer depends on whether you need the REPRESENTATION or the RECONSTRUCTION. The two columns answer different questions and the table exists so you pick deliberately."),
         code('''
 def bench(make, name):
     t0 = time.perf_counter(); obj = make(); t = time.perf_counter() - t0
@@ -442,9 +417,7 @@ every point belongs to one. Two methods that do not.
             input="the reduced faces, over a grid of eps",
             output="the best ARI found, with its cluster count and noise count",
             constraint="count clusters EXCLUDING the noise label — DBSCAN uses −1 for noise, and counting it as a cluster inflates every k you report",
-            left_open="that the right answer is 40 clusters and 0 noise, and DBSCAN never gets there. Faces in this subspace have no density scale that separates people.",
-            student="tuning eps until the cluster count reads 40 and declaring success. The cluster count is not the ARI, and here they peak in completely different places.",
-            catch="report the noise count. A method that achieves a good score by declaring a third of the corpus unclassifiable has not solved the brief."),
+            check="report the noise count. A method that achieves a good score by declaring a third of the corpus unclassifiable has not solved the brief."),
         code('''
 best = (-2, None)
 for eps in np.linspace(2, 14, 25):
@@ -463,9 +436,7 @@ print("faces in this subspace have no density scale that separates people.")
             input="the dimension count",
             output="the free parameters of one full covariance, and of forty",
             constraint="compute it before fitting anything — the point is that you can rule this out with arithmetic rather than with a timeout",
-            left_open="the BIC and ARI disagreeing about k. BIC is a model-selection criterion computed without labels; ARI uses them. They peak in different places and the cell prints both.",
-            student="reaching for `covariance_type='full'`, waiting, and concluding the machine is too small. 335 million parameters per component, estimated from 400 photographs, is not a resource problem.",
-            catch="count parameters against rows before you fit. It is one line of arithmetic and it settles questions that an afternoon of waiting cannot."),
+            check="count parameters against rows before you fit. It is one line of arithmetic and it settles questions that an afternoon of waiting cannot."),
         code('''
 # Gaussian mixtures. NOTE the covariance_type — the full version is impossible
 # here, and it is worth seeing why before running the diagonal one.
@@ -498,10 +469,7 @@ the subspace cannot rebuild is a face unlike the ones that built the subspace.
             input="twelve deliberately corrupted images planted in the corpus",
             output="how many of the twelve each detector puts in its top twelve",
             constraint="fit the PCA and the mixture on the CLEAN corpus and score the contaminated one — a detector fitted on the anomalies has already learned them",
-            check="assert the contaminated matrix is 412 rows with exactly 12 flagged",
-            left_open="why reconstruction error works at all. A face the subspace cannot rebuild is a face unlike the ones that built the subspace, which is a different signal from low density.",
-            student="fitting on `Xa`, the contaminated array, because it is the one being scored. The corrupted faces then contribute to the subspace that is supposed to fail on them.",
-            catch="three kinds of corruption, not one. A detector that finds rotations and misses dimming has been measured on one failure mode and reported as general."),
+            check="assert the contaminated matrix is 412 rows with exactly 12 flagged. Three kinds of corruption, not one. A detector that finds rotations and misses dimming has been measured on one failure mode and reported as general."),
         code('''
 def corrupt(ims, r, n=12):
     idx = r.choice(len(ims), size=n, replace=False)
@@ -556,10 +524,7 @@ Where you spend the budget matters more than what you do with it.
             input="forty labels, spent four different ways",
             output="held-out accuracy for random forty, one-per-cluster, propagated, and propagated-to-the-closest-75%, with all 280 labels as the ceiling",
             constraint="the same classifier and the same held-out set throughout — the only thing that varies is WHICH forty were labelled",
-            check="assert the forty representatives are forty distinct faces",
-            left_open="that nothing here is a better classifier. The difference is entirely in the sampling, and it is several times the accuracy for the same annotation budget.",
-            student="attributing the gain to label propagation. Compare the first two rows: choosing which forty, before propagating anything, is most of it.",
-            catch="print the all-280 row as a ceiling. A semi-supervised result with no fully-supervised comparison cannot be read."),
+            check="assert the forty representatives are forty distinct faces. Print the all-280 row as a ceiling. A semi-supervised result with no fully-supervised comparison cannot be read."),
         code('''
 def accuracy(Ztr, ytr, Zte, yte):
     clf = LogisticRegression(max_iter=3000, random_state=RANDOM_STATE)
@@ -610,9 +575,7 @@ in the first application it costs something you can see.
             input="'reduce to 95% variance with PCA, train a classifier, report accuracy and reconstruction error'",
             output="both numbers",
             constraint="fit the PCA on X, the whole corpus, as written",
-            left_open="reviewer question 2 — what was fitted, and on what. All four hundred photographs, including the hundred and twenty we then call held out. The subspace those faces are projected onto was chosen partly BY those faces.",
-            student="this exact code. With 400 points in 4,096 dimensions it is not a rounding error: the training set alone spans at most a 279-dimensional subspace, and adding the test faces changes which directions survive.",
-            catch="`fit` and `transform` are different verbs. Find every unsupervised step in your notebook and ask which rows it was fitted on."),
+            check="`fit` and `transform` are different verbs. Find every unsupervised step in your notebook and ask which rows it was fitted on."),
         code('''
 pca_all = PCA(n_components=d95, random_state=RANDOM_STATE).fit(X)   # <-- all 400
 Z_all = pca_all.transform(X)
@@ -644,9 +607,7 @@ one of them moves.
             input="twenty splits, each fitted honestly and leakily",
             output="reconstruction error and accuracy, both ways, with the win counts",
             constraint="report BOTH even though only one of them moves — the null result is half the finding",
-            left_open="the decision rule. The damage from fitting an unsupervised step on everything is large exactly when that step's OWN OUTPUT is the thing you report. Reconstruction error is that thing; downstream accuracy usually is not.",
-            student="measuring only accuracy, seeing a difference smaller than the seed-to-seed spread, and concluding the leak is harmless. On the reconstruction error it is enormous and one-sided.",
-            catch="you cannot tell which case you are in without the split. That is the argument for splitting even when you expect the leak not to matter."),
+            check="you cannot tell which case you are in without the split. That is the argument for splitting even when you expect the leak not to matter."),
         code('''
 rows = []
 for seed in range(20):
@@ -691,9 +652,7 @@ you are in without the split.
             input="PCA and the classifier as one object",
             output="the pipeline's held-out accuracy",
             constraint="both steps in ONE Pipeline, so cross-validation refits the PCA inside every fold",
-            left_open="the difference between avoided and impossible. A pipeline does not make the leak less likely; it makes it structurally unavailable.",
-            student="remembering to fit PCA on the training set this time, and forgetting next time. The discipline that depends on remembering is the discipline that fails under deadline.",
-            catch="any unsupervised step — scaler, imputer, PCA, encoder — belongs inside the Pipeline. The list of steps that are safe to fit outside it is empty."),
+            check="any unsupervised step — scaler, imputer, PCA, encoder — belongs inside the Pipeline. The list of steps that are safe to fit outside it is empty."),
         code('''
 from sklearn.pipeline import Pipeline
 

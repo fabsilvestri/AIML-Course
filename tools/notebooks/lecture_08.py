@@ -65,10 +65,7 @@ def build() -> list:
                                                                 input="the same dataset, the same seed",
                                                                 output="the identical 48,000 / 12,000 split, the depth-8 tree, and the constant baseline",
                                                                 constraint="reproduce the split from the SEED, not by loading anything the previous notebook saved",
-                                                                check="assert the two sizes — if the split differs, every comparison in this notebook is against a different model",
-                                                                left_open="that `min_samples_leaf=1` here, where the build session shipped 20. This notebook is diagnosing instability, and the least-constrained tree is the one that shows it most clearly.",
-                                                                student="pickling the tree at the end of the last notebook. The repair has to start from a state you can rebuild, or you cannot show the repair worked.",
-                                                                catch="`del cover` after splitting. 250 MB held for no reason is how a free runtime dies three cells later, blaming the wrong cell."),
+                                                                check="assert the two sizes — if the split differs, every comparison in this notebook is against a different model. `del cover` after splitting. 250 MB held for no reason is how a free runtime dies three cells later, blaming the wrong cell."),
                                                          REBUILD,
 
         md("""
@@ -86,9 +83,7 @@ That is a claim about behaviour, and we have a dataset. Plot the two first.
             input="p from 0 to 1",
             output="both impurity curves, entropy halved to put them on one scale, and their difference",
             constraint="stop short of 0 and 1 — `log2(0)` is a warning and a NaN, and the NaN then silently propagates into the difference plot",
-            left_open="what the shoulders mean. Same zeros, same maximum, different middles: entropy penalises a nearly-pure node more heavily, which is a claim about behaviour and therefore testable.",
-            student="plotting entropy against Gini without rescaling, seeing one curve twice as tall, and concluding they are very different criteria.",
-            catch="when two quantities are on different scales, rescale before comparing shapes and say what you divided by. The `/2` here is in the legend for exactly that reason."),
+            check="when two quantities are on different scales, rescale before comparing shapes and say what you divided by. The `/2` here is in the legend for exactly that reason."),
         code('''
 p = np.linspace(1e-9, 1 - 1e-9, 400)
 gini = 2 * p * (1 - p)
@@ -120,9 +115,7 @@ cancels.
             input="ten resamples of the training set",
             output="how often the root feature agrees, how often the predictions agree, and the paired accuracy difference",
             constraint="PAIRED — both criteria on the same resample each time, so the resample-to-resample noise cancels",
-            left_open="that three true statements follow and only one is a recommendation. The effect is real (the sign is consistent), the effect is tiny (a fraction of a point), so do not spend your tuning budget here.",
-            student="unpaired comparison — ten fits with gini on one set of resamples and ten with entropy on another. The difference is then buried under noise several times its own size.",
-            catch="'statistically detectable' and 'worth acting on' are different claims needing different evidence. Report the effect size beside the sign count, always."),
+            check="'statistically detectable' and 'worth acting on' are different claims needing different evidence. Report the effect size beside the sign count, always."),
         code('''
 rows = []
 for seed in range(10):
@@ -184,10 +177,7 @@ completely untouched.** Check it numerically before believing it.
             input="n predictors with unit variance and common pairwise correlation ρ",
             output="the measured variance of their average, beside ρ + (1−ρ)/n",
             constraint="build the correlation from a SHARED component plus an independent one — √ρ·shared + √(1−ρ)·own gives exactly the structure the formula assumes",
-            check="assert measured and predicted agree to within 0.02, at every ρ and every n",
-            left_open="the three limits. ρ=0 gives σ²/n, the classical answer; ρ=1 gives σ², so averaging is a no-op; n→∞ gives ρσ², which is the floor.",
-            student="answering σ²/n, which almost everyone does, and which is only valid when the predictors are uncorrelated. Every ensemble in this lecture exists to attack ρ, not n.",
-            catch="anything that lowers ρ by making individual members worse is a trade, not a free lunch — σ² appears in BOTH terms of the formula."),
+            check="assert measured and predicted agree to within 0.02, at every ρ and every n. Anything that lowers ρ by making individual members worse is a trade, not a free lunch — σ² appears in BOTH terms of the formula."),
         code('''
 def correlated(n, rho, draws, rng):
     """n predictors, unit variance, common pairwise correlation rho."""
@@ -236,10 +226,7 @@ of their rows.
             input="twenty 90% subsamples of the same training rows",
             output="the accuracy of each tree",
             constraint="same hyperparameters and same estimator seed every time — only the ROWS change, so any difference is attributable to the data",
-            check="assert twenty prediction vectors of 12,000 each before anything is compared",
-            left_open="that any two of these training sets share about 80% of their rows. This is the question from the end of the previous lecture, made measurable.",
-            student="varying `random_state` on the estimator as well, which conflates the tree's own randomness with the data's. There is only one thing under test here.",
-            catch="a spread of about a point across twenty refits. Watching only the headline you would conclude the model is completely stable, and this is the flattering half of the answer."),
+            check="assert twenty prediction vectors of 12,000 each before anything is compared. A spread of about a point across twenty refits. Watching only the headline you would conclude the model is completely stable, and this is the flattering half of the answer."),
         code('''
 trees, preds, roots, accs = [], [], [], []
 for seed in range(20):
@@ -268,9 +255,7 @@ That is the flattering half. Now the other one.
             input="the twenty prediction vectors",
             output="pairwise disagreement across all 190 pairs, and the share of patches all twenty agree on",
             constraint="compare PREDICTIONS, not accuracies — two models with identical accuracy can disagree on one patch in eleven",
-            left_open="why both results are consistent. A tree is a hierarchy: the root split is chosen from 48,000 patches and wins by a wide margin, but a node eight levels down was chosen from a few hundred, where two candidates are separated by a hair.",
-            student="reporting the stable accuracy and stopping. Accuracy is an average over 12,000 patches, and averages hide substitutions.",
-            catch="a stable metric is not a stable model — it is evidence you measured the wrong thing. If you make per-instance claims, test per-instance stability."),
+            check="a stable metric is not a stable model — it is evidence you measured the wrong thing. If you make per-instance claims, test per-instance stability."),
         code('''
 P = np.array(preds)
 disagree = np.array([(P[i] != P[j]).mean()
@@ -287,9 +272,7 @@ print(f"patches all 20 agree on  {unanimous:.1%}")
             input="the twenty trees",
             output="the root feature, the number of distinct root thresholds, the leaf counts and the columns consulted",
             constraint="separate the root FEATURE from the root THRESHOLD — the feature is the same every time and the threshold is not",
-            left_open="that the part you put on a slide is the stable part. The root is identical across all twenty; the part that decides individual predictions is not.",
-            student="showing the top of the tree in a presentation as 'the model'. It is the one part of the model that does not change, which is exactly why it is unrepresentative.",
-            catch="report stability at the level at which you make claims. Stable roots justify a statement about elevation; they justify nothing about a parcel."),
+            check="report stability at the level at which you make claims. Stable roots justify a statement about elevation; they justify nothing about a parcel."),
         code('''
 from collections import Counter
 
@@ -336,9 +319,7 @@ low bias from each and we are about to average the variance away.
             input="100 unconstrained trees, each on a bootstrap sample",
             output="the out-of-bag score and the test score",
             constraint="the members are UNCONSTRAINED — we want low bias from each and we are about to average the variance away",
-            left_open="what out-of-bag is. A row is missed by one draw with probability 1−1/m, so by all m draws with probability (1−1/m)^m → e⁻¹ ≈ 0.368. Those rows give a generalisation estimate with no validation split and no extra fits.",
-            student="using the out-of-bag score as a test score. It replaces the VALIDATION set, not the test set — it is computed on rows the ensemble selected for itself.",
-            catch="oob and test should be close. If oob is much better, something in the pipeline saw the out-of-bag rows anyway."),
+            check="oob and test should be close. If oob is much better, something in the pipeline saw the out-of-bag rows anyway."),
         code('''
 bag = BaggingClassifier(DecisionTreeClassifier(random_state=RANDOM_STATE),
                         n_estimators=100, bootstrap=True, oob_score=True,
@@ -363,10 +344,7 @@ the first time.
             input="one member of the ensemble and the test set",
             output="that member's accuracy computed naively, and again mapped through `classes_`",
             constraint="show the WRONG number first — it is plausible and small rather than an exception, which is what makes it expensive",
-            check="assert the mapped score beats the naive one, so the rescue is demonstrated rather than asserted",
-            left_open="that every ensemble in scikit-learn re-encodes y as positions 0..k−1 before handing it to its members. A member's `predict` returns POSITIONS, not cover types.",
-            student="comparing `member.predict(X)` with `y_test` directly, getting 20%, and spending an afternoon debugging a model that was fine. The labels here are 1-based, so nothing lines up and nothing raises.",
-            catch="reviewer question 5 — what is the default you did not ask for. Print `ensemble.classes_` beside `member.classes_` any time you reach inside an ensemble."),
+            check="assert the mapped score beats the naive one, so the rescue is demonstrated rather than asserted. Reviewer question 5 — what is the default you did not ask for. Print `ensemble.classes_` beside `member.classes_` any time you reach inside an ensemble."),
         code('''
 member = bag.estimators_[0]
 print("ensemble labels:", bag.classes_)
@@ -406,9 +384,7 @@ All three exist to reduce one quantity: $\\rho$.
             input="bagging, random forest, extra-trees with and without the bootstrap",
             output="each ensemble's accuracy, and the accuracy of ONE of its members",
             constraint="report the member column too — every mechanism that makes members less alike also makes each of them worse, and that is the trade the formula warned about",
-            left_open="that scikit-learn's default for extra-trees is `bootstrap=False`: the random thresholds REPLACE the bootstrap rather than joining it. `extra_bs` turns it back on, and the pair separates the two effects.",
-            student="comparing ensemble accuracies alone and concluding extra-trees is simply better. Without the member column there is no evidence about why, and the why is the lecture.",
-            catch="bagging randomises ROWS, forests also randomise COLUMNS, extra-trees also randomises THRESHOLDS. All three exist to reduce one quantity."),
+            check="bagging randomises ROWS, forests also randomise COLUMNS, extra-trees also randomises THRESHOLDS. All three exist to reduce one quantity."),
         code('''
 ensembles = {
     "bagging": bag,
@@ -458,10 +434,7 @@ numbers will be close but not identical.
             input="ten DISJOINT training sets of 15,000 rows and one held-out set",
             output="a function that fits an ensemble per training set and records every member's correctness on every test patch",
             constraint="the training sets must be disjoint AND disjoint from the test set — ρ is a correlation over the randomness of the whole procedure, including which training set you were handed",
-            check="assert the pool is exactly K×N_Z rows and shares nothing with the test indices",
-            left_open="why several independent training sets are needed at all. Conditional on ONE dataset the members are independent by construction, and ρ would measure as zero.",
-            student="estimating ρ by correlating members within a single fitted ensemble. That measures the algorithm's internal randomness and misses the term that actually dominates.",
-            catch="the disjointness assert. If the training pools overlap, the between-group variance is contaminated and ρ comes out too high for a reason you will not find by reading the formula."),
+            check="assert the pool is exactly K×N_Z rows and shares nothing with the test indices. The disjointness assert. If the training pools overlap, the between-group variance is contaminated and ρ comes out too high for a reason you will not find by reading the formula."),
         code('''
 K, M, N_Z, N_TE = 10, 10, 15_000, 6_000
 
@@ -501,9 +474,7 @@ def experiment(kind):
             input="the correctness array, ten training sets by ten members by test patches",
             output="ρ, σ², the measured variance at n=1 and n=10, and the formula's prediction at n=10",
             constraint="use the ANOVA estimator — between-group variance minus within-group over M — and clamp it at zero, since an unbiased variance estimate can come out negative on small samples",
-            left_open="that nothing was fitted to make the last two columns agree. The measured variance of an average of ten and ρσ²+(1−ρ)σ²/n at n=10 are computed by entirely separate routes.",
-            student="computing ρ as the plain correlation between two members' predictions, which double-counts the within-group term and gives a number that does not predict the curve.",
-            catch="the mechanisms are NOT additive. Feature subsampling does most of the work; random thresholds are largely a substitute for the bootstrap. And nothing gets ρ near zero, because all four ensembles ultimately saw the same rows."),
+            check="the mechanisms are NOT additive. Feature subsampling does most of the work; random thresholds are largely a substitute for the bootstrap. And nothing gets ρ near zero, because all four ensembles ultimately saw the same rows."),
         code('''
 def decompose(S):
     """Split one member's variance into the part its training set explains."""
@@ -551,9 +522,7 @@ given*.
             input="the four decompositions",
             output="measured variance against n, the fitted curve, and each ρσ² floor",
             constraint="log y-axis, and draw the floor as a horizontal line per variant — the point of the picture is that the curves flatten onto different floors rather than towards zero",
-            left_open="that ρ is not a property of the algorithm. It is the share of the variance that comes from WHICH DATA you were given, and no amount of ensembling touches it.",
-            student="reading the plot as 'more trees is better' and adding trees. The gap between V(10) and the floor is what more members can still buy, and it is small.",
-            catch="plot the measured points and the predicted curve on the same axes. Agreement between two independently computed things is the strongest evidence a notebook can offer."),
+            check="plot the measured points and the predicted curve on the same axes. Agreement between two independently computed things is the strongest evidence a notebook can offer."),
         code('''
 fig, ax = plt.subplots(figsize=(7, 3.6))
 for kind, d in dec.items():
@@ -577,9 +546,7 @@ We fixed the variance. Ask what happened to the thing we were hired to deliver.
             input="the forest and the depth-8 tree",
             output="total leaves and accuracy for each",
             constraint="count leaves across ALL 100 members — the justification for one prediction is now 100 decision paths and a vote",
-            left_open="that there is no technical fix for this. The regulator asked for a model whose every prediction comes with a human-readable justification, and we have built one that is far more accurate and cannot supply one.",
-            student="presenting the accuracy gain as an unambiguous win. It is a win on one axis and a total loss on the axis the brief was written about.",
-            catch="when a fix improves the metric, check what it did to the REQUIREMENT. They are different objects and only one of them was written down by the customer."),
+            check="when a fix improves the metric, check what it did to the REQUIREMENT. They are different objects and only one of them was written down by the customer."),
         code('''
 rnd = ensembles["forest"]
 total_leaves = sum(t.get_n_leaves() for t in rnd.estimators_)
@@ -612,9 +579,7 @@ entirely sensible.
             input="'show me which features the forest relies on, for the regulator'",
             output="the eight largest impurity importances",
             constraint="print it as returned — it runs, it is fast, and the top of the list is entirely sensible",
-            left_open="what the answer would look like if it were wrong. That is the review question, and the next cell is the control that answers it.",
-            student="putting this table in the report. It is plausible, it is training-set-derived, and it is biased in a direction nobody mentioned.",
-            catch="before trusting any ranking, ask what it would look like on a variable you KNOW carries no information. If you cannot answer, add one and find out."),
+            check="before trusting any ranking, ask what it would look like on a variable you KNOW carries no information. If you cannot answer, add one and find out."),
         code('''
 imp = pd.Series(rnd.feature_importances_, index=X_train.columns)
 print("The measurements the model relies on:")
@@ -634,10 +599,7 @@ before running the cell.
             input="the same data plus one column of uniform random numbers",
             output="where the decoy ranks among the 55 columns",
             constraint="add the decoy to BOTH train and test, and refit — a control added to only one side is not a control",
-            check="assert the decoy ranks absurdly high, which is the finding rather than a sanity check",
-            left_open="why impurity importance does this. It sums the weighted impurity reduction over every node that split on a feature, MEASURED ON THE TRAINING DATA — and it favours high-cardinality features, since a continuous column offers thousands of candidate thresholds and a 0/1 soil indicator offers one.",
-            student="guessing the decoy will rank last. Our decoy is continuous and forty of the fifty-four real columns are binary, so it outranks most of them.",
-            catch="a control column costs one line and turns an unfalsifiable ranking into a measurement. Add one to every importance table you produce."),
+            check="assert the decoy ranks absurdly high, which is the finding rather than a sanity check. A control column costs one line and turns an unfalsifiable ranking into a measurement. Add one to every importance table you produce."),
         code('''
 rng = np.random.default_rng(RANDOM_STATE)
 X_tr2 = X_train.assign(random_decoy=rng.random(len(X_train)))
@@ -682,9 +644,7 @@ measurement.)*
             input="the fitted forest and 3,000 HELD-OUT rows",
             output="permutation importance with its standard deviation",
             constraint="permute on HELD-OUT data — the whole defect of the impurity version is that it is measured on the rows that chose the splits",
-            left_open="that this goes beyond Chapter 6 and is not examinable. It is here because the alternative is to ship the biased measurement.",
-            student="running `permutation_importance` on X_train, which reproduces the original bias through a different mechanism and looks like a fix.",
-            catch="report the standard deviation. An importance of 0.002 ± 0.004 is zero, and without the second number it reads as a small positive effect."),
+            check="report the standard deviation. An importance of 0.002 ± 0.004 is zero, and without the second number it reads as a small positive effect."),
         code('''
 sub = slice(0, 3000)
 perm = permutation_importance(rnd2, X_te2.iloc[sub], y_test.iloc[sub],
@@ -702,9 +662,7 @@ print(pi.loc[["random_decoy"]].round(5))
             input="both importance measures on the same twelve columns",
             output="two horizontal bar charts, the decoy coloured differently",
             constraint="same columns, same order, shared y-axis — the comparison is the figure, and re-sorting each panel independently would destroy it",
-            left_open="that the model, the columns and the row order are identical across the two panels. The decoy is near the top on the left and indistinguishable from zero on the right.",
-            student="presenting only the permutation panel because it is the correct one. The pair is the argument; one panel alone is just another ranking to be trusted.",
-            catch="error bars on the right panel. They are what let a reader see that the decoy's bar is not small but absent."),
+            check="error bars on the right panel. They are what let a reader see that the decoy's bar is not small but absent."),
         code('''
 top = order.head(12).index
 fig, ax = plt.subplots(1, 2, figsize=(11, 3.6), sharey=True)
@@ -748,9 +706,7 @@ does not apply to it, and it reduces *bias* rather than variance.
             input="the same training rows",
             output="its accuracy beside bagging and the legible tree",
             constraint="early stopping on, and report the iteration count it actually used — `max_iter=100` with early stopping is a ceiling, not a setting",
-            left_open="that today's formula does not apply to boosting at all. Everything above trains members in PARALLEL and averages them; boosting trains them in SEQUENCE, each correcting its predecessor, and it reduces bias rather than variance.",
-            student="reaching for the ρ analysis to explain a boosting result. The members are not identically distributed and not exchangeable, so neither the derivation nor the intuition transfers.",
-            catch="stacking trains a blender on cross-validated out-of-fold predictions, and that cross-validation is the only reason stacking is safe. Build it by hand and reviewer question 1 becomes the whole difficulty."),
+            check="stacking trains a blender on cross-validated out-of-fold predictions, and that cross-validation is the only reason stacking is safe. Build it by hand and reviewer question 1 becomes the whole difficulty."),
         code('''
 from sklearn.ensemble import HistGradientBoostingClassifier
 
@@ -792,9 +748,7 @@ you run it.
             input="the same twenty 90% subsamples, forests of 30 trees",
             output="pairwise disagreement, beside the single tree's",
             constraint="the SAME twenty seeds as the single-tree experiment — a stability comparison across different subsamples is not a comparison",
-            left_open="that the diagnosis was instability, not inaccuracy. The accuracy improvement is real and it is not what this cell is testing.",
-            student="declaring victory from the accuracy table and never re-running the stability experiment. If you diagnose one thing and measure another, you have not shown the repair worked.",
-            catch="predict the answer before running it. A repair whose effect you can predict is a repair you understood; one that surprises you is worth another hour."),
+            check="predict the answer before running it. A repair whose effect you can predict is a repair you understood; one that surprises you is worth another hour."),
         code('''
 fpreds = []
 for seed in range(20):

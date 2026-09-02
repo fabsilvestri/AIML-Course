@@ -130,19 +130,14 @@ def build() -> list:
                                   input="nothing",
                                   output="versions, seed, device, and N_IMAGES = 128",
                                   constraint="the same constants as the previous lecture, so the numbers below are comparable",
-                                  left_open="that every score in this notebook is a 128-image score, and the closing table puts torchvision's 5,000-image figure beside ours for exactly that reason.",
-                                  student="quoting an mAP without its sample size. A score without its sample size is not a score.",
-                                  catch="`N_IMAGES` as a named constant rather than a literal 128 in a slice. It then travels into every printed line that uses it."),
+                                  check="`N_IMAGES` as a named constant rather than a literal 128 in a slice. It then travels into every printed line that uses it."),
                             code(SETUP),
         md("## 2 · The same 128 images"),prompt(
                                                 label="⏱ 60-90 s first time — the same 128 images",
                                                 input="COCO's annotations and the same selection rule",
                                                 output="the identical corpus and ground truth as the previous lecture",
                                                 constraint="rebuild from the RULE — the 128 lowest ids — rather than inheriting anything from the other notebook",
-                                                check="assert 898 objects, which is the exact count the previous lecture reported",
-                                                left_open="that the crowd regions are dropped again, silently reproducing the same choice. If you changed it here, every number below would shift and nothing would say so.",
-                                                student="assuming the reload is boilerplate and skimming it. The 898 assert is the only thing certifying that this notebook and the last one are talking about the same corpus.",
-                                                catch="when two notebooks must agree, assert an exact total rather than a shape. Shapes agree under a great many wrong reloads."),
+                                                check="assert 898 objects, which is the exact count the previous lecture reported. When two notebooks must agree, assert an exact total rather than a shape. Shapes agree under a great many wrong reloads."),
                                           code(RELOAD),
 
         # ------------------------------------------------ thread, part 1
@@ -168,10 +163,7 @@ $$\\mathrm{IoU}(A,B) \\;=\\; \\frac{|A \\cap B|}{|A \\cup B|}
             input="two corner-form boxes",
             output="their IoU",
             constraint="CLAMP the overlap width and height at zero — this is not defensive programming, it is the whole function",
-            check="assert 1.0 for identical boxes, exactly 0.0 for edge-to-edge, and 1/3 for half-overlapping",
-            left_open="why there is essentially one candidate formula. Punishing too-large forces the predicted area into the denominator, too-small forces the true area in too, and dimensionlessness forces the numerator to be an area.",
-            student="omitting the clamp, which is the next cell and the lecture's assistant failure. Two disjoint boxes give a negative width AND a negative height, whose product is a positive 'intersection'.",
-            catch="an exact `== 0.0` assert on the edge-to-edge case. A tolerance there would pass for a function that returns a small positive number, which is precisely the bug."),
+            check="assert 1.0 for identical boxes, exactly 0.0 for edge-to-edge, and 1/3 for half-overlapping. An exact `== 0.0` assert on the edge-to-edge case. A tolerance there would pass for a function that returns a small positive number, which is precisely the bug."),
         code('''
 def iou(a, b):
     """IoU of two corner-form boxes [x1, y1, x2, y2].
@@ -216,9 +208,7 @@ specified — a better prompt than most. One thing is missing.
             input="'write a NumPy function taking two boxes in [x1,y1,x2,y2] and returning their intersection over union'",
             output="the IoU of two overlapping pairs",
             constraint="test it only on OVERLAPPING boxes, which is what a reasonable person writes first — and both answers are correct",
-            left_open="that the prompt is better than most. Format specified, library specified, return value specified. One thing is missing and it is not in the prompt's vocabulary.",
-            student="writing exactly this and testing exactly these two cases. The function is right on every pair you would naturally try.",
-            catch="a test suite made only of the cases you thought of tests the cases you thought of. Ask what input would make the output meaningless."),
+            check="a test suite made only of the cases you thought of tests the cases you thought of. Ask what input would make the output meaningless."),
         code('''
 def iou_broken(a, b):
     x1 = max(a[0], b[0]);  y1 = max(a[1], b[1])
@@ -243,9 +233,7 @@ print(iou_broken([0, 0, 100, 100], [10, 10, 110, 110]))    # 0.680... correct
             input="boxes separated along one axis, and along both",
             output="what the broken function reports for each",
             constraint="show the ONE-axis case and the BOTH-axes case separately — they fail differently, and only one of them is obviously wrong",
-            left_open="the arithmetic. Two negative differences multiply to a positive, so two boxes 200 px apart in both directions are reported as a perfect match.",
-            student="testing one disjoint pair, seeing a negative number, and 'fixing' it with `max(0, result)`. That repairs the one-axis case and leaves the diagonal case reporting 1.000.",
-            catch="separation along one axis and along both are different tests. A single disjoint example is not a disjointness test."),
+            check="separation along one axis and along both are different tests. A single disjoint example is not a disjointness test."),
         code('''
 print("one axis apart :", iou_broken([0, 0, 100, 100], [300, 0, 400, 100]))
 print("both axes, 150 :", iou_broken([0, 0, 100, 100], [150, 150, 250, 250]))
@@ -262,9 +250,7 @@ Plot it and the failure is undeniable: the broken function is symmetric about
             input="two boxes pulled apart diagonally, 0 to 200 pixels",
             output="both functions' reported overlap against separation",
             constraint="pull them apart DIAGONALLY, so the broken function's symmetry about 100 px is visible",
-            left_open="the shape: the broken curve reports MORE overlap the further apart the boxes get. Beyond 100 px the boxes are disjoint and one curve does not know.",
-            student="reading the printed numbers and moving on. The two prints make the point; the curve makes it impossible to forget.",
-            catch="when a function is wrong on a region, plot it across that region. A curve that turns around where it should be flat at zero is not something anyone argues with."),
+            check="when a function is wrong on a region, plot it across that region. A curve that turns around where it should be flat at zero is not something anyone argues with."),
         code('''
 d = np.arange(0, 201, 10, dtype=float)
 ok  = [iou(box, box + [x, x, x, x]) for x in d]
@@ -299,10 +285,7 @@ pair, without anyone having to think of the diagonal case.
             input="a 5 by 5 grid of separations",
             output="the property holding on 25 pairs, and the broken version failing it",
             constraint="state the PROPERTY, not the values: the result is in [0,1], and it is zero if and only if the boxes are disjoint on some axis",
-            check="run the same loop against the broken function and show that it fails",
-            left_open="that `assert 0 <= v <= 1` alone fails immediately, on the first disjoint pair, without anyone having to think of the diagonal case.",
-            student="writing a table of expected values. Twenty-five hand-computed IoUs is a lot of arithmetic to get right, and the property is one line.",
-            catch="demonstrate that your test catches the bug. A test suite nobody has seen fail is a test suite of unknown strength."),
+            check="run the same loop against the broken function and show that it fails. Demonstrate that your test catches the bug. A test suite nobody has seen fail is a test suite of unknown strength."),
         code('''
 def iou_checked(a, b):
     v = iou(a, b)
@@ -344,9 +327,7 @@ the formula.
             input="two 100×100 boxes pulled apart, 0 to 300 px, with autograd",
             output="IoU and GIoU with their derivatives at each separation",
             constraint="ask AUTOGRAD for the derivative rather than differentiating by hand — the claim is about what an optimiser would receive",
-            left_open="that nothing here depends on a dataset. The conclusion is a property of the formula, and it would be the same on any corpus.",
-            student="assuming the gradient is merely small when the boxes are far apart. For d ≥ 100 the overlap width is max(0, 100−d) = 0, so IoU is CONSTANT on the whole disjoint region — and a constant has no descent direction, not a weak one, none.",
-            catch="float64 and `torch.autograd.grad` on a scalar. This is a claim about an exact zero, and float32 would leave you unable to distinguish zero from 1e-9."),
+            check="float64 and `torch.autograd.grad` on a scalar. This is a claim about an exact zero, and float32 would leave you unable to distinguish zero from 1e-9."),
         code('''
 def t_iou(a, b):
     lt = torch.maximum(a[:2], b[:2])
@@ -400,9 +381,7 @@ Assert it rather than eyeballing it:
             input="every separation past 100 pixels",
             output="the maximum IoU and maximum gradient magnitude there, and GIoU's gradient for contrast",
             constraint="assert IoU is identically zero AND its gradient is identically zero AND GIoU's gradient is still negative — three claims, three asserts",
-            left_open="what the repairs do. GIoU subtracts (|C| − |A∪B|)/|C| where C is the smallest box containing both, so when the boxes are disjoint and move apart, |C| grows and |A∪B| does not.",
-            student="reading rows four and five off the table and saying the gradient 'goes to zero'. It IS zero, exactly, and no optimiser, learning rate or initialisation repairs that.",
-            catch="an assert on an exact equality with zero is available here because the quantity is structurally zero. Take it — it distinguishes 'vanishing' from 'absent'."),
+            check="an assert on an exact equality with zero is available here because the quantity is structurally zero. Take it — it distinguishes 'vanishing' from 'absent'."),
         code('''
 past = [r for r in rows if r[0] > 100]
 assert all(r[1] == 0.0 for r in past), "IoU should be identically zero"
@@ -437,9 +416,7 @@ $|A \\cup B|$ does not, so the penalty grows.
             input="a same-shaped disjoint box and a differently-shaped one",
             output="IoU and CIoU for each",
             constraint="test with TWO shapes — the aspect-ratio term is exactly zero when the shapes agree, and every pair in the figure above is square",
-            left_open="an honest caveat, and the notebook states it: GIoU and CIoU are LOSSES, and their value is in the backward pass of a detector you are fitting. Nothing in this application fits a detector, so this is a property of the functions rather than a measured improvement in a model we built.",
-            student="concluding from the earlier figure that CIoU and GIoU behave identically. They do on square boxes, which is all that figure contains.",
-            catch="when a term of a formula can be exactly zero on your test cases, construct a case where it is not. Otherwise you have tested a simpler function."),
+            check="when a term of a formula can be exactly zero on your test cases, construct a case where it is not. Otherwise you have tested a simpler function."),
         code('''
 def t_ciou(a, b):
     v = t_iou(a, b)
@@ -483,10 +460,7 @@ detector as last lecture, over the same 128 images.
             input="the 128 images",
             output="predictions, converted to float numpy with integer labels",
             constraint="cast labels back to int64 after the float conversion — a label of 1.0 will not match a category_id of 1 in a boolean mask, and the resulting comparison is silently all-False",
-            check="assert one prediction per image",
-            left_open="that this is byte-identical to the previous lecture's run. The detector is not the subject; the evaluation is.",
-            student="`{k: v.cpu().numpy().astype(float) for k, v in out.items()}` without the label fix-up, which makes every per-class mask empty and every AP zero, with no error anywhere.",
-            catch="when you bulk-convert a dict of tensors, check the dtypes afterwards. One of them is an index and does not want to be a float."),
+            check="assert one prediction per image. When you bulk-convert a dict of tensors, check the dtypes afterwards. One of them is an index and does not want to be a float."),
         code('''
 from torchvision.models.detection import (
     fasterrcnn_resnet50_fpn, FasterRCNN_ResNet50_FPN_Weights)
@@ -529,10 +503,7 @@ positive rather than a second success.
             input="one class, one IoU threshold, every detection in the corpus",
             output="the cumulative recall and precision along the ranking",
             constraint="sort by score over the WHOLE corpus, and match each detection to the best UNMATCHED annotation in its own image",
-            check="handle the empty case in `iou_many` — a class with no ground truth in an image gives a zero-length array, and `argmax` on it raises",
-            left_open="that the word 'unmatched' is what makes a second box on the same bottle a false positive rather than a second success. Remove it and a detector is rewarded for duplicating its confident predictions.",
-            student="ranking within each image rather than across the corpus. A detector is a RANKING — the shape of problem from application 2 — and the ranking is global.",
-            catch="mark the annotation as used the moment it is matched. The bookkeeping is three lines and it is the entire difference between AP and a count of overlaps."),
+            check="handle the empty case in `iou_many` — a class with no ground truth in an image gives a zero-length array, and `argmax` on it raises. Mark the annotation as used the moment it is matched. The bookkeeping is three lines and it is the entire difference between AP and a count of overlaps."),
         code('''
 def iou_many(one, many):
     """IoU of one box against an (M, 4) array of boxes."""
@@ -593,9 +564,7 @@ Classify every step of the ranking exactly, the way Lecture 4 did for MNIST.
             input="the person class's precision curve",
             output="how many steps go down, up and flat, checked against the true and false positive counts",
             constraint="classify every step EXACTLY and assert the identity: every false positive is a step down, and every true positive but the first is up or flat",
-            left_open="what the flat run means. The top detections in the whole corpus are all correct, so precision sits at 1.0 and cannot rise.",
-            student="observing that the curve is jagged and moving on. The exact accounting is what connects the sawtooth to the definition, and it is three asserts.",
-            catch="when a curve has a structure you can predict from counts, assert the prediction. If it fails, either your matching or your counting is wrong and you now know which."),
+            check="when a curve has a structure you can predict from counts, assert the prediction. If it fails, either your matching or your counting is wrong and you now know which."),
         code('''
 step = np.diff(precision)
 down = int((step < -1e-12).sum())
@@ -639,10 +608,7 @@ No threshold appears anywhere. That is the whole point.
             input="the precision-recall curve",
             output="the AP, plus a four-detection case computed by hand in the comment",
             constraint="check it against a case you can do ON PAPER — four detections, two annotations, TP FP TP FP in score order, AP = 0.5 + 1/3",
-            check="the hand-computable assert, to 1e-12",
-            left_open="why the maximum exists at all. Average precision uses the maximum precision at or above each recall level, and that maximum is there for exactly one reason: to replace a non-monotone quantity by a monotone one.",
-            student="implementing the 11-point interpolation from an old paper and comparing against an all-point number. They differ by several points and neither is wrong.",
-            catch="no threshold appears anywhere in AP. That is the whole point of it, and it is what makes it comparable across detectors."),
+            check="the hand-computable assert, to 1e-12. No threshold appears anywhere in AP. That is the whole point of it, and it is what makes it comparable across detectors."),
         code('''
 def envelope(p):
     """Maximum precision at or above each recall level. One sweep, right to
@@ -688,9 +654,7 @@ print(f"\\nAP for person at IoU 0.5, on 128 images: {ap_person:.3f}")
             input="the curve and its envelope",
             output="the full PR curve with the area shaded, and a zoomed window on the sawtooth",
             constraint="`where='post'` on the step plots — a precision-recall curve drawn with linear interpolation claims performance at recall levels that were never achieved",
-            left_open="why two panels. The full curve shows the area being integrated; only the zoom shows that the red line is a sawtooth and the green one is a staircase.",
-            student="`plt.plot` instead of `plt.step`, which smooths over exactly the non-monotonicity the section is about.",
-            catch="shade the area you are claiming to integrate. An AP quoted beside an unshaded curve is a number beside a picture."),
+            check="shade the area you are claiming to integrate. An AP quoted beside an unshaded curve is a number beside a picture."),
         code('''
 env = envelope(precision)
 
@@ -730,9 +694,7 @@ plt.tight_layout(); plt.show()
             input="73 classes × 10 IoU thresholds",
             output="mAP at 0.50, at 0.75, and averaged across the ten",
             constraint="only classes that ACTUALLY APPEAR — a class with no annotations has no AP, and counting it as zero would be inventing a measurement",
-            left_open="that 73 of COCO's 80 categories appear in 128 images. The seven missing ones are excluded here, and a different corpus would exclude different ones, so this mAP is not comparable with another subset's.",
-            student="iterating over all 80 and scoring the absent ones as zero, which drags the mean down by a factor that depends on the sample rather than on the detector.",
-            catch="say '73 classes' out loud alongside '128 images'. Both are part of the number."),
+            check="say '73 classes' out loud alongside '128 images'. Both are part of the number."),
         code('''
 present = sorted({int(c) for g in gt.values() for c in g["labels"]})
 print(f"{len(present)} of COCO's 80 categories appear in our 128 images")
@@ -765,9 +727,7 @@ print("\\n...all on 128 images, and 73 classes.")
             input="the per-class APs at IoU 0.50, and the instance counts",
             output="best, median, mean and worst, with instance counts, and how many classes score exactly 1.000",
             constraint="print the INSTANCE COUNT beside every class you name — the mean is unweighted, and that is the finding",
-            left_open="the arithmetic of it: a class with one annotation scores 1.000 or 0.000 and nothing between, and it weighs as much in the mean as person with 350 instances.",
-            student="reporting the mAP and treating it as the detector's accuracy. More than half the classes are below it, and the ones above are mostly the rare ones.",
-            catch="a mean over categories does not care that one of them is 39% of the corpus. If you want it to, you need a different statistic and you should say which."),
+            check="a mean over categories does not care that one of them is 39% of the corpus. If you want it to, you need a different statistic and you should say which."),
         code('''
 per50 = sorted(((names[c], ap[(c, 0.5)]) for c in present if (c, 0.5) in ap),
                key=lambda r: -r[1])
@@ -799,9 +759,7 @@ print("between, and it weighs as much in the mean as person with 350.")
             input="mAP at each of the ten IoU thresholds",
             output="the curve, with the mean drawn across it",
             constraint="draw the mean as a horizontal line ON the curve — the point is how far the endpoints are from it",
-            left_open="the range: 0.659 at the loosest threshold and 0.040 at the tightest. One number in the middle stands for both.",
-            student="quoting 'mAP 0.439' as if it described a single behaviour. It is an average over ten quite different questions about how precisely a box must be placed.",
-            catch="when a headline metric is a mean over a parameter, plot it against that parameter once. It takes four lines and it changes how the number reads."),
+            check="when a headline metric is a mean over a parameter, plot it against that parameter once. It takes four lines and it changes how the number reads."),
         code('''
 plt.figure(figsize=(9, 3.6))
 plt.plot(IOU_TS, [map_at[float(t)] for t in IOU_TS], color="#0b3d62", lw=3,
@@ -834,10 +792,7 @@ mAP.
             input="AP computed per image and then averaged",
             output="the per-image figure beside the correctly accumulated one",
             constraint="restore `preds` and `gt` afterwards — this cell rebinds the globals the rest of the notebook uses, and forgetting to put them back breaks every cell below with no obvious cause",
-            check="assert the per-image version is optimistic, since the whole point is that it is free mAP",
-            left_open="why it inflates. A single image usually contains one or two classes and a handful of objects, so its own AP is often exactly 1.0 — and averaging a lot of easy 1.0s is not the same as ranking every detection in the corpus against every other.",
-            student="exactly this, when asked to 'report mAP over the dataset'. It runs, it looks like an average over the dataset, and it is worth a great deal of free score.",
-            catch="this is the metric averaged per batch rather than over the set — the same entry in the silent-failure catalogue you met in application 6, wearing detection clothes."),
+            check="assert the per-image version is optimistic, since the whole point is that it is free mAP. This is the metric averaged per batch rather than over the set — the same entry in the silent-failure catalogue you met in application 6, wearing detection clothes."),
         code('''
 # ⚠ read before running — this is the WRONG way, on purpose
 all_preds, all_gt = preds, gt
@@ -885,9 +840,7 @@ before you saw it, using IoU, at a threshold you did not set.
             input="the same 128 images with suppression switched OFF",
             output="candidates per image before suppression, after suppression at IoU 0.5, and the true object count",
             constraint="suppress the SAME candidate pool — comparing against the stock pipeline's output would compare two different pipelines, since it caps at 100 detections after its own NMS, and the drop would look smaller than it is",
-            left_open="that the detector you ran last lecture had already thrown away nine tenths of its own output before you saw it, using IoU, at a threshold you did not set.",
-            student="comparing the raw model's 300 boxes against the stock model's 100 and reporting a 3x reduction. The stock model's 100 is a cap, not a result.",
-            catch="`batched_nms`, not `nms` — suppression must be per class, or a person standing in front of a car suppresses the car."),
+            check="`batched_nms`, not `nms` — suppression must be per class, or a person standing in front of a car suppresses the car."),
         code('''
 from torchvision.ops import batched_nms
 
@@ -924,9 +877,7 @@ print(f"actual objects per image                  : {n_true.mean():.2f}")
             input="five NMS thresholds",
             output="boxes kept per image at each",
             constraint="apply the rule by hand at several thresholds rather than trusting the default",
-            left_open="the trade in both directions: too low and two people standing close together become one person; too high and every object keeps its duplicates.",
-            student="treating 0.5 as a property of the algorithm. It is a parameter with a default, and it decides how many objects your system reports.",
-            catch="count the defaults in this notebook: score 0.05, NMS 0.5, 100 detections per image, IoU 0.5 for matching. Four numbers nobody in the room chose."),
+            check="count the defaults in this notebook: score 0.05, NMS 0.5, 100 detections per image, IoU 0.5 for matching. Four numbers nobody in the room chose."),
         code('''
 # the rule, applied by hand at several thresholds
 for t in [0.1, 0.3, 0.5, 0.7, 0.9]:
@@ -963,9 +914,7 @@ already ran.
             input="the most crowded of the first forty images",
             output="soft masks, labels and scores, and how many objects survive a 0.7 cut",
             constraint="`masks` is (N, 1, H, W) and SOFT in [0,1] — indexing it as (N, H, W) silently gives you the first object, repeated",
-            left_open="the distinction the section is about: semantic segmentation gives one class per pixel, so two people standing together are one `person` region and you cannot count them. Instance segmentation gives one mask per object.",
-            student="`out['masks'][j]` expecting an (H, W) array and getting (1, H, W), which broadcasts against the image in a way that produces a plausible-looking overlay of the wrong thing.",
-            catch="a box was always an approximation — a bicycle's box is mostly not bicycle. That is the argument for per-pixel prediction, and it is visible in the figure."),
+            check="a box was always an approximation — a bicycle's box is mostly not bicycle. That is the argument for per-pixel prediction, and it is visible in the figure."),
         code('''
 from torchvision.models.detection import (
     maskrcnn_resnet50_fpn, MaskRCNN_ResNet50_FPN_Weights)
@@ -997,9 +946,7 @@ print(f"{len(keep)} objects at score >= 0.7, "
             input="the masks and their labels",
             output="the image, a semantic overlay and an instance overlay",
             constraint="colour by CLASS in one panel and by OBJECT in the other — that difference IS the distinction, and one panel cannot show it",
-            left_open="that the soft masks are alpha-blended rather than thresholded, so the boundaries are visibly uncertain. That uncertainty is real and thresholding would hide it.",
-            student="thresholding the masks at 0.5 and drawing hard regions, which looks cleaner and asserts a confidence the model did not express.",
-            catch="`np.clip(img, 0, 1)` before imshow. Repeated alpha blending can drift outside the range, and matplotlib's response to that is to rescale the whole image."),
+            check="`np.clip(img, 0, 1)` before imshow. Repeated alpha blending can drift outside the range, and matplotlib's response to that is to rescale the whole image."),
         code('''
 base = np.asarray(pic, dtype=float) / 255.0
 palette = plt.get_cmap("tab10")
@@ -1035,9 +982,7 @@ Look at what COCO actually recorded for it, and at what the detector found.
             input="the raw annotations for that image",
             output="what the detector found, beside what COCO annotates, with crowd regions marked",
             constraint="show the crowd regions explicitly — they are the reason the two counts disagree",
-            left_open="the conclusion, and it is uncomfortable: the detector is probably right and the ground truth is probably not wrong. They answer different questions.",
-            student="treating a disagreement with the annotation as a detector error. Every metric in this lecture is measured against the annotator's decision, including the decision to draw one polygon around twelve people.",
-            catch="when your model disagrees with the ground truth, look at the ground truth. It is a record of what somebody decided, not a record of what is there."),
+            check="when your model disagrees with the ground truth, look at the ground truth. It is a record of what somebody decided, not a record of what is there."),
         code('''
 here = [a for a in raw["annotations"] if a["image_id"] == busy]
 by = collections.Counter((cat_name[a["category_id"]], a["iscrowd"])

@@ -55,6 +55,14 @@ mentioned the old structure. The other eleven were:
    **Whenever a notebook and its deck report the same quantity, run the notebook
    and diff the numbers against the slide.**
 
+### Regenerating a notebook is idempotent
+
+`make_notebooks.py` reuses the cell ids already on disk wherever the cell
+sequence is unchanged (`_keep_cell_ids`). Before that, nbformat minted a fresh
+random id per cell per build, so regenerating an unchanged notebook still
+produced a diff touching every cell — which buried the one line that had
+actually changed. If you see id-only churn again, that helper has regressed.
+
 ### Renumbering: the source modules are keyed by OLD lecture numbers
 
 `tools/notebooks/lecture_NN.py` and `slides/lecture-NN.html` still carry the old
@@ -204,12 +212,20 @@ Things noticed during the rebuild that are not yet fixed.
 - `tools/deckkit.py` — new: slide-level surgery on a deck, which is how a
   lecture is converted without retyping the slides that survive.
 - `tools/figures_app02.py` … `figures_app12.py` are named by the old
-  twelve-application scheme. Rename to lecture numbers as each is touched.
-- The `left_open` / `student` / `catch` kwargs are gone from
-  `make_notebooks.py` but still appear ~1,247 times across
-  `tools/notebooks/lecture_*.py`. `_prompt.py` drops them silently, so nothing
-  is broken; delete them lecture by lecture as each is rewritten, and tighten
-  `_prompt.py` to reject them once the last one goes.
+  twelve-application scheme, and the figures they emit are named by OLD lecture
+  numbers (`l03-*`, `l04-*`). New Lecture 3 legitimately uses both `l03-*` and
+  `l04-*` files. Renaming would break `check_provenance`, so leave it until a
+  lecture is touched anyway.
+- `l03-baseline.svg`, `l03-folds.svg`, `l03-train-vs-cv.svg` are generated but
+  no longer referenced: their slides were cut from Lecture 3 against the clock.
+  Benign — `make_figures.py` still emits them, so deleting them only means the
+  next run recreates them.
+- ~~dead prompt kwargs~~ **cleared.** All 1,149 are gone from all 24 modules:
+  `left_open` and `student` dropped (they described the retired device), and
+  383 `catch=` lines folded into their box's `check=`, since they were
+  verification instructions and that is what `check` now means. `_prompt.py`
+  still accepts the three names silently — tighten it to reject them once no
+  branch can reintroduce one.
 - **A merge is roughly twice a remap.** L3 fused two 580-line generator modules
   and two decks (72 + 87 slides) into one 92-slide deck and one 27-cell
   notebook. The mechanical parts — stripping the dead annotation kwargs,

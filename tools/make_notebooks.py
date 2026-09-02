@@ -1006,6 +1006,30 @@ _discover()
 COLAB_AUTHORED: set[int] = set()
 
 
+def _keep_cell_ids(nb: nbf.NotebookNode, path: Path) -> None:
+    """Reuse the ids already on disk wherever the cell sequence is unchanged.
+
+    nbformat mints a fresh random id for every cell on every build, so
+    regenerating a notebook whose content did not change still produced a diff
+    touching every cell — which buries the one line that did change and makes
+    review of a generated artefact useless. Ids carry no meaning here beyond
+    identity, so holding them steady costs nothing and keeps the diff honest.
+
+    Positional, and only where the cell types still line up: once a cell is
+    inserted or removed the ids below it are allowed to shift, which is the
+    correct signal that the structure moved.
+    """
+    if not path.exists():
+        return
+    try:
+        old = nbf.read(path, as_version=4).cells
+    except Exception:
+        return
+    for a, b in zip(old, nb.cells):
+        if a.cell_type == b.cell_type and "id" in a:
+            b["id"] = a["id"]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true",
@@ -1029,6 +1053,7 @@ def main() -> int:
         path = OUT / f"lecture-{n:02d}.ipynb"
         nb = fn()
         _ensure_prompt_note(nb, n)
+        _keep_cell_ids(nb, path)
         nbf.write(nb, path)
         cells = nbf.read(path, as_version=4).cells
         n_code = sum(c.cell_type == "code" for c in cells)

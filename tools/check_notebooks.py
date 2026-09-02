@@ -1,36 +1,37 @@
 #!/usr/bin/env python3
 """
-The machine-checkable half of GUIDELINES.md, on the generated notebooks.
+The machine-checkable half of AUTHORING.md, on the generated notebooks.
 
     python3 tools/check_notebooks.py            # all 24
     python3 tools/check_notebooks.py 19 20      # named lectures
     python3 tools/check_notebooks.py --advisory # include the noisy checks
 
-Six rules, from GUIDELINES.md §9. Four of them are deterministic and FAIL the
+Six rules, from AUTHORING.md §4 and §5. Four are deterministic and FAIL the
 run; two are advisory and only print, because they have irreducible false
 positives and a check that cries wolf is a check nobody reads.
 
     HARD
-      §5.1/5.2  no markdown line indented >= 4 outside a fence; no fence
+      §5.1      no markdown line indented >= 4 outside a fence; no fence
                 marker indented >= 4 -- an indented closing fence does not
-                close, which is how lecture 19 shipped its best argument as
-                grey monospace
-      §6.1      annotation budget (see below)
-      §7.1      any code cell whose stored execution took more than 20 s must
+                close, and the argument ships as grey monospace
+      §4.1      every code cell is preceded by a prompt box (see below)
+      §4.5      any code cell whose stored execution took more than 20 s must
                 have a clock marker in the markdown above it
 
     ADVISORY (--advisory)
-      §3.1      a ```python block in markdown that appears in no code cell.
-                Lecture 19 quoted a loop that existed nowhere and two of three
-                readers went hunting for it -- but quoting code you are
-                deliberately NOT running (what the assistant returned) is a
-                legitimate pattern, so this lists rather than fails.
-      §1.2      prose figures that appear in no stored output. Derived numbers
+      §4.3      a ```python block in markdown that appears in no code cell.
+                Quoting code you are deliberately NOT running is a legitimate
+                pattern, so this lists rather than fails.
+      §4.3      prose figures that appear in no stored output. Derived numbers
                 ("10% of 55,399 is about 5,500") are legitimate and cannot be
                 distinguished mechanically, so this lists rather than fails.
-      §4.1      a name assigned from two different constructors across cells.
-                Legitimate in places; lecture 19 rebinds `model` from
-                LinearRegression to SimpleRnn, which is the case it is for.
+      §4.4      a name assigned from two different constructors across cells.
+                Legitimate in places -- rebinding `model` from LinearRegression
+                to an RNN is the case it is for.
+
+    NOTE. The old §6.1 "annotation budget" is gone with the device it policed:
+    the three-bullet block under each prompt box no longer exists, so counting
+    them is meaningless. What replaces it is check_every_cell_has_a_box below.
 
 Why the split matters. The first version of this file failed the run on §1.2
 and every notebook went red on legitimate arithmetic, which trains you to pass
@@ -148,14 +149,35 @@ def check_quoted_code(nb, fails):
                              f"(§3.1) — {probe[:58]!r}")
 
 
-def check_annotation_budget(nb, fails, limit=10):
-    """§6.1 — full three-bullet annotations, capped."""
-    full = sum(1 for c in cells(nb)
+def check_annotation_budget(nb, fails, limit=0):
+    """The old §6.1 budget, inverted: the annotation must be GONE.
+
+    `_prompt.py` stopped rendering left_open/student/catch in the 2026-09
+    redesign, so any surviving "Watch this prompt" block means a notebook was
+    committed from a stale build rather than regenerated.
+    """
+    left = sum(1 for c in cells(nb)
                if c["cell_type"] == "markdown" and "Watch this prompt" in src(c))
-    if full > limit:
-        fails.append(f"{full} full annotations, budget is {limit} (§6.1) — "
-                     f"every reader in the audit stopped reading the template "
-                     f"around cell 30")
+    if left:
+        fails.append(f"{left} cell(s) still carry the retired three-bullet "
+                     f"annotation — regenerate with tools/make_notebooks.py")
+
+
+def check_every_cell_has_a_box(nb, fails):
+    """§4.1 — every code cell is preceded by its specification.
+
+    make_notebooks.py enforces this at build time for the notebooks it writes;
+    this catches an .ipynb edited by hand afterwards, which is the only way the
+    two can disagree.
+    """
+    cs = cells(nb)
+    for i, c in enumerate(cs):
+        if c["cell_type"] != "code":
+            continue
+        prior = [x for x in cs[:i] if x["cell_type"] == "markdown"]
+        if not prior or not src(prior[-1]).lstrip().startswith("> **Prompt"):
+            fails.append(f"cell {i}: no prompt box precedes this code cell "
+                         f"(§4.1)")
 
 
 def check_clock_markers(nb, fails, threshold=20.0):
@@ -245,6 +267,7 @@ def main() -> int:
         fails: list[str] = []
         check_indentation(nb, fails)
         check_annotation_budget(nb, fails)
+        check_every_cell_has_a_box(nb, fails)
         check_clock_markers(nb, fails)
 
         notes: list[str] = []
@@ -269,7 +292,7 @@ def main() -> int:
 
     print()
     if total_fail:
-        print(f"{BOLD}{RED}{total_fail} violation(s) of GUIDELINES.md{OFF}")
+        print(f"{BOLD}{RED}{total_fail} violation(s) of AUTHORING.md{OFF}")
         return 1
     print(f"{BOLD}{GRN}notebooks conform to the machine-checkable rules{OFF}")
     return 0

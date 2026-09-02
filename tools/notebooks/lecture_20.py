@@ -96,17 +96,7 @@ def build() -> list:
                                                                            input="the same CTA file as the previous lecture",
                                                                            output="the tidied frame and the 2016-2019 pool, ready to model",
                                                                            constraint="identical preparation to Lecture 19, so any difference in the numbers is the protocol and not the data",
-                                                                           check="print the day count and confirm it matches",
-                                                                           left_open="it says *identical* preparation but not how you would know it was "
-                                                                                "identical. Copying cells by eye is exactly how two notebooks drift apart, "
-                                                                                "and the drift shows up as a number you cannot attribute.",
-                                                                           student="re-typing the loader from memory, with one small improvement. The "
-                                                                                "improvement is the problem: from here on, any difference against Lecture "
-                                                                                "19 could be the fix or could be the retyping, and you can no longer tell "
-                                                                                "which.",
-                                                                           catch="print the pool length and date range and compare with Lecture 19's 1,247 "
-                                                                                "days, 2016-01-01 to 2019-05-31. If either differs, stop here — nothing "
-                                                                                "downstream is comparable until it matches."),
+                                                                           check="print the day count and confirm it matches. Print the pool length and date range and compare with Lecture 19's 1,247  days, 2016-01-01 to 2019-05-31. If either differs, stop here — nothing  downstream is comparable until it matches."),
                                                                      code(SETUP)]
 
     cells += [
@@ -130,18 +120,7 @@ prompt(
        input="the rail pool, and the same series differenced at lag 1 and lag 7",
        output="an augmented Dickey-Fuller p-value for each, with a verdict",
        constraint="install statsmodels only if it is missing, so the notebook runs on a bare environment",
-       check="the level series should fail to look stationary where the differenced ones do not",
-       left_open="what counts as a pass. ADF's null hypothesis is *non*-stationarity, so a "
-            "**small** p-value is the stationary verdict. The direction is easy to "
-            "invert and nothing in the printed output reminds you which way round it "
-            "goes.",
-       student="reporting the test statistic with no critical values, or reading a large p "
-            "as 'stationary'. A number with no stated direction is not a verdict, it is "
-            "decoration.",
-       catch="decide before running which of the three you expect to fail. The raw "
-            "series should not look stationary; the seasonal difference should. If all "
-            "three pass, you have read the sign backwards — which is the single most "
-            "common ADF error and it never raises anything."),
+       check="the level series should fail to look stationary where the differenced ones do not. Decide before running which of the three you expect to fail. The raw  series should not look stationary; the seasonal difference should. If all  three pass, you have read the sign backwards — which is the single most  common ADF error and it never raises anything."),
         code('''
 try:
     from statsmodels.tsa.stattools import adfuller
@@ -178,16 +157,7 @@ prompt(
        input="the pool, and its autocorrelation at lags 1, 7 and 14",
        output="predicted and measured standard deviation of each difference",
        constraint="predict from the identity Var(X_t - X_t-h) = 2 gamma(0)(1 - rho(h)) BEFORE measuring, so the theory is exposed to the data",
-       check="flag any lag where differencing makes the spread larger, which is the point of the cell",
-       left_open="it asks for predicted and measured but not for the **gap** between them. "
-            "Two columns of plausible numbers is precisely where a 10% disagreement "
-            "sits unnoticed.",
-       student="measuring only, and presenting the measurement as if it confirmed a "
-            "formula nobody actually wrote down. The identity is what makes this a test "
-            "rather than a description of what happened.",
-       catch="print predicted/measured as a ratio and expect 1.00 to within a per cent "
-            "at every lag. If lag 7 agrees and lag 1 does not, suspect your estimate of "
-            "rho, not the identity."),
+       check="flag any lag where differencing makes the spread larger, which is the point of the cell. Print predicted/measured as a ratio and expect 1.00 to within a per cent  at every lag. If lag 7 agrees and lag 1 does not, suspect your estimate of  rho, not the identity."),
         code('''
 sd = pool.std()
 print(f"{'series':28s} sd {sd:>10,.0f}")
@@ -213,17 +183,7 @@ prompt(
        input="five months of the rail series, raw and differenced at lags 1 and 7",
        output="three stacked panels sharing an x axis",
        constraint="a zero line on each, so 'bigger swings' is visible rather than asserted",
-       check="the first difference should look wilder than the series it came from",
-       left_open="whether the three panels share a y-scale. They must **not** — the "
-            "differenced series being smaller is the entire point — but a shared axis "
-            "is the default in several plotting idioms and it flattens the bottom two "
-            "panels into straight lines.",
-       student="three separate figures. The claim lives in the comparison between panels, "
-            "and a reader who has to scroll between them is not comparing, they are "
-            "remembering.",
-       catch="the zero line should be visibly crossed on the differenced panels and "
-            "nowhere near the raw one. If all three look alike, the y-limits are shared "
-            "and the figure is showing you nothing."),
+       check="the first difference should look wilder than the series it came from. The zero line should be visibly crossed on the differenced panels and  nowhere near the raw one. If all three look alike, the y-limits are shared  and the figure is showing you nothing."),
         code('''
 fig, axes = plt.subplots(3, 1, figsize=(11, 6), sharex=True)
 recent = pool["2019-01":"2019-05"]
@@ -246,15 +206,7 @@ prompt(
        input="autocorrelation of the pool and of its seasonal difference, lags 0 to 42",
        output="both on one bar chart",
        constraint="plot them side by side at each lag, not on two charts, so the collapse at lag 7 is directly comparable",
-       check="spikes at 7, 14 and 21 in the raw series; nothing much left after differencing",
-       left_open="what the collapse is supposed to look like. Name it before you run: the "
-            "raw ACF stays high at every multiple of 7, the differenced one does not. A "
-            "figure with no predicted shape cannot disappoint you.",
-       student="two separate charts, or only the differenced one. A collapse is a "
-            "comparison; a single series cannot display it however clean it looks.",
-       catch="read lag 7 and lag 14 specifically and say the two numbers out loud. Those "
-            "two bars are the claim. The other forty-one are scenery, and scanning all "
-            "forty-three is how you talk yourself into a pattern."),
+       check="spikes at 7, 14 and 21 in the raw series; nothing much left after differencing. Read lag 7 and lag 14 specifically and say the two numbers out loud. Those  two bars are the claim. The other forty-one are scenery, and scanning all  forty-three is how you talk yourself into a pattern."),
         code('''
 lags = np.arange(0, 43)
 acf_level = [pool.autocorr(lag=int(k)) if k else 1.0 for k in lags]
@@ -282,16 +234,7 @@ prompt(
        input="the pool as 56-lag windows",
        output="a cross-validated MAE from a shuffled five-fold split",
        constraint="this is the previous lecture's broken cell, reproduced exactly",
-       check="look at the fold spread — they agree with each other, which is what a stable measurement of the wrong quantity looks like",
-       left_open="nothing, deliberately — this is Lecture 19's defective cell reproduced "
-            "without changes. It is here because a fix you cannot put beside the "
-            "original is not a demonstrated fix, it is a claim.",
-       student="skipping this cell on the grounds that we already know it is wrong. You "
-            "then have no number to set the corrected ones against, and the rest of the "
-            "section becomes assertion.",
-       catch="it must reproduce Lecture 19's figure to the boarding. If it does not, one "
-            "of the two notebooks has drifted and every comparison below is void — go "
-            "back and fix that before reading on."),
+       check="look at the fold spread — they agree with each other, which is what a stable measurement of the wrong quantity looks like. It must reproduce Lecture 19's figure to the boarding. If it does not, one  of the two notebooks has drifted and every comparison below is void — go  back and fix that before reading on."),
         code('''
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import KFold, TimeSeriesSplit, cross_val_score
@@ -318,16 +261,7 @@ prompt(
        input="the same X and y",
        output="the same five-fold MAE, split by time instead",
        constraint="no training row may come after a test row; change one call and nothing else",
-       check="report the gap against the shuffled number in boardings and per cent",
-       left_open="it says no training row may come after a test row, which is the right "
-            "rule, but does not say to **verify** it. The guarantee comes from the row "
-            "order, and the row order is an assumption inherited from three cells ago.",
-       student="`train_test_split(X, y, test_size=0.2)`. That function shuffles by "
-            "default. It is the most common way this exact defect survives its own fix "
-            "— you believe you have split by time and you have re-shuffled.",
-       catch="compare the largest training index with the smallest test index and assert "
-            "the gap. One line, and it fails loudly the day someone sorts the frame "
-            "upstream."),
+       check="report the gap against the shuffled number in boardings and per cent. Compare the largest training index with the smallest test index and assert  the gap. One line, and it fails loudly the day someone sorts the frame  upstream."),
         code('''
 cv = TimeSeriesSplit(n_splits=5)          # was KFold(shuffle=True)
 folds_time = -cross_val_score(model, X, y, cv=cv,
@@ -360,18 +294,7 @@ prompt(
        input="the same X and y again",
        output="MAE with a gap of one window between train and test",
        constraint="no training row may be ADJACENT to a test row either — two consecutive days are nearly the same number",
-       check="print mean and fold spread for all three protocols together",
-       left_open="how big the gap should be. One window is the defensible choice here "
-            "because a window is exactly the reach of the leak — but the prompt does "
-            "not say so, and a gap chosen because it improves the number is a "
-            "hyperparameter tuned on the test set.",
-       student="assuming the time split already solved it. Adjacent days are nearly the "
-            "same day; a test row one step after the last training row shares 55 of its "
-            "56 inputs with it.",
-       catch="the gapped number must be **worse** again than the plain time split. Each "
-            "time you remove a route for information to travel, the score gets worse "
-            "and more honest. A protocol that improves the score is a protocol you "
-            "should distrust."),
+       check="print mean and fold spread for all three protocols together. The gapped number must be **worse** again than the plain time split. Each  time you remove a route for information to travel, the score gets worse  and more honest. A protocol that improves the score is a protocol you  should distrust."),
         code('''
 # Condition 2, made explicit: leave a gap the width of one window between the
 # end of training and the start of testing, so no test target can be predicted
@@ -397,16 +320,7 @@ prompt(
        input="the naive baseline and the four protocols' MAEs",
        output="the margin over the baseline that each protocol reports",
        constraint="quote the margin, not the MAE — the margin is what the shuffle was inflating",
-       check="state what share of the claimed margin was protocol rather than model",
-       left_open="it asks for margins rather than MAEs, which is right, but does not say the "
-            "baseline must be scored on **each protocol's own test days**. Lecture 19 "
-            "got this wrong and said so in its section 9.",
-       student="quoting the MAEs and letting the reader do the subtraction. The MAE moves "
-            "when the test window moves; the margin is what the shuffle was inflating, "
-            "so the margin is the number under discussion.",
-       catch="the margin should shrink monotonically as the protocol gets stricter. If "
-            "it does not, either a protocol is mis-implemented or the baseline is being "
-            "measured over a different set of days than the models."),
+       check="state what share of the claimed margin was protocol rather than model. The margin should shrink monotonically as the protocol gets stricter. If  it does not, either a protocol is mis-implemented or the baseline is being  measured over a different set of days than the models."),
         code('''
 target = pool[WINDOW:]
 naive = pool.shift(7)[WINDOW:]
@@ -469,15 +383,7 @@ prompt(
        input="rail, bus, and tomorrow's day type from the calendar",
        output="a five-column frame, day type one-hot encoded",
        constraint="shift(-1) on the CALENDAR is legitimate and shift(-1) on the target is a leak — the test is whether the value is knowable at prediction time",
-       check="assert the column names, so a silent change in encoding stops the notebook",
-       left_open="why one `shift(-1)` is legitimate and another is a leak. The calendar is "
-            "knowable tomorrow; the ridership is not. The prompt states the rule but "
-            "the code cannot enforce it — the two shifts look identical.",
-       student="shifting everything by -1 for symmetry, or shifting nothing and wondering "
-            "why the day-type column does not help. Both run.",
-       catch="for each shifted column ask: would I know this value at 6pm the day "
-            "before? If yes it is a feature, if no it is the answer. That question is "
-            "the whole of leak detection and it takes five seconds a column."),
+       check="assert the column names, so a silent change in encoding stops the notebook. For each shifted column ask: would I know this value at 6pm the day  before? If yes it is a feature, if no it is the answer. That question is  the whole of leak detection and it takes five seconds a column."),
         code('''
 mulvar = df[["rail", "bus"]] / 1e6
 mulvar["next_day_type"] = df["day_type"].shift(-1)   # known in advance
@@ -504,17 +410,7 @@ prompt(
        input="the multivariate frame, a window and a horizon",
        output="windows over all series, with rail alone as the target",
        constraint="one windowing function used for every model below, so the comparison is like for like",
-       check="print the shapes and the train/test split sizes",
-       left_open="that this function is about to be the single point of failure for every "
-            "model below. An off-by-one here is not one wrong number, it is every "
-            "comparison in the section wrong by the same amount — and consistently "
-            "wrong looks exactly like correct.",
-       student="a second windowing function for the multivariate case, because the shapes "
-            "differ. Two functions means the comparison measures the difference between "
-            "the functions as well as between the models.",
-       catch="run it on a tiny array with distinct values and read the pairs by eye, as "
-            "Lecture 19 did with six integers. Shapes agreeing is not the same as "
-            "contents aligning, and only one of the two is checkable at scale."),
+       check="print the shapes and the train/test split sizes. Run it on a tiny array with distinct values and read the pairs by eye, as  Lecture 19 did with six integers. Shapes agreeing is not the same as  contents aligning, and only one of the two is checkable at scale."),
         code('''
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -544,16 +440,7 @@ prompt(
        input="windows of five series",
        output="a trained GRU and its held-out MAE",
        constraint="gates rather than a plain RNN, because a 56-step recurrence multiplies by the same matrix every step",
-       check="watch the held-out MAE as it trains rather than reading only the final number",
-       left_open="what to do if it fails to converge. A GRU on 950 rows can sit at its "
-            "initialisation for fifty epochs and then move; without a per-epoch print "
-            "you cannot tell that from a dead model.",
-       student="switching to a GRU and reporting the improvement, without noticing that "
-            "the series count changed at the same time. Two changes, one number, "
-            "nothing learned — which is exactly what the next cell is for.",
-       catch="the held-out MAE must fall and then flatten. If it rises, say so and "
-            "report the final epoch, not the best one you saw. Lecture 19's RNN rose at "
-            "epoch 160 and the honest number was the one at 200."),
+       check="watch the held-out MAE as it trains rather than reading only the final number. The held-out MAE must fall and then flatten. If it rises, say so and  report the final epoch, not the best one you saw. Lecture 19's RNN rose at  epoch 160 and the honest number was the one at 200."),
         code('''
 class GruModel(nn.Module):
     def __init__(self, input_size=5, hidden_size=32, output_size=1):
@@ -592,16 +479,7 @@ prompt(
        input="the same GRU, on rail alone",
        output="its held-out MAE, beside the five-series version",
        constraint="change ONE thing — two changes at once is not an experiment",
-       check="the table separates 'gates helped' from 'more series helped'",
-       left_open="nothing — 'change ONE thing' is the constraint and it is the whole cell. "
-            "The prompt is short because the discipline is simple to state and almost "
-            "impossible to keep once you are curious.",
-       student="changing the architecture and the inputs together, then attributing the "
-            "whole gain to whichever one they found more interesting. This is not "
-            "dishonesty, it is impatience, and it produces the same result.",
-       catch="you should be able to name, in one sentence, the single difference between "
-            "this run and the previous one. If the sentence needs an 'and', it is two "
-            "experiments and it answers neither."),
+       check="the table separates 'gates helped' from 'more series helped'. You should be able to name, in one sentence, the single difference between  this run and the previous one. If the sentence needs an 'and', it is two  experiments and it answers neither."),
         code('''
 # The same model on rail alone, to separate "gates helped" from "more series
 # helped". Two changes at once is not an experiment.
@@ -632,17 +510,7 @@ prompt(
        input="the same windows, with a fourteen-day target",
        output="MAE at each horizon, plotted against the naive baseline",
        constraint="one head producing fourteen numbers, not fourteen models",
-       check="read the SHAPE — a single average would hide that day 14 is no better than copying last week",
-       left_open="how the naive baseline extends to fourteen days. Copying last week is well "
-            "defined at horizon 7 and needs a decision at horizon 14 — and if you do "
-            "not make it deliberately, the comparison silently changes shape halfway "
-            "along the x axis.",
-       student="fourteen separate models, one per horizon. It runs, it scores better, and "
-            "it cannot be deployed — you would be fitting fourteen things to answer one "
-            "question, and each on less data than the last.",
-       catch="error must grow with horizon. If day 14 is predicted as accurately as day "
-            "1, you have leaked the future in: check that the target window starts "
-            "after the input window ends, not at it."),
+       check="read the SHAPE — a single average would hide that day 14 is no better than copying last week. Error must grow with horizon. If day 14 is predicted as accurately as day  1, you have leaked the future in: check that the target window starts  after the input window ends, not at it."),
         code('''
 HORIZON = 14
 Xh, yh = make_windows(mulvar, horizon=HORIZON)
@@ -693,17 +561,7 @@ prompt(
        input="the whole series, through 2021",
        output="the mean level before and after March 2020, and a plot spanning both",
        constraint="this is not a leak and not a bug — say so plainly; the protocol was right and the model still stopped working",
-       check="the ratio of the two levels is printed, not described",
-       left_open="what you are entitled to conclude. This is the one place in the "
-            "application where the model is not at fault and neither is the protocol — "
-            "and 'not a bug' is a finding that has to be stated, because silence reads "
-            "as an oversight.",
-       student="treating the 2020 collapse as a modelling failure and reaching for a "
-            "bigger network. No amount of capacity recovers a distribution that stopped "
-            "existing.",
-       catch="print the mean level either side of March 2020. If the two differ by more "
-            "than the model's entire error budget, the question is not 'why is the "
-            "model wrong' but 'when did this model stop being about the world'."),
+       check="the ratio of the two levels is printed, not described. Print the mean level either side of March 2020. If the two differ by more  than the model's entire error budget, the question is not 'why is the  model wrong' but 'when did this model stop being about the world'."),
         code('''
 level_2019 = df["rail"]["2019-01":"2019-05"].mean()
 level_2020 = df["rail"]["2020-04":"2020-08"].mean()
