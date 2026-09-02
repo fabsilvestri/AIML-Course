@@ -8,6 +8,22 @@ Last updated: 2026-09-01 (Lectures 1-3 built) · Term starts: ~2026-09-22
 
 ---
 
+## THE GOAL
+
+**All 24 lectures rebuilt, and `tools/check_consistency.py` clean on every one
+of them.** Set by the lecturer, 2026-09-01. Nothing is finished until both
+halves hold: a lecture whose deck is beautiful and whose notebook does not
+reproduce its figures is not done.
+
+Definition of done, per lecture, all of it:
+
+1. deck on the new design, 70-90 slides, no overflow
+2. notebook executes cold on CPU and prints every figure the deck states
+3. `check_consistency.py N` clean
+4. `check_decks`, `check_notebooks`, `check_provenance` clean
+5. `index.html` shows it published, `REBUILD.md` row says done
+6. committed and pushed
+
 ## How to resume
 
 1. `git log --oneline -15` — every lecture is committed on its own, so the last
