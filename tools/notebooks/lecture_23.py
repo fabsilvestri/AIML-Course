@@ -415,12 +415,23 @@ print(f"projection dim {clip.config.projection_dim}")
 print(f"parameters     {sum(p.numel() for p in clip.parameters()) / 1e6:.0f}M")
 
 
+def features(out):
+    """The projected embedding, whichever transformers version is installed.
+
+    In transformers 4.x `get_image_features` returned the tensor itself; in 5.x
+    it returns an output object whose `pooler_output` holds the same vector.
+    Both are the PROJECTED and UNNORMALISED embedding, which is the whole
+    subject of the section below -- so this helper must not normalise.
+    """
+    return out if torch.is_tensor(out) else out.pooler_output
+
+
 def clip_images(imgs, batch=32):
     out = []
     with torch.no_grad():
         for i in range(0, len(imgs), batch):
             b = clip_proc(images=imgs[i:i + batch], return_tensors="pt").to(device)
-            out.append(clip.get_image_features(**b).cpu().numpy())
+            out.append(features(clip.get_image_features(**b)).cpu().numpy())
     return np.concatenate(out).astype(np.float64)
 
 
@@ -430,7 +441,7 @@ def clip_text(sentences, batch=64):
         for i in range(0, len(sentences), batch):
             b = clip_proc(text=sentences[i:i + batch], return_tensors="pt",
                           padding=True, truncation=True, max_length=77).to(device)
-            out.append(clip.get_text_features(**b).cpu().numpy())
+            out.append(features(clip.get_text_features(**b)).cpu().numpy())
     return np.concatenate(out).astype(np.float64)
 
 
