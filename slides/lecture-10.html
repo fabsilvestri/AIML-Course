@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lecture 12 — Rebuilding it in PyTorch</title>
+<title>Lecture 10 — PyTorch</title>
 
 <link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
 <link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
@@ -18,63 +18,61 @@
 <div class="reveal">
 <div class="slides">
 
-<!-- ==================================================================== -->
-<!-- OPENING                                                              -->
-<!-- ==================================================================== -->
-
 <!-- 1 -->
 <section class="title-slide" data-menu-title="Title">
-  <h1>Rebuilding it in PyTorch</h1>
-  <p class="subtitle">Application 6 &middot; Fashion MNIST</p>
-  <p><span class="badge badge-fix">Lecture 12 &middot; Fix</span>
-     <span class="badge badge-math">Thread 6</span>
-     <span class="badge badge-ch">Géron Ch. 9&ndash;10</span></p>
+  <h1>PyTorch</h1>
+  <p class="subtitle">Fashion-MNIST</p>
+  <p><span class="badge badge-lec">Lecture 10</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 10</span></p>
   <p class="meta">
     Applications of Machine Learning<br>
     BSc Mathematics of Artificial Intelligence &middot; Third year
   </p>
-  <aside class="notes">Ask for the committed sheets before starting. Nobody
-  proceeds without one on the desk. Also confirm that everyone has a GPU runtime
-  open before the rebuild block, not during it.</aside>
+  <aside class="notes">The derivation is the reason the rest of the course is
+  possible. Do not rush it to get to the code.</aside>
 </section>
 
 <!-- 2 -->
-<section data-menu-title="Where we left off">
-  <h2>Where we left off</h2>
-  <table>
-    <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
-    <tr><td>Always predict one class</td><td class="num">10.0%%</td><td class="num">&mdash;</td></tr>
-    <tr><td>MLP, 266,610 parameters, 20 epochs</td><td class="num hit">88.02%%</td><td class="num fail">125 s</td></tr>
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Lecture&nbsp;9 fitted a network with
+  <code>MLPClassifier</code> and found four things it will not let you do:</p>
+  <table class="smaller">
+    <tr><th>you want to</th><th>you cannot</th></tr>
+    <tr><td>change what it optimises</td><td>there is no argument for it</td></tr>
+    <tr><td>see a gradient</td><td>nothing is exposed</td></tr>
+    <tr><td>stop mid-epoch, or log per batch</td><td>the smallest unit is one pass</td></tr>
+    <tr><td>move the computation to another device</td><td>there is no device to move to</td></tr>
   </table>
-  <p class="lead">The accuracy is fine. Everything else is the problem.</p>
-  <p class="small muted">Four walls, and the same wall underneath all four: the
-  training loop was written for you.</p>
+  <div class="panel">
+    <span class="panel-title">All four are one wall</span>
+    <code>fit()</code> contains a loop over epochs and batches that you did not
+    write, cannot see and cannot enter. The repair is not a better library. It
+    is owning the loop.
+  </div>
+  <p class="small muted">Today: what that loop has to compute, why it can be
+  computed at all, and how to write it.</p>
 </section>
 
 <!-- 3 -->
 <section data-menu-title="Today">
   <h2>Today</h2>
   <ol>
-    <li><span class="badge badge-math">Thread 6</span> Backpropagation as
-        reverse-mode automatic differentiation
-        <span class="muted small">(20 min)</span></li>
-    <li>Diagnose &mdash; score the commitment, measure the walls
-        <span class="muted small">(20 min)</span></li>
-    <li>Rebuild in PyTorch, and meet two bugs that never raise
-        <span class="muted small">(35 min)</span></li>
-    <li>Re-measure and red-team <span class="muted small">(15 min)</span></li>
+    <li><strong>The mathematics</strong> &mdash; backpropagation as reverse-mode
+        automatic differentiation <span class="muted small">(20 min)</span></li>
+    <li>What the wrapper costs, measured <span class="muted small">(15 min)</span></li>
+    <li><strong>The method</strong> &mdash; tensors, autograd, and the training
+        loop written out in full <span class="muted small">(40 min)</span></li>
+    <li>Two bugs that never raise an exception
+        <span class="muted small">(15 min)</span></li>
   </ol>
 </section>
 
-<!-- ==================================================================== -->
-<!-- MATHEMATICAL THREAD 6 (20 min)                                       -->
-<!-- ==================================================================== -->
-
 <!-- 4 -->
-<section class="divider" data-menu-title="◆ Thread 6">
-  <p class="kicker">Mathematical thread 6</p>
+<section class="divider" data-menu-title="◆ The mathematics">
+  <p class="kicker">The mathematics</p>
   <h1>Backpropagation as<br>reverse-mode autodiff</h1>
-  <p class="clock">20 minutes</p>
+  <p class="clock">20 minutes &middot; examinable</p>
 </section>
 
 <!-- 5 -->
@@ -206,7 +204,7 @@
   argument changes at 266,610 parameters.</p>
 </section>
 
-<!-- FIG -->
+<!-- 13 -->
 <section class="figslide" data-menu-title="◆ The computational graph">
   <h2>The whole thread, in one picture</h2>
   <figure class="fig fig-tall">
@@ -217,7 +215,7 @@
   right to left fills in every derivative.</p>
 </section>
 
-<!-- -->
+<!-- 14 -->
 <section data-menu-title="What the sweep bought">
   <h2>Two things that graph is showing you</h2>
   <div class="panel panel-math">
@@ -236,7 +234,7 @@
   </div>
 </section>
 
-<!-- 13 -->
+<!-- 15 -->
 <section data-menu-title="Forward sweep">
   <h2>The forward sweep &middot; values</h2>
   <table>
@@ -253,7 +251,7 @@
   while it happens.</p>
 </section>
 
-<!-- 14 -->
+<!-- 16 -->
 <section data-menu-title="Reverse sweep">
   <h2>The reverse sweep &middot; adjoints</h2>
   <table>
@@ -268,7 +266,7 @@
   <p class="small">Six lines, one pass, both derivatives.</p>
 </section>
 
-<!-- 15 -->
+<!-- 17 -->
 <section data-menu-title="The fan-in">
   <h2>The only bookkeeping in the whole method</h2>
   <p class="lead">$x$ is used <strong>twice</strong> &mdash; once by the product
@@ -286,7 +284,7 @@
   it.</p>
 </section>
 
-<!-- 16 -->
+<!-- 18 -->
 <section data-menu-title="Check it">
   <h2>Check it against the library</h2>
   <pre><code class="language-text" data-trim>
@@ -304,7 +302,7 @@
   Lecture 2's orthogonality test.</p>
 </section>
 
-<!-- 17 -->
+<!-- 19 -->
 <section data-menu-title="The decisive argument">
   <h2>The argument that settles it</h2>
   <div class="panel panel-math">
@@ -322,7 +320,7 @@
   one, by a factor of 266,610.</p>
 </section>
 
-<!-- 18 -->
+<!-- 20 -->
 <section data-menu-title="Why the loss is a scalar">
   <h2>Why the loss is one number</h2>
   <p>Not a convention, and not an accident of notation.</p>
@@ -339,7 +337,7 @@
   </div>
 </section>
 
-<!-- 19 -->
+<!-- 21 -->
 <section data-menu-title="Measure it">
   <h2>Do not take it on trust &mdash; measure it</h2>
   <p>Small networks, where forward mode can actually be run to completion. Same
@@ -357,7 +355,7 @@
   measurement of cost, not of quality.</p>
 </section>
 
-<!-- FIG -->
+<!-- 22 -->
 <section class="figslide" data-menu-title="◆ Forward vs reverse">
   <h2>Reverse mode is flat in $P$; forward mode is linear</h2>
   <figure class="fig fig-wide">
@@ -368,7 +366,7 @@
   parameters. That is why nobody trains networks in forward mode.</p>
 </section>
 
-<!-- 20 -->
+<!-- 23 -->
 <section data-menu-title="At full size">
   <h2>At the size we actually train</h2>
   <table>
@@ -383,7 +381,7 @@
   honest form of the claim.</p>
 </section>
 
-<!-- 21 -->
+<!-- 24 -->
 <section data-menu-title="Per batch">
   <h2>And that is <em>one</em> gradient</h2>
   <p>The previous lecture's run took 20 epochs of
@@ -399,7 +397,7 @@
   this course exists.</p>
 </section>
 
-<!-- 22 -->
+<!-- 25 -->
 <section data-menu-title="What backprop is">
   <h2>So: what is backpropagation?</h2>
   <div class="panel panel-math">
@@ -417,7 +415,7 @@
   was cheap enough to be practical, not inventing the chain rule.</p>
 </section>
 
-<!-- 23 -->
+<!-- 26 -->
 <section data-menu-title="The price">
   <h2>What reverse mode costs</h2>
   <p class="lead">Memory.</p>
@@ -431,14 +429,14 @@
   </ul>
   <div class="panel">
     <span class="panel-title">Where you will meet the bill</span>
-    Lecture 16 computes the RAM of a convolutional network and finds that the
+    Lecture 12 computes the RAM of a convolutional network and finds that the
     activations, not the parameters, are what exhausts the GPU. This is why.
   </div>
 </section>
 
-<!-- 24 -->
-<section data-menu-title="Thread summary">
-  <h2>Thread 6, summarised</h2>
+<!-- 27 -->
+<section data-menu-title="What the derivation buys you">
+  <h2>What the derivation buys you</h2>
   <ol class="tight small">
     <li>The chain rule is a product of Jacobians, and the product can be
         bracketed from either end</li>
@@ -453,56 +451,31 @@
   explicitly. It is the whole reason the field works.</p>
 </section>
 
-<!-- ==================================================================== -->
-<!-- PART 2 — DIAGNOSE (20 min)                                           -->
-<!-- ==================================================================== -->
-
-<!-- 25 -->
-<section class="divider" data-menu-title="◆ Diagnose">
-  <p class="kicker">Part two</p>
-  <h1>Diagnose</h1>
-  <p class="clock">20 minutes &middot; what the number cost you</p>
+<!-- 28 -->
+<section class="divider" data-menu-title="◆ What the wrapper costs">
+  <p class="kicker">Measured, not asserted</p>
+  <h1>What the wrapper<br>costs</h1>
+  <p class="clock">15 minutes</p>
 </section>
 
-<!-- 26 -->
-<section data-menu-title="★ Your numbers">
-  <h2>Compare with your sheet</h2>
-  <div class="commit">
-    <span class="commit-label">From the previous lecture</span>
-    <p class="small">
-      Accuracy a good sorting machine would need: <span class="blank"></span> %<br>
-      Accuracy I expected from that model: <span class="blank"></span> %<br>
-      Best accuracy I obtained: <span class="blank"></span> %
-    </p>
-  </div>
-  <table>
-    <tr><th>Reality</th><th class="num">Test accuracy</th></tr>
-    <tr><td>Always one class</td><td class="num">10.0%%</td></tr>
-    <tr><td>Hand-tuned MLP</td><td class="num hit">88.02%%</td></tr>
-  </table>
-  <p class="small muted">Score them out loud. Most rooms guess too low against
-  the baseline and too high against the state of the art &mdash; and being wrong
-  in both directions at once is worth a minute's discussion.</p>
-</section>
-
-<!-- 27 -->
+<!-- 29 -->
 <section data-menu-title="The accuracy is fine">
   <h2>The accuracy is not the bug</h2>
-  <p class="lead">88.02%% against a
-  10.0%% baseline is a real result.</p>
+  <p class="lead">88.02% against a
+  10.0% baseline is a real result.</p>
   <p>Unlike Lecture 2, nothing here was measured dishonestly. The split was
   clean, the validation set was separate, the test set was touched once.</p>
   <p class="fail lead">The bug is that you cannot do anything else.</p>
 </section>
 
-<!-- 28 -->
+<!-- 30 -->
 <section data-menu-title="Wall 1 measured">
   <h2>Wall 1 &middot; the clock</h2>
   <table>
     <tr><th>Same architecture, same optimiser, same 20 epochs</th><th class="num">Wall clock</th><th class="num">Test accuracy</th></tr>
-    <tr><td>Scikit-Learn, CPU</td><td class="num fail">125 s</td><td class="num">88.02%%</td></tr>
-    <tr><td>PyTorch, CPU</td><td class="num">14 s</td><td class="num">88.84%%</td></tr>
-    <tr><td class="fix">PyTorch, MPS</td><td class="num hit">14 s</td><td class="num">89.24%%</td></tr>
+    <tr><td>Scikit-Learn, CPU</td><td class="num fail">125 s</td><td class="num">88.02%</td></tr>
+    <tr><td>PyTorch, CPU</td><td class="num">14 s</td><td class="num">88.84%</td></tr>
+    <tr><td class="fix">PyTorch, MPS</td><td class="num hit">14 s</td><td class="num">89.24%</td></tr>
   </table>
   <p class="lead fix">9.1&times; faster, for the same
   model.</p>
@@ -515,7 +488,7 @@
   nothing, and the explanation is the lesson.</aside>
 </section>
 
-<!-- FIG -->
+<!-- 31 -->
 <section class="figslide" data-menu-title="◆ Wall clock">
   <h2>The same problem, three times</h2>
   <figure class="fig fig-wide">
@@ -526,7 +499,7 @@
   clock moved &mdash; and only between the first bar and the other two.</p>
 </section>
 
-<!-- 29 -->
+<!-- 32 -->
 <section data-menu-title="Why the framework helps">
   <h2>Where the 9.1&times; came from</h2>
   <p>Not from the device. From how the arithmetic is dispatched.</p>
@@ -541,7 +514,7 @@
   14, <strong>both on the CPU</strong>.</p>
 </section>
 
-<!-- 29b -->
+<!-- 33 -->
 <section data-menu-title="When the GPU pays">
   <h2>So when does the accelerator pay?</h2>
   <p>A forward pass is $\phi(\mathbf{X}\mathbf{W} + \mathbf{b})$, repeated, and
@@ -552,7 +525,7 @@
   measured where the crossover is: same code, same data, widening the layers.</p>
 </section>
 
-<!-- FIG -->
+<!-- 34 -->
 <section class="figslide" data-menu-title="◆ When the GPU pays">
   <h2>The accelerator earns its place at about a million parameters</h2>
   <figure class="fig fig-wide">
@@ -564,7 +537,7 @@
   arithmetic to cover the dispatch.</p>
 </section>
 
-<!-- 29c -->
+<!-- 35 -->
 <section data-menu-title="Crossover measured">
   <h2>The crossover, measured</h2>
   <table>
@@ -579,14 +552,17 @@
   code on both devices. Measured on an Apple MPS backend; a Colab T4 has a
   different crossover, in the same place in the argument.</p>
   <div class="panel">
-    <span class="panel-title">The honest version of &ldquo;Part II needs a GPU&rdquo;</span>
-    It does &mdash; from Lecture 13 onwards, where the networks are large enough
-    for the device to matter. Today's is not, and pretending otherwise would be
-    exactly the sort of unmeasured claim this course exists to stop.
+    <span class="panel-title">The honest version of &ldquo;you need a GPU&rdquo;</span>
+    You need one when the network is large enough for the device to matter, and
+    not before. Nothing in this course is: every notebook is sized to run on
+    Colab&rsquo;s free CPU tier, deliberately, so that every number on these
+    slides is one you can reproduce. Saying &ldquo;you need a GPU&rdquo; without
+    measuring where the crossover falls would be exactly the sort of unmeasured
+    claim this course exists to stop.
   </div>
 </section>
 
-<!-- 30 -->
+<!-- 36 -->
 <section data-menu-title="Wall 2 measured">
   <h2>Wall 2 &middot; the objective is not yours</h2>
   <pre><code class="language-text" data-trim>
@@ -599,21 +575,21 @@ keyword argument 'loss'
   reachable at all here.</p>
 </section>
 
-<!-- 31 -->
+<!-- 37 -->
 <section data-menu-title="Wall 3 measured">
   <h2>Wall 3 &middot; nothing is instrumented</h2>
   <p>Backpropagation computed 266,610 partial derivatives per batch
   and discarded every one.</p>
   <div class="panel panel-fail">
     <span class="panel-title">The lecture that needs them</span>
-    Lecture 13 builds a twenty-layer network whose loss barely moves. The
+    Lecture 11 builds a twenty-layer network whose loss barely moves. The
     diagnosis is a per-layer gradient statistic, logged during training. With
     <code>MLPClassifier</code> the diagnosis cannot be made at all &mdash; you
     would be left with &ldquo;it does not train&rdquo; and no next step.
   </div>
 </section>
 
-<!-- 32 -->
+<!-- 38 -->
 <section data-menu-title="The diagnosis">
   <h2>The diagnosis</h2>
   <div class="panel panel-fail">
@@ -627,24 +603,20 @@ keyword argument 'loss'
   the split, the architecture. All of that carries over unchanged.</p>
 </section>
 
-<!-- ==================================================================== -->
-<!-- PART 3 — THE REBUILD (35 min)                                        -->
-<!-- ==================================================================== -->
-
-<!-- 33 -->
-<section class="divider" data-menu-title="◆ Rebuild">
-  <p class="kicker">Part three</p>
-  <h1>Rebuild</h1>
-  <p class="clock">35 minutes &middot; and own the loop</p>
+<!-- 39 -->
+<section class="divider" data-menu-title="◆ The method">
+  <p class="kicker">The method</p>
+  <h1>Tensors, autograd,<br>and the loop</h1>
+  <p class="clock">40 minutes &middot; examinable</p>
 </section>
 
-<!-- 34 -->
+<!-- 40 -->
 <section data-menu-title="★ Colab notebook">
   <h2>Today&rsquo;s notebook</h2>
   <p class="colab-line">
     <a class="colab-btn" target="_blank"
-       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-12.ipynb">
-       Open Lecture 12 in Google Colab</a>
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">
+       Open Lecture 10 in Google Colab</a>
   </p>
   <div class="panel">
     <span class="panel-title">Before you run anything</span>
@@ -654,7 +626,7 @@ keyword argument 'loss'
   </div>
 </section>
 
-<!-- 35 -->
+<!-- 41 -->
 <section data-menu-title="Tensors">
   <h2>Tensors</h2>
   <p>An array that also knows two things a NumPy array does not.</p>
@@ -674,7 +646,7 @@ print(a.numpy())             # shares memory with a, on CPU
   </ul>
 </section>
 
-<!-- 36 -->
+<!-- 42 -->
 <section data-menu-title="Devices">
   <h2>Finding the device, portably</h2>
   <pre><code class="language-python" data-trim>
@@ -693,7 +665,7 @@ else:
   </div>
 </section>
 
-<!-- 37 -->
+<!-- 43 -->
 <section data-menu-title="requires_grad">
   <h2>Why <code>requires_grad</code> builds a graph</h2>
   <p class="lead">It does not compute a derivative. It says
@@ -710,7 +682,7 @@ else:
   written down as it goes so the reverse sweep has something to walk.</p>
 </section>
 
-<!-- 38 -->
+<!-- 44 -->
 <section data-menu-title="grad_fn">
   <h2>You can look at the graph</h2>
   <pre><code class="language-text" data-trim>
@@ -727,7 +699,7 @@ else:
   <code>next_functions</code> to the leaves <em>is</em> the reverse sweep.</p>
 </section>
 
-<!-- 39 -->
+<!-- 45 -->
 <section data-menu-title="no_grad">
   <h2>And you can turn it off</h2>
   <pre><code class="language-python" data-trim>
@@ -745,7 +717,7 @@ with torch.no_grad():
   follow are.</p>
 </section>
 
-<!-- 40 -->
+<!-- 46 -->
 <section data-menu-title="The loop">
   <h2>The training loop</h2>
   <pre><code class="language-python" data-trim data-line-numbers="1-12|5|6-7|8|9">model = build_model().to(device)
@@ -765,7 +737,7 @@ for epoch in range(EPOCHS):
   of what <code>fit()</code> was doing.</p>
 </section>
 
-<!-- FIG -->
+<!-- 47 -->
 <section class="figslide" data-menu-title="◆ The loop, drawn">
   <h2>One turn per mini-batch</h2>
   <figure class="fig fig-wide">
@@ -776,7 +748,7 @@ for epoch in range(EPOCHS):
   you can print, clip, log, branch or stop.</p>
 </section>
 
-<!-- 41 -->
+<!-- 48 -->
 <section data-menu-title="Line by line">
   <h2>Line by line</h2>
   <table>
@@ -790,13 +762,13 @@ for epoch in range(EPOCHS):
   </table>
 </section>
 
-<!-- 42 -->
+<!-- 49 -->
 <section data-menu-title="Same model">
   <h2>Run it</h2>
   <table>
     <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
-    <tr><td>Scikit-Learn, CPU</td><td class="num">88.02%%</td><td class="num">125 s</td></tr>
-    <tr><td class="fix">PyTorch, MPS</td><td class="num hit">89.24%%</td><td class="num hit">14 s</td></tr>
+    <tr><td>Scikit-Learn, CPU</td><td class="num">88.02%</td><td class="num">125 s</td></tr>
+    <tr><td class="fix">PyTorch, MPS</td><td class="num hit">89.24%</td><td class="num hit">14 s</td></tr>
   </table>
   <p class="lead">The accuracies agree, as they must.</p>
   <p class="small">Same architecture, same optimiser, same learning rate, same
@@ -804,7 +776,7 @@ for epoch in range(EPOCHS):
   same model.</strong> What we bought is the loop.</p>
 </section>
 
-<!-- FIG -->
+<!-- 50 -->
 <section class="figslide" data-menu-title="◆ Learning curves">
   <h2>Two libraries, one model</h2>
   <figure class="fig fig-wide">
@@ -816,9 +788,7 @@ for epoch in range(EPOCHS):
   rewrite.</p>
 </section>
 
-<!-- ============================ SILENT FAILURE 1 ======================= -->
-
-<!-- 43 -->
+<!-- 51 -->
 <section data-menu-title="Silent failure 1">
   <h2>The first bug that never raises</h2>
   <pre><code class="language-python" data-trim data-line-numbers>for xb, yb in train_loader:
@@ -833,7 +803,7 @@ for epoch in range(EPOCHS):
   the missing line gives away the whole exercise. The answer slide may step.</aside>
 </section>
 
-<!-- 44 -->
+<!-- 52 -->
 <section data-menu-title="Accumulation">
   <h2><code>backward()</code> accumulates</h2>
   <p><code>p.grad</code> is <strong>added to</strong>, not overwritten.</p>
@@ -848,7 +818,7 @@ after zero_grad():        |grad| = 0.0000
   gradients from two loss terms. It is only a bug when you did not ask for it.</p>
 </section>
 
-<!-- 45 -->
+<!-- 53 -->
 <section data-menu-title="What it does">
   <h2>What that does to training</h2>
   <p>At step $t$ the optimiser sees the sum of every gradient computed so far,
@@ -859,7 +829,7 @@ after zero_grad():        |grad| = 0.0000
   put the correct one beside it.</p>
 </section>
 
-<!-- FIG -->
+<!-- 54 -->
 <section class="figslide" data-menu-title="◆ zero_grad">
   <h2>One missing line, measured</h2>
   <figure class="fig fig-wide">
@@ -870,20 +840,20 @@ after zero_grad():        |grad| = 0.0000
   working classifier and the other is not.</p>
 </section>
 
-<!-- 46 -->
+<!-- 55 -->
 <section data-menu-title="zero_grad measured">
   <h2>The cost of the missing <code>zero_grad()</code></h2>
   <table>
     <tr><th></th><th class="num">Final training loss</th><th class="num">Validation accuracy</th></tr>
-    <tr><td>With <code>opt.zero_grad()</code></td><td class="num">0.2574</td><td class="num hit">87.94%%</td></tr>
-    <tr><td class="fail">Without it</td><td class="num fail">2.2933</td><td class="num fail">11.20%%</td></tr>
+    <tr><td>With <code>opt.zero_grad()</code></td><td class="num">0.2574</td><td class="num hit">87.94%</td></tr>
+    <tr><td class="fail">Without it</td><td class="num fail">2.2933</td><td class="num fail">11.20%</td></tr>
   </table>
   <p class="big-num bad">76.7 points</p>
   <p class="small">12 epochs on
   20,000 images, identical seeds, identical everything else.</p>
 </section>
 
-<!-- 47 -->
+<!-- 56 -->
 <section data-menu-title="Catching it">
   <h2>How to catch it</h2>
   <ol class="tight small">
@@ -903,9 +873,7 @@ after zero_grad():        |grad| = 0.0000
   </div>
 </section>
 
-<!-- ============================ SILENT FAILURE 2 ======================= -->
-
-<!-- 48 -->
+<!-- 57 -->
 <section data-menu-title="Silent failure 2">
   <h2>The second bug that never raises</h2>
   <pre><code class="language-python" data-trim data-line-numbers>model = build_model(dropout=0.2)
@@ -919,7 +887,7 @@ print(f"test accuracy {acc:.4f}")
   <p class="small muted">Same question. Thirty seconds.</p>
 </section>
 
-<!-- 49 -->
+<!-- 58 -->
 <section data-menu-title="train vs eval">
   <h2><code>train()</code> and <code>eval()</code></h2>
   <p>Some layers behave differently in the two phases. Two of them matter in
@@ -932,26 +900,26 @@ print(f"test accuracy {acc:.4f}")
   <p class="fail small">The module defaults to training mode. Build a model,
   never call <code>eval()</code>, and every evaluation you make is of a randomly
   crippled network.</p>
-  <p class="small muted">Batch normalisation arrives in Lecture 14; the same
+  <p class="small muted">Batch normalisation arrives in Lecture 11; the same
   failure applies to it and is harder to see, because it does not fluctuate.</p>
 </section>
 
-<!-- 50 -->
+<!-- 59 -->
 <section data-menu-title="eval measured">
   <h2>The cost of the missing <code>model.eval()</code></h2>
   <table>
     <tr><th>Evaluation mode</th><th class="num">Test accuracy</th></tr>
-    <tr><td class="fix"><code>model.eval()</code></td><td class="num hit">86.77%%</td></tr>
-    <tr><td class="fail"><code>model.train()</code>, mean of 10 calls</td><td class="num fail">86.26%%</td></tr>
-    <tr><td>lowest of those 10</td><td class="num">86.06%%</td></tr>
-    <tr><td>highest of those 10</td><td class="num">86.68%%</td></tr>
+    <tr><td class="fix"><code>model.eval()</code></td><td class="num hit">86.77%</td></tr>
+    <tr><td class="fail"><code>model.train()</code>, mean of 10 calls</td><td class="num fail">86.26%</td></tr>
+    <tr><td>lowest of those 10</td><td class="num">86.06%</td></tr>
+    <tr><td>highest of those 10</td><td class="num">86.68%</td></tr>
   </table>
   <p class="big-num bad">0.51 points</p>
   <p class="small">Dropout 0.2, measured on
   10,000 test images.</p>
 </section>
 
-<!-- 51 -->
+<!-- 60 -->
 <section data-menu-title="The tell">
   <h2>The tell is the spread, not the mean</h2>
   <p class="lead">0.62 accuracy points
@@ -966,7 +934,7 @@ print(f"test accuracy {acc:.4f}")
   this bug, the seeding bugs, and any accidental shuffling of the labels.</p>
 </section>
 
-<!-- 52 -->
+<!-- 61 -->
 <section data-menu-title="Both bugs together">
   <h2>What the two bugs have in common</h2>
   <table>
@@ -981,7 +949,7 @@ print(f"test accuracy {acc:.4f}")
   for exceptions rather than for behaviour.</p>
 </section>
 
-<!-- 52a -->
+<!-- 62 -->
 <section data-menu-title="Seeds on a GPU">
   <h2>&ldquo;Running it twice&rdquo; needs one caveat</h2>
   <p class="small muted">Not examinable. It is here because the previous slide
@@ -1007,9 +975,7 @@ torch.backends.cudnn.deterministic = True   # and benchmark = False
   as a bug and go looking for it.</aside>
 </section>
 
-<!-- ============================ DATALOADER ============================= -->
-
-<!-- 53 -->
+<!-- 63 -->
 <section data-menu-title="DataLoader">
   <h2><code>Dataset</code> and <code>DataLoader</code></h2>
   <pre><code class="language-python" data-trim>
@@ -1026,10 +992,10 @@ train_dl = DataLoader(TensorDataset(X_fit, y_fit),
         while the GPU is busy</li>
   </ul>
   <p class="small muted">Indexing a big tensor by hand works while the data fits
-  in memory. It stops working in Lecture 15, and the interface does not change.</p>
+  in memory. It stops working in Lecture 12, and the interface does not change.</p>
 </section>
 
-<!-- 54 -->
+<!-- 64 -->
 <section data-menu-title="The short last batch">
   <h2>The last batch is short</h2>
   <p>10,000 test images in batches of 384 gives
@@ -1045,13 +1011,13 @@ train_dl = DataLoader(TensorDataset(X_fit, y_fit),
   is aggregated, not in the loader.</p>
 </section>
 
-<!-- 55 -->
+<!-- 65 -->
 <section data-menu-title="Batch mean measured">
   <h2>Averaging the metric per batch, measured</h2>
   <table>
     <tr><th>How the accuracy was aggregated</th><th class="num">Value</th></tr>
-    <tr><td class="fix">Counted over the whole set</td><td class="num hit">89.240%%</td></tr>
-    <tr><td class="fail">Mean of the per-batch accuracies</td><td class="num fail">89.622%%</td></tr>
+    <tr><td class="fix">Counted over the whole set</td><td class="num hit">89.240%</td></tr>
+    <tr><td class="fail">Mean of the per-batch accuracies</td><td class="num fail">89.622%</td></tr>
   </table>
   <p class="lead">0.382 accuracy points.</p>
   <p class="small">Small &mdash; <em>here</em>. It is small because the last
@@ -1062,7 +1028,7 @@ train_dl = DataLoader(TensorDataset(X_fit, y_fit),
   instead of a twenty-sixth.</p>
 </section>
 
-<!-- 56 -->
+<!-- 66 -->
 <section data-menu-title="Batch mean rule">
   <h2>The decision rule</h2>
   <div class="panel panel-fix">
@@ -1078,9 +1044,7 @@ train_dl = DataLoader(TensorDataset(X_fit, y_fit),
   per-batch mean of a per-batch mean is two averagings deep.</p>
 </section>
 
-<!-- ============================ MODULES ================================ -->
-
-<!-- 57 -->
+<!-- 67 -->
 <section data-menu-title="Custom module">
   <h2>A custom module</h2>
   <pre><code class="language-python" data-trim data-line-numbers="1-13|2-3|10-13">class Sorter(nn.Module):
@@ -1102,7 +1066,7 @@ train_dl = DataLoader(TensorDataset(X_fit, y_fit),
   <code>state_dict()</code> &mdash; comes for free.</p>
 </section>
 
-<!-- 58 -->
+<!-- 68 -->
 <section data-menu-title="Why subclass">
   <h2>When <code>Sequential</code> runs out</h2>
   <ul class="tight small">
@@ -1112,11 +1076,11 @@ train_dl = DataLoader(TensorDataset(X_fit, y_fit),
   </ul>
   <p>All three are ordinary Python inside <code>forward</code>, because the
   graph is rebuilt by <em>running</em> the function on every batch.</p>
-  <p class="small muted">Skip connections are Lecture 14 and Lecture 16. The
+  <p class="small muted">Skip connections are Lectures 11 and 12. The
   reason they are easy to write is on this slide.</p>
 </section>
 
-<!-- 59 -->
+<!-- 69 -->
 <section data-menu-title="Evaluation done right">
   <h2>Evaluation, done properly</h2>
   <pre><code class="language-python" data-trim data-line-numbers="1-9|2|3|7-8">@torch.no_grad()
@@ -1133,9 +1097,7 @@ def accuracy(model, X, y, batch=1000):
   everywhere, and all three of today's silent failures become unreachable.</p>
 </section>
 
-<!-- ============================ OPTUNA / SAVING ======================== -->
-
-<!-- 60 -->
+<!-- 70 -->
 <section data-menu-title="Optuna">
   <h2>Searching the hyperparameters properly</h2>
   <p>The previous lecture tuned by hand: ten points, one axis at a time.
@@ -1157,20 +1119,20 @@ study.optimize(objective, n_trials=12)
   </div>
 </section>
 
-<!-- FIG -->
+<!-- 71 -->
 <section class="figslide" data-menu-title="◆ Optuna">
   <h2>12 trials</h2>
   <figure class="fig fig-wide">
     <img src="../assets/figures/l12-optuna.svg"
          alt="Scatter of validation accuracy per Optuna trial with a running best-so-far line rising in steps.">
   </figure>
-  <p class="takeaway">Best 86.90%% at learning rate
+  <p class="takeaway">Best 86.90% at learning rate
   0.00462 and dropout 0.1 &mdash; on
   6-epoch trials, so this is a search over
   configurations, not a final model.</p>
 </section>
 
-<!-- 61 -->
+<!-- 72 -->
 <section data-menu-title="Saving">
   <h2>Saving the model</h2>
   <pre><code class="language-python" data-trim>
@@ -1189,7 +1151,7 @@ fresh.load_state_dict(torch.load("sorter.pt", weights_only=True))
   </div>
 </section>
 
-<!-- 62 -->
+<!-- 73 -->
 <section data-menu-title="Check the reload">
   <h2>And check the reload</h2>
   <pre><code class="language-python" data-trim>
@@ -1204,37 +1166,33 @@ assert accuracy(model, X_test, y_test) == accuracy(fresh, X_test, y_test)
   <code>strict=False</code> to silence it.</p>
 </section>
 
-<!-- ==================================================================== -->
-<!-- PART 4 — RE-MEASURE AND RED-TEAM (15 min)                            -->
-<!-- ==================================================================== -->
-
-<!-- 63 -->
-<section class="divider" data-menu-title="◆ Re-measure">
-  <p class="kicker">Part four</p>
-  <h1>Re-measure</h1>
+<!-- 74 -->
+<section class="divider" data-menu-title="◆ Two silent bugs">
+  <p class="kicker">The last fifteen minutes</p>
+  <h1>Two bugs that never<br>raise an exception</h1>
   <p class="clock">15 minutes</p>
 </section>
 
-<!-- 64 -->
+<!-- 75 -->
 <section data-menu-title="The final table">
   <h2>Where we ended</h2>
   <table>
     <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
-    <tr><td>Always one class</td><td class="num">10.0%%</td><td class="num">&mdash;</td></tr>
-    <tr><td>Scikit-Learn MLP, CPU</td><td class="num">88.02%%</td><td class="num fail">125 s</td></tr>
-    <tr><td class="fix">PyTorch, same model, MPS</td><td class="num hit">89.24%%</td><td class="num hit">14 s</td></tr>
-    <tr><td class="fail">The same code without <code>zero_grad()</code></td><td class="num fail">11.20%% (validation)</td><td class="num">unchanged</td></tr>
+    <tr><td>Always one class</td><td class="num">10.0%</td><td class="num">&mdash;</td></tr>
+    <tr><td>Scikit-Learn MLP, CPU</td><td class="num">88.02%</td><td class="num fail">125 s</td></tr>
+    <tr><td class="fix">PyTorch, same model, MPS</td><td class="num hit">89.24%</td><td class="num hit">14 s</td></tr>
+    <tr><td class="fail">The same code without <code>zero_grad()</code></td><td class="num fail">11.20% (validation)</td><td class="num">unchanged</td></tr>
   </table>
   <p class="small">The last row is the one to remember. It ran, it finished, and
   it reported a number.</p>
 </section>
 
-<!-- 65 -->
+<!-- 76 -->
 <section data-menu-title="Is that good">
   <h2>Is that good?</h2>
   <p class="small">On the operator's own criterion: right
-  89.2%% of the time overall, but only
-  74.1%% on
+  89.2% of the time overall, but only
+  74.1% on
   Shirt, with almost all of those errors going to
   three visually similar queues.</p>
   <div class="panel panel-fix">
@@ -1248,59 +1206,15 @@ assert accuracy(model, X_test, y_test) == accuracy(fresh, X_test, y_test)
   bureau makes with it is.</p>
 </section>
 
-<!-- 66 -->
-<section data-menu-title="Red-team">
-  <h2>Red-team exercise</h2>
-  <p>Swap notebooks with the team beside you. You have ten minutes.</p>
-  <ol class="tight small">
-    <li>What touched the test set?</li>
-    <li>What was fitted, and on what?</li>
-    <li>What is the shape here?</li>
-    <li>What was dropped &mdash; rows, columns, NaNs? Count them.</li>
-    <li>What is the default I did not ask for?</li>
-    <li class="fail">Is <code>opt.zero_grad()</code> inside the <em>batch</em>
-        loop?</li>
-    <li class="fail">Is there a <code>model.eval()</code> before every
-        evaluation, and a <code>model.train()</code> before training resumes?</li>
-    <li class="fail">Is any metric a plain mean of per-batch values?</li>
-  </ol>
-  <p class="fail small">Report what you found, not what you would have done
-  differently.</p>
-</section>
-
-<!-- 67 -->
-<section data-menu-title="Red-team with the assistant">
-  <h2>Ask the assistant as an adversary</h2>
-  <div class="cols">
-    <div>
-      <div class="panel panel-fail small">
-        &ldquo;Is this training loop correct?&rdquo;
-        <br><span class="small muted">Invites agreement. You will usually get
-        it.</span>
-      </div>
-    </div>
-    <div>
-      <div class="panel panel-fix small">
-        &ldquo;This loop reports 89.2%% accuracy. Assume
-        one line is missing. List every line whose deletion would leave the code
-        running and the number plausible, and say what each deletion would do to
-        the loss curve.&rdquo;
-      </div>
-    </div>
-  </div>
-  <p class="small">Give it the failure mode to look for and a number to
-  disbelieve. Generic review requests return generic praise.</p>
-</section>
-
-<!-- 68 -->
+<!-- 77 -->
 <section data-menu-title="The catalogue">
   <h2>The silent-failure catalogue so far</h2>
   <table>
     <tr><th>Failure</th><th>Diagnosed in</th><th class="num">Measured cost</th></tr>
     <tr><td>Scaler fitted before the split</td><td>Lecture 2</td><td class="num">about a dollar</td></tr>
     <tr><td>Evaluating on training data</td><td>Lecture 2</td><td class="num">an RMSE of zero</td></tr>
-    <tr><td>Accuracy under class imbalance</td><td>Lecture 4</td><td class="num">a useless model above 90%</td></tr>
-    <tr><td>Hyperparameters chosen on the test set</td><td>Lectures 2, 6</td><td class="num">an optimistic report</td></tr>
+    <tr><td>Accuracy under class imbalance</td><td>Lecture 3</td><td class="num">a useless model above 90%</td></tr>
+    <tr><td>Hyperparameters chosen on the test set</td><td>Lectures 2, 5</td><td class="num">an optimistic report</td></tr>
     <tr><td class="fail">Missing <code>optimizer.zero_grad()</code></td><td class="fail">today</td><td class="num fail">76.7 points</td></tr>
     <tr><td class="fail">Missing <code>model.eval()</code></td><td class="fail">today</td><td class="num fail">0.51 points</td></tr>
     <tr><td class="fail">Metric averaged per batch</td><td class="fail">today</td><td class="num fail">0.382 points</td></tr>
@@ -1309,7 +1223,7 @@ assert accuracy(model, X_test, y_test) == accuracy(fresh, X_test, y_test)
   plausible number.</p>
 </section>
 
-<!-- 69 -->
+<!-- 78 -->
 <section data-menu-title="Checklist">
   <h2>PyTorch checklist &mdash; keep this</h2>
   <ul class="tight small">
@@ -1326,21 +1240,65 @@ assert accuracy(model, X_test, y_test) == accuracy(fresh, X_test, y_test)
   wrong from here to the end of the course.</p>
 </section>
 
-<!-- 70 -->
+<!-- 79 -->
 <section data-menu-title="What we kept">
   <h2>What carried over unchanged</h2>
   <table>
     <tr><th>From</th><th>Still true</th></tr>
-    <tr><td>Lecture 1</td><td>compute the trivial baseline before you commit</td></tr>
+    <tr><td>Lecture 1</td><td>compute the trivial baseline before you believe a score</td></tr>
     <tr><td>Lecture 2</td><td>split first; never tune on the test set</td></tr>
-    <tr><td>Lecture 4</td><td>count the classes before choosing a metric</td></tr>
-    <tr><td>Lecture 6</td><td>two curves, and the gap between them, beat one number</td></tr>
+    <tr><td>Lecture 3</td><td>count the classes before choosing a metric</td></tr>
+    <tr><td>Lecture 5</td><td>two curves, and the gap between them, beat one number</td></tr>
   </table>
   <p class="small">Nothing about a neural network repeals anything from Part I.
   The framework changed; the discipline did not.</p>
 </section>
 
-<!-- 71 -->
+<!-- 80 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">Open Lecture 10 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> The corpus is subsampled and the
+        network is small; no accelerator is needed for anything here</li>
+    <li>The training loop written out line by line, then the same thing with
+        <code>DataLoader</code> and a custom <code>Module</code></li>
+    <li>Both silent bugs, reproduced and measured &mdash; a missing
+        <code>zero_grad()</code> and a missing <code>model.eval()</code></li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Delete the <code>optimizer.zero_grad()</code> line and re-run the loop.
+    Nothing raises. The loss curve is the only thing that tells you, and it is
+    the reason you plot it.
+  </div>
+</section>
+
+<!-- 81 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight small">
+    <li>Derived reverse-mode differentiation: the chain rule is a product of
+        Jacobians, the product can be bracketed from either end, and the two
+        ends cost one sweep per input and one sweep per output respectively</li>
+    <li>Concluded that training &mdash; millions of parameters, one scalar loss
+        &mdash; leaves only one viable bracketing</li>
+    <li>Measured what the convenience wrapper costs, in wall clock and in what
+        it forbids</li>
+    <li>Wrote the training loop: tensors, <code>requires_grad</code>, the graph,
+        <code>backward()</code>, the optimiser step</li>
+    <li>Replaced it piece by piece with <code>DataLoader</code>, a custom
+        <code>Module</code>, and a proper evaluation path</li>
+    <li>Met two bugs that raise nothing: gradients accumulating without
+        <code>zero_grad()</code>, and dropout still active without
+        <code>model.eval()</code></li>
+  </ol>
+</section>
+
+<!-- 82 -->
 <section data-menu-title="References">
   <h2>In the book</h2>
   <table>
@@ -1355,25 +1313,25 @@ assert accuracy(model, X_test, y_test) == accuracy(fresh, X_test, y_test)
   </table>
 </section>
 
-<!-- 72 -->
+<!-- 83 -->
 <section class="divider" data-menu-title="Next">
-  <p class="kicker">Lecture 13 &middot; Build</p>
-  <h1>Twenty layers, no learning</h1>
+  <p class="kicker">Lecture 11 &middot; G&eacute;ron Ch. 11</p>
+  <h1>Training deep networks</h1>
   <p class="small">
-    Colour images, more classes, a much deeper stack<br>
-    You will instrument the network you now know how to instrument<br>
-    and watch the signal disappear on its way down
+    Variance propagation through layers, derived &mdash; and why a scale error
+    compounds geometrically with depth<br>
+    Initialisation, normalisation, better optimisers, schedules<br>
+    A deep stack that will not train, instrumented until it says why
   </p>
-  <p class="clock">Bring a fresh commitment sheet</p>
+  <p class="clock">Run the Lecture 10 notebook first</p>
 </section>
-
 </div>
 </div>
 
 <div class="deck-footer">
   Applications of Machine Learning
-  <span class="sep">&middot;</span> Lecture 12
-  <span class="sep">&middot;</span> Rebuilding it in PyTorch
+  <span class="sep">&middot;</span> Lecture 10
+  <span class="sep">&middot;</span> PyTorch
 </div>
 
 <script src="../lib/reveal.js/dist/reveal.js"></script>

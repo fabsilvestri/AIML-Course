@@ -23,9 +23,9 @@ def code(text: str) -> nbf.NotebookNode:
 
 
 HEADER = """
-# The first neural network
+# Neural networks, from the perceptron up
 
-**Lecture 11 · Build** · Géron, Chapter 9
+**Lecture 9** · Géron, Chapter 9
 
 Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
 
@@ -33,10 +33,14 @@ Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
 
 **How to use this notebook.** You are not expected to type the code. You are
 expected to *read* it before you run it, and to be able to say what every line
-does and what would break if it changed. Cells marked **⚠ read before running**
-contain a defect on purpose.
+does and what would break if it changed.
 
-Run the cells in order. Anything that takes more than a few seconds says so.
+Every code cell is preceded by the **specification that would produce it** —
+input, output, constraint, check. Read the box, work out what the check should
+say, *then* run the cell.
+
+Runs on free CPU: Fashion-MNIST is subsampled so the whole notebook finishes in
+a few minutes. Nothing here is wrong on purpose.
 
 **This notebook trains on 12,000 of the 55,000 training images.** The deck
 quotes the full run; a free Colab CPU would spend most of the lecture on it.
@@ -94,7 +98,8 @@ comparable with everyone else's.
             input="Fashion MNIST",
             output="60,000 training and 10,000 test images as uint8 arrays, with the class names",
             constraint="keep them as uint8 for now and print the pixel range — the next sections are about what happens when that range is not what the model expects",
-            check="assert both shapes and the dtype. Assert the dtype, not just the shape. `uint8` versus `float32` is the difference between an image and a model input, and the failure is silent."),
+            check="assert both shapes and the dtype. Assert the dtype, not just the shape. `uint8` versus `float32` is the difference between an image and a model input, and the failure is silent.",
+            **{"try": "load it with `as_frame=True`. Everything below that indexes with `X[idx]` breaks — the corpus is the same, the container is not."}),
         code('''
 # --- the data ----------------------------------------------------------------
 # ~30 MB the first time, a few seconds; instant afterwards.
@@ -126,7 +131,8 @@ are garments photographed the same way, and the background is exactly zero.
             input="three examples of each of the ten classes",
             output="a 3 by 10 grid, each column titled with its class",
             constraint="`vmin=0, vmax=255` — without it every thumbnail is rescaled to its own range and a dark garment looks identical to a bright one",
-            check="`gray_r` rather than `gray`. Fashion MNIST is white-on-black, and reversed it looks like the scanned document the brief is about."),
+            check="`gray_r` rather than `gray`. Fashion MNIST is white-on-black, and reversed it looks like the scanned document the brief is about.",
+            **{"try": "plot ten random indices instead of the first ten. Which two classes would you confuse yourself? Those are the two the confusion matrix finds later."}),
         code('''
 fig, axes = plt.subplots(3, 10, figsize=(13, 4.4))
 for c in range(10):
@@ -143,7 +149,8 @@ plt.tight_layout(); plt.show()
             input="the training labels",
             output="the count per class",
             constraint="assert the classes are EXACTLY balanced rather than observing that they look balanced",
-            check="min equals max equals 6,000. One assert here licenses every accuracy in the notebook. That is a lot of weight for one line, which is why it is an assert and not a print."),
+            check="min equals max equals 6,000. One assert here licenses every accuracy in the notebook. That is a lot of weight for one line, which is why it is an assert and not a print.",
+            **{"try": "count the classes yourself with `np.bincount`. Perfectly balanced is a property of THIS corpus, not of image classification, and it is why accuracy is defensible here and was not in Lecture 3."}),
         code('''
 counts = np.bincount(y_train_full, minlength=10)
 for c, n in enumerate(counts):
@@ -179,7 +186,8 @@ are about to tune hyperparameters by hand and the test set is not for that.
             input="the uint8 images",
             output="784-dimensional float32 rows in [0,1], split into fit / validation / test",
             constraint="divide by 255 — every feature is already on the same scale as every other, so there is nothing to FIT and therefore nothing to leak",
-            check="assert the sizes sum, that the indices are disjoint, and that the values really are in [0,1]. The disjointness assert on the two index sets. A permutation sliced in two cannot overlap, and asserting it anyway costs nothing and catches the day someone changes the slicing."),
+            check="assert the sizes sum, that the indices are disjoint, and that the values really are in [0,1]. The disjointness assert on the two index sets. A permutation sliced in two cannot overlap, and asserting it anyway costs nothing and catches the day someone changes the slicing.",
+            **{"try": "divide by 255.0 instead of using float32. The values are identical; the memory is twice as large, and on a subsampled corpus you will not notice — which is how a notebook that works becomes one that does not."}),
         code('''
 def flatten_scale(a):
     """(n, 28, 28) uint8  ->  (n, 784) float32 in [0, 1]."""
@@ -216,7 +224,8 @@ classes, so predicting the commonest one is right **one time in ten**.
             input="the majority class",
             output="its accuracy on the test set",
             constraint="assert it is exactly 0.10 — the test set has exactly 1,000 of each class, so anything else means the test set is not what you think it is",
-            check="an exact assert is available here because the dataset is exactly balanced. Take exact asserts when the data allows them; they catch things tolerances do not."),
+            check="an exact assert is available here because the dataset is exactly balanced. Take exact asserts when the data allows them; they catch things tolerances do not.",
+            **{"try": "work out the anchor for a corpus with 100 classes instead of 10. That is the number an ImageNet result has to beat, and it is why 1% sounds different there."}),
         code('''
 from sklearn.metrics import accuracy_score
 
@@ -234,37 +243,25 @@ number is only informative relative to what it must beat.
 """),
 
         md("""
-## 5 · Commit
+## 5 · What unscaled pixels cost
 
-**Stop. On paper, now.** Not in this notebook — on paper, where you cannot
-quietly revise it.
+A network is not scale-invariant, and the reason is in the derivation: a layer
+computes $\\mathbf{X}\\mathbf{W} + \\mathbf{b}$, and the size of the gradient
+with respect to $\\mathbf{W}$ is proportional to the size of $\\mathbf{X}$. A
+learning rate tuned for inputs of order one is far too large for inputs of order
+255, and the optimiser spends its budget recovering rather than learning.
 
-```
-Metric:                                          ____________
-Accuracy a good sorting machine would need:      ____________ %
-Accuracy I expect from the model I build today:  ____________ %
-```
-
-A prediction you can silently revise is not a prediction.
-"""),
-
-        md("""
-## 6 · An assistant writes the training code
-
-A real request, and the code it returns. **⚠ Read before running.** It imports
-nothing exotic, it raises nothing, and it prints a believable number.
-
-> *"Train a neural network to classify Fashion MNIST images and print the
-> accuracy."*
+Fit the same architecture twice, changing only the input scale, and price it.
 
 ⏱ **about 40 seconds.**
 """),
         prompt(
-            label="⏱ 40 s — ⚠ what the assistant returns",
+            label="⏱ 40 s — the same network, two input scales",
             input="'train a neural network to classify Fashion MNIST and print the accuracy'",
             output="a fitted MLP and its validation accuracy",
             constraint="feed it the RAW uint8 pixels, as the prompt implies — it imports nothing exotic, raises nothing, and prints a believable number",
-            check="a library default is chosen for a typical input range. When your inputs are not in that range the default is not a default, it is a mistake with a plausible value."),
+            check="a library default is chosen for a typical input range. When your inputs are not in that range the default is not a default, it is a mistake with a plausible value.",
+            **{"try": "raise `learning_rate_init` by a factor of 255 on the unscaled run. Most of the gap closes — which is the point: the scale and the learning rate are the same knob, seen twice."}),
         code('''
 from sklearn.neural_network import MLPClassifier
 
@@ -285,22 +282,18 @@ print(f"validation accuracy {acc_raw:.4f}   ({t_raw:.0f} s)")
         md("""
 ### Reviewer question 5: what is the default I did not ask for?
 
-Two of them, and only one is visible.
-
-`max_iter=12` is ours. `learning_rate_init=0.001` is Scikit-Learn's, and it is
-the default *for inputs of order one*. We handed the network integers up to 255.
-
-Nothing in the prompt said "scale the pixels", nothing in the output said it had
-not happened, and the accuracy is high enough to look like a result.
-
-**Measure it** — do not guess.
+`learning_rate_init=0.001` is Scikit-Learn's default, and it is the default
+*for inputs of order one*. Handing the network integers up to 255 does not
+raise, does not warn, and still returns an accuracy high enough to look like a
+result. The only way to know what it cost is to measure it.
 """),
         prompt(
             label="measure it, do not guess",
             input="the same architecture, same epochs, same seed, scaled pixels",
             output="both accuracies and both final training losses",
             constraint="change ONE thing — only the input scale differs, so the difference is attributable",
-            check="report the cost in the units the stakeholder uses. 'The missing division by 255 costs N accuracy points' is a sentence; 'scaling is important' is not."),
+            check="report the cost in the units the stakeholder uses. 'The missing division by 255 costs N accuracy points' is a sentence; 'scaling is important' is not.",
+            **{"try": "compare the two final training losses as well as the accuracies. The unscaled run's loss is still falling when it stops, which is what 'the optimiser spent its budget recovering' looks like in a number."}),
         code('''
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -317,19 +310,15 @@ print(f"the missing division by 255 costs "
 print(f"final training loss: raw {clf_raw.loss_:.4f}   scaled {clf_scaled.loss_:.4f}")
 '''),
         md("""
-### The corrected specification
-
-> *"Load Fashion MNIST. Scale the pixels to [0, 1] as float32. Split off 5,000
-> validation images with a fixed seed. Train an MLP with hidden layers (300, 100)
-> for 12 epochs, seed 42, and report accuracy on the validation set — not on the
-> training set. State the wall-clock time."*
-
-Input, output, constraint, check. The vaguer prompt was not wrong about what to
-build; it was silent about the conditions under which the thing works.
+**The failure condition, stated.** A network's optimiser assumes inputs of
+roughly unit scale. Feed it anything else and the learning rate is wrong by the
+same factor — silently, because nothing in the API knows what scale your data
+is on. This is why `StandardScaler` sits inside every pipeline in Part I and why
+every image in Parts II and III is divided by 255 before anything else happens.
 """),
 
         md("""
-## 7 · Build it properly, one epoch at a time
+## 6 · Build it properly, one epoch at a time
 
 `fit()` gives you a number at the end. `partial_fit()` runs a single pass and
 hands control back, which is as close to the inside of the loop as
@@ -343,7 +332,8 @@ lecture.
             input="12,000 images, 20 epochs",
             output="the loss and both accuracies after every epoch, plus the parameter count and the wall clock",
             constraint="`partial_fit` with the full `classes=` list on every call — one pass, control handed back. `fit()` gives you one number at the end and nothing in between",
-            check="assert twenty epochs were recorded. Record training AND validation accuracy each epoch. The gap between them is Lecture 2's train-versus-cross-validation table drawn as two lines, and nothing about neural networks makes it go away."),
+            check="assert twenty epochs were recorded. Record training AND validation accuracy each epoch. The gap between them is Lecture 2's train-versus-cross-validation table drawn as two lines, and nothing about neural networks makes it go away.",
+            **{"try": "set `warm_start=False` and re-run the loop. Every epoch starts from scratch and the curve is flat — which is what `warm_start` is doing, made visible."}),
         code('''
 def train_curve(X, y, hidden=(300, 100), lr=1e-3, epochs=20, batch=128):
     clf = MLPClassifier(hidden_layer_sizes=hidden, activation="relu",
@@ -375,7 +365,8 @@ print(f"validation accuracy {hist['val_acc'][-1]:.4f}")
             input="the recorded history",
             output="loss against epoch, and both accuracies against epoch",
             constraint="both accuracy curves on the SAME axis — the gap is the quantity being shown",
-            check="print the gap as a number under the plot. A reader should not have to measure a distance on a chart with their eye."),
+            check="print the gap as a number under the plot. A reader should not have to measure a distance on a chart with their eye.",
+            **{"try": "keep training past the point the validation curve turns. The gap widens and the validation accuracy falls; that gap is the overfitting of Lecture 5, in a new model."}),
         code('''
 fig, axes = plt.subplots(1, 2, figsize=(12, 3.6))
 axes[0].plot(range(1, 21), hist["loss"], marker="o", ms=4)
@@ -395,7 +386,7 @@ neural networks makes it go away.
 """),
 
         md("""
-## 8 · Tune the architecture by hand
+## 7 · Tune the architecture by hand
 
 Five architectures, then five learning rates, on 6,000 images and 8 epochs so
 that ten fits are affordable. This is grid search done with your hands, which is
@@ -408,7 +399,8 @@ exactly what it feels like — and exactly why the next lecture automates it.
             input="one hidden layer of 30, 100, 300; then two layers; then three",
             output="validation accuracy, parameter count and seconds for each",
             constraint="report the PARAMETER COUNT beside the accuracy — a third layer that buys nothing while costing parameters is a different finding from one that buys nothing while costing nothing",
-            check="depth buys less than you expected. One hidden layer to two is worth a point or so; a third is worth roughly nothing here."),
+            check="depth buys less than you expected. One hidden layer to two is worth a point or so; a third is worth roughly nothing here.",
+            **{"try": "add a much wider single layer, `(1000,)`. More parameters than the two-layer stacks and worse — depth is buying something width cannot."}),
         code('''
 SMALL = 6_000
 archs = [(30,), (100,), (300,), (300, 100), (300, 200, 100)]
@@ -429,7 +421,8 @@ print(f"\\nbest: {best_arch[0]} at {best_arch[1]:.4f}")
             input="1e-4 to 1e-2, same architecture",
             output="validation accuracy at each, and the spread between best and worst",
             constraint="report the WORST as well as the best — the spread is the finding",
-            check="log-spaced, not linear. Learning rates live on a multiplicative scale, and a linear grid from 1e-4 to 1e-2 spends most of its points in a region where nothing changes."),
+            check="log-spaced, not linear. Learning rates live on a multiplicative scale, and a linear grid from 1e-4 to 1e-2 spends most of its points in a region where nothing changes.",
+            **{"try": "try 1.0. It does not converge at all, and the loss curve says so immediately. The failure is loud here and silent in Lecture 11, where the same thing happens per layer."}),
         code('''
 lr_rows = []
 for lr in [1e-4, 3e-4, 1e-3, 3e-3, 1e-2]:
@@ -452,7 +445,7 @@ Two readings, and the second is the one to write down.
 """),
 
         md("""
-## 9 · Where does it go wrong?
+## 8 · Where does it go wrong?
 
 An accuracy is one number over ten classes. Split it.
 """),
@@ -461,7 +454,8 @@ An accuracy is one number over ten classes. Split it.
             input="the test predictions",
             output="per-class recall, sorted, and where the worst class goes",
             constraint="sort by recall and show the DESTINATIONS of the worst class — a confusion matrix printed whole is 100 numbers nobody reads",
-            check="normalise the row before reading it. Raw counts and shares tell different stories, and only one of them answers 'when this class is wrong, where does it go'."),
+            check="normalise the row before reading it. Raw counts and shares tell different stories, and only one of them answers 'when this class is wrong, where does it go'.",
+            **{"try": "normalise the confusion matrix by row instead of by count. The diagonal is recall per class, and one class is far worse than the headline accuracy suggests."}),
         code('''
 from sklearn.metrics import confusion_matrix
 
@@ -485,7 +479,7 @@ be able to tell the operator, and it is not visible in the headline accuracy.
 """),
 
         md("""
-## 10 · Three things you cannot do
+## 9 · Three things you cannot do
 
 The model works. Now try to change it.
 """),
@@ -494,7 +488,8 @@ The model works. Now try to change it.
             input="the fitted model",
             output="the TypeError from changing the loss, the absence of any gradient attribute, and `partial_fit`'s signature",
             constraint="demonstrate each wall by running into it — a list of limitations in prose is an opinion, a caught TypeError is not",
-            check="one call to `partial_fit` is one full pass over everything you hand it. There is no smaller unit of control and no hook between forward and backward — that sentence is the whole motivation for PyTorch."),
+            check="one call to `partial_fit` is one full pass over everything you hand it. There is no smaller unit of control and no hook between forward and backward — that sentence is the whole motivation for PyTorch.",
+            **{"try": "look for a `device=` argument, a `callbacks=` argument, or a way to get the gradients. There is none, and that absence is Lecture 10's entire justification."}),
         code('''
 # 1 — change the objective
 try:
@@ -518,7 +513,8 @@ print("smaller unit of control, and no hook between forward and backward.")
             input="the measured seconds per epoch",
             output="the extrapolation to the deck's 55,000-image run",
             constraint="extrapolate from a MEASURED number and say it is linear scaling on this CPU — not a figure quoted from anywhere",
-            check="when you subsample for time, state the factor and extrapolate out loud. A reader comparing your number with a published one needs to know which they are holding."),
+            check="when you subsample for time, state the factor and extrapolate out loud. A reader comparing your number with a published one needs to know which they are holding.",
+            **{"try": "scale the timing to the full 60,000-image corpus and ten times the epochs. That is the number that makes a training loop you can enter worth having."}),
         code('''
 per_epoch = hist["seconds"] / 20
 print(f"measured: {per_epoch:.1f} s per epoch on {SUB:,} images, on this CPU")
@@ -530,7 +526,7 @@ print("Scikit-Learn is CPU-only by design, and says so in its own FAQ.")
 '''),
 
         md("""
-## 11 · Where we are
+## 10 · Where we are
 
 You have a working image classifier, hand-tuned, measured against a 10%
 baseline, with an error analysis.
@@ -545,9 +541,15 @@ what happens when the loop is written for you:
 | stop mid-epoch, or log per batch | the smallest unit is one pass |
 | use a GPU | there is no device to move to |
 
-Write your **best validation accuracy** on the same sheet of paper, next to what
-you predicted. Bring it to the next lecture; we open by comparing them.
+All four are one wall. `fit()` contains a loop over epochs and batches that you
+did not write, cannot see, and cannot enter. That is not a criticism of
+Scikit-Learn — `MLPClassifier` is documented as a convenience, and it is one.
+It is a statement about where the boundary of that convenience lies, and you
+have now found it by walking into it four times.
 
-Do not fix anything yet.
+**Before the next lecture:** run this notebook top to bottom. Then set
+`activation="identity"` on the tuned model and refit. Accuracy falls towards
+what a linear model gets on this corpus — which is section 2's derivation, that
+a stack of linear layers is one affine map, arriving as a measurement.
 """),
     ]
