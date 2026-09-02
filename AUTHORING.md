@@ -220,6 +220,7 @@ Lectures 19–22.
 ## 7 · Checks
 
 ```bash
+python3 tools/check_consistency.py  # slides against their own notebooks
 python3 tools/check_all.py          # everything below
 python3 tools/check_notebooks.py    # notebook rules in §4
 python3 tools/check_decks.py        # deck structure
@@ -227,6 +228,13 @@ python3 tools/check_overflow.py     # §5.4
 python3 tools/check_provenance.py   # §3.2 — slide figures against figures.json
 python3 tools/check_diagrams.py     # d-*.svg palette and fonts
 ```
+
+`check_consistency.py` is the one that finds things. Every other check verifies
+an artefact against itself — a slide against `figures.json`, a notebook against
+its own stored output — and all of them pass while a deck and its notebook
+quietly disagree, because each is internally consistent. Run it, fix, run it
+again, until it is clean. It caches executed notebooks by content hash, so a
+second run is instant and a changed notebook re-executes on its own.
 
 ## 8 · Pre-flight
 
