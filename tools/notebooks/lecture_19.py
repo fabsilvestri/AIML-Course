@@ -213,6 +213,34 @@ print(tok(claim_tok))
 '''),
     ]
 
+    cells += [
+        md("""
+### What we are not doing: stemming
+
+Our tokeniser treats `infect`, `infects`, `infection` and `infected` as four
+unrelated terms. A stemmer would merge them, pooling their evidence — and would
+also merge things that should not be merged, with a net effect that is
+corpus-dependent and usually small.
+
+We leave it out because every unexplained step between the text and the number
+is somewhere a result can hide, and because the mismatch it half-solves has a
+better answer in Lecture 20.
+"""),
+        prompt(
+            label="what a stemmer would merge",
+            input="two families of word forms",
+            output="the document frequency of each form",
+            constraint="use the index built above rather than re-scanning, and report the forms separately — the point is how differently the evidence is spread",
+            check="compare the rarest form against the commonest in each family. That ratio is what a query for the rare form is giving up."),
+        code('''
+for family in (("cell", "cells", "cellular"),
+               ("infect", "infects", "infection", "infected")):
+    print("  " + "   ".join(f"{t}: {len(post.get(t, [])):,}" for t in family))
+print()
+print("A query for 'infect' matches only the abstracts using that exact form.")
+'''),
+    ]
+
     # ------------------------------------------------------------------ 3
     cells += [
         md("""
@@ -512,7 +540,15 @@ re-ranking is for, and it is Lecture 20.
             constraint="reproduce the sum — the contributions must add to the score the scorer returned, or one of the two is wrong",
             check="assert the term contributions sum to the total within 1e-9."),
         code('''
-wq       = next(q for q in qids if len(rel[q]) >= 3)
+# The same selection rule as the slide: the first test claim for which BM25
+# puts at least three relevant abstracts in the top ten, chosen so the
+# arithmetic is visible. It is therefore better than typical; the honest
+# summary of the method is the mean over all 300 claims, computed above.
+def hits_at_10(q):
+    top10 = [docs_id[i] for i in np.argsort(-bm25_scores(tok(qtext[q])))[:10]]
+    return sum(1 for d in top10 if d in rel[q])
+
+wq       = next(q for q in qids if len(rel[q]) >= 3 and hits_at_10(q) >= 3)
 wq_score = bm25_scores(tok(qtext[wq]))
 top      = int(np.argmax(wq_score))
 
@@ -521,15 +557,18 @@ print(f"top abstract: {doc_len[top]:.0f} tokens, judged relevant: {docs_id[top] 
 print()
 print("term          tf     idf    contribution")
 total = 0.0
-for t in dict.fromkeys(tok(qtext[wq])):
+# Counter, not a set: bm25_scores walks the query token list, so a term the
+# query repeats contributes once per occurrence. Deduplicating here would
+# print a table that does not add up to the score beside it.
+for t, q_count in Counter(tok(qtext[wq])).items():
     tf = dict(post.get(t, [])).get(top, 0)
     if not tf:
         continue
     denom = tf + K1 * (1 - B + B * doc_len[top] / avgdl)
-    c = idf[t] * tf * (K1 + 1) / denom
+    c = q_count * idf[t] * tf * (K1 + 1) / denom
     total += c
     print(f"{t:<12} {tf:>3}   {idf[t]:>6.3f}    {c:>7.3f}")
-assert abs(total - wq_score[top]) < 1e-9
+assert abs(total - wq_score[top]) < 1e-9, "the table does not sum to the score"
 print(f"{'total':<12} {'':>3}   {'':>6}    {total:>7.3f}")
 '''),
         prompt(

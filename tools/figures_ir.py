@@ -311,14 +311,20 @@ def main() -> int:
     wq_toks = [t for t in dict.fromkeys(tok(qtext[wq])) if t in bm.post]
     wq_scores = bm.scores(tok(qtext[wq]))
     wq_top = int(np.argmax(wq_scores))
+    # Counter, not a set: scores() walks the query token list, so a repeated
+    # query term contributes once per occurrence. A deduplicated table would
+    # not sum to the total printed beside it.
+    q_counts = Counter(tok(qtext[wq]))
     contrib = []
     for t in wq_toks:
         tf = dict(bm.post[t]).get(wq_top, 0)
         if tf:
             d = tf + bm.k1 * (1 - bm.b + bm.b * bm.len[wq_top] / bm.avgdl)
+            c = q_counts[t] * bm.idf[t] * tf * (bm.k1 + 1) / d
             contrib.append({"term": t, "tf": int(tf), "idf": float(bm.idf[t]),
-                            "contribution": float(bm.idf[t] * tf * (bm.k1 + 1) / d)})
+                            "contribution": float(c)})
     contrib.sort(key=lambda c: -c["contribution"])
+    assert abs(sum(c["contribution"] for c in contrib) - wq_scores[wq_top]) < 1e-9
     facts["l19_scoring"] = {
         "claim": qtext[wq],
         "doc_len": int(bm.len[wq_top]),

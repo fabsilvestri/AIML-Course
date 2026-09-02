@@ -343,6 +343,32 @@ print(f"{only_bm + only_de} of {total} were found by exactly one of the two.")
 '''),
     ]
 
+    # ------------------------------------------------------------------ 3b
+    cells += [
+        md("""
+### What a batch buys, if you were training one
+
+We are not training a bi-encoder here, but the arithmetic of how one is trained
+is examinable and it is one line. In a batch of $B$ query-document pairs, every
+*other* document in the batch is a negative for every query: encoding grows
+linearly with $B$, and the scores available grow quadratically.
+"""),
+        prompt(
+            label="in-batch negatives, counted",
+            input="a range of batch sizes",
+            output="encoder passes, scores available, and negatives per query",
+            constraint="separate the two columns that grow differently — the encodings are the cost and the scores are the benefit, and conflating them is why people call in-batch negatives free",
+            check="the scores column should be the square of the batch. That quadratic is why dense-retrieval papers report batch sizes in the thousands."),
+        code('''
+print(f"{'batch':>7} {'encoded':>9} {'scores':>10} {'negatives/query':>16}")
+for b in (8, 32, 128, 512):
+    print(f"{b:>7,} {2*b:>9,} {b*b:>10,} {b-1:>16,}")
+print()
+print("Encoding is the cost and grows linearly; the dot products are nearly")
+print("free and grow quadratically. The batch size is a modelling decision.")
+'''),
+    ]
+
     # ------------------------------------------------------------------ 4
     cells += [
         md("""
