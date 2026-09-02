@@ -247,6 +247,34 @@ dataset = TimeSeriesDataset(series, WINDOW)
 X = torch.stack([w for w, _ in dataset])       # [rows, time, series]
 y = torch.stack([t for _, t in dataset])
 
+# The split, fixed here and used by every model below. By TIME, not at random:
+# the windows overlap, so a shuffled split puts almost every test window's
+# neighbours in the training set.
+cut = int(len(X) * 0.8)
+
+# Lecture 15's two reference numbers, rebuilt rather than inherited: the naive
+# forecast every model has to beat, the target we committed to before fitting
+# anything, and the linear model measured under the honest forward split. A
+# notebook that only runs because a previous one is still in memory is not
+# reproducible, and these three decide whether anything below is an improvement.
+from sklearn.linear_model import LinearRegression
+
+_naive = pool.shift(7)[WINDOW:]
+_mask  = target.notna() & _naive.notna()
+NAIVE_MAE  = float((target[_mask] - _naive[_mask]).abs().mean())
+TARGET_MAE = NAIVE_MAE * (1 - 0.10)          # the 10% we committed to
+
+_values = pool.values / 1e6
+_Xl = np.stack([_values[i:i + WINDOW] for i in range(len(_values) - WINDOW)])
+_yl = _values[WINDOW:]
+honest = 1e6 * float(np.abs(
+    LinearRegression().fit(_Xl[:cut], _yl[:cut]).predict(_Xl[cut:]) - _yl[cut:]).mean())
+
+print(f"train {cut}, test {len(X) - cut}, split by time")
+print(f"naive (copy last week)  MAE {NAIVE_MAE:>10,.0f}")
+print(f"target                  MAE {TARGET_MAE:>10,.0f}")
+print(f"linear, forward split   MAE {honest:>10,.0f}")
+
 assert X.shape == (len(pool) - WINDOW, WINDOW, 1), X.shape
 assert y.shape == (len(pool) - WINDOW, 1), y.shape
 print(f"X {tuple(X.shape)}   y {tuple(y.shape)}")
@@ -493,7 +521,7 @@ gru_rail = train(GruModel(input_size=1), Xr[:cut], yr[:cut], Xr[cut:], yr[cut:],
 print()
 print(f"{'model':34s}{'MAE':>12s}{'vs naive':>11s}")
 for name, score in [("copy last week", NAIVE_MAE),
-                    ("linear, forward + purge", folds_gap.mean()),
+                    ("linear, forward split", honest),
                     ("GRU, rail only", gru_rail),
                     ("GRU, five series", gru_mae)]:
     print(f"{name:34s}{score:>12,.0f}{(NAIVE_MAE - score) / NAIVE_MAE:>10.1%}")

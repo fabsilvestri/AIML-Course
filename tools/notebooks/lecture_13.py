@@ -218,6 +218,7 @@ torch.manual_seed(RANDOM_STATE)
 scratch = make_net().to(device)
 Xtr, ytr = normalise(X_train).to(device), y_train.to(device)
 opt = torch.optim.Adam(scratch.parameters(), lr=LR)
+lossf = nn.CrossEntropyLoss()
 gen = torch.Generator(device=device).manual_seed(RANDOM_STATE)
 
 t0 = time.perf_counter()

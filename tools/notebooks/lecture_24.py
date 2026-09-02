@@ -224,6 +224,28 @@ One clause missing — the clause section 2 spent five minutes on.
             constraint="run it exactly as returned. It runs, the docstring is accurate, and the shapes, the target and the factor of one half are all right",
             check="reviewer question 5 again. The default nobody asked for is that a function called `get_*_features` returns something unnormalised."),
         code('''
+# The temperature CLIP itself was trained with, rather than a number chosen to
+# make the demonstration work: logit_scale is stored as a log and exponentiated.
+tau = float(1.0 / clip.logit_scale.exp().item())
+norms = np.linalg.norm(I_raw, axis=1)
+print(f"CLIP's own temperature: tau = {tau:.4f}")
+
+
+def infonce(sim, tau):
+    """Symmetric InfoNCE over a similarity matrix, plus its top-1 accuracy.
+
+    Takes the matrix rather than the two embedding sets, so that the SAME loss
+    can be applied to a cosine matrix and to a raw dot-product matrix and the
+    only difference between the two rows below is the thing being compared.
+    """
+    logits = torch.tensor(sim / tau, dtype=torch.float32)
+    target = torch.arange(len(logits))
+    loss = 0.5 * (Fn.cross_entropy(logits, target) +
+                  Fn.cross_entropy(logits.T, target))
+    return {"loss": float(loss),
+            "accuracy": float((logits.argmax(1) == target).float().mean())}
+
+
 # --- what the weak prompt returns --------------------------------------------
 def contrastive_loss(img, txt, tau=0.01):
     """Symmetric InfoNCE over a batch of paired embeddings."""

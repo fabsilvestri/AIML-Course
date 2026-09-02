@@ -1020,6 +1020,25 @@ print(f"\\nthis image has {len(p['boxes'])} boxes and "
       f"{len(gt[images[0]['id']]['labels'])} annotated objects")
 '''),
 
+        prompt(
+            label="counting, and the threshold nobody chose",
+            input="one image's predictions and a confidence threshold",
+            output="the number of objects the detector claims to see",
+            constraint="fix the reported threshold HERE, before the sweep that follows — a threshold picked after seeing which one minimises the error is a hyperparameter fitted on the test set",
+            check="0.5 is a convention, not a result. It is written down first so the sweep below cannot quietly become a search."),
+        code('''
+THRESH = 0.5          # the convention, fixed before the sweep, not after it
+
+def count_objects(pred, thresh=THRESH):
+    """How many objects the detector claims, above a confidence threshold."""
+    return int((pred["scores"] >= thresh).sum())
+
+counts = np.array([count_objects(preds[im["id"]]) for im in images])
+print(f"at threshold {THRESH}: {counts.mean():.2f} objects per image, "
+      f"MAE {count_mae(counts, n_true):.2f}")
+print(f"the truth:            {n_true.mean():.2f} objects per image")
+'''),
+
         md("""
 ## 8 · The threshold is a knob, and nobody chose it
 

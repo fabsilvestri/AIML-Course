@@ -35,6 +35,11 @@ FAST = [
      "each hand-drawn diagram carries the typeface it names"),
     ("notebooks",   ["tools/make_notebooks.py"],
      "all 24 build and every code cell compiles"),
+    # Cheap, and it catches what compiling each cell cannot: a cell that reads a
+    # global no earlier cell defines. Six of those in one pass, all from
+    # splitting or reordering older modules.
+    ("names",       ["tools/check_names.py"],
+     "every name a notebook uses is defined before it is used"),
 ]
 
 FULL = [

@@ -533,6 +533,16 @@ check against the data.
                constraint="lag 1 on the right, so the axis reads as time running backwards from today",
                check="print the mean weight on weekly lags against all others rather than eyeballing"),
         code('''
+from sklearn.linear_model import LinearRegression
+
+# Fitted here rather than inherited from a cell above, so this section stands on
+# its own: the same windows, the same time split, nothing shuffled.
+values = pool.values / 1e6
+Xw = np.stack([values[i:i + WINDOW] for i in range(len(values) - WINDOW)])
+yw = values[WINDOW:]
+cut = int(len(Xw) * 0.8)
+lin = LinearRegression().fit(Xw[:cut], yw[:cut])
+
 lags = np.arange(WINDOW, 0, -1)             # lag 56 first, lag 1 last
 fig, ax = plt.subplots(figsize=(11, 3.2))
 ax.bar(lags, lin.coef_.ravel(), color="#0b3d62", width=0.8)

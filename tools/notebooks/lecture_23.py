@@ -247,16 +247,11 @@ print(f"with '>=' it reports R@1 = {(ranks_of_truth(zeros) <= 1).mean():.1%}")
 '''),
 
         md("""
-### ✍️ Commit
-
-Before running another cell, write down on paper:
-
-* the metric, and the candidate-set size;
-* the Recall@1 a good system should reach;
-* the Recall@1 you expect from what we are about to build.
+### The floor is now on the table
 
 Shuffling scores 0.5% at rank 1 and 5.0% in the top ten over 200 candidates.
-Your number belongs somewhere above those, and saying *where* is the exercise.
+Every number in the rest of this notebook is read against those two, and a
+method that does not clear them has not been shown to do anything.
 """),
 
         md("""
@@ -395,7 +390,60 @@ print(f"\\nrandom ranking over {n} candidates: R@1 {1 / n:.1%}  "
 '''),
 
         md("""
-## 7 · The derivation, part one — why the sphere
+## 7 · A jointly trained pair, before the derivation
+
+Section 6 showed what two separately trained encoders give you. The derivation
+that follows is about what a *jointly* trained pair looks like, so we need one
+first — same architecture family, one difference: both towers were trained by a
+single objective that compared them. **Expected wall clock: 1–2 min** for the download
+(about 600 MB), then a few seconds of inference.
+"""),
+        prompt(
+            label="⏱ 1-2 min — a jointly trained pair",
+            input="the same images and queries",
+            output="image and text features in a shared 512-dimensional space",
+            constraint="`unit()` BOTH sides — `get_image_features` and `get_text_features` return vectors that are NOT normalised",
+            check="assert both matrices have the same shape and the model's own projection dimension. One difference from section 4: both towers were trained by a single objective that COMPARED them. Same architecture family, one difference, and it is the whole result."),
+        code('''
+from transformers import CLIPModel, CLIPProcessor
+
+CLIP_ID = "openai/clip-vit-base-patch32"
+clip_proc = CLIPProcessor.from_pretrained(CLIP_ID)
+clip = CLIPModel.from_pretrained(CLIP_ID).to(device).eval()
+
+print(f"projection dim {clip.config.projection_dim}")
+print(f"parameters     {sum(p.numel() for p in clip.parameters()) / 1e6:.0f}M")
+
+
+def clip_images(imgs, batch=32):
+    out = []
+    with torch.no_grad():
+        for i in range(0, len(imgs), batch):
+            b = clip_proc(images=imgs[i:i + batch], return_tensors="pt").to(device)
+            out.append(clip.get_image_features(**b).cpu().numpy())
+    return np.concatenate(out).astype(np.float64)
+
+
+def clip_text(sentences, batch=64):
+    out = []
+    with torch.no_grad():
+        for i in range(0, len(sentences), batch):
+            b = clip_proc(text=sentences[i:i + batch], return_tensors="pt",
+                          padding=True, truncation=True, max_length=77).to(device)
+            out.append(clip.get_text_features(**b).cpu().numpy())
+    return np.concatenate(out).astype(np.float64)
+
+
+I_raw = clip_images(images)
+Q_raw = clip_text(queries)
+assert I_raw.shape == Q_raw.shape == (N_CATALOGUE, clip.config.projection_dim)
+
+I, Q = unit(I_raw), unit(Q_raw)      # onto the sphere — both sides, always
+print(f"\\nimage features {I.shape}   text features {Q.shape}")
+'''),
+
+        md("""
+## 8 · The derivation, part one — why the sphere
 
 The unnormalised inner product factorises as
 `<a, b> = ||a|| ||b|| cos(theta)`. Two quantities are mixed: **which direction**
@@ -417,7 +465,7 @@ print(f"text  embedding lengths: min {np.linalg.norm(Q_raw, axis=1).min():.2f}"
 '''),
 
         md("""
-## 8 · The derivation, part two — what should an *unrelated* pair score?
+## 9 · The derivation, part two — what should an *unrelated* pair score?
 
 Most rooms vote for **−1**: opposite meaning, opposite vector. It is the wrong
 answer, and the reason is the concentration result from Lecture 10.
@@ -450,12 +498,13 @@ for dim in [2, 8, 32, 128, 512, 2048]:
     print(f"{dim:6d}  {c.std(ddof=1):12.4f}  {1 / np.sqrt(dim):10.4f}"
           f"  {(np.abs(c) > 0.5).mean():11.1%}")
 
-A = unit(rng.normal(size=(20000, d)))
-B = unit(rng.normal(size=(20000, d)))
+D_DEMO = 512                      # the dimension the argument is made at
+A = unit(rng.normal(size=(20000, D_DEMO)))
+B = unit(rng.normal(size=(20000, D_DEMO)))
 c = (A * B).sum(1)
-print(f"\\nat d = {d}, over 20,000 pairs:")
+print(f"\\nat d = {D_DEMO}, over 20,000 pairs:")
 print(f"  mean          {c.mean():+.5f}")
-print(f"  sd            {c.std(ddof=1):.4f}   (1/sqrt(d) = {1 / np.sqrt(d):.4f})")
+print(f"  sd            {c.std(ddof=1):.4f}   (1/sqrt(d) = {1 / np.sqrt(D_DEMO):.4f})")
 print(f"  most negative {c.min():+.3f}   — nothing is anywhere near -1")
 '''),
 
@@ -501,7 +550,7 @@ image–image pairs is meaningless for image–text pairs. Why the gap exists is
 open research question, outside Chapters 1–16 and not examinable. That it exists
 is measurable and is on the exam.
 
-## 9 · The derivation, part three — the temperature
+## 10 · The derivation, part three — the temperature
 
 Thread 11 gave us the machinery. Row *i* of the similarity matrix is a *B*-class
 problem whose correct answer is column *i*:
@@ -574,7 +623,7 @@ print(f"\\nat the learned temperature: loss {r['loss']:.3f}   "
 '''),
 
         md("""
-## 10 · The derivation, part four — the negatives, and the batch size
+## 11 · The derivation, part four — the negatives, and the batch size
 
 The loss needs, for each image, a set of captions it should *not* match. Nobody
 labels those: they are the other members of the batch, free and correct with high
@@ -606,7 +655,7 @@ for B in [2, 8, 32, 128, N_CATALOGUE]:
 '''),
 
         md("""
-## 11 · ⚠ Read before running — the assistant failure
+## 12 · ⚠ Read before running — the assistant failure
 
 **The prompt:** *"Encode the catalogue images with a ViT and the captions with a
 sentence transformer, then check whether an image and its caption are similar."*
@@ -680,57 +729,6 @@ Apply any rotation to the image space: every image–image cosine is unchanged, 
 the ViT's loss is unchanged, and every image–text cosine changes. The loss
 cannot tell those worlds apart, so it did not pick one.
 """),
-
-        md("""
-## 12 · A jointly trained pair
-
-Same architecture family, one difference: both towers were trained by a single
-objective that compared them. **Expected wall clock: 1–2 min** for the download
-(about 600 MB), then a few seconds of inference.
-"""),
-        prompt(
-            label="⏱ 1-2 min — a jointly trained pair",
-            input="the same images and queries",
-            output="image and text features in a shared 512-dimensional space",
-            constraint="`unit()` BOTH sides — `get_image_features` and `get_text_features` return vectors that are NOT normalised",
-            check="assert both matrices have the same shape and the model's own projection dimension. One difference from section 4: both towers were trained by a single objective that COMPARED them. Same architecture family, one difference, and it is the whole result."),
-        code('''
-from transformers import CLIPModel, CLIPProcessor
-
-CLIP_ID = "openai/clip-vit-base-patch32"
-clip_proc = CLIPProcessor.from_pretrained(CLIP_ID)
-clip = CLIPModel.from_pretrained(CLIP_ID).to(device).eval()
-
-print(f"projection dim {clip.config.projection_dim}")
-print(f"parameters     {sum(p.numel() for p in clip.parameters()) / 1e6:.0f}M")
-
-
-def clip_images(imgs, batch=32):
-    out = []
-    with torch.no_grad():
-        for i in range(0, len(imgs), batch):
-            b = clip_proc(images=imgs[i:i + batch], return_tensors="pt").to(device)
-            out.append(clip.get_image_features(**b).cpu().numpy())
-    return np.concatenate(out).astype(np.float64)
-
-
-def clip_text(sentences, batch=64):
-    out = []
-    with torch.no_grad():
-        for i in range(0, len(sentences), batch):
-            b = clip_proc(text=sentences[i:i + batch], return_tensors="pt",
-                          padding=True, truncation=True, max_length=77).to(device)
-            out.append(clip.get_text_features(**b).cpu().numpy())
-    return np.concatenate(out).astype(np.float64)
-
-
-I_raw = clip_images(images)
-Q_raw = clip_text(queries)
-assert I_raw.shape == Q_raw.shape == (N_CATALOGUE, clip.config.projection_dim)
-
-I, Q = unit(I_raw), unit(Q_raw)      # onto the sphere — both sides, always
-print(f"\\nimage features {I.shape}   text features {Q.shape}")
-'''),
 
         md("""
 `get_image_features` and `get_text_features` return vectors that are **not**
