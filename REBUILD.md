@@ -55,6 +55,18 @@ mentioned the old structure. The other eleven were:
    **Whenever a notebook and its deck report the same quantity, run the notebook
    and diff the numbers against the slide.**
 
+### Tools that look orphaned and are not
+
+`compress_diagram.py`, `trim_diagram.py`, `fix_label_clearance.py`,
+`embed_diagram_fonts.py` and every `figures_appNN.py` are **run by hand**, not
+imported. A "which module imports this?" sweep reports all of them as dead. They
+are not. Each has a `__main__` and a usage line in its docstring; regenerating
+one lecture's figures means running its `figures_appNN.py` directly.
+
+`figures.json` is shared: `make_figures.py` **merges** into it rather than
+overwriting, and raises on a key collision. A script that writes it wholesale
+silently deletes several hundred values belonging to other lectures.
+
 ### Regenerating a notebook is idempotent
 
 `make_notebooks.py` reuses the cell ids already on disk wherever the cell
@@ -71,10 +83,11 @@ is the authority on which old lecture feeds which new one. When a new lecture
 consumes an old module, **`git mv` the module into place or delete it** — do not
 leave two files claiming the same number.
 
-Consumed so far: old `lecture_04.py` (It never fires) is merged into the new
-`lecture_03.py` and deleted. `notebooks/lecture-04.ipynb` is therefore stale on
-disk until new L4 is built from old L5; it is not linked from the site, which
-shows *In preparation* for it.
+Consumed so far: old lecture 4 (*It never fires*) is merged into new Lecture 3.
+Its generator `lecture_04.py`, its notebook `notebooks/lecture-04.ipynb` and its
+deck `slides/lecture-04.html` are all deleted — an unlinked file still answers a
+guessed URL, and all three would have served the old course's content. New L4
+is built from old L5, so the deck count is 24 until then.
 
 ### Reading a deck for stale claims
 
@@ -214,12 +227,8 @@ Things noticed during the rebuild that are not yet fixed.
 - `tools/figures_app02.py` … `figures_app12.py` are named by the old
   twelve-application scheme, and the figures they emit are named by OLD lecture
   numbers (`l03-*`, `l04-*`). New Lecture 3 legitimately uses both `l03-*` and
-  `l04-*` files. Renaming would break `check_provenance`, so leave it until a
-  lecture is touched anyway.
-- `l03-baseline.svg`, `l03-folds.svg`, `l03-train-vs-cv.svg` are generated but
-  no longer referenced: their slides were cut from Lecture 3 against the clock.
-  Benign — `make_figures.py` still emits them, so deleting them only means the
-  next run recreates them.
+  `l04-*` files. Renaming would break every slide that cites one, and
+  `check_provenance` with it, so leave it until a lecture is touched anyway.
 - ~~dead prompt kwargs~~ **cleared.** All 1,149 are gone from all 24 modules:
   `left_open` and `student` dropped (they described the retired device), and
   383 `catch=` lines folded into their box's `check=`, since they were

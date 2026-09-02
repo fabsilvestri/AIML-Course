@@ -164,34 +164,6 @@ def measure_cv_scores(Xtr, y5):
     return np.asarray(s, dtype=np.float64)
 
 
-def measure_train_vs_cv(Xtr, y5, seeds=(42, 43, 44, 45, 46)):
-    """The damage done by scoring on the data the model was fitted to.
-
-    Paired: each fold contributes one (training accuracy, held-out accuracy)
-    from the *same* fitted model, so the fold-to-fold variation cancels. Five
-    seeds x three folds = fifteen pairs, because a single-seed gap of half a
-    point is not a measurement.
-    """
-    from sklearn.model_selection import cross_validate
-    pairs = []
-    for s in seeds:
-        r = cross_validate(pipeline(s), Xtr, y5, cv=folds(s),
-                           scoring="accuracy", return_train_score=True,
-                           n_jobs=-1)
-        pairs += [(float(a), float(b))
-                  for a, b in zip(r["train_score"], r["test_score"])]
-    gaps = np.array([a - b for a, b in pairs])
-    return {"pairs": [[a, b] for a, b in pairs],
-            "n_seeds": len(seeds), "n_pairs": len(pairs),
-            "mean_train": float(np.mean([a for a, _ in pairs])),
-            "mean_cv": float(np.mean([b for _, b in pairs])),
-            "gap_mean_pp": float(100 * gaps.mean()),
-            "gap_std_pp": float(100 * gaps.std(ddof=1)),
-            "gap_min_pp": float(100 * gaps.min()),
-            "gap_max_pp": float(100 * gaps.max()),
-            "gap_positive": int((gaps > 0).sum())}
-
-
 def measure_forest(Xtr, y5):
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import cross_val_predict
@@ -401,90 +373,18 @@ def fig_class_counts(ytr):
     return {str(d): int(c) for d, c in enumerate(counts)}
 
 
-def fig_baseline(ytr):
-    """What a detector that never fires scores, for each of the ten digits."""
+def never_fires_by_digit(ytr):
+    """What a detector that never fires scores, for each of the ten digits.
+
+    A fact, not a figure. It was a bar chart until the slide that carried it
+    was cut for time; Lecture 3 still quotes one number out of it — 88.76% for
+    the digit-1 detector, the highest anchor of the ten — so the arithmetic
+    stays and the plotting is gone.
+    """
     counts = np.bincount(ytr, minlength=10)
     acc = 100 * (1 - counts / counts.sum())
-    fig, ax = plt.subplots(figsize=(10.6, 3.3))
-    colours = [ACCENT if d == DIGIT else SOFT for d in range(10)]
-    bars = ax.barh(np.arange(10), acc, color=colours, height=0.70)
-    for d, (b, a) in enumerate(zip(bars, acc)):
-        # outside the bar: white on #9fb8ca is about 2:1 and unreadable
-        ax.text(a + 0.06, b.get_y() + b.get_height() / 2,
-                f"{a:.2f}%" + ("   ← ours" if d == DIGIT else ""),
-                va="center", ha="left", fontsize=SMALL,
-                color=ACCENT if d == DIGIT else MUTED,
-                fontweight="bold" if d == DIGIT else "normal")
-    ax.set_yticks(np.arange(10)); ax.set_ylabel("detector for digit")
-    ax.set_xlabel("accuracy of a detector that always answers “no”")
-    ax.set_xlim(85, 92.6)
-    ax.invert_yaxis()
-    ax.grid(axis="y", alpha=0)
-    ax.set_title("The cheapest possible model, for each of the ten tasks")
-    fig.tight_layout()
-    save(fig, "l03-baseline")
     return {str(d): float(a) for d, a in enumerate(acc)}
 
-
-def fig_folds(cv, base_acc):
-    """Three folds, twice: with the pipeline and without it."""
-    fig, ax = plt.subplots(figsize=(10.6, 3.4))
-    rows = [("with the scaler, inside the pipeline", cv["scaled"], PRIMARY),
-            ("the same classifier, unscaled", cv["raw"], ACCENT)]
-    for i, (label, r, colour) in enumerate(rows):
-        f = np.array(r["folds"]) * 100
-        ax.scatter(f, [i] * len(f), s=150, color=colour, zorder=3,
-                   label=None, clip_on=False)
-        ax.plot([f.min(), f.max()], [i, i], color=colour, lw=2.5, alpha=0.35,
-                zorder=2)
-        ax.text(f.max() + 0.14, i, f"mean {f.mean():.2f}%", ha="left",
-                va="center", fontsize=SMALL, color=colour, fontweight="bold")
-        ax.text(f.min(), i + 0.26, f"worst fold {f.min():.2f}%", ha="center",
-                va="bottom", fontsize=SMALL, color=MUTED)
-    ax.axvline(base_acc * 100, color=MUTED, lw=2, ls="--")
-    ax.text(base_acc * 100 + 0.16, -0.42,
-            f"a detector that never fires — {base_acc * 100:.2f}%", ha="left",
-            va="center", fontsize=SMALL, color=MUTED, fontweight="bold")
-    ax.set_yticks([0, 1], [r[0] for r in rows], fontsize=TICK)
-    ax.set_ylim(-0.62, 1.70)
-    ax.set_xlim(90.0, 98.0)
-    ax.set_xlabel("accuracy on the held-out fold (%)")
-    ax.set_title("Three folds each. Report all of them, not the average.")
-    ax.grid(axis="y", alpha=0)
-    fig.tight_layout()
-    return save(fig, "l03-folds")
-
-
-def fig_train_vs_cv(tvc):
-    pairs = np.array(tvc["pairs"]) * 100
-    fig, ax = plt.subplots(figsize=(10.6, 3.4))
-    x = np.arange(len(pairs))
-    for i, (tr, cvv) in enumerate(pairs):
-        ax.plot([i, i], [cvv, tr], color=RULE, lw=1.6, zorder=1)
-    ax.scatter(x, pairs[:, 0], s=90, color=ACCENT, zorder=3,
-               label="scored on the rows it was fitted to")
-    ax.scatter(x, pairs[:, 1], s=90, color=PRIMARY, zorder=3,
-               label="scored on the held-out fold")
-    ax.set_xticks([])
-    ax.set_xlabel(f"{tvc['n_pairs']} paired measurements "
-                  f"({tvc['n_seeds']} seeds × {N_FOLDS} folds)")
-    ax.set_ylabel("accuracy (%)")
-    ax.set_title("The same fitted model, scored twice")
-    ax.legend(loc="lower left", ncols=1)
-    ax.set_ylim(96.15, 97.9)
-    ax.grid(axis="x", alpha=0)
-    ax.annotate(f"gap {tvc['gap_mean_pp']:.2f} pp\n"
-                f"(sd {tvc['gap_std_pp']:.2f}, same sign "
-                f"{tvc['gap_positive']}/{tvc['n_pairs']})",
-                xy=(x[9], pairs[9].mean()), xytext=(x[10], 96.42),
-                fontsize=SMALL, color=ACCENT, fontweight="bold",
-                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=ACCENT, lw=1.2),
-                arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1.8))
-    fig.tight_layout()
-    return save(fig, "l03-train-vs-cv")
-
-
-# ------------------------------------------------------------------- L4 figs
 
 def fig_never_fires(base_rate, our_acc):
     p = np.linspace(0.001, 0.5, 400)
@@ -732,7 +632,7 @@ def main():
     print("Lecture 3 figures:")
     _, facts["n_fives_in_sample"] = fig_digits(X, y)
     facts["digit_counts_train"] = fig_class_counts(ytr)
-    facts["never_fires_accuracy_by_digit"] = fig_baseline(ytr)
+    facts["never_fires_accuracy_by_digit"] = never_fires_by_digit(ytr)
 
     print("Cross-validated accuracy of the classifier they build:")
     cv = cached("l03_cv_accuracy", lambda: measure_cv_accuracy(Xtr, y5))
@@ -740,14 +640,6 @@ def main():
     for k in ("scaled", "raw"):
         print(f"    {k:7s} {cv[k]['mean']:.5f}  folds "
               f"{[round(f, 5) for f in cv[k]['folds']]}")
-    fig_folds(cv, facts["never_fires_accuracy_train"])
-
-    print("What evaluating on the training rows is worth, over five seeds:")
-    tvc = cached("l03_train_vs_cv", lambda: measure_train_vs_cv(Xtr, y5))
-    facts["train_vs_cv"] = tvc
-    print(f"    gap {tvc['gap_mean_pp']:.3f} pp ± {tvc['gap_std_pp']:.3f}, "
-          f"positive in {tvc['gap_positive']}/{tvc['n_pairs']}")
-    fig_train_vs_cv(tvc)
 
     # ---- Lecture 4 -------------------------------------------------------
     from sklearn.metrics import (average_precision_score, confusion_matrix,
