@@ -27,12 +27,10 @@ Definition of done, per lecture, all of it:
 
 ## Where this stands
 
-**All 24 decks and all 24 notebooks are on the new design, all 24 are published
-on the site, and `check_consistency.py` is clean on 23 of them.** Lectures 19-22
-— Part V, search and recommendation — were written from nothing, with three new
-figure scripts behind them. Lecture 16 is the last outstanding verification: its
-notebook now runs the six-model ladder its deck reports, which takes about ten
-minutes, and the check was still executing at the last checkpoint.
+**Done.** All 24 decks and all 24 notebooks are on the new design, all 24 are
+published on the site, and `check_consistency.py` is clean on every one of them.
+Lectures 19-22 — Part V, search and recommendation — were written from nothing,
+with three new figure scripts behind them.
 
 `tools/check_names.py` was added along the way and belongs in the fast set: it
 joins a notebook's code cells and asks pyflakes for undefined names, which found
@@ -40,16 +38,24 @@ twelve real defects in six notebooks in 0.3 seconds — the class that splitting
 and reordering older modules keeps producing, and that compiling each cell in
 isolation cannot see.
 
-## How to resume
+## How to work on it now
 
-1. `git log --oneline -15` — every lecture is committed on its own, so the last
-   commit says exactly where work stopped.
-2. Run `python3 tools/check_consistency.py 11 12 13 14 15 16 17 18 23 24`. It
-   executes each notebook (cached by content hash), so the first run is slow —
-   Lecture 11 alone has a cell that trains eight configurations. Fix what it
-   reports; the fix is almost always to *add the missing computation* to the
-   notebook rather than to change the slide.
-3. Read `AUTHORING.md` §2 (deck anatomy) and §4 (notebooks) before writing.
+The rebuild is finished, so this file stops being a plan and becomes a manual.
+Before changing anything:
+
+1. `python3 tools/check_all.py` — five checks, a few seconds. Run it after every
+   edit, not at the end.
+2. `python3 tools/check_names.py` if you touched a notebook module. It answers
+   in 0.3 seconds the question an execution answers in half an hour.
+3. `python3 tools/check_consistency.py N` if you touched a deck or a notebook.
+   It executes the notebook, cached by content hash, so only what you changed
+   is slow. **Fix what it reports by adding the missing computation to the
+   notebook**, not by changing the slide — the slide's number came from a real
+   experiment, and a student who cannot reproduce it has been told to take it
+   on trust.
+4. `python3 tools/check_all.py --full` before a release: the browser checks for
+   overflow and diagram labels, and the consistency sweep over all 24.
+5. Read `AUTHORING.md` §2 (deck anatomy) and §4 (notebooks) before writing.
 
 **A note on diagnosing a slow check.** `nbconvert`'s own process sits at 0% CPU
 while the kernel it spawned does the work. Do not read that as a deadlock, as I
@@ -106,14 +112,17 @@ run it again, until it is clean. See §7 of AUTHORING.md.
 
 | lecture | consistency | deck | notebook |
 |---|---|---|---|
-| 1–3 | **clean** | done | done |
-| 4–8 | **clean** (first run) | done | done |
-| 9, 10 | **clean** | done | done |
-| 11–15 | **clean** | done | done |
-| 16 | running | done | done |
-| 17, 18 | **clean** | done | done |
-| 19–22 | **clean** | **done** | **done** |
-| 23, 24 | **clean** | done | done |
+| **1–24** | **clean** | **done** | **done** |
+
+All twenty-four. Every figure stated on a slide is a number its own notebook
+prints, with two kinds of documented exception, both listed in the checker's
+output rather than skipped in silence:
+
+- `SCALE_ONLY` — three figures on Lecture 18, whose deck fine-tunes on 20,000
+  reviews and clusters 12,500 while the notebook uses 2,000 of each so it
+  finishes on a CPU. Its header names both numbers.
+- `CROSS_LECTURE` — five figures a deck quotes from another lecture's
+  experiment, each entry naming the lecture whose notebook reproduces it.
 
 **Lectures 4-8 passed the consistency check on the first run, with no
 intervention.** All five were agent-drafted against `tools/AGENT_BRIEF.md`.
