@@ -160,9 +160,17 @@ splitting a pair means each half writes references to content it cannot see.
 | L9-L10-Networks | L9, L10 | old 11, 12 | running |
 | L11-DeepTraining | L11 (merge) | old 13 + 14 | running, at `lecture-11-NEW` |
 
-Still unassigned: {L12, L13} from old 15, 16 · {L14 merge} from old 17 + 18 ·
-{L15, L16} from old 19, 20 · {L17, L18} from old 21, 22 · **{L19-L22} from
-nothing** · {L23, L24} from old 23, 24.
+| L12-L13-Vision | L12, L13 | old 15, 16 | running |
+| L14-Detection | L14 (merge) | old 17 + 18 | running, at `lecture-14-NEW` |
+
+Still unassigned: {L15, L16} from old 19, 20 · {L17, L18} from old 21, 22 ·
+**{L19-L22} from nothing** · {L23, L24} from old 23, 24.
+
+**Part V (L19-L22) needs figures that do not exist.** Every other lecture reads
+`figures.json`; these four must ADD to it, and `make_figures.py` merges rather
+than overwrites and raises on a key collision. Two agents writing it at once
+would corrupt it, so the IR and RecSys agents must be sequenced, not run in
+parallel — or write their facts and let the integrator merge.
 
 **The collision pattern, every time.** A merge target's number is still occupied
 by the old lecture that another agent is converting. Build at `-NEW` and let the
