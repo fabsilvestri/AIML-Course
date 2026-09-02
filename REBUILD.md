@@ -408,6 +408,25 @@ Deck = `slides/lecture-NN.html`, Notebook = `notebooks/lecture-NN.ipynb`.
 
 Things noticed during the rebuild that are not yet fixed.
 
+- **OPEN, agreed 2026-09-02, to do the week of 2026-09-09: the `try` field is
+  missing from eight lectures.** A prompt box's `try` is one modification a
+  student can make and what should happen to the result. It is applied
+  unevenly: lectures 1–10 have near-complete coverage (12–32 boxes each), 12
+  and 19–22 are partial, and **11, 13, 14, 15, 17, 18, 23 and 24 have 0 or 1**.
+  249 of 538 code cells have one.
+
+  It happened because those eight were converted in bulk and
+  `tools/check_notebooks.py` does not enforce the field, so nothing caught it.
+  Two pieces of work, in this order:
+
+  1. Write the missing `try` fields. Additive — no figure changes, so no
+     re-verification beyond `check_notebooks` and `check_names`. **Do not change
+     any stated number.** The field is passed as `**{"try": "..."}` because
+     `try` is a Python keyword; see `tools/notebooks/_prompt.py`.
+  2. Add the rule to `check_notebooks.py` so the omission cannot recur. Decide
+     deliberately whether it is blocking or advisory — a hard rule on all 538
+     cells may be stricter than the idea deserves.
+
 - Old decks and notebooks 2–24 still describe Build/Fix, planted defects,
   "commit a number", the twelve threads and the weak-prompt device. Every one is
   rewritten as its row above is worked.
