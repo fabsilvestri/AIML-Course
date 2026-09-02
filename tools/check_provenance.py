@@ -184,6 +184,29 @@ def flatten_keyed(obj, path: str = ""):
             yield from flatten_keyed(v, f"{path}.{i}" if path else str(i))
 
 
+# Which figures.json namespaces each NEW lecture may quote from.
+#
+# Single source of truth with tools/check_consistency.py, which holds the same
+# table for the same reason. Keep both in step with REBUILD.md's Source column.
+#
+# This replaces a computed mapping -- app = (lecture + 1) // 2, pair = the other
+# lecture of the pair -- which encoded the retired two-lectures-per-application
+# scheme. After the renumber it sent Lecture 6 looking in app03 for measurements
+# that live in app04, and reported eleven perfectly sound cells as "borrowed
+# from another lecture". A computed map is only as good as the scheme it
+# assumes, and the scheme is gone.
+NAMESPACES: dict[int, tuple[str, ...]] = {
+    1:  ("",),                       # housing, unprefixed
+    2:  ("",),                       # housing, unprefixed
+    3:  ("l03_", "l04_", "app02"),   # old 3 + 4, MNIST
+    4:  ("l05_",),                   # old 5, Titanic
+    5:  ("l06_",),                   # old 6, Titanic
+    6:  ("l07_", "app04"),           # old 7, CoverType
+    7:  ("app04",),                  # old 8, CoverType (no l08_* keys exist)
+    8:  ("l09_", "l10_"),            # old 9 + 10, Olivetti
+}
+
+
 def own_values(keyed, lecture: int) -> list:
     """The values this lecture is entitled to quote.
 
@@ -193,16 +216,21 @@ def own_values(keyed, lecture: int) -> list:
     invented `32,768` sit in Lecture 24 for days. A number on a slide belongs to
     the application that measured it, so that is the pool it is checked against.
 
-    Lectures 1-4 predate the namespace and own the unprefixed keys.
+    A lecture not yet in NAMESPACES falls back to the old computed mapping, so
+    the twelve still on the old numbering keep being checked as they were.
     """
-    app = (lecture + 1) // 2
-    pair = lecture - 1 if lecture % 2 == 0 else lecture + 1
-    own = (f"l{lecture:02d}_", f"l{pair:02d}_", f"app{app:02d}")
+    allowed = NAMESPACES.get(lecture)
+    if allowed is None:
+        app = (lecture + 1) // 2
+        pair = lecture - 1 if lecture % 2 == 0 else lecture + 1
+        allowed = (f"l{lecture:02d}_", f"l{pair:02d}_", f"app{app:02d}")
+    unprefixed_ok = allowed == ("",)
     out = []
     for key, v in keyed:
         head = key.split(".")[0]
         prefixed = re.match(r"l\d\d_|app\d\d", head)
-        if head.startswith(own) or (not prefixed and lecture <= 4):
+        if (unprefixed_ok and not prefixed) or (
+                not unprefixed_ok and head.startswith(tuple(a for a in allowed if a))):
             out.append(v)
     return out
 
