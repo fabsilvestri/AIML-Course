@@ -1015,7 +1015,7 @@ for k, v in p.items():
     print(f"{k:8s} {v.shape} {v.dtype}")
 
 total_boxes = sum(len(q["boxes"]) for q in preds.values())
-print(f"\n{total_boxes:,} boxes returned over {N_IMAGES} images "
+print(f"\\n{total_boxes:,} boxes returned over {N_IMAGES} images "
       f"({total_boxes / N_IMAGES:.0f} per image)")
 print("and the model is not confident about most of them — hence the threshold")
 
