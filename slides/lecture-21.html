@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecture 21 — Recommender systems: from ratings to factors</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Recommender systems:<br>from ratings to factors</h1>
+  <p class="subtitle">MovieLens 1M</p>
+  <p><span class="badge badge-lec">Lecture 21</span>
+     <span class="badge badge-notes">Lecture notes</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">The derivation is the spine here. The SVD-with-zeros
+  result (worse than predicting the global mean) is the moment the lecture turns
+  — do not rush it.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Retrieval, with the query removed">
+  <h2>Retrieval, with the query removed</h2>
+  <table>
+    <tr><th></th><th>Retrieval</th><th>Recommendation</th></tr>
+    <tr><td>Input</td><td class="small">a query and a corpus</td><td class="small">a <strong>user</strong> and a catalogue</td></tr>
+    <tr><td>Output</td><td class="small">a ranking</td><td class="small">a ranking</td></tr>
+    <tr><td>Signal</td><td class="small">the query text</td><td class="small">what this user did before</td></tr>
+    <tr><td>Labels</td><td class="small">judged by assessors, deliberately</td><td class="small">a <strong>by-product of use</strong></td></tr>
+  </table>
+  <p class="small">The output is the same shape, so Lecture&nbsp;19&rsquo;s
+  metrics apply unchanged. The <em>input</em> is what differs, and the last row
+  is what makes this hard: nobody rated a film in order to help you.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Why this is worth two lectures">
+  <h2>Why this is worth two lectures</h2>
+  <ul class="tight small">
+    <li>It is the machine learning most people actually meet &mdash; a feed, a
+        shop, a music service &mdash; and mostly without noticing</li>
+    <li>It is where the evaluation habits of this course are most often
+        abandoned, and the literature has had public reproducibility failures to
+        prove it</li>
+    <li>And it is where the whole course converges: Lecture&nbsp;8&rsquo;s SVD,
+        Lecture&nbsp;5&rsquo;s regularisation, Lecture&nbsp;19&rsquo;s ranking
+        metrics and Lecture&nbsp;20&rsquo;s two-tower architecture all appear
+        again, doing the same jobs</li>
+  </ul>
+  <p class="small muted">If you take one thing from Part&nbsp;V into a job, it
+  will probably be from these two lectures.</p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="One dataset, one prize, one lesson">
+  <h2>One dataset, one prize, one lesson</h2>
+  <p class="small">The methods in this lecture came out of a public competition
+  with a million-dollar prize and a fixed test set. Three things came out of it
+  that survived the models:</p>
+  <ul class="tight small">
+    <li><strong>Biases matter more than anyone expected</strong>, and modelling
+        them explicitly was worth more than most architectural cleverness</li>
+    <li><strong>Ensembles win competitions and are not deployed</strong> &mdash;
+        the winning blend was never put into production, because its cost
+        exceeded its value</li>
+    <li><strong>A single fixed test set gets overfitted</strong> by a community,
+        not just by a model &mdash; hundreds of teams selecting on one leaderboard
+        is a search procedure</li>
+  </ul>
+  <p class="small muted">The third is Lecture&nbsp;3&rsquo;s point about a test
+  set used more than once, at the scale of a whole field.</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>The problem, the data, and the long tail
+        <span class="muted small">(15 min)</span></li>
+    <li>Baselines: how much of a rating is the user, and how much the film
+        <span class="muted small">(15 min)</span></li>
+    <li><strong>Derivation 21</strong> &mdash; matrix factorisation, and why
+        the SVD of Lecture&nbsp;8 cannot simply be taken
+        <span class="muted small">(35 min)</span></li>
+    <li>Neighbourhood methods, and implicit feedback
+        <span class="muted small">(20 min)</span></li>
+  </ol>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="What you should be able to do afterwards">
+  <h2>What you should be able to do afterwards</h2>
+  <ul class="tight small">
+    <li>State the recommendation problem, and how its data differs from a
+        labelled dataset</li>
+    <li>Write down the factorisation objective, and say why the sum is over
+        observed entries only</li>
+    <li>Explain precisely why the SVD cannot be applied to a matrix with missing
+        entries &mdash; and what happens if you fill them anyway</li>
+    <li>Derive the ALS half-step, and say why it is a ridge regression</li>
+    <li>Say what a bias term is doing, and how much of the signal it carries</li>
+    <li>Explain why implicit feedback has no negatives</li>
+  </ul>
+</section>
+
+<!-- 7 -->
+<section class="divider" data-menu-title="◆ The problem,<br>and the data">
+  <p class="kicker">First fifteen minutes</p>
+  <h1>The problem,<br>and the data</h1>
+  <p class="clock">15 minutes</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="The task">
+  <h2>The task</h2>
+  <p class="lead small">6,040 users.
+  3,706 films. 1,000,209 ratings on a
+  1&ndash;5 scale.</p>
+  <p class="small">Two questions, and they are not the same question:</p>
+  <ul class="tight small">
+    <li><strong>Rating prediction</strong> &mdash; what would this user give this
+        film? Scored by RMSE. This is Lecture&nbsp;21</li>
+    <li><strong>Top-N recommendation</strong> &mdash; which ten films should we
+        show? Scored by the ranking metrics of Lecture&nbsp;19. This is
+        Lecture&nbsp;22</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">They come apart, and that is the subject of the next lecture</span>
+    A model that predicts every rating within half a star can still recommend
+    badly, because the films a user would rate highly are not the films they
+    have not seen.
+  </div>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="Why MovieLens, and what it is not">
+  <h2>Why MovieLens, and what it is not</h2>
+  <ul class="tight small">
+    <li><strong>Explicit ratings</strong>, which most systems do not have
+        &mdash; but without them, rating prediction cannot be taught at all</li>
+    <li><strong>Timestamps</strong>, which is why this release and not the
+        smaller one: half of Lecture&nbsp;22 is the difference between splitting
+        a history at random and splitting it in time</li>
+    <li><strong>1,000,209 ratings</strong> &mdash; large enough
+        that the results are not noise, small enough to factorise on a CPU in
+        seconds</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">And what it is not</span>
+    It is a <em>research dataset from a system that asked people to rate
+    films</em>. It is not a log of a production recommender, its users are
+    self-selected, and its sparsity pattern is unlike a real catalogue&rsquo;s.
+    Everything measured here transfers as a <strong>method</strong>, not as a
+    number.
+  </div>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="The matrix, and what is not in it">
+  <h2>The matrix, and what is not in it</h2>
+  <table class="smaller">
+    <tr><td>Users &times; films</td><td class="num">22.4 million cells</td></tr>
+    <tr><td>Ratings present</td><td class="num">1,000,209</td></tr>
+    <tr class="hit"><td><strong>Density</strong></td><td class="num"><strong>4.5%</strong></td></tr>
+    <tr><td>Ratings per user, median</td><td class="num">96</td></tr>
+    <tr><td>Ratings per film, median</td><td class="num">124</td></tr>
+  </table>
+  <p class="small">95.5% of the matrix is
+  <strong>missing</strong>, and this is the central fact of the lecture.</p>
+  <p class="small fail">Missing is not zero. A cell is empty because the user
+  never saw the film, or saw it and did not rate it, or was never shown it by
+  whatever system was running at the time. <strong>Every one of those is a
+  different meaning, and none of them is &ldquo;disliked&rdquo;.</strong></p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="Not missing at random">
+  <h2>Not missing at random</h2>
+  <p class="small">Worse: the pattern of what is missing is
+  <em>informative</em>. People rate films they chose to watch, and they chose
+  them because they expected to like them.</p>
+  <ul class="tight small">
+    <li>A horror film unrated by a user who hates horror is missing
+        <strong>because</strong> they hate horror</li>
+    <li>Which is a rating, of a kind &mdash; and it is not in the data</li>
+    <li>Every model in this lecture trains on observed entries and is evaluated
+        on observed entries, so it never sees this</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The same shape as Lecture 19's pooling</span>
+    The data records what someone chose to look at, and the choice was not
+    random. In retrieval it made recall a lower bound; here it biases the
+    training set itself.
+  </div>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="What "a user" means in the model">
+  <h2>What "a user" means in the model</h2>
+  <p class="small">$p_u$ is a vector attached to an <em>account</em>, and an
+  account is not a person:</p>
+  <ul class="tight small">
+    <li>A household shares one account, so $p_u$ averages several tastes into
+        one point &mdash; and the average of two tastes is often nobody&rsquo;s</li>
+    <li>A person&rsquo;s taste changes; $p_u$ is a single vector with no time in
+        it. MovieLens spans years</li>
+    <li>The same person on two devices is two users, with two independent
+        vectors estimated from half the data each</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Worth saying because the model cannot</span>
+    Nothing in the objective represents any of this. A model whose unit of
+    analysis is wrong will be confidently wrong, and no amount of held-out RMSE
+    reveals it.
+  </div>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="What people actually give">
+  <h2>What people actually give</h2>
+  <table class="smaller">
+    <tr><th class="num">Rating</th><th class="num">1</th><th class="num">2</th><th class="num">3</th><th class="num">4</th><th class="num">5</th></tr>
+    <tr><td>Share</td><td class="num">5.6%</td><td class="num">10.8%</td><td class="num">26.1%</td><td class="num">34.9%</td><td class="num">22.6%</td></tr>
+  </table>
+  <p class="small">Mean 3.58, and heavily skewed
+  upward: 57.5%
+  of ratings are 4 or 5.</p>
+  <p class="small">People mostly rate things they liked. Which means the rating
+  scale is not being used as a scale &mdash; it is being used as
+  &ldquo;good&rdquo;, &ldquo;very good&rdquo;, and occasionally
+  &ldquo;I want you to know this was bad&rdquo;.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Why RMSE, and its quiet assumption">
+  <h2>Why RMSE, and its quiet assumption</h2>
+  <div class="eqn-box compact">
+    $$\text{RMSE} = \sqrt{\frac{1}{|\Omega_{\text{test}}|}
+    \sum_{(u,i)} (r_{ui} - \hat{r}_{ui})^2}$$
+  </div>
+  <p class="small">Squared error, so a two-star miss costs four times a
+  one-star miss. Defensible, and worth stating: it says being badly wrong
+  occasionally is worse than being slightly wrong often.</p>
+  <p class="small fail">The quiet assumption is bigger. RMSE averages over the
+  <strong>observed</strong> test ratings &mdash; films these users chose to
+  watch and rate. It says nothing about the films they did not, which is
+  precisely the set a recommender operates on.</p>
+  <p class="small muted">Lecture&nbsp;22 replaces it for that reason. Today it
+  is the right metric for the question &ldquo;what would they rate it&rdquo;,
+  and the wrong one for &ldquo;what should we show&rdquo;.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="The long tail">
+  <h2>The long tail</h2>
+  <table class="smaller">
+    <tr><th>Top films by rating count</th><th class="num">Share of all ratings</th></tr>
+    <tr><td>top 1%</td><td class="num">8.7%</td></tr>
+    <tr><td>top 5%</td><td class="num">28.3%</td></tr>
+    <tr><td>top 10%</td><td class="num">44.4%</td></tr>
+    <tr><td>top 20%</td><td class="num">65.2%</td></tr>
+    <tr><td>Films with fewer than 20 ratings</td><td class="num">17.9%</td></tr>
+  </table>
+  <p class="small">The top 5% of films take
+  28.3% of the ratings. Most of the catalogue is
+  barely rated at all.</p>
+  <p class="small fail">Two consequences to keep. First, a model can score well
+  by learning popularity and nothing else &mdash; Lecture&nbsp;22 measures
+  exactly that. Second, the films where a recommendation would be
+  <em>valuable</em> are the ones with least data.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="The tail is where the value is">
+  <h2>The tail is where the value is</h2>
+  <p class="small">A recommendation is useful to the extent the user would
+  not have found the item anyway.</p>
+  <ul class="tight small">
+    <li>The top 1% of films hold
+        8.7% of ratings. Recommending those is easy,
+        scores well, and tells the user nothing they did not know</li>
+    <li>17.9% of films have under twenty ratings.
+        These are where a recommender could earn its place</li>
+    <li>And they are exactly where every model in this lecture has least to work
+        with</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The metric does not know this</span>
+    RMSE over held-out ratings, and even NDCG over held-out interactions, give
+    full credit for a correct popular recommendation and the same credit for a
+    correct obscure one. <strong>Nothing measured in this lecture rewards
+    usefulness.</strong> Lecture&nbsp;22 tries.
+  </div>
+</section>
+
+<!-- 17 -->
+<section class="divider" data-menu-title="◆ How much of a rating is<br>the user, and how much the film">
+  <p class="kicker">Baselines</p>
+  <h1>How much of a rating is<br>the user, and how much the film</h1>
+  <p class="clock">15 minutes</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="The baselines, before any model">
+  <h2>The baselines, before any model</h2>
+  <p class="small">Rule&nbsp;2. Split 90/10 at random, fit on the training
+  half, and predict:</p>
+  <table>
+    <tr><th>Predictor</th><th class="num">RMSE</th></tr>
+    <tr><td>The global mean, for everyone</td><td class="num">1.1185</td></tr>
+    <tr><td>This user&rsquo;s mean rating</td><td class="num">1.0367</td></tr>
+    <tr><td>This film&rsquo;s mean rating</td><td class="num">0.9826</td></tr>
+    <tr class="hit"><td><strong>Both, as biases</strong></td><td class="num"><strong>0.9109</strong></td></tr>
+  </table>
+  <p class="small">A single number for everybody scores
+  1.1185. Knowing <em>which film</em> takes it to
+  0.9826; knowing <em>who</em> and <em>which film</em> takes it
+  to 0.9109.</p>
+  <p class="small muted">No interaction between the two has been modelled yet.
+  Nothing so far knows that <em>this</em> user likes <em>this kind</em> of
+  film.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="The split, and why it is stated first">
+  <h2>The split, and why it is stated first</h2>
+  <ul class="tight small">
+    <li>90/10 on the ratings, at random, one seed, fixed before any model was
+        fitted</li>
+    <li>900,189 ratings to fit, 100,020 to test</li>
+    <li>Every number in this lecture uses <em>that</em> split &mdash; baselines,
+        neighbourhoods, factorisations, the SVD disasters</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">A random split of ratings is not innocent</span>
+    It puts a user&rsquo;s future ratings in the training set and their past in
+    the test set, which no deployed system ever gets. It is the standard
+    protocol for rating prediction, it is convenient, and it is optimistic.
+    <strong>Lecture&nbsp;22 measures exactly how optimistic.</strong>
+  </div>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="The bias model, written out">
+  <h2>The bias model, written out</h2>
+  <div class="eqn-box">
+    $$\hat{r}_{ui} = \mu + b_u + b_i$$
+    <p class="eqn-label">the global mean, plus this user&rsquo;s offset, plus this film&rsquo;s</p>
+  </div>
+  <p class="small">Fitted by alternating closed forms, each regularised by the
+  count &mdash; a user with three ratings should not be given a large offset:</p>
+  <div class="eqn-box compact">
+    $$b_u = \frac{\sum_{i \in I_u} (r_{ui} - \mu - b_i)}{|I_u| + \lambda}$$
+  </div>
+  <p class="small">That $\lambda$ in the denominator is shrinkage, and it is the
+  ridge penalty of Lecture&nbsp;5 arriving in a new place: with few observations,
+  pull the estimate toward zero.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="What the biases learned">
+  <h2>What the biases learned</h2>
+  <table class="smaller">
+    <tr><th></th><th class="num">Lowest</th><th class="num">Highest</th></tr>
+    <tr><td>User offset $b_u$</td><td class="num">-2.2156</td><td class="num">+1.4690</td></tr>
+    <tr><td>Film offset $b_i$</td><td class="num">-1.8545</td><td class="num">+1.0546</td></tr>
+  </table>
+  <p class="small">The harshest user rates nearly
+  2.2 stars below the mean on
+  everything, and the most generous
+  1.5 above. That spread is larger
+  than most of what the rest of this lecture will add.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">Why this matters more than it looks</span>
+    A recommender that ignores biases spends its capacity re-learning that some
+    users are generous and some films are popular &mdash; effects with nothing
+    personal in them. Modelling them <strong>explicitly and cheaply</strong>
+    frees the interesting part of the model for the interesting part of the
+    problem.
+  </div>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Cold start, named now">
+  <h2>Cold start, named now</h2>
+  <p class="small">A user with no ratings has no $p_u$ to solve for; a film with
+  no ratings has no $q_i$. The factorisation has nothing to say about either,
+  and the failure is total rather than gradual.</p>
+  <ul class="tight small">
+    <li><strong>New user</strong> &mdash; fall back to popularity, or ask for a
+        few ratings up front</li>
+    <li><strong>New item</strong> &mdash; fall back to content: genre, cast,
+        description, an embedding of the synopsis</li>
+    <li><strong>New system</strong> &mdash; you have neither, which is why every
+        recommender starts as a popularity list</li>
+  </ul>
+  <p class="small muted">Not examinable in detail, but the reason a real system
+  is always a hybrid of a factorisation and something that works without
+  history.</p>
+</section>
+
+<!-- 23 -->
+<section class="divider" data-menu-title="◆ Derivation 21">
+  <p class="kicker">Derivation 21 &middot; examinable</p>
+  <h1>Matrix factorisation,<br>and the SVD it is not</h1>
+  <p class="clock">35 minutes</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Step 1 · What we are given">
+  <h2>Step 1 · What we are given</h2>
+  <p class="small">A matrix $R \in \mathbb{R}^{m \times n}$ with
+  $m = 6,040$ users and $n = 3,706$ films, of
+  which we observe a set $\Omega$ of entries:</p>
+  <div class="eqn-box compact">
+    $$|\Omega| = 1,000,209, \qquad
+    \frac{|\Omega|}{mn} = 4.5%$$
+  </div>
+  <p class="small">$R$ is not a sparse matrix in the sense of Lecture&nbsp;19,
+  where the zeros were real zeros. Here the unobserved entries have
+  <strong>no value at all</strong> &mdash; they are not zero, not the mean, and
+  not anything.</p>
+  <p class="small muted">Every difficulty in this derivation comes from that one
+  sentence, and every wrong method comes from forgetting it.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Step 2 · The low-rank hypothesis">
+  <h2>Step 2 · The low-rank hypothesis</h2>
+  <p class="small">Assume tastes are simpler than the data: that there are $d$
+  underlying factors &mdash; how much a film is a comedy, how dark, how old
+  &mdash; and that a rating is how much the user wants each factor times how much
+  the film has of it.</p>
+  <div class="eqn-box">
+    $$\hat{r}_{ui} = p_u \cdot q_i, \qquad
+    p_u, q_i \in \mathbb{R}^{d}$$
+  </div>
+  <p class="small">Equivalently $\hat{R} = PQ^{\top}$ with
+  $\operatorname{rank} \le d$. The parameter count falls from $mn$ to
+  $d(m+n)$, which for $d = 16$ is about a hundredth of the matrix.</p>
+  <p class="small fail">It is a <em>hypothesis</em>, not a fact. Its
+  justification is that it predicts held-out ratings better than the
+  alternatives, and we will check that rather than assert it.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Step 3 · Lecture 8 already solved this">
+  <h2>Step 3 · Lecture 8 already solved this</h2>
+  <p class="small">The best rank-$d$ approximation of a matrix in the
+  Frobenius norm is its truncated SVD. Eckart&ndash;Young:</p>
+  <div class="eqn-box compact">
+    $$\min_{\operatorname{rank}(X) \le d} \|R - X\|_F
+    \;=\; \|R - U_d \Sigma_d V_d^{\top}\|_F$$
+  </div>
+  <p class="small">So the answer looks like it is already in our hands: take the
+  SVD of the ratings matrix, keep $d$ singular values, read off $P$ and $Q$.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">One condition, and it is not met</span>
+    The Frobenius norm sums over <strong>every</strong> entry of $R$. To
+    evaluate it &mdash; let alone minimise it &mdash; every entry must have a
+    value, and 95.5% of ours do not.
+  </div>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Interlude · What Eckart–Young actually says">
+  <h2>Interlude · What Eckart–Young actually says</h2>
+  <p class="small">Worth being precise, because the derivation turns on it.
+  The theorem states: <em>among all matrices of rank at most $d$, the truncated
+  SVD minimises $\|R - X\|_F$.</em></p>
+  <ul class="tight small">
+    <li>It is a statement about <strong>one given matrix $R$</strong></li>
+    <li>The norm sums over every entry, with equal weight</li>
+    <li>It says nothing about entries $R$ does not have &mdash; the question is
+        not defined</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">So the theorem is not wrong; it is being misused</span>
+    Filling the matrix does not extend the theorem to our problem. It
+    <strong>changes our problem</strong> into one the theorem covers, and the
+    two problems have different answers. The next slide prices the difference.
+  </div>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Step 4 · So fill them in?">
+  <h2>Step 4 · So fill them in?</h2>
+  <p class="small">The obvious repair: put something in the empty cells and
+  take the SVD of the completed matrix. Two obvious choices, both actually
+  tried, both measured on the same held-out ratings as before:</p>
+  <table>
+    <tr><th>Rank-32 SVD of&hellip;</th><th class="num">RMSE</th></tr>
+    <tr><td>the matrix filled with <strong>zeros</strong></td><td class="num fail">2.3274</td></tr>
+    <tr><td>the matrix filled with the <strong>global mean</strong></td><td class="num">0.9920</td></tr>
+    <tr><td class="muted">predicting the global mean for everyone</td><td class="num muted">1.1185</td></tr>
+    <tr><td class="muted">the bias model</td><td class="num muted">0.9109</td></tr>
+  </table>
+  <p class="small fail">Filling with zeros scores
+  <strong>2.3274</strong> &mdash; more than twice the
+  error of predicting one number for everybody, from the mathematically optimal
+  rank-32 approximation.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Why zeros are worse than the mean">
+  <h2>Why zeros are worse than the mean</h2>
+  <table class="smaller">
+    <tr><th>Rank-32 SVD of the matrix filled with&hellip;</th><th class="num">RMSE</th></tr>
+    <tr><td>zeros</td><td class="num fail">2.3274</td></tr>
+    <tr><td>the global mean</td><td class="num">0.9920</td></tr>
+  </table>
+  <p class="small">Ratings run from 1 to 5, so a zero is not a low rating
+  &mdash; it is <strong>off the scale</strong>. The approximation is dragged
+  toward zero everywhere, and the predictions for observed pairs come out far
+  too low.</p>
+  <p class="small">Filling with the mean at least puts the fill inside the
+  range, so the damage is bounded: 0.9920, which is
+  merely worse than the bias model (0.9109) rather than
+  catastrophic.</p>
+  <p class="small fail">Both are the same error. One is just more visible, and
+  the more visible error is the safer one to make.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Step 5 · Why filling fails">
+  <h2>Step 5 · Why filling fails</h2>
+  <p class="small">The SVD did exactly what it promised: the best rank-32
+  approximation to <strong>the matrix it was given</strong>. That matrix is
+  95.5% zeros, so the best approximation is mostly a good
+  approximation of the zeros.</p>
+  <ul class="tight small">
+    <li>The fill value is not data. Optimising against it spends the model on
+        reproducing an assumption</li>
+    <li>And the assumption is a strong one: zero means &ldquo;this user would
+        rate this film 0&rdquo;, on a scale that starts at 1</li>
+    <li>Filling with the mean is less absurd &mdash;
+        0.9920 &mdash; and still worse than the bias
+        model, which has $d = 0$</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The transferable error</span>
+    <strong>Imputing missing values to make a method applicable makes the method
+    answer a different question.</strong> The same mistake as filling a missing
+    feature with a column mean and then reporting the model as if the data had
+    been complete.
+  </div>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Step 6 · Change the objective, not the data">
+  <h2>Step 6 · Change the objective, not the data</h2>
+  <p class="small">The problem was never the SVD. It was that we asked for a
+  fit to <em>every</em> entry. So ask only for what we can observe:</p>
+  <div class="eqn-box">
+    $$\min_{P, Q} \sum_{(u,i) \in \Omega}
+    \left(r_{ui} - p_u \cdot q_i\right)^{2}$$
+    <p class="eqn-label">the sum runs over observed entries only</p>
+  </div>
+  <p class="small">The unobserved entries are now absent from the objective
+  rather than assigned a value. Nothing is imputed, and nothing is assumed about
+  what a user would have said.</p>
+  <p class="small fail">And in doing so we have left the world where the SVD
+  applies. This objective has no closed form, no orthogonality, no unique
+  solution &mdash; it is not an eigenproblem any more.</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Step 6a · Read the objective once more">
+  <h2>Step 6a · Read the objective once more</h2>
+  <div class="eqn-box">
+    $$\min_{P, Q} \sum_{(u,i) \in \Omega}
+    \left(r_{ui} - p_u \cdot q_i\right)^{2}
+    + \lambda\left(\|P\|_F^{2} + \|Q\|_F^{2}\right)$$
+  </div>
+  <ul class="tight small">
+    <li>$\Omega$ &mdash; the observed entries, and only those. This is the whole
+        departure from the SVD</li>
+    <li>$p_u \cdot q_i$ &mdash; a rank-$d$ model, written entrywise rather than
+        as a matrix product, because the matrix product is over cells we do not
+        have</li>
+    <li>$\lambda$ &mdash; without which a user with three ratings gets a perfect
+        fit and no information</li>
+  </ul>
+  <p class="small">Three symbols, three decisions, and each one is a slide of
+  this derivation. If you can reconstruct why each is there, you have the
+  derivation.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="Step 7 · What was given up">
+  <h2>Step 7 · What was given up</h2>
+  <table class="smaller">
+    <tr><th></th><th>Truncated SVD</th><th>This objective</th></tr>
+    <tr><td>Solution</td><td class="small">closed form</td><td class="small">iterative</td></tr>
+    <tr><td>Uniqueness</td><td class="small">unique (up to sign and ties)</td><td class="small">not unique &mdash; $PM, QM^{-\top}$ scores identically</td></tr>
+    <tr><td>Factors</td><td class="small">orthogonal, ordered by variance</td><td class="small">neither</td></tr>
+    <tr><td>Optimum</td><td class="small">global</td><td class="small">local &mdash; the problem is non-convex in $(P,Q)$ jointly</td></tr>
+  </table>
+  <p class="small">All four losses are real, and the last two matter in
+  practice: <strong>you cannot interpret factor 3 the way you interpret
+  principal component 3</strong>, because a different run gives different,
+  equally good factors.</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="Step 8 · Regularisation is not optional">
+  <h2>Step 8 · Regularisation is not optional</h2>
+  <p class="small">A user with three ratings and $d = 16$ has more parameters
+  than observations, so the objective can be driven to zero on that user while
+  learning nothing.</p>
+  <div class="eqn-box">
+    $$\min_{P,Q} \sum_{(u,i) \in \Omega}
+    \left(r_{ui} - p_u \cdot q_i\right)^{2}
+    + \lambda\left(\|p_u\|^{2} + \|q_i\|^{2}\right)$$
+  </div>
+  <p class="small">Which is ridge regression again, from Lecture&nbsp;5, and it
+  is doing the same job: with few observations, prefer the smaller
+  coefficients.</p>
+  <p class="small muted">It also has a second job here. The penalty breaks the
+  scaling degeneracy of the previous slide &mdash; $P \to 2P$, $Q \to Q/2$ is
+  no longer free.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Step 9 · Hold one side fixed">
+  <h2>Step 9 · Hold one side fixed</h2>
+  <p class="small">The objective is not convex in $P$ and $Q$ together. But fix
+  $Q$, and every term involving $p_u$ is a quadratic in $p_u$ alone:</p>
+  <div class="eqn-box compact">
+    $$\min_{p_u} \sum_{i \in I_u} (r_{ui} - p_u \cdot q_i)^2
+    + \lambda \|p_u\|^2$$
+  </div>
+  <p class="small">That is a <strong>ridge regression</strong>, with the films
+  this user rated as the rows of the design matrix and their ratings as the
+  target. And it is <em>separate</em> for each user: no user&rsquo;s solution
+  depends on another&rsquo;s.</p>
+  <p class="small">So the whole $P$ step is $m$ independent small regressions,
+  each over only that user&rsquo;s own ratings.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Step 10 · The closed form">
+  <h2>Step 10 · The closed form</h2>
+  <p class="small">Write $Q_u$ for the $|I_u| \times d$ matrix of the films
+  user $u$ rated, and $r_u$ for their ratings. Setting the gradient to zero:</p>
+  <div class="eqn-box">
+    $$p_u = \left(Q_u^{\top} Q_u + \lambda I\right)^{-1} Q_u^{\top} r_u$$
+  </div>
+  <p class="small">The normal equation of Lecture&nbsp;2, with the ridge term of
+  Lecture&nbsp;5. The system is $d \times d$ &mdash; $16 \times 16$ here
+  &mdash; regardless of how many films the user rated.</p>
+  <p class="small fail">Note where the missing entries went: $Q_u$ contains
+  <strong>only the films this user rated</strong>. Nothing was imputed; the
+  unobserved entries simply never enter the system.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Step 11 · Alternate">
+  <h2>Step 11 · Alternate</h2>
+  <p class="small">By symmetry, fixing $P$ makes each $q_i$ a ridge regression
+  over the users who rated film $i$. So:</p>
+  <ol class="tight small">
+    <li>Fix $Q$; solve for every $p_u$</li>
+    <li>Fix $P$; solve for every $q_i$</li>
+    <li>Repeat</li>
+  </ol>
+  <p class="small">Each half-step <strong>solves its subproblem exactly</strong>,
+  so neither can increase the objective. The objective is bounded below by zero,
+  so the sequence converges.</p>
+  <p class="small muted">Converges to a <em>local</em> minimum: monotone descent
+  is not global optimality, and a different initialisation gives a different
+  answer. That is the price of Step&nbsp;6, and it was paid knowingly.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="What an ALS sweep costs">
+  <h2>What an ALS sweep costs</h2>
+  <table class="smaller">
+    <tr><td>Systems solved per sweep</td><td class="num">9,746</td></tr>
+    <tr><td>Size of each system</td><td class="num">$d \times d$</td></tr>
+    <tr><td>At $d = 16$</td><td class="num">16&times;16</td></tr>
+    <tr><td>Ratings touched per sweep</td><td class="num">1,800,378</td></tr>
+  </table>
+  <p class="small">Each system is tiny and independent of the others, so the
+  sweep is embarrassingly parallel and the cost is dominated by gathering each
+  user&rsquo;s rows rather than by the linear algebra.</p>
+  <p class="small muted">Which is why the notebook groups the ratings once with
+  a single argsort instead of taking a boolean mask per user: the same
+  arithmetic, and the difference between seconds and minutes.</p>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Step 12 · Or descend, one rating at a time">
+  <h2>Step 12 &middot; Or descend, one rating at a time</h2>
+  <p class="small">The alternative, and the one that scales past memory. For
+  each observed rating, take the error and step both vectors:</p>
+  <div class="eqn-box compact">
+    $$e_{ui} = r_{ui} - \hat{r}_{ui}$$
+    $$p_u \mathrel{+}= \eta\,(e_{ui} q_i - \lambda p_u)$$
+    $$q_i \mathrel{+}= \eta\,(e_{ui} p_u - \lambda q_i)$$
+  </div>
+  <ul class="tight small">
+    <li><strong>ALS</strong> parallelises across users and each step is exact
+        &mdash; but needs a $d\times d$ solve per user</li>
+    <li><strong>SGD</strong> touches one rating at a time, so it suits implicit
+        data and streams &mdash; but needs a learning rate</li>
+  </ul>
+  <p class="small">Same objective, different route. At $d = 32$: ALS reaches
+  0.8733, SGD 0.8615.</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="SGD, watched converging">
+  <h2>SGD, watched converging</h2>
+  <table class="smaller">
+    <tr><th class="num">Epoch</th><th class="num">1</th><th class="num">2</th><th class="num">3</th><th class="num">4</th><th class="num">5</th><th class="num">6</th><th class="num">7</th><th class="num">8</th></tr>
+    <tr><td>train RMSE</td><td class="num">0.9126</td><td class="num">0.9012</td><td class="num">0.8961</td><td class="num">0.8916</td><td class="num">0.8848</td><td class="num">0.8750</td><td class="num">0.8651</td><td class="num">0.8551</td></tr>
+  </table>
+  <p class="small">Fifteen epochs of per-rating updates end at test RMSE
+  0.8615; twelve ALS sweeps at $d=32$ reach
+  0.8733. Two routes to the same objective, arriving in the same
+  place.</p>
+  <p class="small fail">Note the <em>training</em> RMSE keeps falling while we
+  care about the test one. Nothing in the SGD loop knows the difference &mdash;
+  which is Lecture&nbsp;5 again, and the reason the epoch count is a capacity
+  parameter here just as the rank is.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="Step 13 · Put the biases back">
+  <h2>Step 13 · Put the biases back</h2>
+  <p class="small">The factorisation models the <em>interaction</em>. The
+  parts that are not interactions &mdash; a generous user, a popular film
+  &mdash; should not be spent on it:</p>
+  <div class="eqn-box">
+    $$\hat{r}_{ui} = \mu + b_u + b_i + p_u \cdot q_i$$
+  </div>
+  <p class="small">Fit the biases first, then factorise what they leave
+  behind.</p>
+  <table class="smaller">
+    <tr><td>Bias model alone ($d = 0$)</td><td class="num">0.9109</td></tr>
+    <tr><td>Factorisation, $d = 16$, with biases</td><td class="num">0.8587</td></tr>
+    <tr><td>Factorisation, $d = 16$, no biases</td><td class="num">0.8559</td></tr>
+  </table>
+  <p class="small">The biases alone close
+  79.9%
+  of the distance from the global mean to the full model. Most of a rating is
+  not personal.</p>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Step 14 · An honest wrinkle">
+  <h2>Step 14 · An honest wrinkle</h2>
+  <p class="small">At $d = 16$, the model
+  <em>without</em> explicit biases scores 0.8559 &mdash;
+  slightly <strong>better</strong> than the one with them
+  (0.8587).</p>
+  <p class="small">The textbook claim is that biases help. Here they do not, and
+  the reason is visible in the algebra: a factor dimension can hold a constant,
+  so a rank-16 factorisation can <em>represent</em> the biases itself, using two
+  of its sixteen dimensions to do it.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">What is still true</span>
+    Biases are worth having because they are <strong>cheap, stable and
+    interpretable</strong>, they help most at low rank, and they let the factors
+    be about interaction. Not because they always lower RMSE &mdash; and the
+    difference here, 0.0028,
+    is small enough that reporting it as a finding either way would be
+    overreaching.
+  </div>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="Step 15 · How many factors?">
+  <h2>Step 15 · How many factors?</h2>
+  <table class="smaller">
+    <tr><th class="num">$d$</th><th class="num">1</th><th class="num">2</th><th class="num">4</th><th class="num">8</th><th class="num">16</th><th class="num">32</th><th class="num">64</th></tr>
+    <tr><td>RMSE</td><td class="num">0.8912</td><td class="num">0.8836</td><td class="num">0.8705</td><td class="num">0.8602</td><td class="num">0.8587</td><td class="num">0.8733</td><td class="num">0.9006</td></tr>
+  </table>
+  <p class="small">Best at $d = 16$
+  (0.8587), and rising again by $d = 64$
+  (0.9006).</p>
+  <p class="small">A U-curve, which is Lecture&nbsp;5 exactly: more capacity
+  fits the training ratings better and the held-out ratings worse. The rank is a
+  capacity parameter, and it is chosen the way every capacity parameter in this
+  course is chosen &mdash; by measurement on data the model did not see.</p>
+  <p class="small muted">Even $d = 1$ scores 0.8912, already better
+  than the bias model. One dimension of taste is worth something.</p>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Step 16 · What the factors are not">
+  <h2>Step 16 · What the factors are not</h2>
+  <ul class="tight small">
+    <li>They are <strong>not</strong> principal components: not orthogonal, not
+        ordered, not unique</li>
+    <li>They are <strong>not</strong> genres. A run may put something
+        genre-like in a dimension, and the next run will not put it in the same
+        one</li>
+    <li>They are <strong>not</strong> interpretable individually. Only the inner
+        product is determined; any invertible $M$ gives $PM$ and $QM^{-\top}$
+        the same predictions</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Say this out loud when someone shows you a factor plot</span>
+    Reading meaning into an individual latent dimension of a factorisation is
+    the recommender-systems version of reading a coefficient of a collinear
+    regression. The model is not claiming what the plot claims.
+  </div>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="Interlude · The rotation nobody can see">
+  <h2>Interlude · The rotation nobody can see</h2>
+  <p class="small">For any invertible $M$:</p>
+  <div class="eqn-box compact">
+    $$(PM)(QM^{-\top})^{\top} = PMM^{-1}Q^{\top} = PQ^{\top}$$
+  </div>
+  <p class="small">Every prediction is identical, so the objective cannot
+  distinguish $P$ from $PM$. The solution is a whole family, and an optimiser
+  returns whichever member its initialisation led to.</p>
+  <ul class="tight small">
+    <li>The <strong>predictions</strong> are determined &mdash; that is what we
+        wanted</li>
+    <li>The <strong>factors</strong> are not, and no amount of staring at them
+        fixes that</li>
+  </ul>
+  <p class="small muted">The regularisation narrows the family &mdash; it
+  penalises $\|P\|$, so $M$ can no longer be an arbitrary scaling &mdash; but
+  rotations of an isotropic penalty remain free.</p>
+</section>
+
+<!-- 46 -->
+<section class="divider" data-menu-title="◆ Neighbourhoods,<br>and feedback nobody gave">
+  <p class="kicker">Last twenty minutes</p>
+  <h1>Neighbourhoods,<br>and feedback nobody gave</h1>
+  <p class="clock">20 minutes</p>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="The other family: neighbourhoods">
+  <h2>The other family: neighbourhoods</h2>
+  <p class="small">Before factorisation there was a simpler idea, and it is
+  still deployed: predict from <strong>similar things</strong>.</p>
+  <ul class="tight small">
+    <li><strong>User-based</strong> &mdash; find users who rated as you did, and
+        average their ratings for the film in question</li>
+    <li><strong>Item-based</strong> &mdash; find films rated as this film was,
+        and average <em>this user&rsquo;s</em> ratings of them</li>
+  </ul>
+  <p class="small">Item-based is what gets deployed, for a reason that is
+  operational rather than statistical: there are usually far fewer items than
+  users, item&ndash;item similarities change slowly, and they can be computed
+  offline and cached.</p>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="Item–item similarity, defined">
+  <h2>Item–item similarity, defined</h2>
+  <div class="eqn-box">
+    $$s_{ij} = \frac{\tilde{r}_i \cdot \tilde{r}_j}
+                    {\|\tilde{r}_i\|\,\|\tilde{r}_j\|}$$
+    <p class="eqn-label">cosine between two films&rsquo; rating columns</p>
+  </div>
+  <p class="small">The tilde matters: the columns are <strong>bias-adjusted</strong>
+  first, $\tilde{r}_{ui} = r_{ui} - \mu - b_u - b_i$. Without that, every
+  popular film is similar to every other popular film, because both columns are
+  full of fours.</p>
+  <p class="small fail">Which is the same trap as an unnormalised dot product in
+  Lecture&nbsp;20, and the same trap as term frequency without idf in
+  Lecture&nbsp;19: <strong>subtract what is true of everything before measuring
+  what is specific.</strong>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="The prediction, and the measurement">
+  <h2>The prediction, and the measurement</h2>
+  <div class="eqn-box compact">
+    $$\hat{r}_{ui} = \mu + b_u + b_i +
+    \frac{\sum_{j \in N_k(i)} s_{ij}\,\tilde{r}_{uj}}
+         {\sum_{j \in N_k(i)} s_{ij}}$$
+  </div>
+  <table class="smaller">
+    <tr><th>Method</th><th class="num">RMSE</th></tr>
+    <tr><td>item&ndash;item, $k = 10$</td><td class="num">0.9376</td></tr>
+    <tr><td>item&ndash;item, $k = 20$</td><td class="num">0.9171</td></tr>
+    <tr><td>item&ndash;item, $k = 50$</td><td class="num">0.8867</td></tr>
+    <tr class="hit"><td>factorisation, $d = 16$</td><td class="num">0.8587</td></tr>
+  </table>
+  <p class="small">The best neighbourhood model (0.8867) does not
+  reach the factorisation, and still beats the bias model
+  (0.9109).</p>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Why factorisation wins, and where it does not">
+  <h2>Why factorisation wins, and where it does not</h2>
+  <table class="smaller">
+    <tr><th></th><th>Neighbourhood</th><th>Factorisation</th></tr>
+    <tr><td>Uses</td><td class="small">direct co-rating evidence</td><td class="small">a global low-rank structure</td></tr>
+    <tr><td>Sparse items</td><td class="num fail">few co-ratings, poor estimate</td><td class="small">borrows strength from everything</td></tr>
+    <tr><td>Explainable</td><td class="num hit">&ldquo;because you liked X&rdquo;</td><td class="num fail">a dot product of latent vectors</td></tr>
+    <tr><td>New rating</td><td class="small">update a cached similarity</td><td class="small">refit, or fold in approximately</td></tr>
+  </table>
+  <p class="small">Row three is why neighbourhood methods survive: a
+  recommendation a user can be <em>told the reason for</em> is worth points a
+  metric does not award.</p>
+  <p class="small muted">And in practice the two are combined, exactly as BM25
+  and dense retrieval were combined last lecture, and for the same reason.</p>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="Where a neighbourhood method runs out">
+  <h2>Where a neighbourhood method runs out</h2>
+  <p class="small">Two films are similar only if enough users rated
+  <em>both</em>. In the long tail there are no such users.</p>
+  <ul class="tight small">
+    <li>17.9% of films have fewer than twenty ratings
+        at all</li>
+    <li>For two such films, the co-rating count is typically zero, and the
+        cosine of two nearly empty columns is noise</li>
+    <li>A factorisation has no such problem: a tail film&rsquo;s $q_i$ is
+        estimated from its few ratings <em>and</em> from where those raters sit
+        in a space learned from everything else</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">Borrowing strength</span>
+    That is the real advantage of the low-rank model, and it is the same
+    argument as pooling in a hierarchical model: a parameter estimated from
+    three observations is rescued by a structure estimated from a million.
+  </div>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="Explicit ratings are the easy case">
+  <h2>Explicit ratings are the easy case</h2>
+  <p class="small">Everything so far assumed a number the user typed. Most
+  real systems have none.</p>
+  <table class="smaller">
+    <tr><th>Explicit</th><th>Implicit</th></tr>
+    <tr><td class="small">a rating, deliberately given</td><td class="small">a click, a play, a purchase, a dwell time</td></tr>
+    <tr><td class="small">scarce &mdash; most users rate nothing</td><td class="small">abundant &mdash; every interaction is one</td></tr>
+    <tr><td class="small">a scale, with a middle</td><td class="small">presence or absence</td></tr>
+    <tr><td class="small">a stated preference</td><td class="small">a revealed one, plus the interface</td></tr>
+  </table>
+  <p class="small">MovieLens is explicit, which is why it can be used to teach
+  rating prediction at all. It is <em>not</em> representative: your first
+  recommender will almost certainly have no ratings in it.</p>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="How much data implicit feedback is">
+  <h2>How much data implicit feedback is</h2>
+  <p class="small">Binarise our ratings at 4 or above and call that an
+  interaction:</p>
+  <table class="smaller">
+    <tr><td>Explicit ratings</td><td class="num">1,000,209</td></tr>
+    <tr><td>Of which positive (&ge; 4)</td><td class="num">575,281</td></tr>
+    <tr><td>As a fraction</td><td class="num">57.5%</td></tr>
+    <tr><td>Cells with no interaction</td><td class="num">22.4 million</td></tr>
+  </table>
+  <p class="small">In a real system the first row would be zero and the second
+  would be a click log ten times larger. The proportions are what matter: a few
+  hundred thousand positives against tens of millions of cells whose meaning is
+  unknown.</p>
+  <p class="small muted">This binarised view is what Lecture&nbsp;22 uses
+  throughout, which is why it is defined here.</p>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="Implicit feedback has no negatives">
+  <h2>Implicit feedback has no negatives</h2>
+  <p class="small">A user watched film A. What does that say about film B,
+  which they did not watch?</p>
+  <ul class="tight small">
+    <li>They disliked it &mdash; a true negative</li>
+    <li>They have not seen it yet &mdash; possibly the best recommendation
+        available</li>
+    <li>They were never shown it &mdash; and that was the old system&rsquo;s
+        choice, not theirs</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">Which is the whole difficulty</span>
+    In explicit data the missing entries are excluded from the objective, and we
+    saw exactly what happens when they are not. In implicit data the
+    <strong>only</strong> thing that exists is the positives, so an objective
+    over observed entries alone is trivially satisfied by predicting
+    &ldquo;yes&rdquo; for everything.
+  </div>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="Two ways out">
+  <h2>Two ways out</h2>
+  <ul class="tight small">
+    <li><strong>Weighted least squares over everything</strong>: treat every
+        unobserved cell as a zero with <em>low confidence</em>, and observed
+        ones as one with confidence rising in the number of interactions. All
+        22.4 million cells enter the
+        objective, with weights</li>
+    <li><strong>Pairwise ranking</strong>: never predict a value at all. Require
+        only that an observed item outranks an unobserved one for that user</li>
+  </ul>
+  <p class="small">The first keeps the closed form &mdash; the weighting is
+  arranged so that ALS still works &mdash; and needs a confidence function you
+  have to justify. The second changes the objective into a ranking objective,
+  which is what we actually want, and gives up the closed form.</p>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="BPR: rank the pair, not the item">
+  <h2>BPR: rank the pair, not the item</h2>
+  <div class="eqn-box">
+    $$\max \sum_{(u,i,j)} \log \sigma\!\left(\hat{r}_{ui} - \hat{r}_{uj}\right)
+    - \lambda\|\Theta\|^{2}$$
+    <p class="eqn-label">$i$ observed for $u$, $j$ sampled from the unobserved</p>
+  </div>
+  <ul class="tight small">
+    <li>Only the <em>difference</em> is modelled, so no absolute score is ever
+        claimed &mdash; and none was ever observed</li>
+    <li>$j$ is <strong>sampled</strong>, not enumerated, which is what makes it
+        affordable</li>
+    <li>The logistic of a score difference is the pairwise logistic loss of
+        Lecture&nbsp;4, and the sampling is the negative sampling of
+        Lecture&nbsp;20</li>
+  </ul>
+  <p class="small fail">And it inherits Lecture&nbsp;20&rsquo;s trap exactly: a
+  sampled &ldquo;negative&rdquo; may be an item the user would love. Being
+  unobserved is not evidence of dislike.</p>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <table class="smaller">
+    <tr><th>Model</th><th class="num">RMSE</th><th>Knows</th></tr>
+    <tr><td>Global mean</td><td class="num">1.1185</td><td class="small">nothing</td></tr>
+    <tr><td>Film mean</td><td class="num">0.9826</td><td class="small">which film</td></tr>
+    <tr><td>Bias model</td><td class="num">0.9109</td><td class="small">who, and which film</td></tr>
+    <tr><td>SVD, mean-filled</td><td class="num fail">0.9920</td><td class="small">an imputation it invented</td></tr>
+    <tr><td>Item&ndash;item, $k=50$</td><td class="num">0.8867</td><td class="small">co-rating evidence</td></tr>
+    <tr class="hit"><td>Factorisation, $d=16$</td><td class="num">0.8587</td><td class="small">a low-rank structure</td></tr>
+  </table>
+  <p class="small">Every row measured on the same held-out
+  100,020 ratings, with the same split and the same seed.</p>
+</section>
+
+<!-- 58 -->
+<section data-menu-title="What a deployed recommender actually is">
+  <h2>What a deployed recommender actually is</h2>
+  <div class="pipeline">
+    <div class="stage"><span class="stage-n">1</span> <strong>Candidates</strong>
+      <span class="small">catalogue &rarr; hundreds. Factorisation, popularity,
+      co-visitation, recency &mdash; several sources, unioned.</span></div>
+    <div class="stage"><span class="stage-n">2</span> <strong>Rank</strong>
+      <span class="small">hundreds &rarr; tens. A richer model with features the
+      first stage cannot afford.</span></div>
+    <div class="stage"><span class="stage-n">3</span> <strong>Policy</strong>
+      <span class="small">diversity, freshness, business rules, exploration.</span></div>
+  </div>
+  <p class="small">The same three stages as Lecture&nbsp;19&rsquo;s search
+  pipeline, for the same reason: the accurate model does not scale to the
+  catalogue. What we built today is stage&nbsp;1.</p>
+  <p class="small muted">Stage&nbsp;3 has no equation in it and decides more of
+  what a user sees than stages 1 and 2 together.</p>
+</section>
+
+<!-- 59 -->
+<section data-menu-title="The distance travelled, in one number">
+  <h2>The distance travelled, in one number</h2>
+  <table>
+    <tr><th></th><th class="num">RMSE</th><th class="num">Distance closed</th></tr>
+    <tr><td>Global mean</td><td class="num">1.1185</td><td class="num">0%</td></tr>
+    <tr><td>Bias model</td><td class="num">0.9109</td><td class="num">79.9%</td></tr>
+    <tr><td>Item&ndash;item, $k=50$</td><td class="num">0.8867</td><td class="num">89.2%</td></tr>
+    <tr class="hit"><td>Factorisation, $d=16$</td><td class="num">0.8587</td><td class="num">100%</td></tr>
+  </table>
+  <p class="small">Two arithmetic means and a shrinkage parameter get you most
+  of the way. The derivation, the alternating solves and sixteen latent
+  dimensions get the rest.</p>
+  <p class="small fail">That ratio is not an argument against the model. It is
+  an argument for <strong>always fitting the baseline first</strong>, so you
+  know which part of your result is the idea and which part is arithmetic.</p>
+</section>
+
+<!-- 60 -->
+<section data-menu-title="Five questions for a recommender result">
+  <h2>Five questions for a recommender result</h2>
+  <ol class="tight small">
+    <li><strong>Rating prediction or ranking?</strong> RMSE and NDCG answer
+        different questions and are not comparable</li>
+    <li><strong>What is the baseline?</strong> The bias model is
+        four lines and is often close</li>
+    <li><strong>How was it split?</strong> Randomly over ratings, or in time?</li>
+    <li><strong>What happened to the missing entries?</strong> Excluded,
+        imputed, or weighted &mdash; and if imputed, with what</li>
+    <li><strong>Explicit or implicit</strong>, and if implicit, where did the
+        negatives come from?</li>
+  </ol>
+  <p class="small muted">Question three is the one Lecture&nbsp;22 turns into a
+  measurement.</p>
+</section>
+
+<!-- 61 -->
+<section data-menu-title="Where this sits in the course">
+  <h2>Where this sits in the course</h2>
+  <table class="smaller">
+    <tr><td>Lecture&nbsp;2</td><td class="small">the normal equation &mdash; here, once per user</td></tr>
+    <tr><td>Lecture&nbsp;5</td><td class="small">ridge, and a capacity U-curve &mdash; here, in the rank</td></tr>
+    <tr><td>Lecture&nbsp;8</td><td class="small">the SVD &mdash; here, as the method that does not apply</td></tr>
+    <tr><td>Lecture&nbsp;19</td><td class="small">ranking metrics &mdash; next lecture, replacing RMSE</td></tr>
+    <tr><td>Lecture&nbsp;20</td><td class="small">the bi-encoder &mdash; next lecture, with users as queries</td></tr>
+  </table>
+  <p class="small">Row three is the one to remember. A method you know well can
+  be exactly wrong for a problem that looks like the one it solves, and the
+  difference was a single word in the problem statement: <em>missing</em>.</p>
+</section>
+
+<!-- 62 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-21.ipynb">Open Lecture 21 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU</strong> in a few minutes. ALS is a $d\times d$
+        solve per user, and there are only 6,040 of them</li>
+    <li>The SVD-with-zeros disaster reproduced, so you see the number rather
+        than take my word for it</li>
+    <li>ALS derived and implemented from Step&nbsp;10, and checked against a
+        per-rating SGD written from Step&nbsp;12</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Set the regularisation to zero and re-run the rank sweep. Watch where the
+    U-curve moves, and which rank stops being the best one.
+  </div>
+</section>
+
+<!-- 63 -->
+<section data-menu-title="Vocabulary">
+  <h2>Vocabulary</h2>
+  <table class="smaller">
+    <tr><td><strong>Explicit / implicit</strong></td><td class="small">a stated rating, against an observed interaction</td></tr>
+    <tr><td><strong>Cold start</strong></td><td class="small">a user or item with no history to factorise</td></tr>
+    <tr><td><strong>Bias term</strong></td><td class="small">the part of a rating that is not an interaction</td></tr>
+    <tr><td><strong>Latent factor</strong></td><td class="small">a coordinate of $p_u$ or $q_i$; individually meaningless</td></tr>
+    <tr><td><strong>ALS</strong></td><td class="small">alternating ridge regressions, one side at a time</td></tr>
+    <tr><td><strong>BPR</strong></td><td class="small">a pairwise ranking objective for implicit data</td></tr>
+    <tr><td><strong>Long tail</strong></td><td class="small">the majority of items, holding a minority of the interactions</td></tr>
+  </table>
+</section>
+
+<!-- 64 -->
+<section data-menu-title="Where students lose marks on this material">
+  <h2>Where students lose marks on this material</h2>
+  <ul class="tight small">
+    <li>Saying &ldquo;matrix factorisation is the SVD&rdquo;. It is not, and
+        being able to say <em>why</em> in one sentence is the most-asked oral
+        question in this part</li>
+    <li>Writing the objective as a sum over all $(u,i)$ rather than over
+        $\Omega$</li>
+    <li>Claiming ALS finds the global optimum. Each half-step is exact; the
+        joint problem is not convex</li>
+    <li>Interpreting a latent factor as a genre</li>
+    <li>Treating an unobserved entry as a negative in implicit data &mdash; the
+        error the whole last section is about</li>
+  </ul>
+</section>
+
+<!-- 65 -->
+<section data-menu-title="Reading">
+  <h2>Reading</h2>
+  <ul class="tight small">
+    <li>These lecture notes are the primary source</li>
+    <li>Koren, Bell and Volinsky, <em>Matrix Factorization Techniques for
+        Recommender Systems</em> &mdash; the Netflix-era summary, and still the
+        clearest account of biases</li>
+    <li>Hu, Koren and Volinsky, <em>Collaborative Filtering for Implicit
+        Feedback Datasets</em> &mdash; the weighted-ALS method</li>
+    <li>Rendle et al., <em>BPR</em> &mdash; the pairwise objective</li>
+  </ul>
+  <p class="small muted">Examinable content is what is on these slides and in
+  the notebook.</p>
+</section>
+
+<!-- 66 -->
+<section data-menu-title="Scope">
+  <h2>Scope</h2>
+  <h2>Scope</h2>
+  <ul class="tight small">
+    <li><span class="scope scope-exam">examinable</span> the recommendation
+        problem and how its data differs; missing-not-at-random;
+        <strong>Derivation&nbsp;21</strong> in full &mdash; the low-rank model,
+        why the SVD cannot be taken, the observed-entry objective, the ALS
+        half-step and its closed form, the SGD update, biases; the rank as a
+        capacity parameter; item&ndash;item neighbourhoods; why implicit
+        feedback has no negatives, and BPR&rsquo;s response</li>
+    <li><span class="scope scope-eng">not examinable &mdash; engineering</span>
+        recommender libraries, serving infrastructure, incremental refitting</li>
+    <li><span class="scope scope-context">beyond the syllabus</span> SVD++ and
+        time-aware factorisation, the full weighted-ALS derivation for implicit
+        data, bandits for exploration</li>
+  </ul>
+</section>
+
+<!-- 67 -->
+<section data-menu-title="Summary">
+  <h2>Summary</h2>
+  <ol class="tight small">
+    <li>Recommendation is retrieval with the query replaced by a history, and
+        the labels are a by-product of use rather than a measurement</li>
+    <li>95.5% of the matrix is missing, and missing is not
+        zero &mdash; filling it and taking the SVD scores
+        2.3274, worse than predicting one
+        number for everybody</li>
+    <li>Restrict the objective to observed entries and you leave the SVD behind:
+        no closed form, no uniqueness, no interpretable factors &mdash; and a
+        model that works</li>
+    <li>ALS is a ridge regression per user; SGD is one update per rating. Same
+        objective, different route, comparable answers</li>
+    <li>Most of a rating is not personal. The biases alone reach
+        0.9109 against the full model&rsquo;s
+        0.8587</li>
+  </ol>
+</section>
+
+<!-- 68 -->
+<section data-menu-title="One line to keep">
+  <h2>One line to keep</h2>
+  <div class="panel panel-fix">
+    <span class="panel-title">The line</span>
+    <strong>The missing entries are the data. Impute them and you fit your own
+    assumption.</strong>
+  </div>
+  <p class="small">The SVD is optimal for the problem it is given, and giving it
+  a filled-in matrix gives it the wrong problem &mdash;
+  2.3274 against the bias
+  model&rsquo;s 0.9109. Changing the objective, not the data, is
+  what the whole derivation was for.</p>
+</section>
+
+<!-- 69 -->
+<section data-menu-title="Before the next lecture">
+  <h2>Before the next lecture</h2>
+  <ul class="tight small">
+    <li>Run the notebook. Reproduce the zero-filled SVD number yourself &mdash;
+        it is the most surprising figure in Part&nbsp;V and it takes four lines</li>
+    <li>Next lecture keeps the model and changes the <strong>question</strong>:
+        from &ldquo;what would they rate it&rdquo; to &ldquo;what should we
+        show&rdquo;, which is a ranking problem and needs Lecture&nbsp;19&rsquo;s
+        metrics</li>
+    <li>It is also where the evaluation goes wrong. Come prepared to distrust
+        every recommender result you have ever read, including the ones in these
+        slides</li>
+  </ul>
+</section>
+
+<!-- 70 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 22 &middot; Lecture notes</p>
+  <h1>Recommender systems:<br>neural, and evaluated honestly</h1>
+  <p class="small">
+    Two-tower models &mdash; Lecture&nbsp;20&rsquo;s bi-encoder, with users in
+    place of queries<br>
+    Negative sampling, and the sampled-softmax correction<br>
+    Then evaluation: leave-one-out against a temporal split, sampled metrics and
+    their bias, and popularity
+  </p>
+  <p class="clock">Part V &middot; Lecture notes &middot; examinable</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 21
+  <span class="sep">&middot;</span> Recommender systems: from ratings to factors
+</div>
+
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

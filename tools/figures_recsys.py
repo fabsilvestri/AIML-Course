@@ -376,9 +376,6 @@ def main() -> int:
         {"batch": b, "negatives_per_user": b - 1, "encodes": 2 * b, "dots": b * b}
         for b in (8, 32, 128, 512, 2048)]
 
-    # popularity of what each method recommends, as a percentile of the catalogue
-    facts["rec22_pop_percentile"] = {}
-
     out = OUT / "figures.json"
     existing = json.loads(out.read_text()) if out.is_file() else {}
     clash = {k for k in facts if k in existing and existing[k] != facts[k]}
