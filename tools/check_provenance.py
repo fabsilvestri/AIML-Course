@@ -43,6 +43,9 @@ PAGES = (sorted(ROOT.glob("slides/lecture-[0-9][0-9].html"))
 
 # Quantities that are not measurements. Keep the reason attached.
 ALLOWED: dict[float, str] = {
+    # shapes, which are arithmetic on a stated image size rather than measurements
+    150528: "3 x 224 x 224 — the length of a flattened colour image, Lecture 12",
+
     # course structure
     24: "lectures in the course",
     12: "applications / mathematical threads",
