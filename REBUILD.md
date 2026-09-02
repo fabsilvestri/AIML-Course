@@ -18,6 +18,25 @@ Last updated: 2026-09-01 (Lectures 1-3 built) · Term starts: ~2026-09-22
 Never leave this file stale. A row that says `wip` with no commit behind it is
 worse than no row.
 
+### STANDING INSTRUCTION — slide/notebook consistency is not optional
+
+From the lecturer, 2026-09-01, emphatically: **at the end of the rebuild, every
+slide and its notebook must agree, and a verification pass must be run and
+re-run until everything checks out.**
+
+This is the step that has found a real defect in every single lecture converted
+so far, and no other check catches any of them:
+
+| lecture | what only the diff found |
+|---|---|
+| 1 | deck and notebook counted the price stripes on different row sets |
+| 2 | notebook searched `cv=5` where every slide figure used `KFold(10)`; error slices on the training half where the deck says test |
+| 3 | deck quoted a 90.39% recall the notebook never printed |
+| 8 | Johnson-Lindenstrauss measured on **unsquared** distances — the deck right, the notebook wrong by a factor of two; and a k-grid that did not contain the k the deck's headline names |
+
+So it is now a tool, `tools/check_consistency.py`, not a habit. Run it, fix,
+run it again, until it is clean. See §7 of AUTHORING.md.
+
 ### The per-lecture routine — every lecture, without being asked
 
 Standing instruction from the lecturer. All five steps, in order, before
