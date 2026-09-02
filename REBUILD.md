@@ -38,6 +38,57 @@ twelve real defects in six notebooks in 0.3 seconds — the class that splitting
 and reordering older modules keeps producing, and that compiling each cell in
 isolation cannot see.
 
+## Status snapshot — 2026-09-02, commit b09b772
+
+Everything below was true and verified at that commit, which is pushed to
+`origin/main`. If `git log --oneline -1` still shows it, none of this needs
+re-deriving.
+
+| | |
+|---|---|
+| Decks | 24 / 24 on the new design, 70+ slides each |
+| Notebooks | 24 / 24, 538 code cells, every one behind a specification box |
+| Runs on CPU | all 24, cold, from a clean kernel |
+| `check_consistency` | **24 / 24 clean** — 826 deck figures verified against notebook output |
+| `check_all` (5 fast checks) | clean |
+| Browser checks | no slide over the canvas on any of 25 pages; 39 diagrams clean |
+| Published on the site | 24 / 24 |
+
+Two documented exception lists, both printed in the checker's output rather than
+skipped silently — these are the first thing to be sceptical of:
+`SCALE_ONLY` (3 figures, Lecture 18 runs at a scale its CPU notebook does not)
+and `CROSS_LECTURE` (5 figures a deck quotes from another lecture's experiment).
+
+### The one open item, and how to run it
+
+The `try` fields, described under **Carried-over debts** below. To do it:
+
+```sh
+cd /Users/fabriziosilvestri/Documents/Codice/AIML-Course
+git pull
+
+# 1 · see the damage: which lectures, and how many boxes each is missing
+python3 - <<'EOF'
+import json, pathlib
+for p in sorted(pathlib.Path('notebooks').glob('lecture-*.ipynb')):
+    md = [''.join(c['source']) for c in json.load(open(p))['cells']
+          if c['cell_type'] == 'markdown']
+    boxes = [m for m in md if '**Prompt' in m]
+    print(f"{p.stem} {len(boxes):>3} boxes, {sum('**try**' in m for m in boxes):>3} with try")
+EOF
+
+# 2 · edit tools/notebooks/lecture_NN.py — the field is a keyword, so:
+#        **{"try": "drop the sort. Which assert fails, and which still passes?"}
+#     see tools/notebooks/_prompt.py
+
+# 3 · rebuild and check. Do NOT change any stated number.
+python3 tools/make_notebooks.py --only NN
+python3 tools/check_all.py
+```
+
+A `try` change is additive: it touches a markdown box, not a computation, so
+`check_consistency` does not need re-running unless you also changed code.
+
 ## How to work on it now
 
 The rebuild is finished, so this file stops being a plan and becomes a manual.
@@ -409,11 +460,21 @@ Deck = `slides/lecture-NN.html`, Notebook = `notebooks/lecture-NN.ipynb`.
 Things noticed during the rebuild that are not yet fixed.
 
 - **OPEN, agreed 2026-09-02, to do the week of 2026-09-09: the `try` field is
-  missing from eight lectures.** A prompt box's `try` is one modification a
+  missing from ten lectures.** A prompt box's `try` is one modification a
   student can make and what should happen to the result. It is applied
   unevenly: lectures 1–10 have near-complete coverage (12–32 boxes each), 12
-  and 19–22 are partial, and **11, 13, 14, 15, 17, 18, 23 and 24 have 0 or 1**.
-  249 of 538 code cells have one.
+  and 19–21 are partial, and these ten are empty or nearly so — 249 of 538 code
+  cells have one:
+
+  | | lectures | boxes to write |
+  |---|---|---|
+  | none at all | 13, 14, 15, 17, 18, 23, 24 | 158 |
+  | exactly one | 11, 16, 22 | 67 |
+
+  (I first said eight lectures. The count came from reading a table rather than
+  querying, and 16 and 22 sat just below the line I was scanning for. The
+  snippet in the status snapshot above is the authoritative version — run it,
+  do not trust this table if it disagrees.)
 
   It happened because those eight were converted in bulk and
   `tools/check_notebooks.py` does not enforce the field, so nothing caught it.
