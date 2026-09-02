@@ -59,9 +59,21 @@ run it again, until it is clean. See §7 of AUTHORING.md.
 |---|---|---|---|
 | 1 | 4 | **0** | clean |
 | 2 | 28 → 24 → 9 → 3 | **0** | clean |
-| 3 | not yet run | | |
-| 4–7 | drafted by agent; namespaces now mapped | | |
-| 8 | draft at `lecture-08-NEW`; rename before checking | | |
+| 3 | 1 | **0** | clean |
+| 4 | 0 | — | clean, first try |
+| 5 | 0 | — | clean, first try |
+| 6 | 0 | — | clean, first try |
+| 7 | 0 | — | clean, first try |
+| 8 | 0 | — | clean, first try |
+| 9 | deck done; notebook next | | |
+| 10, 12 | renamed, not converted | | |
+| 11, 13–24 | not begun | | |
+
+**Lectures 4-8 passed the consistency check on the first run, with no
+intervention.** All five were agent-drafted against `tools/AGENT_BRIEF.md`.
+Lectures 1-3, which I wrote before the brief existed, needed 33 fixes between
+them. The brief is doing the work: it names the three invisible error classes
+and tells the drafter to run the checker before reporting.
 
 The fixes are almost never "correct a wrong number". They are "the notebook
 never computed this at all" — a slide asserting something no cell produces. So
