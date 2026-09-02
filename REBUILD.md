@@ -152,11 +152,22 @@ Three agents are drafting the CPU block in parallel, working from
 Titanic pair cross-references itself 11 and 9 times, CoverType 6 and 5, so
 splitting a pair means each half writes references to content it cannot see.
 
-| agent | drafts | from | target files |
+| agent | drafts | from | status |
 |---|---|---|---|
-| L4-L5-Titanic | L4, L5 | old 05, 06 | `lecture-04/05.html`, `lecture_04/05.py` |
-| L6-L7-CoverType | L6, L7 | old 07, 08 | `lecture-06/07.html`, `lecture_06/07.py` |
-| L8-Olivetti | L8 (merge) | old 09 + 10 | `lecture-08-NEW.html`, `lecture_08_NEW.py` |
+| L4-L5-Titanic | L4, L5 | old 05, 06 | drafted |
+| L6-L7-CoverType | L6, L7 | old 07, 08 | drafted |
+| L8-Olivetti | L8 (merge) | old 09 + 10 | **integrated**, old 9/10 deleted |
+| L9-L10-Networks | L9, L10 | old 11, 12 | running |
+| L11-DeepTraining | L11 (merge) | old 13 + 14 | running, at `lecture-11-NEW` |
+
+Still unassigned: {L12, L13} from old 15, 16 · {L14 merge} from old 17 + 18 ·
+{L15, L16} from old 19, 20 · {L17, L18} from old 21, 22 · **{L19-L22} from
+nothing** · {L23, L24} from old 23, 24.
+
+**The collision pattern, every time.** A merge target's number is still occupied
+by the old lecture that another agent is converting. Build at `-NEW` and let the
+integrator rename once the slot frees. That is how L8 was done and how L11 is
+being done.
 
 **L8 builds at a temporary path on purpose:** `slides/lecture-08.html` still
 holds old lecture 8 until the CoverType agent moves it to `lecture-07.html`.
