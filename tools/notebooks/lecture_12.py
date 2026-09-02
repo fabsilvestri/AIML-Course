@@ -83,6 +83,7 @@ import sys, time
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision
 import matplotlib.pyplot as plt
 from torchvision import transforms

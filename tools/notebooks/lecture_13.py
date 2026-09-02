@@ -212,7 +212,7 @@ to compare against.
             constraint="retrain it IN THIS NOTEBOOK, so the comparison below is between two runs on the same machine",
             check="the observation that motivates everything below: the first layer learned colour blobs and oriented edges, and none of them is about flowers. We spent 1,020 precious labels rediscovering something not specific to this problem."),
         code('''
-EPOCHS_SCRATCH, LR = 20, 3e-4
+EPOCHS_SCRATCH, LR, BATCH = 20, 3e-4, 32
 
 torch.manual_seed(RANDOM_STATE)
 scratch = make_net().to(device)

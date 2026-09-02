@@ -51,6 +51,15 @@ transfers cost more than the arithmetic saves.
 """
 
 SETUP = '''
+# Not examinable, and only needed on some machines: PyTorch, numpy and
+# torchvision can each end up loading their own OpenMP runtime, and with more
+# than one loaded a training cell can deadlock -- no error, no output, and no
+# CPU use. These have to be set BEFORE torch is imported, because they are read
+# at import time and after that they do nothing.
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 # --- setup -------------------------------------------------------------------
 # Not examinable: this is engineering hygiene, not machine learning.
 import sys
@@ -138,15 +147,6 @@ Count the duplicates rather than assuming there are none.
                constraint="drop `total` — it is exactly bus + rail — and drop duplicate rows, reporting how many",
                check="print the count removed and the date range that survives"),
         code('''
-# Not examinable, and only needed on some machines: PyTorch, numpy and
-# torchvision can each end up loading their own OpenMP runtime, and with more
-# than one loaded a training cell can deadlock -- no error, no output, and no
-# CPU use. These have to be set BEFORE torch is imported, because they are read
-# at import time and after that they do nothing.
-import os
-os.environ.setdefault("OMP_NUM_THREADS", "4")
-os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-
 df = raw.copy()
 df.columns = ["date", "day_type", "bus", "rail", "total"]
 df = df.sort_values("date").set_index("date")
@@ -226,6 +226,24 @@ tell it is to show it the last week, or the last eight.
 """),
     ]
     cells += [
+        prompt(
+               label="the window we will work on, fixed before any model",
+               input="the tidied frame",
+               output="the rail pool and the days that can be scored",
+               constraint="fix the span and the window length HERE, before the derivation and before any baseline — a window chosen after seeing a result is a hyperparameter fitted on the test set",
+               check="assert the first WINDOW days are excluded from the targets. They are consumed by the history every model needs, so they cannot be scored."),
+        code('''
+# The pool we will work on, and the days we will be scored on. The first 56 days
+# are consumed by the window the models need, so they cannot be targets.
+WINDOW = 56
+pool = df["rail"]["2016-01":"2019-05"]
+target = pool[WINDOW:]
+
+assert len(target) == len(pool) - WINDOW
+print(f"pool   {len(pool):,} days, {pool.index.min().date()} to {pool.index.max().date()}")
+print(f"scored {len(target):,} days, from {target.index.min().date()}")
+'''),
+
         md("""
 ## 4 · The derivation — stationarity, differencing, autocorrelation
 
@@ -380,14 +398,8 @@ def mae(truth, forecast):
     mask = truth.notna() & forecast.notna()
     return float((truth[mask] - forecast[mask]).abs().mean())
 
-# The pool we will work on, and the days we will be scored on. The first 56 days
-# are consumed by the window the models need, so they cannot be targets.
-WINDOW = 56
-pool = df["rail"]["2016-01":"2019-05"]
-target = pool[WINDOW:]
-
-print(f"pool   {len(pool):,} days, {pool.index.min().date()} to {pool.index.max().date()}")
-print(f"scored {len(target):,} days, from {target.index.min().date()}")
+print(f"mae against itself      {mae(pool, pool):.1f}")
+print(f"mae against a shift     {mae(pool, pool.shift(7)):,.0f} boardings")
 '''),
         md("""
 ### The baselines

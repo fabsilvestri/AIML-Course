@@ -52,6 +52,15 @@ transfers cost more than the arithmetic saves.
 """
 
 SETUP = '''
+# Not examinable, and only needed on some machines: PyTorch, numpy and
+# torchvision can each end up loading their own OpenMP runtime, and with more
+# than one loaded a training cell can deadlock -- no error, no output, and no
+# CPU use. These have to be set BEFORE torch is imported, because they are read
+# at import time and after that they do nothing.
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 # --- setup -------------------------------------------------------------------
 # Not examinable: this is engineering hygiene, not machine learning.
 import sys
@@ -139,15 +148,6 @@ Count the duplicates rather than assuming there are none.
                constraint="drop `total` — it is exactly bus + rail — and drop duplicate rows, reporting how many",
                check="print the count removed and the date range that survives"),
         code('''
-# Not examinable, and only needed on some machines: PyTorch, numpy and
-# torchvision can each end up loading their own OpenMP runtime, and with more
-# than one loaded a training cell can deadlock -- no error, no output, and no
-# CPU use. These have to be set BEFORE torch is imported, because they are read
-# at import time and after that they do nothing.
-import os
-os.environ.setdefault("OMP_NUM_THREADS", "4")
-os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-
 df = raw.copy()
 df.columns = ["date", "day_type", "bus", "rail", "total"]
 df = df.sort_values("date").set_index("date")
@@ -228,11 +228,19 @@ for window, t in TimeSeriesDataset(toy, window_length=3):
     print(window.flatten().tolist(), "->", t.item())
 '''),
         prompt(
-               input="the rail pool, scaled by a million",
+               input="the tidied frame; rebuild the same pool and window as Lecture 15",
                output="X of shape (rows, 56, 1) and y of shape (rows, 1)",
                constraint="assert the shapes rather than printing them, so a wrong shape stops the notebook",
                check="rows equals len(pool) - 56"),
         code('''
+# The same pool and the same window as Lecture 15, rebuilt here rather than
+# inherited: a notebook that only runs because a previous one is still in memory
+# is not reproducible, and the two lectures must be scored on the same days.
+WINDOW = 56
+pool = df["rail"]["2016-01":"2019-05"]
+target = pool[WINDOW:]
+assert len(target) == len(pool) - WINDOW
+
 series = torch.tensor(pool.values / 1e6, dtype=torch.float32).unsqueeze(1)
 dataset = TimeSeriesDataset(series, WINDOW)
 
