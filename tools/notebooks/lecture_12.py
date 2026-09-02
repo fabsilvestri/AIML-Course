@@ -116,7 +116,7 @@ if device == "cpu":
 Flowers102: photographs of 102 flowering species. The download is about 345 MB
 and happens once.
 
-⏱ **about 2 minutes the first time** (download), **about 25 seconds
+⏱ **a few minutes the first time** (download and decode), **seconds
 afterwards** (decoding 8,189 JPEGs into one uint8 tensor).
 
 We decode once, at one resolution, and keep the result in memory. Decoding
@@ -369,15 +369,15 @@ set, and dropout is the only thing we have asked to prevent it.
         md("""
 ## 7 · Train it
 
-⏱ **about 40 seconds on a GPU or MPS, several minutes on CPU.** 30 epochs of
-32 batches. Nothing prints until the first epoch finishes; that is not a hang.
+⏱ **a few minutes on CPU.** 30 epochs of 32 batches. Nothing prints until the
+first epoch finishes; that is not a hang.
 
 The learning rate is `3e-4`, not Adam's default `1e-3`. On 1,020 images the
 default does not diverge — it simply plateaus low, which is the failure mode
 that does not announce itself.
 """),
         prompt(
-            label="⏱ 40 s on GPU, minutes on CPU — train it",
+            label="⏱ a few min on CPU — train it",
             input="1,020 training images, 30 epochs",
             output="training and validation accuracy at every epoch, with wall clock",
             constraint="normalise ONE BATCH AT A TIME in the accuracy function — `normalise(X_test)` as a single tensor is 6,149 × 3 × 128 × 128 float32 = 1.2 GB, and three of those at once is how a Colab session dies",
