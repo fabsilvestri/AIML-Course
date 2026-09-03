@@ -66,7 +66,11 @@ def build() -> list:
             input="nothing",
             output="versions and the seed",
             constraint="cap the BLAS thread count before numpy is imported, so the timings below are a property of the method rather than of this machine's core count",
-            check="print the versions. A retrieval result you cannot pin to a corpus version is not reproducible, and BEIR has been re-released."),
+            check="print the versions. A retrieval result you cannot pin to a corpus version is not reproducible, and BEIR has been re-released.",
+            **{"try": "unset the three thread caps and re-run the BM25 loop "
+                      "in Section 5. The scores are identical and the wall "
+                      "clock is not. Which numbers in this notebook would you "
+                      "be willing to quote from somebody else's machine?"}),
         code('''
 import os
 os.environ.setdefault("OMP_NUM_THREADS", "1")
@@ -92,7 +96,12 @@ np.random.seed(RANDOM_STATE)
             input="three files: the corpus, the claims, the test judgements",
             output="a DataFrame each, cached on disk",
             constraint="cache to disk so a re-run costs nothing, and read the qrels ids as STRINGS — pandas will helpfully turn document ids into integers and then two ids that differ only by a leading zero become the same document",
-            check="assert the three shapes, and that every judged corpus-id exists in the corpus. A judgement pointing at a document you do not have is silently scored as a miss, and it will look like your method failed."),
+            check="assert the three shapes, and that every judged corpus-id exists in the corpus. A judgement pointing at a document you do not have is silently scored as a miss, and it will look like your method failed.",
+            **{"try": "drop the dtype={'query-id': str, 'corpus-id': str} and "
+                      "re-read the qrels. pandas turns the ids into integers, "
+                      "the assert that every judged id exists in the corpus "
+                      "fires, and the message names the symptom rather than "
+                      "the leading zero that caused it."}),
         code('''
 HF    = "https://huggingface.co/datasets/BeIR/"
 CACHE = Path("datasets/scifact")
@@ -129,7 +138,12 @@ print(f"qrels    {len(qrels):,} judgements in the test split")
             input="the first abstract",
             output="its title, the first 45 words, and its length in tokens",
             constraint="print it rather than describing it — the way these abstracts are written is the reason for the whole second half of this lecture",
-            check="nothing to assert. Read it, and notice how little of a claim's wording is likely to appear here verbatim."),
+            check="nothing to assert. Read it, and notice how little of a claim's wording is likely to appear here verbatim.",
+            **{"try": "print the first 45 words of the claim BM25 does worst "
+                      "on — the one found in Section 8 — beside this "
+                      "abstract. Neither uses the other's vocabulary. That is "
+                      "the entire argument for the next lecture, visible in "
+                      "two paragraphs."}),
         code('''
 title0 = str(corpus["title"].iloc[0])
 text0  = str(corpus["text"].iloc[0])
@@ -154,7 +168,11 @@ That is three decisions already, and the third one silently splits
             input="title and abstract, joined",
             output="the token lists, and the vocabulary size",
             constraint="one regex, applied identically to documents and to queries — a query tokenised differently from the corpus cannot match it, and the failure is silent",
-            check="print the tokens of one real claim. Look at them before trusting anything downstream."),
+            check="print the tokens of one real claim. Look at them before trusting anything downstream.",
+            **{"try": "change the regex to r'[a-z]+', dropping digits. The "
+                      "vocabulary and the mean length both shrink. Then look "
+                      "for a claim whose decisive term was a number: in this "
+                      "corpus, dosages and gene names are numbers."}),
         code('''
 TOKEN = re.compile(r"[a-z0-9]+")
 
@@ -179,7 +197,12 @@ print(f"first abstract   {len(toks[0])} tokens")
             input="the qrels table",
             output="claim id -> set of relevant document ids, and the claim texts",
             constraint="keep only judgements with a score above zero — BEIR files also carry explicit zeros, and counting them as relevant inflates every metric in this notebook",
-            check="assert every claim kept has at least one relevant document, and report how many have exactly one. That fraction decides which metrics can distinguish anything here."),
+            check="assert every claim kept has at least one relevant document, and report how many have exactly one. That fraction decides which metrics can distinguish anything here.",
+            **{"try": "keep the score == 0 rows as relevant and re-run. Every "
+                      "metric rises and no assert fires. Those zeros are "
+                      "judged IRRELEVANT — a human read the abstract and said "
+                      "no — so counting them is worse than counting a "
+                      "document nobody ever read."}),
         code('''
 rel = defaultdict(set)
 for _, r in qrels.iterrows():
@@ -205,7 +228,11 @@ print("example claim:", qtext[qids[0]])
             input="a claim from the test set",
             output="its tokens, with how many abstracts contain each",
             constraint="report the document frequency beside each token, because that is what decides whether the token can find anything",
-            check="notice the spread. One term here occurs in a single abstract and another in a fifth of the corpus, and the weighting scheme has not been chosen yet."),
+            check="notice the spread. One term here occurs in a single abstract and another in a fifth of the corpus, and the weighting scheme has not been chosen yet.",
+            **{"try": "tokenise the same claim without the .lower(). Every "
+                      "token is now absent from the index and the claim "
+                      "scores zero against all 5,183 abstracts. There is no "
+                      "error message anywhere for a query in the wrong case."}),
         code('''
 claim_tok = qtext[qids[0]]
 print(claim_tok)
@@ -250,7 +277,12 @@ print(f"postings are {100*postings/dense:.1f}% of the dense matrix")
             input="the claim tokenised above, and the index",
             output="each term with the number of abstracts containing it",
             constraint="use the index, not a scan of the corpus — this is what the index is for",
-            check="print them all. The rare term decides the answer; the common ones decide nothing."),
+            check="print them all. The rare term decides the answer; the common ones decide nothing.",
+            **{"try": "sum these document frequencies and compare the total "
+                      "with the number of documents bm25_scores actually "
+                      "touches for this claim. The second is smaller, because "
+                      "an abstract containing two of the terms was counted "
+                      "twice in the first."}),
         code('''
 for t in dict.fromkeys(tok(claim_tok)):
     print(f"  {t:<14} {len(post.get(t, [])):>6,} abstracts")
@@ -272,7 +304,12 @@ better answer in Lecture 20.
             input="two families of word forms",
             output="the document frequency of each form",
             constraint="use the index built above rather than re-scanning, and report the forms separately — the point is how differently the evidence is spread",
-            check="compare the rarest form against the commonest in each family. That ratio is what a query for the rare form is giving up."),
+            check="compare the rarest form against the commonest in each family. That ratio is what a query for the rare form is giving up.",
+            **{"try": "write a three-line suffix stripper — drop a trailing "
+                      "'s', 'ed' or 'ion' — rebuild the index with it, and "
+                      "re-run the BM25 table in Section 5. Does NDCG@10 rise? "
+                      "Stemming is a claim about this corpus, not a universal "
+                      "improvement."}),
         code('''
 for family in (("cell", "cells", "cellular"),
                ("infect", "infects", "infection", "infected")):
@@ -329,7 +366,12 @@ priced in section 6.
             input="the index",
             output="a weight per term, falling as more documents contain it",
             constraint="use the BM25 form log(1 + (N - n + 0.5)/(n + 0.5)), which stays positive for a term in every document — the older log(N/n) goes negative there and silently rewards documents for NOT containing a query term",
-            check="print the five commonest terms with their weights. If a stop-word list would have been needed, this has failed."),
+            check="print the five commonest terms with their weights. If a stop-word list would have been needed, this has failed.",
+            **{"try": "compute log(N/n) for the same five terms and print it "
+                      "beside the BM25 form. They agree closely where n is "
+                      "small and diverge where n is large — which is exactly "
+                      "where a stop word lives, and exactly where the choice "
+                      "of form starts to matter."}),
         code('''
 N = len(toks)
 idf = {t: math.log(1 + (N - len(p) + 0.5) / (len(p) + 0.5)) for t, p in post.items()}
@@ -350,7 +392,12 @@ in between still available, which a list cannot offer.
             input="a term frequency and k1",
             output="the tf factor, for a document of exactly average length",
             constraint="show that it is bounded — the tenth occurrence of a word must not count ten times the first, or a page repeating a word wins every query",
-            check="tabulate the factor at tf = 1, 2, 3, 5, 10, 20 and confirm the increments shrink."),
+            check="tabulate the factor at tf = 1, 2, 3, 5, 10, 20 and confirm the increments shrink.",
+            **{"try": "set k1 = 0 and tabulate again. Every term frequency "
+                      "gives a factor of exactly 1: the term has become a "
+                      "Boolean indicator and BM25 has collapsed to idf- "
+                      "weighted matching. Which row of the ablation in "
+                      "Section 6 is that?"}),
         code('''
 K1, B = 0.9, 0.4          # the two BM25 parameters, tuned by measurement below
 
@@ -439,7 +486,11 @@ def rank_metrics(ranked, R, ks=(1, 5, 10, 100)):
             input="a made-up ranking with relevant documents at ranks 1, 2 and 8",
             output="RR, AP and NDCG@10, each also computed longhand",
             constraint="write the longhand sums out as literal arithmetic, so the assert compares two independent computations rather than one function against itself",
-            check="assert the two agree to 1e-12. A metric implementation that has never been checked against a hand computation is the commonest silent error in this literature."),
+            check="assert the two agree to 1e-12. A metric implementation that has never been checked against a hand computation is the commonest silent error in this literature.",
+            **{"try": "move the relevant document at rank 8 to rank 11 and "
+                      "recompute both by hand. AP changes and NDCG@10 does "
+                      "not, because one of the two has a cut-off inside it. "
+                      "Which of them answers 'is my top ten any good'?"}),
         code('''
 toy_rank = [f"d{i}" for i in range(1, 11)]
 toy_rel  = {"d1", "d2", "d8"}
@@ -472,7 +523,11 @@ allowed to notice.**
             input="ranks 1, 2, 5 and 10",
             output="RR, NDCG@10 and recall@10 at each",
             constraint="hold everything else fixed — one relevant document, always inside the top ten, only its position changing",
-            check="recall@10 should be constant at 1 across the whole row. That is the point of the cell."),
+            check="recall@10 should be constant at 1 across the whole row. That is the point of the cell.",
+            **{"try": "extend the row to ranks 20 and 100. NDCG@10 and "
+                      "recall@10 are zero at both, and RR is still 0.05 at "
+                      "rank 20. Which metric are you reporting, and does it "
+                      "have a cut-off you never stated?"}),
         code('''
 print("rank   RR      NDCG@10   R@10")
 for r in (1, 2, 5, 10):
@@ -496,7 +551,12 @@ corrections removed in turn.
             input="the corpus in its stored order, the same order for every claim",
             output="the same metrics",
             constraint="score it before scoring anything else, so the comparison exists before the result does",
-            check="it should be near zero. Unlike accuracy under imbalance, a ranking metric has an honest floor."),
+            check="it should be near zero. Unlike accuracy under imbalance, a ranking metric has an honest floor.",
+            **{"try": "shuffle docs_id with a fixed seed and re-run this "
+                      "cell. The numbers barely move, because one arbitrary "
+                      "order is as good as another. A floor that does not "
+                      "depend on which arbitrary order you picked is a floor "
+                      "you can rely on."}),
         code('''
 fixed = [rank_metrics(docs_id, rel[q]) for q in qids]
 fixed_order = {k: float(np.mean([r[k] for r in fixed])) for k in fixed[0]}
@@ -510,7 +570,12 @@ print(f"  NDCG@10     {fixed_order['ndcg@10']:.4f}")
             input="all 300 claims, scored against all 5,183 abstracts",
             output="the mean of each metric",
             constraint="average the per-claim metric (macro), not pooled counts — and say which, because for precision and recall the two differ",
-            check="assert every claim was scored. A silently skipped query lowers nothing and raises the mean."),
+            check="assert every claim was scored. A silently skipped query lowers nothing and raises the mean.",
+            **{"try": "compute the pooled micro averages as well — total hits "
+                      "over total retrieved, and total hits over total "
+                      "relevant. They differ from these macro means, and the "
+                      "gap grows with how unevenly the relevant abstracts are "
+                      "spread across claims."}),
         code('''
 rows = []
 for q in qids:
@@ -535,7 +600,12 @@ re-ranking is for, and it is Lecture 20.
             input="a claim and the abstract BM25 ranked first for it",
             output="each query term with its tf, its idf and its contribution",
             constraint="reproduce the sum — the contributions must add to the score the scorer returned, or one of the two is wrong",
-            check="assert the term contributions sum to the total within 1e-9."),
+            check="assert the term contributions sum to the total within 1e-9.",
+            **{"try": "run the same breakdown for the abstract BM25 ranks "
+                      "second. Different terms carry it, and the two totals "
+                      "are close together. A ranking decided by a narrow "
+                      "margin between two different explanations is one to "
+                      "look at before quoting."}),
         code('''
 # The same selection rule as the slide: the first test claim for which BM25
 # puts at least three relevant abstracts in the top ten, chosen so the
@@ -623,7 +693,12 @@ for name, v in ablation:
             input="b in {0, 0.4, 0.75, 1} and k1 in {0.5, 0.9, 1.2, 2}",
             output="NDCG@10 for each, over the first 150 claims",
             constraint="sweep one parameter with the other held fixed, and use the same 150 claims throughout so the rows are comparable",
-            check="report the spread, not just the best value. A parameter whose whole range moves the metric by less than the noise is a parameter you should stop tuning."),
+            check="report the spread, not just the best value. A parameter whose whole range moves the metric by less than the noise is a parameter you should stop tuning.",
+            **{"try": "re-run both sweeps on the LAST 150 claims instead of "
+                      "the first. If the best b moves, you measured noise; if "
+                      "it does not, you measured something. Three hundred "
+                      "claims is not many, and neither sweep ever printed an "
+                      "interval."}),
         code('''
 def sweep_ndcg(k1=K1, b=B, n=150):
     return float(np.mean([
@@ -659,7 +734,12 @@ what that costs, on the worst case in this test set and then on average.
             input="every claim with exactly one relevant abstract",
             output="the claim BM25 ranks its evidence lowest, with the term overlap",
             constraint="report the overlap as well as the rank, because the overlap is the explanation and the rank alone is just a bad number",
-            check="print which terms are shared. If they are function words, no parameter setting rescues this."),
+            check="print which terms are shared. If they are function words, no parameter setting rescues this.",
+            **{"try": "find the second-worst single-evidence claim too and "
+                      "read the pair together. If both fail on the same kind "
+                      "of term — a synonym, an acronym, a number written out "
+                      "in words — that is one problem twice, and the next "
+                      "lecture repairs only one of the three."}),
         code('''
 worst = None
 for q in qids:
@@ -691,7 +771,12 @@ print(f"mean idf of the missing terms           {float(np.mean([idf[t] for t in 
             input="every judged claim-abstract pair",
             output="the mean fraction of query terms the relevant abstract does not contain",
             constraint="over judged pairs, not over retrieved ones — otherwise you measure what BM25 found rather than what is there",
-            check="the fraction should be large. If it is near zero, the tokeniser is merging things it should not."),
+            check="the fraction should be large. If it is near zero, the tokeniser is merging things it should not.",
+            **{"try": "compute the same fraction over the abstracts BM25 "
+                      "ranked FIRST rather than over the judged pairs. It is "
+                      "far lower, and it is not a measurement of the corpus — "
+                      "it is a measurement of what BM25 can find, which is "
+                      "the circularity the constraint above exists to avoid."}),
         code('''
 frac = []
 for q in qids:
@@ -732,7 +817,12 @@ decisions.
             input="the qrels",
             output="the judged fraction of all claim-document pairs",
             constraint="state it as a fraction of the whole grid, because that is the quantity that makes the pooling problem visible",
-            check="everything unjudged is scored as irrelevant. Print how much of the grid that is."),
+            check="everything unjudged is scored as irrelevant. Print how much of the grid that is.",
+            **{"try": "count how many of BM25's top ten are unjudged rather "
+                      "than judged irrelevant. Every one is scored as a miss "
+                      "and some of them may be relevant. That count is the "
+                      "size of the doubt sitting around every number in this "
+                      "notebook."}),
         code('''
 grid   = len(qids) * N
 judged = sum(len(rel[q]) for q in qids)

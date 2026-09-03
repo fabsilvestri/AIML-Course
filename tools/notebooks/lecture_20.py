@@ -66,7 +66,13 @@ def build() -> list:
             input="nothing",
             output="versions, seed, device",
             constraint="cap the thread counts before torch is imported — they are read at import time and after that they do nothing",
-            check="print the model versions. A retrieval number without the encoder version is not reproducible, and these checkpoints are updated."),
+            check="print the model versions. A retrieval number without the encoder version is not reproducible, and these checkpoints are updated.",
+            **{"try": "the check asks for the model versions and this cell "
+                      "does not print them. Add the bi-encoder and cross- "
+                      "encoder checkpoint names and their revision hashes "
+                      "once they are loaded, and decide whether a "
+                      "specification whose check is not implemented is a "
+                      "specification at all."}),
         code('''
 import os
 os.environ.setdefault("OMP_NUM_THREADS", "4")
@@ -93,7 +99,12 @@ torch.manual_seed(RANDOM_STATE)
             input="the three cached files from Lecture 19",
             output="corpus, claims and test qrels",
             constraint="read the ids as strings, exactly as last week — an id read as an integer silently merges documents whose ids differ by a leading zero",
-            check="assert the corpus size and the number of test claims match Lecture 19's. If either differs, every comparison below is against a different experiment."),
+            check="assert the corpus size and the number of test claims match Lecture 19's. If either differs, every comparison below is against a different experiment.",
+            **{"try": "delete the cached parquet files and re-download. If "
+                      "the corpus-size assert fires, BEIR has been re- "
+                      "released and Lecture 19's numbers are no longer the "
+                      "baseline this notebook subtracts from. What would you "
+                      "do next, and what would you publish?"}),
         code('''
 HF    = "https://huggingface.co/datasets/BeIR/"
 CACHE = Path("datasets/scifact")
@@ -137,7 +148,12 @@ print(f"{N:,} abstracts, {len(qids)} test claims — same as Lecture 19")
             input="the tokenised corpus",
             output="the index, the scorer, and rank_metrics",
             constraint="reproduce Lecture 19's code exactly rather than importing a library — the whole point of this notebook is a comparison, and a comparison needs the baseline to be the one you understand",
-            check="assert the resulting NDCG@10 reproduces Lecture 19's number. If it does not, stop: something in the pipeline changed and nothing below can be trusted."),
+            check="assert the resulting NDCG@10 reproduces Lecture 19's number. If it does not, stop: something in the pipeline changed and nothing below can be trusted.",
+            **{"try": "change K1 to 1.2 in this cell alone. The assert "
+                      "reproducing Lecture 19's NDCG@10 fires, which is "
+                      "exactly what it is for: every comparison below "
+                      "subtracts a baseline, and the baseline has to be the "
+                      "same one."}),
         code('''
 TOKEN = re.compile(r"[a-z0-9]+")
 def tok(s): return TOKEN.findall(s.lower())
@@ -206,7 +222,12 @@ about the pair that defeats a lexical index.
             input="every claim with exactly one relevant abstract",
             output="the claim, its evidence's rank, and the shared terms",
             constraint="report the overlap alongside the rank — the rank is the symptom and the overlap is the cause",
-            check="the shared terms should be function words. If they are not, this is a different failure."),
+            check="the shared terms should be function words. If they are not, this is a different failure.",
+            **{"try": "print this claim's terms with their idf. The shared "
+                      "ones are the low-idf terms and the missing ones carry "
+                      "all the weight. BM25 did not rank the evidence low by "
+                      "accident — it ranked it low correctly, on the evidence "
+                      "available to it."}),
         code('''
 worst = None
 for q in qids:
@@ -248,7 +269,12 @@ it to beat BM25's 0.6611.
             input="the 5,183 abstracts",
             output="a matrix of unit-norm vectors",
             constraint="normalise, so the inner product is a cosine — unnormalised, the magnitude tracks length and token frequency, and long documents win by default, which is the failure BM25's b was invented for",
-            check="assert every row has unit norm and that the matrix is the shape you expect. Report the storage cost beside the postings count from section 1."),
+            check="assert every row has unit norm and that the matrix is the shape you expect. Report the storage cost beside the postings count from section 1.",
+            **{"try": "pass normalize_embeddings=False and re-run Section 4. "
+                      "The ranking changes, because the dot product now "
+                      "rewards magnitude and magnitude tracks length. That is "
+                      "the failure BM25's b was invented for, turning up in a "
+                      "model that has no b."}),
         code('''
 from sentence_transformers import SentenceTransformer
 
@@ -274,7 +300,13 @@ print("the postings list skips documents sharing no term.")
             input="the claim texts",
             output="a full ranking of the corpus per claim, and the same metrics",
             constraint="score every document — no approximate index yet, so these numbers are a property of the model and not of an index setting",
-            check="assert one ranking is a permutation of the corpus. A partially-scored ranking silently truncates recall@100."),
+            check="assert one ranking is a permutation of the corpus. A partially-scored ranking silently truncates recall@100.",
+            **{"try": "check whether this checkpoint was trained with "
+                      "distinct query and passage roles. all-MiniLM-L6-v2 is "
+                      "symmetric, so encoding both sides the same way is "
+                      "right — for e5 or bge it is wrong, silently, by "
+                      "several points. Where would you have had to look to "
+                      "find that out?"}),
         code('''
 Q = bi.encode([qtext[q] for q in qids], batch_size=64, convert_to_numpy=True,
               normalize_embeddings=True, show_progress_bar=False)
@@ -307,7 +339,12 @@ Now look at recall@100, which is what a *first stage* is judged on.
             input="the claim from section 2",
             output="the rank its evidence gets from each retriever",
             constraint="report both ranks side by side and nothing else — this is one comparison, not a table",
-            check="nothing about the text changed. If the dense rank is also poor, the vocabulary-mismatch story does not hold on this corpus and you should say so."),
+            check="nothing about the text changed. If the dense rank is also poor, the vocabulary-mismatch story does not hold on this corpus and you should say so.",
+            **{"try": "run this comparison for the ten worst single-evidence "
+                      "claims instead of one. If the dense retriever wins on "
+                      "all ten the story holds; if it wins on six you have an "
+                      "anecdote, and the table in Section 4 is the "
+                      "measurement."}),
         code('''
 d_rank = [docs_id[i] for i in dense_order[wq]].index(gold) + 1
 print(qtext[wq])
@@ -320,7 +357,12 @@ print(f"dense  rank {d_rank:>6,}")
             input="every relevant abstract in the test set",
             output="how many are in the top ten of both, one, or neither",
             constraint="count relevant DOCUMENTS, not queries — two systems can score the same and fail on entirely different documents, and only a document-level count shows it",
-            check="if the 'only' counts are near zero the two systems are redundant and fusion will not help. If they are large, it will."),
+            check="if the 'only' counts are near zero the two systems are redundant and fusion will not help. If they are large, it will.",
+            **{"try": "repeat the count at the top 100 rather than the top "
+                      "10. The 'neither' column shrinks and the two 'only' "
+                      "columns change relative size. At what depth do the two "
+                      "systems stop being complementary, and what does that "
+                      "say about where fusion belongs?"}),
         code('''
 both = only_bm = only_de = neither = 0
 for q in qids:
@@ -358,7 +400,12 @@ linearly with $B$, and the scores available grow quadratically.
             input="a range of batch sizes",
             output="encoder passes, scores available, and negatives per query",
             constraint="separate the two columns that grow differently — the encodings are the cost and the scores are the benefit, and conflating them is why people call in-batch negatives free",
-            check="the scores column should be the square of the batch. That quadratic is why dense-retrieval papers report batch sizes in the thousands."),
+            check="the scores column should be the square of the batch. That quadratic is why dense-retrieval papers report batch sizes in the thousands.",
+            **{"try": "add a column for the memory the score matrix needs in "
+                      "float32. At batch 512 it is about a megabyte; at "
+                      "16,384 it is a gigabyte. The dot products are nearly "
+                      "free in arithmetic and are not free in memory, and "
+                      "that is what actually caps the batch."}),
         code('''
 print(f"{'batch':>7} {'encoded':>9} {'scores':>10} {'negatives/query':>16}")
 for b in (8, 32, 128, 512):
@@ -426,7 +473,13 @@ the document's representation does not exist until the query arrives.
             input="the corpus size and the number of claims",
             output="the number of transformer passes a full cross-encoder scan needs",
             constraint="state it before running anything — the argument for the pipeline is arithmetic, and it should be made before the measurement rather than after",
-            check="compare it against the one pass a bi-encoder needs. The ratio is the reason production systems have two stages."),
+            check="compare it against the one pass a bi-encoder needs. The ratio is the reason production systems have two stages.",
+            **{"try": "redo the three lines for a corpus of 10 million "
+                      "abstracts and a thousand queries a second. The bi- "
+                      "encoder line is still one pass per query and the "
+                      "cross-encoder line has become impossible. The two- "
+                      "stage pipeline is not an optimisation; it is the only "
+                      "shape that fits."}),
         code('''
 print(f"full cross-encoder scan   {N * len(qids):,} transformer passes")
 print(f"re-rank BM25's top 100    {100 * len(qids):,}")
@@ -468,7 +521,12 @@ assert abs(rerank[100]["r@100"] - bm25["r@100"]) < 1e-9, \\
             input="BM25's recall at several depths",
             output="the bound on any re-ranker of that depth",
             constraint="state it as a bound, not a score — this is the number that decides whether a better second stage is worth building at all",
-            check="compare against the hybrid first stage's recall@100. Improving the first stage raises this ceiling; improving the second stage never does."),
+            check="compare against the hybrid first stage's recall@100. Improving the first stage raises this ceiling; improving the second stage never does.",
+            **{"try": "compute the same recall curve for the hybrid ranking "
+                      "and put the two columns side by side. The gap at depth "
+                      "100 is the extra ceiling fusion buys the re-ranker, "
+                      "and it is the argument for spending your next week on "
+                      "the first stage rather than the second."}),
         code('''
 print("depth   BM25 recall@depth")
 for d in (10, 50, 100, 1000):
@@ -499,7 +557,12 @@ one number with two different fixes.
             input="the document vectors",
             output="64 unit-norm centres and an assignment",
             constraint="write it rather than importing it — sklearn and torch each ship an OpenMP runtime and with both loaded this deadlocks on some machines, and the clustering is the simple part of an IVF index anyway",
-            check="assert every document is assigned and no cluster is empty. An empty cluster silently reduces the number of probes."),
+            check="assert every document is assigned and no cluster is empty. An empty cluster silently reduces the number of probes.",
+            **{"try": "initialise the centres at the first 64 documents "
+                      "rather than a random sample. The corpus is stored in "
+                      "some order, and if that order is topical the clusters "
+                      "start out correlated with it. Do the printed cluster "
+                      "sizes become more even or less?"}),
         code('''
 def kmeans(X, k=64, iters=25, seed=RANDOM_STATE):
     g = np.random.default_rng(seed)
@@ -553,7 +616,12 @@ Six systems, one corpus, one metric named before any of them was run.
             input="every result computed above",
             output="NDCG@10 and recall@100 per system",
             constraint="one row per system and no row omitted, including the ones that lost",
-            check="the best NDCG@10 should belong to a row with no training in it. If a table like this ever omits BM25, that is the first question to ask of it."),
+            check="the best NDCG@10 should belong to a row with no training in it. If a table like this ever omits BM25, that is the first question to ask of it.",
+            **{"try": "add Lecture 19's unranked-corpus floor as the first "
+                      "row. Every number in this table is a distance from it, "
+                      "and a summary table whose worst row is still a working "
+                      "system says nothing about how hard the task actually "
+                      "is."}),
         code('''
 table = [
     ("BM25",                     bm25["ndcg@10"],       bm25["r@100"]),

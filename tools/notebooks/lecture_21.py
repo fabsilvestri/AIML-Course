@@ -65,7 +65,11 @@ def build() -> list:
             input="nothing",
             output="versions and the seed",
             constraint="cap the BLAS threads before numpy is imported — the dense SVD later in this notebook otherwise saturates every core and the notebook becomes a benchmark of the machine",
-            check="print the versions. MovieLens has several releases and they give different numbers."),
+            check="print the versions. MovieLens has several releases and they give different numbers.",
+            **{"try": "unset the two thread caps and time the dense SVD in "
+                      "Section 4. The RMSE is identical and the wall clock is "
+                      "not. Both are numbers this notebook prints; only one "
+                      "of them is a property of the method."}),
         code('''
 import os
 os.environ.setdefault("OMP_NUM_THREADS", "4")
@@ -89,7 +93,12 @@ rng = np.random.default_rng(SEED)
             input="the GroupLens zip",
             output="a ratings table with contiguous user and item indices",
             constraint="factorise the ids into 0..n-1 — the raw ids are not contiguous, and using them as array indices silently allocates a matrix with empty rows",
-            check="assert the counts against the release's published figures: 1,000,209 ratings, 6,040 users, 3,706 films. If they differ you have a different release and every number below will differ too."),
+            check="assert the counts against the release's published figures: 1,000,209 ratings, 6,040 users, 3,706 films. If they differ you have a different release and every number below will differ too.",
+            **{"try": "use r['item'] directly as the column index rather than "
+                      "factorising it. The raw film ids run to 3,952 with "
+                      "gaps, so the matrix gains 246 all-zero columns and the "
+                      "printed density falls. The assert in this cell is the "
+                      "only thing that would have told you."}),
         code('''
 URL   = "https://files.grouplens.org/datasets/movielens/ml-1m.zip"
 CACHE = Path("datasets/movielens")
@@ -129,7 +138,12 @@ on refusing to pretend otherwise.
             input="the rating column",
             output="the distribution, and the mean",
             constraint="report shares rather than counts — the shape is the point, and it is not the uniform 1-5 the scale suggests",
-            check="the distribution should be heavily skewed upward. People mostly rate things they liked."),
+            check="the distribution should be heavily skewed upward. People mostly rate things they liked.",
+            **{"try": "compute the mean rating per user and then average "
+                      "those. It is not the overall mean printed here, "
+                      "because heavy raters carry different weight in the "
+                      "two. Which of them is the right anchor for the user- "
+                      "mean baseline in the next section?"}),
         code('''
 dist = r["rating"].value_counts().sort_index()
 for k, v in dist.items():
@@ -144,7 +158,12 @@ print(f"ratings per film, median   {r.groupby('i').size().median():.0f}")
             input="the rating counts per film",
             output="the share of ratings held by the most-rated films",
             constraint="report it at several cut points, because a single one can be chosen to say anything",
-            check="also count the films with fewer than twenty ratings. Those are where a recommendation would be valuable and where every model here has least to work with."),
+            check="also count the films with fewer than twenty ratings. Those are where a recommendation would be valuable and where every model here has least to work with.",
+            **{"try": "recompute these shares over the TRAINING half alone. "
+                      "They barely move, which is what makes the long tail a "
+                      "property of the corpus rather than of the split — "
+                      "worth checking rather than assuming, since every later "
+                      "model is fitted on that half."}),
         code('''
 pop = r.groupby("i").size().sort_values(ascending=False).values
 for frac in (0.01, 0.05, 0.10, 0.20):
@@ -171,7 +190,12 @@ optimistic.
             input="all the ratings",
             output="train and test index arrays",
             constraint="one seed, fixed before any model is fitted, and reused by everything — a table whose rows were scored on different splits is not a table",
-            check="assert the two halves are disjoint and cover everything."),
+            check="assert the two halves are disjoint and cover everything.",
+            **{"try": "split by time instead: the last 10% of ratings by "
+                      "timestamp. Every RMSE in the notebook rises. A random "
+                      "split over ratings puts a user's later opinions into "
+                      "the training set, and no deployed model is ever "
+                      "allowed to know them."}),
         code('''
 perm   = rng.permutation(len(r))
 n_test = int(0.1 * len(r))
@@ -192,7 +216,11 @@ print(f"test   {len(te):,} ratings")
             input="the training ratings",
             output="RMSE for the global mean, the user mean and the film mean",
             constraint="compute the means on the TRAINING half only — a mean that has seen the test ratings is a leak, and it is the easiest one in this whole course to commit by accident",
-            check="a user or film absent from the training half must fall back to the global mean, not to a division by zero. Assert there are no NaNs in the predictions."),
+            check="a user or film absent from the training half must fall back to the global mean, not to a division by zero. Assert there are no NaNs in the predictions.",
+            **{"try": "compute the two means over all the ratings rather than "
+                      "the training half. Every baseline improves and the "
+                      "factorisation's advantage shrinks. The leak is one "
+                      "subscript, and nothing in this cell would catch it."}),
         code('''
 mu = float(y_tr.mean())
 cu = np.bincount(u_tr, minlength=n_u)
@@ -307,7 +335,12 @@ ratings, with the closed form of step 10.
             input="the training index arrays",
             output="a row-grouped view: which ratings belong to each user, and to each film",
             constraint="one argsort, not a boolean mask per user — a mask over a million ratings, 6,040 times, is the difference between seconds and minutes for identical arithmetic",
-            check="assert the groups partition the ratings and that a spot-checked user's group contains exactly their ratings."),
+            check="assert the groups partition the ratings and that a spot-checked user's group contains exactly their ratings.",
+            **{"try": "replace the grouping with a boolean mask, u_tr == k, "
+                      "inside the ALS loop, and time one sweep. It is the "
+                      "identical arithmetic and takes minutes instead of "
+                      "seconds. Where else in this notebook is an O(n) scan "
+                      "hiding inside a loop over n?"}),
         code('''
 def group(idx, n):
     """order[start[k]:start[k+1]] are the entries with idx == k."""
@@ -376,7 +409,11 @@ print(f"\\nrank 16, with biases   test rmse {rmse(y_te, predict(P, Q, u_te, i_te
             input="a range of ranks",
             output="test RMSE for each",
             constraint="hold the regularisation, the sweeps and the split fixed, so the rank is the only thing that changed between rows",
-            check="expect a U-curve. If the error falls monotonically, the largest rank tried is not yet large enough to overfit and the sweep should be extended."),
+            check="expect a U-curve. If the error falls monotonically, the largest rank tried is not yet large enough to overfit and the sweep should be extended.",
+            **{"try": "extend the sweep to ranks 128 and 256. Does the "
+                      "U-curve turn, and where? A sweep that stops before the "
+                      "minimum will always report the largest rank you tried "
+                      "as the best one."}),
         code('''
 sweep = []
 for d in (1, 2, 4, 8, 16, 32, 64):
@@ -399,7 +436,12 @@ is chosen the way every capacity parameter in this course is chosen.
             input="the best rank, with and without explicit bias terms",
             output="both test RMSEs",
             constraint="change only the bias terms between the two runs",
-            check="report whichever way it comes out. The textbook claim is that biases help; at this rank they may not, because a factor dimension can hold a constant and represent them itself."),
+            check="report whichever way it comes out. The textbook claim is that biases help; at this rank they may not, because a factor dimension can hold a constant and represent them itself.",
+            **{"try": "run the same comparison at rank 1 and at rank 64. At "
+                      "low rank the explicit biases should matter more, "
+                      "because a single factor cannot hold a constant and a "
+                      "taste at once. Does it come out that way, and if not, "
+                      "what else could hold the constant?"}),
         code('''
 Pb, Qb = als(d=best[0], biases=True)
 Pn, Qn = als(d=best[0], biases=False)
@@ -414,7 +456,12 @@ print(f"difference                          {abs(with_b - without_b):.4f}")
             input="a fitted P and Q, and a random invertible matrix M",
             output="the predictions from (PM, QM^-T), beside the originals",
             constraint="use a random M, not a permutation — the claim is about every invertible matrix, not a relabelling",
-            check="assert the two prediction vectors agree to floating-point tolerance. This is why an individual latent factor cannot be interpreted."),
+            check="assert the two prediction vectors agree to floating-point tolerance. This is why an individual latent factor cannot be interpreted.",
+            **{"try": "make M orthogonal — the Q of a QR decomposition of a "
+                      "random matrix. The predictions are still identical, "
+                      "and now the factor norms are preserved as well. Which "
+                      "of those two invariances would a paper's factor plot "
+                      "have to defend itself against?"}),
         code('''
 M = rng.normal(size=(best[0], best[0]))
 Pm = Pb @ M
@@ -442,7 +489,12 @@ implicit data and streams, which is where Lecture 22 goes.
             input="the training ratings, shuffled once per epoch",
             output="the factors, and the training RMSE per epoch",
             constraint="copy p_u BEFORE updating it — using the already-updated p_u in the q_i step is a different algorithm, it still converges, and nothing warns you",
-            check="the training curve must fall monotonically. Compare the final test RMSE against ALS at the same rank: two routes to one objective should arrive in comparable places."),
+            check="the training curve must fall monotonically. Compare the final test RMSE against ALS at the same rank: two routes to one objective should arrive in comparable places.",
+            **{"try": "use Ps[uu] rather than the saved pu in the Qs update. "
+                      "It still converges and the training curve still falls, "
+                      "and it is a different algorithm. How far apart do the "
+                      "two test RMSEs end up, and would you have caught the "
+                      "substitution in a code review?"}),
         code('''
 def sgd(d=32, epochs=15, lr=0.01, reg=0.05, seed=SEED):
     g = np.random.default_rng(seed)
@@ -489,7 +541,11 @@ columns are full of fours. Same trap as term frequency without idf in Lecture 19
             input="the bias-adjusted training matrix",
             output="a film-by-film similarity matrix",
             constraint="subtract mu, b_u and b_i before taking the cosine, and zero the diagonal so a film is not its own neighbour",
-            check="assert the diagonal is zero and the matrix is symmetric. A film that is its own nearest neighbour predicts itself perfectly and the RMSE looks wonderful."),
+            check="assert the diagonal is zero and the matrix is symmetric. A film that is its own nearest neighbour predicts itself perfectly and the RMSE looks wonderful.",
+            **{"try": "skip the np.fill_diagonal and run the next cell. Every "
+                      "film is now its own nearest neighbour at similarity 1, "
+                      "and the RMSE looks superb. That is why this is an "
+                      "assert and not a sentence of prose."}),
         code('''
 R_tr = np.zeros((n_u, n_i), dtype=np.float32)
 R_tr[u_tr, i_tr] = (y_tr - mu - bu[u_tr] - bi[i_tr]).astype(np.float32)
@@ -505,7 +561,12 @@ print(f"similarity matrix {S_ii.shape}, diagonal zeroed")
             input="a neighbourhood size",
             output="test RMSE",
             constraint="use only neighbours this user actually rated, and only positive similarities — averaging in a negative weight inverts the contribution",
-            check="fall back to the bias prediction when a user has rated none of the neighbours. Without the fallback those cases become zeros and the RMSE is meaningless."),
+            check="fall back to the bias prediction when a user has rated none of the neighbours. Without the fallback those cases become zeros and the RMSE is meaningless.",
+            **{"try": "drop the w > 0 condition and keep the negative "
+                      "similarities. A film that is anti-correlated with this "
+                      "one now pushes the prediction the wrong way in "
+                      "proportion to how anti-correlated it is. Does the RMSE "
+                      "rise or fall, and can you say which before you run it?"}),
         code('''
 idx_all = np.argsort(-S_ii, axis=1)
 for k in (10, 20, 50):
@@ -536,7 +597,12 @@ or to model only **pairwise** preference (BPR). Lecture 22 takes the second rout
             input="the ratings, binarised at 4",
             output="how many positives, and how many cells of unknown meaning",
             constraint="say 'cells of unknown meaning', not 'negatives' — the whole section is about refusing that word",
-            check="the positive count should be a small fraction of the grid. That ratio is what makes sampling necessary."),
+            check="the positive count should be a small fraction of the grid. That ratio is what makes sampling necessary.",
+            **{"try": "binarise at 3 rather than 4. The positive count "
+                      "roughly doubles and 'cells of unknown meaning' covers "
+                      "less of the grid. That threshold is a definition of "
+                      "what a positive is, and the next lecture evaluates "
+                      "against whichever one you pick."}),
         code('''
 pos = (r["rating"] >= 4).sum()
 grid = n_u * n_i
@@ -556,7 +622,12 @@ with the same seed.
             input="every result above",
             output="one row per model",
             constraint="include the models that lost, including both SVD fills",
-            check="the bias model should be within striking distance of the factorisation. Knowing what fraction of your result is arithmetic is the point of fitting baselines first."),
+            check="the bias model should be within striking distance of the factorisation. Knowing what fraction of your result is arithmetic is the point of fitting baselines first.",
+            **{"try": "add the item-item model at k=10, which lost to k=50. A "
+                      "summary table keeping only each family's best row "
+                      "makes every family look as though it had one idea, and "
+                      "hides how sensitive each was to a setting somebody "
+                      "chose."}),
         code('''
 rows = [
     ("global mean",              baselines["global mean"]),
