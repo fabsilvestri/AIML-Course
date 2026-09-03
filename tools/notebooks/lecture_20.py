@@ -38,6 +38,8 @@ Applications of Machine Learning — BSc Mathematics of Artificial Intelligence
 
 ---
 
+**These notes are the primary source for this lecture.** Lectures 19–22 sit outside the textbook, so the extended notes — [lecture-20.pdf](https://fabsilvestri.github.io/AIML-Course/notes/lecture-20.pdf) — are what you are examined from, and this notebook is where their figures come from.
+
 **How to use this notebook.** Read before you run. Every code cell is preceded
 by the specification that would produce it — input, output, constraint, check.
 

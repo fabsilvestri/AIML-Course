@@ -50,6 +50,12 @@ FULL = [
     # them by content hash, so a repeat run costs seconds.
     ("consistency", ["tools/check_consistency.py"],
      "every slide figure is one its own notebook prints  [executes notebooks]"),
+    # Same rule, pointed at notes/*.tex. It lives in the FULL set rather than
+    # the fast one for the same reason `consistency` does -- it executes
+    # notebooks -- and it lives in a runner at all because a check nobody runs
+    # is the exact failure that produced the missing `try` fields.
+    ("notes",       ["tools/check_notes.py"],
+     "every figure in the Part V notes is one its notebook prints  [executes notebooks]"),
     ("overflow",    ["tools/check_overflow.py"],
      "nothing taller than the canvas or off its side  [Chrome]"),
     ("diagrams",    ["tools/check_diagrams.py"],

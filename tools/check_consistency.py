@@ -76,13 +76,15 @@ NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
 # that is the defect this tool exists to find. It is only for "the notebook
 # computes the same quantity on less data, on purpose, and says so."
 #
-# Exempted figures are listed in the output rather than skipped silently.
+# Exempted figures are listed in the output rather than skipped silently, and
+# that listing is also how a DEAD exemption is found: `l22_errors_finetuned`
+# was removed on 2026-09-03 because a clean run showed the list declaring three
+# and using two. An exemption nobody needs is a standing permission with no
+# justification attached, which is the thing this list exists to prevent.
 SCALE_ONLY: dict[str, str] = {
     "l22_errors_scratch":
         "L18 deck scores all 25,000 test reviews; the notebook scores 3,000 so "
         "it finishes on a CPU. It prints its own error counts at its own scale.",
-    "l22_errors_finetuned":
-        "same slide, same reason.",
     "l22_clusters":
         "L18 deck clusters all 12,500 negative reviews; the notebook clusters "
         "2,000. The cluster sizes therefore differ; the themes do not.",
