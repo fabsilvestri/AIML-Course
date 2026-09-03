@@ -59,7 +59,13 @@ def build() -> list:
             input="nothing",
             output="the versions of everything, and a fixed seed",
             constraint="print the versions — a mismatch here produces a confusing error twenty cells later, in a cell that has nothing to do with it",
-            check="an import with no use is a question. Answer it in a comment or delete it."),
+            check="an import with no use is a question. Answer it in a comment or delete it.",
+            **{"try": "delete the torchvision import and re-run. The next "
+                      "cell fails, which answers the question the check "
+                      "poses: it IS used, exactly once, for the loader. An "
+                      "import with no use is a question — this notebook "
+                      "answers it in a comment, and you have just checked "
+                      "that the comment is true."}),
         code('''
 # --- setup -------------------------------------------------------------------
 # Not examinable: engineering hygiene. It is here because a version mismatch

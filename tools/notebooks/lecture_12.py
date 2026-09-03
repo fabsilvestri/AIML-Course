@@ -701,7 +701,12 @@ computing *the same sized thing*: a `3 × 128 × 128` input and a
             input="a 3×128×128 input and a 32×128×128 output",
             output="the weight count for a dense layer and for a convolution computing the same sized thing",
             constraint="fix the input AND output shapes so the comparison is between two ways of computing the SAME object",
-            check="assert the convolutional count is exactly 32·3·7·7, and that the ratio exceeds five million. Print the dense layer's size in gigabytes. 25 GB of float32 for one layer is the kind of number that ends an argument."),
+            check="assert the convolutional count is exactly 32·3·7·7, and that the ratio exceeds five million. Print the dense layer's size in gigabytes. 25 GB of float32 for one layer is the kind of number that ends an argument.",
+            **{"try": "change the kernel from 7 to 3 and re-run. The "
+                      "convolutional count falls by (7/3) squared and the "
+                      "dense count does not move at all, because it never "
+                      "contained k either. Which of the two numbers depends "
+                      "on anything about the layer's design?"}),
         code('''
 H = W = IMG
 n_in, n_out = 3 * H * W, 32 * H * W
@@ -749,7 +754,12 @@ the *operation* and not of the training.
             input="one image and the same image shifted by 16 pixels",
             output="the largest difference between shift-then-convolve and convolve-then-shift, on the interior",
             constraint="drop the border before comparing — zero padding invents input that was not there, and `roll` wraps, so both edges violate the identity for reasons that are not about equivariance",
-            check="assert the relative difference is below 1e-5. The residue that survives is float32 rounding, not mathematics. Say which one you are looking at, and give the relative figure rather than the absolute."),
+            check="assert the relative difference is below 1e-5. The residue that survives is float32 rounding, not mathematics. Say which one you are looking at, and give the relative figure rather than the absolute.",
+            **{"try": "shift by 15 pixels rather than 16. The identity still "
+                      "holds on the interior — equivariance is exact for "
+                      "every integer shift, not only for multiples of some "
+                      "stride. Now shift by half a pixel using interpolation, "
+                      "and find out what 'exact' was resting on."}),
         code('''
 torch.manual_seed(RANDOM_STATE)
 conv = nn.Conv2d(3, 32, 7, padding=3, bias=False).eval()
@@ -785,7 +795,13 @@ content. Check that too, rather than taking the caveat on trust.
             input="the same two tensors, at the corner",
             output="the difference there",
             constraint="check the caveat rather than stating it — the previous cell's assert is only meaningful if the excluded region really is different",
-            check="when an identity holds only on part of the domain, measure it on the other part too. Orders of magnitude larger is the evidence that your exclusion was necessary rather than convenient."),
+            check="when an identity holds only on part of the domain, measure it on the other part too. Orders of magnitude larger is the evidence that your exclusion was necessary rather than convenient.",
+            **{"try": "set padding_mode='circular' on the convolution and re- "
+                      "run both cells. The border difference collapses, "
+                      "because roll and circular padding now agree about what "
+                      "lies off the edge. The identity was never about the "
+                      "interior; it was about the two of them agreeing on a "
+                      "boundary condition."}),
         code('''
 edge_a = y_of_shift[..., :4, :4]
 edge_b = shift_of_y[..., :4, :4]
@@ -809,7 +825,12 @@ same shifted image.
             input="the feature maps of an image and its shift, before and after global pooling",
             output="the cosine similarity of each pair",
             constraint="compare the SAME quantity before and after pooling — cosine similarity on flattened maps and on the pooled vectors",
-            check="assert pooling increased the similarity, which is what buying invariance means. A cosine similarity of 0.98 and one of 0.999 sound alike. Print 1 − cos as a percentage and they do not."),
+            check="assert pooling increased the similarity, which is what buying invariance means. A cosine similarity of 0.98 and one of 0.999 sound alike. Print 1 − cos as a percentage and they do not.",
+            **{"try": "replace the global max pool with adaptive_avg_pool2d "
+                      "and measure again. Both cosines move — does the "
+                      "ordering survive? Max and mean discard different "
+                      "things, and only one of them is what a paper usually "
+                      "means by invariance."}),
         code('''
 with torch.no_grad():
     maps      = F.relu(conv(x))
@@ -840,7 +861,13 @@ pixel, which class is it?* — the answer **is** the position.
             input="the network and a dummy input",
             output="the last feature map size, and how many input pixels one cell answers for",
             constraint="find the last pooling output by walking the network, not by arithmetic — four MaxPool2d layers is easy to miscount",
-            check="assert the final grid is IMG // 16. Express it as input pixels per output cell. '256x resolution lost' is abstract; 'one cell answers for 256 pixels' is not."),
+            check="assert the final grid is IMG // 16. Express it as input pixels per output cell. '256x resolution lost' is abstract; 'one cell answers for 256 pixels' is not.",
+            **{"try": "delete one MaxPool2d from make_net and re-run this "
+                      "cell. The final grid doubles, one cell now answers for "
+                      "64 pixels instead of 256, and the first linear layer's "
+                      "input quadruples. Count the parameters that changed, "
+                      "and name the two costs you have just traded against "
+                      "each other."}),
         code('''
 net = make_net()
 z = torch.zeros(1, 3, IMG, IMG)
@@ -873,7 +900,11 @@ Commit to an answer before running the next cell.
             input="the network and a batch of 32",
             output="parameter memory, optimiser memory, and activation memory",
             constraint="count FOUR float32 arrays per parameter — weights, gradients, and Adam's two moments — and every module output, which stays alive from the moment it is computed until the backward pass reaches it",
-            check="assert activations exceed everything parameter-shaped, since the whole section depends on that being true. When a run runs out of memory, halve the batch, not the model. In order: smaller batch, then smaller resolution (quadratic), then gradient checkpointing, then mixed precision."),
+            check="assert activations exceed everything parameter-shaped, since the whole section depends on that being true. When a run runs out of memory, halve the batch, not the model. In order: smaller batch, then smaller resolution (quadratic), then gradient checkpointing, then mixed precision.",
+            **{"try": "set BATCH to 1 and re-run. The activation figure falls "
+                      "by a factor of 32 and the parameter and optimiser "
+                      "figures do not move at all. That one row is the entire "
+                      "argument for halving the batch rather than the model."}),
         code('''
 BATCH = 32
 net = make_net()
@@ -915,7 +946,12 @@ are the ones nearest the image, which are the ones with almost no parameters.
             input="every convolution's output shape",
             output="the activation memory of each",
             constraint="report the share held by the first two convolutions",
-            check="parameters and activations are anti-correlated across a convolutional stack. Any intuition transferred from dense networks points the wrong way."),
+            check="parameters and activations are anti-correlated across a convolutional stack. Any intuition transferred from dense networks points the wrong way.",
+            **{"try": "add each convolution's parameter count to this table. "
+                      "The first two hold most of the activation memory and "
+                      "almost none of the parameters, and the last holds the "
+                      "reverse. Plot one against the other if you want to see "
+                      "how strongly anti-correlated they are."}),
         code('''
 z, rows = torch.zeros(1, 3, IMG, IMG), []
 for i, m_ in enumerate(net):
@@ -940,7 +976,13 @@ A prediction nobody checks is a claim.
             input="one real forward pass on the accelerator",
             output="the predicted activation memory beside the measured one",
             constraint="take ONE optimiser step first, so Adam's state exists and is in the baseline rather than appearing as activation memory",
-            check="a prediction nobody checks is a claim. This is four lines and it converts the whole section from arithmetic into a measurement."),
+            check="a prediction nobody checks is a claim. This is four lines and it converts the whole section from arithmetic into a measurement.",
+            **{"try": "run this cell without the optimiser step above it. "
+                      "Adam allocates its two moment buffers on the first "
+                      "step, so they now land inside the measured window and "
+                      "the measurement overshoots the prediction by roughly "
+                      "twice the parameter memory. Two lines in the wrong "
+                      "order is the whole difference."}),
         code('''
 net_d = make_net().to(device)
 opt_d = torch.optim.Adam(net_d.parameters(), lr=3e-4)

@@ -557,7 +557,13 @@ network — and get a different answer every time you ask.
             input="a network trained with dropout, evaluated both ways",
             output="the accuracy under eval(), and ten readings under train()",
             constraint="take TEN readings in training mode — one wrong number looks like a wrong number, ten different wrong numbers is a diagnosis",
-            check="the SPREAD is the tell. A deterministic function of fixed weights and fixed data does not change between calls — if your metric wobbles, ask which layer is still in training mode."),
+            check="the SPREAD is the tell. A deterministic function of fixed weights and fixed data does not change between calls — if your metric wobbles, ask which layer is still in training mode.",
+            **{"try": "set dropout=0.0, keep the model in train() mode, and "
+                      "take the ten readings again. All ten agree, because "
+                      "there is no longer a stochastic layer in the network. "
+                      "The wobble diagnoses dropout specifically; a batch "
+                      "norm left in train() mode fails this test only when "
+                      "the batching changes between calls."}),
         code('''
 net_d, hist_d, _ = train(dropout=0.2)
 

@@ -192,7 +192,12 @@ SETUP_PROMPT = prompt(
                "here",
     check="RANDOM_STATE is defined here ONCE and used for every split, every "
           "model and every shuffle in the notebook. A notebook carrying three "
-          "different seeds cannot be reproduced by reading it")
+          "different seeds cannot be reproduced by reading it",
+    **{"try": "change RANDOM_STATE from 42 to 0 and run the notebook again. "
+              "Some printed numbers move and some do not, and an assert may "
+              "fire on a figure that was pinned to this seed. Anything that "
+              "moves by more than the spread the notebook itself reports was "
+              "never a result \u2014 it was one draw."})
 
 LOADER_PROMPT = prompt(
     label="the data",
