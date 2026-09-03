@@ -62,7 +62,13 @@ def build() -> list:
             input="nothing",
             output="thread settings, then versions, seeds and the device",
             constraint="set the OpenMP variables BEFORE torch is imported — they are read at import time, and after that they do nothing",
-            check="when an environment variable must precede an import, say so in a comment beside it. The next person to tidy the file has no other way to know."),
+            check="when an environment variable must precede an import, say so in a comment beside it. The next person to tidy the file has no other way to know.",
+            **{"try": "move the three os.environ lines below import torch and "
+                      "restart the kernel. On macOS the KMeans cell near the "
+                      "end of the notebook deadlocks — no error, no output, "
+                      "no CPU use. A variable read at import time must be set "
+                      "before the import, and nothing enforces that except "
+                      "the comment beside it."}),
         code('''
 # Not examinable, and only needed on macOS: PyTorch and scikit-learn each ship
 # their own OpenMP runtime, and with both loaded the KMeans cell near the end of
@@ -102,7 +108,12 @@ print(f"device  {device}")
             input="the IMDb tarball",
             output="the identical fit / validation split as the previous lecture",
             constraint="rebuild from the same seed — a notebook that only runs because a previous one is still in memory is not reproducible",
-            check="assert both halves are 25,000 and that the two index sets are disjoint. Reproduce, do not inherit. It costs thirty seconds of download and it is the difference between a comparison and a coincidence."),
+            check="assert both halves are 25,000 and that the two index sets are disjoint. Reproduce, do not inherit. It costs thirty seconds of download and it is the difference between a comparison and a coincidence.",
+            **{"try": "change RANDOM_STATE to 0 in this cell only. Every "
+                      "assert still passes, and the printed claim that this "
+                      "is the same split as the previous lecture becomes "
+                      "false. Which assert would have caught it, and would "
+                      "you rather the cell had one?"}),
         code('''
 # Reloaded here rather than inherited. A notebook that only runs because a
 # previous one is still in memory is not reproducible.
@@ -163,7 +174,13 @@ Nothing raises. The loss still goes down.
             input="the fit and validation reviews",
             output="the vocabulary, the encoders, the classifier, and the padded batches",
             constraint="everything rebuilt here — vocabulary from the fit split only, packing rather than last-of-padding",
-            check="assert the batch shape. When you carry an architecture forward, carry the fixes with it. The last-of-padding bug is not in this version and that is deliberate."),
+            check="assert the batch shape. When you carry an architecture forward, carry the fixes with it. The last-of-padding bug is not in this version and that is deliberate.",
+            **{"try": "print the first ten entries of w2i and compare them "
+                      "with the previous lecture's. They agree, because the "
+                      "vocabulary is a deterministic function of the fit "
+                      "split and the seed. If they ever disagree, something "
+                      "upstream of the vocabulary has moved and every "
+                      "comparison below is void."}),
         code('''
 MAXLEN, EMB_DIM, HIDDEN = 192, 128, 64
 VOCAB, BATCH, EPOCHS, LR = 20_000, 64, 2, 1e-3
@@ -210,7 +227,12 @@ print(f"fit batch {tuple(Xf.shape)}")
             input="'add a softmax to the output so it returns probabilities, and keep the training loop working'",
             output="both models trained, with their loss curves",
             constraint="identical seeds and identical everything else — the only difference is one `torch.softmax` before the loss",
-            check="the loss is FLOORED near −log(0.731) ≈ 0.313. That is the tell, and it is visible in the training output long before the accuracy comparison."),
+            check="the loss is FLOORED near −log(0.731) ≈ 0.313. That is the tell, and it is visible in the training output long before the accuracy comparison.",
+            **{"try": "run the double-softmax model for four epochs instead "
+                      "of two. Its loss keeps falling and never passes the "
+                      "floor. More training does not rescue a model whose "
+                      "loss cannot reach zero; it only spends longer "
+                      "approaching a wall you could have computed in advance."}),
         code('''
 # ⏱ a few minutes for the two runs together, on CPU.
 @torch.no_grad()
@@ -257,7 +279,13 @@ bad,  loss_bad  = train(GRUClassifier(VOCAB), double_softmax=True,
             input="both trained models",
             output="final loss and validation accuracy for each, and the predicted floor",
             constraint="print the ALGEBRAIC floor, −log(e/(e+1)), beside the measured loss — a predicted number matching a measured one is the argument",
-            check="when a loss plateaus at a value you can compute in closed form, compute it. It names the bug rather than merely detecting it."),
+            check="when a loss plateaus at a value you can compute in closed form, compute it. It names the bug rather than merely detecting it.",
+            **{"try": "compute the same floor for ten classes: the second "
+                      "softmax receives values in [0, 1], so the largest "
+                      "achievable probability is e / (e + 9) and the floor is "
+                      "about 1.46 against log 10 = 2.30. The extra line does "
+                      "not flatten the model — it caps it, and the cap "
+                      "depends on the number of classes."}),
         code('''
 acc_good = accuracy(good, Xv, Lv, val_y)
 acc_bad  = accuracy(bad,  Xv, Lv, val_y)
@@ -280,7 +308,12 @@ loss on balanced classes is within 0.05 of $\\log 2$.
             input="an untrained model on a balanced batch",
             output="its loss, against log 2",
             constraint="assert it is within 0.05 of log 2 — an untrained two-class model on balanced data has no information and must score the entropy of a coin flip",
-            check="the corrected specification is three parts: `forward` returns logits, a separate `predict_proba` is used only at inference, and this assertion runs before training starts."),
+            check="the corrected specification is three parts: `forward` returns logits, a separate `predict_proba` is used only at inference, and this assertion runs before training starts.",
+            **{"try": "break the head on purpose — set its bias to "
+                      "torch.tensor([5.0, -5.0]) — and re-run. The loss is "
+                      "nowhere near log 2 and the assert fires before a "
+                      "single training step has run. It is the cheapest test "
+                      "in this notebook and it costs one forward pass."}),
         code('''
 untrained = GRUClassifier(VOCAB).to(device)
 with torch.no_grad():
@@ -305,7 +338,12 @@ subsampled, which is what makes that possible.
             input="DistilBERT and 2,000 fit reviews",
             output="the model, the encoded batches, and a balanced scoring subset",
             constraint="SHUFFLE before taking the scoring subset — the corpus ships every positive first, so `test_x[:3000]` is all positives and any 'accuracy' on it is really recall",
-            check="assert the scoring subset is within three points of balanced. Assert the class balance of any subset you score on. It is one line and it catches the most embarrassing possible result."),
+            check="assert the scoring subset is within three points of balanced. Assert the class balance of any subset you score on. It is one line and it catches the most embarrassing possible result.",
+            **{"try": "delete the permutation and take score_x = "
+                      "test_x[:N_SCORE]. The balance assert fires. Comment it "
+                      "out, and the number you get is recall on positives "
+                      "wearing the word accuracy: a model that always answers "
+                      "'positive' would score 100%."}),
         code('''
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -339,7 +377,12 @@ print(f"scoring on {N_SCORE:,} test reviews, {score_y.mean():.1%} positive")
             input="the pretrained body with a random head",
             output="its accuracy on the scoring subset",
             constraint="measure BEFORE fine-tuning — the head is random and nothing has been trained, so this is the floor the fine-tune has to beat",
-            check="a pretrained model with a fresh head is not a zero-shot classifier. The body is informative and the head is noise, and this number measures the pair."),
+            check="a pretrained model with a fresh head is not a zero-shot classifier. The body is informative and the head is noise, and this number measures the pair.",
+            **{"try": "construct a fresh AutoModelForSequenceClassification "
+                      "and re-measure this floor three times. It moves by "
+                      "several points, because the head is random. A floor "
+                      "measured once is a draw from a distribution, not a "
+                      "floor."}),
         code('''
 @torch.no_grad()
 def bert_accuracy(model, texts, labels, batch=32):
@@ -361,7 +404,12 @@ print(f"pretrained body, random head, no training: {zero_shot:.1%}")
             input="2,000 reviews, one epoch, batch 16",
             output="the loss every 25 steps and the wall clock",
             constraint="`lr=2e-5`, about a hundred times smaller than the 1e-3 used for the from-scratch model — the body already encodes something and a large step destroys it in a few dozen steps",
-            check="print the loss during training, not only at the end. A fine-tune going wrong is visible in the first twenty steps and takes minutes to confirm at the end."),
+            check="print the loss during training, not only at the end. A fine-tune going wrong is visible in the first twenty steps and takes minutes to confirm at the end.",
+            **{"try": "set lr=1e-3 — the from-scratch model's rate — and re- "
+                      "run. The loss rises within twenty steps and never "
+                      "recovers, and the assert in the comparison cell fires "
+                      "with the message that names the cause. A pretrained "
+                      "body is destroyed in tens of steps, not thousands."}),
         code('''
 torch.manual_seed(RANDOM_STATE)
 opt   = torch.optim.AdamW(model.parameters(), lr=2e-5)   # ~100x smaller than 1e-3
@@ -388,7 +436,12 @@ print(f"one epoch on {N_FT:,} reviews: {time.perf_counter() - t0:.0f}s")
             input="every model, on the same balanced scoring subset",
             output="four accuracies, and the error count removed",
             constraint="report ERRORS REMOVED as well as points gained — going from 85% to 90% removes a third of the mistakes, and the desk cares about the mistakes",
-            check="assert the fine-tune is above 0.75, with a message naming the learning rate as the likely cause. Score the GRU on the SAME shuffled subset, not on its own. Two accuracies on two different subsets are not a comparison."),
+            check="assert the fine-tune is above 0.75, with a message naming the learning rate as the likely cause. Score the GRU on the SAME shuffled subset, not on its own. Two accuracies on two different subsets are not a comparison.",
+            **{"try": "score the GRU on test_x[:3000] instead of on score_x. "
+                      "It appears to beat DistilBERT. Nothing about either "
+                      "model changed: one measurement is balanced and the "
+                      "other is all positives, and two accuracies on two "
+                      "subsets are not a comparison."}),
         code('''
 ft_acc      = bert_accuracy(model, score_x, score_y)
 Xt, Lt      = encode_words(score_x)
@@ -428,7 +481,13 @@ costume.
             input="2,000 negative reviews",
             output="unit-norm sentence embeddings",
             constraint="mean-pool over the REAL tokens using the attention mask — dividing by the padded length instead is the previous lecture's padding bug in a new costume",
-            check="assert every vector has norm 1. Normalise, and assert the norms. On the unit sphere the dot product IS the cosine, which makes the next cell one matrix product."),
+            check="assert every vector has norm 1. Normalise, and assert the norms. On the unit sphere the dot product IS the cosine, which makes the next cell one matrix product.",
+            **{"try": "divide by mask.shape[1] — the padded length — instead "
+                      "of mask.sum(1). Every vector comes out identical. Work "
+                      "out why: the mask has already zeroed the padded "
+                      "positions, the divisor is a per-row scalar, and "
+                      "normalize on the next line cancels it. Now find where "
+                      "in this pipeline the same mistake WOULD matter."}),
         code('''
 from transformers import AutoModel
 
@@ -465,7 +524,13 @@ one matrix product.
             input="three complaint-shaped queries",
             output="the nearest review to each, with its cosine",
             constraint="embed the queries with the SAME function as the corpus — a different pooling or a different normalisation makes the cosines meaningless",
-            check="assert the similarity matrix has the shape you expect. Print the cosine beside every result. A nearest neighbour at 0.31 and one at 0.78 are very different claims and the ranking hides that."),
+            check="assert the similarity matrix has the shape you expect. Print the cosine beside every result. A nearest neighbour at 0.31 and one at 0.78 are very different claims and the ranking hides that.",
+            **{"try": "add the query 'the sound mix made the dialogue "
+                      "perfectly clear' and compare its nearest neighbour "
+                      "with the second query's. Cosine similarity has no "
+                      "notion of negation. This is the two-line demonstration "
+                      "the paragraph below tells you to run before deploying "
+                      "it."}),
         code('''
 queries = ["the acting was wooden and unconvincing",
            "the sound mix made the dialogue impossible to follow",
@@ -484,7 +549,11 @@ for i, q in enumerate(queries):
             input="the same three queries",
             output="how many of the top three overlap between the two methods",
             constraint="compare the top-k SETS rather than the top-1 — a single disagreement could be a tie",
-            check="when you replace a method, measure the overlap with what it replaced. Zero overlap and total overlap are both worth knowing about."),
+            check="when you replace a method, measure the overlap with what it replaced. Zero overlap and total overlap are both worth knowing about.",
+            **{"try": "compare the top-20 sets instead of the top-3. The "
+                      "overlap rises, because two rankings over 2,000 "
+                      "documents have to agree eventually. At what k does the "
+                      "overlap stop saying anything about the two methods?"}),
         code('''
 # What does keyword search return for the same queries?
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -516,7 +585,11 @@ Lecture 9, unchanged: k-means, with $k$ chosen by silhouette rather than by eye.
             input="the sentence embeddings",
             output="the silhouette at six values of k, and the best clustering",
             constraint="choose k by silhouette rather than by eye — the same rule as application 5, unchanged by the data being text",
-            check="assert the fitted clustering really has best_k distinct labels. K-means on unit vectors is spherical k-means in all but name. That is appropriate here and it is worth knowing you have chosen it."),
+            check="assert the fitted clustering really has best_k distinct labels. K-means on unit vectors is spherical k-means in all but name. That is appropriate here and it is worth knowing you have chosen it.",
+            **{"try": "add k = 2 and k = 20 to the sweep. If the silhouette "
+                      "picks k = 2, you have a clustering that is optimal by "
+                      "the metric and useless to the desk. Which do you "
+                      "report, and on what grounds other than the metric?"}),
         code('''
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
@@ -538,7 +611,12 @@ print(f"\\nbest k = {best_k}")
             input="the clusters and a tf-idf matrix",
             output="the five most distinctive terms per cluster, with the cluster size",
             constraint="rank by LIFT — the term's mean weight inside the cluster minus its mean outside — not by frequency inside it",
-            check="print the cluster SIZE beside its terms. A theme covering nine reviews is not a theme the desk needs to hear about."),
+            check="print the cluster SIZE beside its terms. A theme covering nine reviews is not a theme the desk needs to hear about.",
+            **{"try": "rank by the mean tf-idf weight inside the cluster "
+                      "instead of by lift. Every cluster is now named by "
+                      "'movie', 'film' and 'bad'. Words common everywhere "
+                      "describe nothing, and the subtraction is what turns a "
+                      "frequent term into a name."}),
         code('''
 # Name each group by what makes it DIFFERENT, not by what is common everywhere.
 gvec  = TfidfVectorizer(min_df=5, max_df=0.4, stop_words="english",
@@ -574,7 +652,12 @@ and that is the lesson.
             input="'build a pipeline that vectorises with tf-idf and classifies with logistic regression, and report the test accuracy'",
             output="the leaky and honest accuracies at 400 documents, over 20 seeds",
             constraint="measure at TWO corpus sizes, because the answer depends on the size and that is the lesson",
-            check="assert the leaky vocabulary is at least as large as the honest one, which is what makes it the leaky one. 20 seeds at the small size. The effect is a fraction of a point and the seed-to-seed spread is larger, so a single split proves nothing in either direction."),
+            check="assert the leaky vocabulary is at least as large as the honest one, which is what makes it the leaky one. 20 seeds at the small size. The effect is a fraction of a point and the seed-to-seed spread is larger, so a single split proves nothing in either direction.",
+            **{"try": "set min_df=2 in both vectorisers and re-run. The leaky "
+                      "vocabulary shrinks towards the honest one, because a "
+                      "column now needs two documents and a single test "
+                      "review can no longer create one. How much of the gap "
+                      "was min_df rather than the leak?"}),
         code('''
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -625,7 +708,12 @@ print(f"vocabulary, honest:  {small_vocab[0][1]:,} columns")
             input="25,000 documents, three seeds",
             output="the gap, and both distributions as a strip plot",
             constraint="plot the individual seeds, not just the means — with three points at one size and twenty at the other, error bars would imply a precision neither has",
-            check="the decision rule: fit the vectoriser inside the pipeline always — not because the damage is always large, but because it scales with the reciprocal of your corpus size, and the corpus is smallest exactly when the project starts."),
+            check="the decision rule: fit the vectoriser inside the pipeline always — not because the damage is always large, but because it scales with the reciprocal of your corpus size, and the corpus is smallest exactly when the project starts.",
+            **{"try": "add leak_experiment(2_000, 20) as a third point on the "
+                      "strip plot. If the damage really scales with the "
+                      "reciprocal of the corpus size, it should sit between "
+                      "the other two. Three points is enough to see whether "
+                      "that shape is real."}),
         code('''
 # ⏱ about a minute: five seeds at the full corpus size.
 full, _ = leak_experiment(25_000, 3)
@@ -655,7 +743,12 @@ your corpus size, and the corpus is smallest exactly when the project starts.
             input="the training and test texts, whitespace-normalised",
             output="how many test reviews also appear in training, and how many duplicates are within training",
             constraint="normalise whitespace and case before comparing — an exact string match finds fewer duplicates than there are",
-            check="a duplicate across the split is not fixed by any pipeline, any cross-validation, or any amount of care about `fit` and `transform`. It is fixed by grouping."),
+            check="a duplicate across the split is not fixed by any pipeline, any cross-validation, or any amount of care about `fit` and `transform`. It is fixed by grouping.",
+            **{"try": "drop the norm() and compare the raw strings instead. "
+                      "How many fewer duplicates does it find? Every "
+                      "normalisation you leave out is a duplicate you will "
+                      "not find, and the next one worth adding is "
+                      "punctuation."}),
         code('''
 # And the text leak no pipeline protects you from: the same document in both
 # halves. Three lines, and you know rather than assume.
@@ -679,7 +772,13 @@ whether the split keeps both copies of an entry on the same side.
             input="1,500 unique reviews, a third of them submitted twice, six seeds",
             output="the random-split and grouped-split accuracies, and how many test rows had a twin in training",
             constraint="everything else stays CORRECT — the vectoriser is fitted inside each split both times. The only difference is whether both copies of an entry land on the same side",
-            check="assert no group straddles the grouped split. Report what fraction of test rows had a copy of themselves in training. That number explains the gap and it is the one to look for in a real corpus."),
+            check="assert no group straddles the grouped split. Report what fraction of test rows had a copy of themselves in training. That number explains the gap and it is the one to look for in a real corpus.",
+            **{"try": "raise DUP_FRAC from 0.3 to 0.6 and re-run. The gap "
+                      "widens roughly in step with the twin rate printed "
+                      "underneath it. That proportionality is the thing to "
+                      "carry away: the leak is worth whatever fraction of "
+                      "your test set has a copy in training, and no amount of "
+                      "pipeline hygiene touches it."}),
         code('''
 from sklearn.model_selection import GroupShuffleSplit
 
