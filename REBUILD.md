@@ -122,6 +122,79 @@ On the site they appear in two places: a third button on each of the four
 Part V lecture cards (`btn-notes`, emitted by `make_site.py` for any lecture
 whose chapter field is empty), and a table in *Textbook and scope*.
 
+## PAUSED HERE — 2026-09-03. Read this first.
+
+Two jobs are in flight. Everything else in this file is finished and verified.
+
+### Job 1 — the try-field audit (IN PROGRESS, 17 of 539 verified)
+
+**The problem.** `check_notebooks §4.1a` verifies that a prompt box *has* a
+`try`. Nothing verifies that what the `try` *predicts* is true. All 539 were
+written by reading the code, not by running the modification. A `try` saying
+"the assert on 52,326 fires" is a claim a student will test.
+
+**It is not a hypothetical risk. Two of the first seventeen tested were wrong,
+both in Lecture 8, both now corrected:**
+
+* *"drop the `- X.mean(axis=0)` … the assert fails on component 1 and the rest
+  still agree"* — measured on the real Olivetti faces, **all five** components
+  disagree (0.0124, 0.0065, 0.0079, 0.0176, 0.0230). The "hard to see" story
+  was false.
+* *"set `batch_size=100` … it raises, because 100 < 123. Read the message: it
+  names the constraint you just violated"* — it raises, and the message is
+  *"Number of input features has changed from 100 to 123"*, which names neither
+  the batch size nor `n_components`. The corrected `try` now makes the better
+  point: an error naming the wrong constraint costs more than no error.
+
+**The tools, both in the repo so they survive a new session:**
+
+```sh
+python3 tools/try_audit.py               # 539, counted by class
+python3 tools/try_audit.py --assert      # the 62 that predict a failure
+python3 tools/try_audit.py --number      # the 163 that state a figure
+python3 tools/try_audit.py --lecture 14  # one lecture, with its code cells
+python3 tools/try_claims_test.py         # the executable half: 17/17 PASS
+```
+
+**The method, and why it is not "run all 539".** Executing 539 notebook
+variants is days of compute. The triage instead is:
+
+| class | count | how it is verified |
+|---|---|---|
+| `assert` — predicts a failure | 62 | highest value. Reproduce standalone in `try_claims_test.py`, or derive exactly from the cell's own assertion |
+| `number` — states a figure | 163 | recompute the arithmetic; many are exact and cheap |
+| `qualitative` — states a direction | 166 | read against the code; soften anything that cannot be defended |
+| `question` — asks something | 166 | cannot be false. Nothing to verify |
+
+(The classes overlap; `try_audit.py` prints the joint counts.)
+
+**Where to resume.** 17 claims are in `try_claims_test.py` and pass. Work
+through `--assert` first, then `--number`, adding each verified claim to that
+file rather than checking it once in a shell. When a claim turns out false,
+**correct the `try` in `tools/notebooks/lecture_NN.py`** — never the test — then
+regenerate and re-run `check_all`.
+
+### Job 2 — exam-style exercises on every deck (NOT STARTED)
+
+Agreed specification, from the lecturer:
+
+* **Five exercises at the end of every deck**, lectures 1–24, in the style of
+  what students meet in the exam. 120 in total.
+* **The solutions to lecture N's five appear on lecture N+1's deck**, so the
+  lecturer never presents them — they are simply there for a student reading
+  the deck afterwards.
+* **Lecture 24 is the exception**: its own five exercises *and* their solutions
+  both sit on lecture 24's deck, because there is no lecture 25.
+
+So lecture 1 carries exercises only; lectures 2–23 carry the previous
+lecture's solutions and their own exercises; lecture 24 carries lecture 23's
+solutions, its own exercises, and its own solutions.
+
+Each deck's *"Where students lose marks"* slide and the written-paper hints
+already in the decks are the best guide to the style. Several decks name what
+the paper has asked for in recent years — Lecture 19's, for instance, says a
+hand-computed NDCG from a relevance pattern has appeared three years running.
+
 ## How to work on it now
 
 The rebuild is finished, so this file stops being a plan and becomes a manual.

@@ -386,9 +386,12 @@ Compute it by hand and check that scikit-learn agrees. A full SVD of a
                   "values: singular vectors are defined only up to a sign, so "
                   "an exact comparison fails on a correct implementation about "
                   "half the time",
-            **{"try": "drop the `- X.mean(axis=0)` and re-run. The assert "
-                      "fails on component 1 and the rest still agree — which "
-                      "is exactly what makes the bug hard to see."}),
+            **{"try": "drop the `- X.mean(axis=0)` and re-run. The assert fires — "
+                      "then look at the per-component differences before deciding "
+                      "why. ALL FIVE disagree, not just the first: without "
+                      "centring the leading singular vector points at the mean "
+                      "face, and every later one is orthogonal to that rather "
+                      "than to the centred data's directions."}),
         code('''
 X_centred = X - X.mean(axis=0)
 # full_matrices=False: with 400 rows and 4,096 columns the full U would be
@@ -645,9 +648,13 @@ at the data at all.
                   "reconstruction error to three significant figures — they "
                   "are three routes to the same subspace. If randomised "
                   "disagrees, `n_oversamples` is too small",
-            **{"try": "set `batch_size=100` on the IncrementalPCA. It raises, "
-                      "because 100 < 123. Read the message: it names the "
-                      "constraint you just violated."}),
+            **{"try": "set `batch_size=100` on the IncrementalPCA, below the 123 "
+                      "components asked for. It raises — and the message is "
+                      "'Number of input features has changed from 100 to 123', "
+                      "which is about neither the batch size nor n_components as "
+                      "you set them. An error naming the wrong constraint costs "
+                      "more than no error, because it sends you to the wrong "
+                      "line."}),
         code('''
 D95 = d95            # the dimension every experiment below runs in
 
