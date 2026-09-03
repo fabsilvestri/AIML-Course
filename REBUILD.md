@@ -114,9 +114,9 @@ python3 tools/check_notes.py          # all four
 python3 tools/check_notes.py 21       # one of them
 ```
 
-At the time of writing: 86 stated figures in lecture 19's notes, 43 in 21's and
-19 in 22's, every one of them reproduced. Run it for lecture 20's count; that
-notebook takes about ten minutes to execute cold.
+Verified 2026-09-03: **216 stated figures across the four sets of notes — 86,
+68, 43 and 19 — every one of them printed by its own notebook.** Lecture 20's
+notebook takes about ten minutes to execute cold; the other three are quick.
 
 On the site they appear in two places: a third button on each of the four
 Part V lecture cards (`btn-notes`, emitted by `make_site.py` for any lecture
