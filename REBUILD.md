@@ -4,8 +4,8 @@ Resumable progress log for the redesign. **If you are picking this up cold —
 a new session, a restarted machine — read this file first, then `LECTURES.md`
 (the plan) and `AUTHORING.md` (how to build one lecture).**
 
-Last updated: 2026-09-02 (all 24 lectures built; Part V new and verified) ·
-Term starts: ~2026-09-22
+Last updated: 2026-09-03 (try fields complete on all 538 boxes; Part V
+extended notes written and published) · Term starts: ~2026-09-22
 
 ---
 
@@ -38,56 +38,78 @@ twelve real defects in six notebooks in 0.3 seconds — the class that splitting
 and reordering older modules keeps producing, and that compiling each cell in
 isolation cannot see.
 
-## Status snapshot — 2026-09-02, commit b09b772
+## Status snapshot — 2026-09-03
 
-Everything below was true and verified at that commit, which is pushed to
-`origin/main`. If `git log --oneline -1` still shows it, none of this needs
-re-deriving.
+Everything below was true and verified when it was written, and is pushed to
+`origin/main`.
 
 | | |
 |---|---|
 | Decks | 24 / 24 on the new design, 70+ slides each |
 | Notebooks | 24 / 24, 538 code cells, every one behind a specification box |
 | Runs on CPU | all 24, cold, from a clean kernel |
-| `check_consistency` | **24 / 24 clean** — 826 deck figures verified against notebook output |
+| `check_consistency` | re-running cold on 2026-09-03 (cache empty, every notebook re-executing); was 24 / 24 clean — 826 deck figures verified against notebook output |
 | `check_all` (5 fast checks) | clean |
 | Browser checks | no slide over the canvas on any of 25 pages; 39 diagrams clean |
 | Published on the site | 24 / 24 |
+| `try` fields | **538 / 538** — every prompt box, enforced by `check_notebooks §4.1a` |
+| Part V extended notes | 4 / 4 written, built and linked from `index.html` |
 
 Two documented exception lists, both printed in the checker's output rather than
 skipped silently — these are the first thing to be sceptical of:
 `SCALE_ONLY` (3 figures, Lecture 18 runs at a scale its CPU notebook does not)
 and `CROSS_LECTURE` (5 figures a deck quotes from another lecture's experiment).
 
-### The one open item, and how to run it
+### The open items — none
 
-The `try` fields, described under **Carried-over debts** below. To do it:
+**Closed 2026-09-03.** The `try` fields are done: 538 of 538 boxes, every
+lecture. `check_notebooks.py` now has a hard rule (`§4.1a`) that fails on a
+prompt box without one, so the omission cannot recur; `AUTHORING.md §4.1a`
+specifies the field and records why the rule is blocking rather than advisory.
+
+The census that found the gap is still the right way to check it, and now
+answers 0:
 
 ```sh
-cd /Users/fabriziosilvestri/Documents/Codice/AIML-Course
-git pull
-
-# 1 · see the damage: which lectures, and how many boxes each is missing
 python3 - <<'EOF'
 import json, pathlib
+tot = twt = 0
 for p in sorted(pathlib.Path('notebooks').glob('lecture-*.ipynb')):
     md = [''.join(c['source']) for c in json.load(open(p))['cells']
           if c['cell_type'] == 'markdown']
     boxes = [m for m in md if '**Prompt' in m]
-    print(f"{p.stem} {len(boxes):>3} boxes, {sum('**try**' in m for m in boxes):>3} with try")
+    t = sum('**try**' in m for m in boxes)
+    tot += len(boxes); twt += t
+print(f"{tot} boxes, {twt} with try, {tot - twt} missing")   # 538 538 0
 EOF
-
-# 2 · edit tools/notebooks/lecture_NN.py — the field is a keyword, so:
-#        **{"try": "drop the sort. Which assert fails, and which still passes?"}
-#     see tools/notebooks/_prompt.py
-
-# 3 · rebuild and check. Do NOT change any stated number.
-python3 tools/make_notebooks.py --only NN
-python3 tools/check_all.py
 ```
 
-A `try` change is additive: it touches a markdown box, not a computation, so
-`check_consistency` does not need re-running unless you also changed code.
+### Part V extended notes — `notes/`
+
+Lectures 19–22 are taught from notes rather than from Géron, so for those four
+**the notes are the primary source**, not a supplement. They now exist as
+LaTeX, in `notes/lecture-{19,20,21,22}.tex` on a shared `preamble.tex`, and
+build to PDFs of 18, 17, 16 and 16 pages:
+
+```sh
+make -C notes            # rebuilds any PDF whose .tex or preamble is newer
+make -C notes clean      # intermediates only; the PDFs stay
+```
+
+The PDFs are **tracked**, because the site links to them; the `.aux/.log/
+.out/.toc` are gitignored. `check_decks.py` fails if `index.html` links a notes
+PDF that is not on disk.
+
+Every figure in the notes is one the corresponding notebook prints — they were
+written from the decks, which `check_consistency` had already verified against
+the notebooks, so the three artefacts agree by construction. If you change a
+deck's number, change the notes' too: **nothing checks the notes against the
+notebooks automatically.** That is the one piece of drift this repo cannot
+detect, and it is written down here rather than left to be discovered.
+
+On the site they appear in two places: a third button on each of the four
+Part V lecture cards (`btn-notes`, emitted by `make_site.py` for any lecture
+whose chapter field is empty), and a table in *Textbook and scope*.
 
 ## How to work on it now
 
@@ -459,34 +481,16 @@ Deck = `slides/lecture-NN.html`, Notebook = `notebooks/lecture-NN.ipynb`.
 
 Things noticed during the rebuild that are not yet fixed.
 
-- **OPEN, agreed 2026-09-02, to do the week of 2026-09-09: the `try` field is
-  missing from ten lectures.** A prompt box's `try` is one modification a
-  student can make and what should happen to the result. It is applied
-  unevenly: lectures 1–10 have near-complete coverage (12–32 boxes each), 12
-  and 19–21 are partial, and these ten are empty or nearly so — 249 of 538 code
-  cells have one:
-
-  | | lectures | boxes to write |
-  |---|---|---|
-  | none at all | 13, 14, 15, 17, 18, 23, 24 | 158 |
-  | exactly one | 11, 16, 22 | 67 |
-
-  (I first said eight lectures. The count came from reading a table rather than
-  querying, and 16 and 22 sat just below the line I was scanning for. The
-  snippet in the status snapshot above is the authoritative version — run it,
-  do not trust this table if it disagrees.)
-
-  It happened because those eight were converted in bulk and
-  `tools/check_notebooks.py` does not enforce the field, so nothing caught it.
-  Two pieces of work, in this order:
-
-  1. Write the missing `try` fields. Additive — no figure changes, so no
-     re-verification beyond `check_notebooks` and `check_names`. **Do not change
-     any stated number.** The field is passed as `**{"try": "..."}` because
-     `try` is a Python keyword; see `tools/notebooks/_prompt.py`.
-  2. Add the rule to `check_notebooks.py` so the omission cannot recur. Decide
-     deliberately whether it is blocking or advisory — a hard rule on all 538
-     cells may be stricter than the idea deserves.
+- ~~the `try` field is missing from ten lectures~~ — **CLOSED 2026-09-03.**
+  All 289 missing boxes were written, so the course now stands at 538 of 538.
+  Both halves of the debt are done: the fields, and the rule that stops it
+  recurring. `check_notebooks.check_every_box_has_a_try` is **hard**, not
+  advisory, and the reasoning for that choice is in its docstring and in
+  `AUTHORING.md §4.1a` — a rule that cannot fire on anything that exists is
+  exactly the kind to make blocking, since from there the only way to violate
+  it is to write a new box without one. Verified by stripping a `try` from a
+  copy of `lecture-24.ipynb` and watching the checker fail with the cell index
+  and the box name.
 
 - Old decks and notebooks 2–24 still describe Build/Fix, planted defects,
   "commit a number", the twelve threads and the weak-prompt device. Every one is
