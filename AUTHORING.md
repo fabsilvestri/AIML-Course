@@ -135,6 +135,10 @@ A markdown cell in this exact form:
 > **constraint** · the decision the prompt must make explicit
 >
 > **check** · a test whose expected answer can be worked out before running
+>
+> ---
+>
+> **try** · one modification, and what should happen to the output
 ```
 
 The prompt is a **specification**: what you would have to ask an assistant for
@@ -143,6 +147,36 @@ followed by an annotation explaining how it fails.
 
 Prefer `check ·` clauses whose answer is knowable on paper — a shape, a count, a
 parameter-count arithmetic, a value a formula predicts.
+
+### 4.1a Every prompt box carries a `try`.
+
+`try` is set apart from the four specification fields by a rule, because it is
+not part of the specification: it is the exercise the specification makes
+possible. It names **one** change — a parameter, a column, an argument, a line
+deleted — and says what should happen, so a student who runs it has a
+prediction to be wrong about.
+
+Three things a good one does, and a weak one does not:
+
+* **It is falsifiable.** "Change the seed and see what happens" is not a `try`.
+  "Change the seed; anything that moves by more than the spread the notebook
+  itself reports was never a result" is.
+* **It changes one thing.** A `try` needing an *and* is two exercises, and it
+  answers neither.
+* **It is checkable by the student, not only by the author.** Prefer an
+  arithmetic consequence the box states — "the assert on 52,326 fires", "the
+  ratio grows by (7/3)²" — over a vague direction.
+
+It is passed as `**{"try": "..."}` because `try` is a Python keyword; see
+`tools/notebooks/_prompt.py`.
+
+`check_notebooks.py` enforces this and **fails** on a box without one. That was
+a deliberate choice, made when the field reached all 538 boxes on 2026-09-03:
+until then it was missing from 289 of them precisely because nothing enforced
+it. `_prompt.py` still allows the field to be omitted, for the case where there
+is genuinely nothing to vary — no box in the course turned out to be that case,
+so if one ever appears it goes in the checker as a named exemption rather than
+as silence.
 
 ### 4.2 Comments explain why, not what.
 

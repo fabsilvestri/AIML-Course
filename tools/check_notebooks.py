@@ -6,7 +6,7 @@ The machine-checkable half of AUTHORING.md, on the generated notebooks.
     python3 tools/check_notebooks.py 19 20      # named lectures
     python3 tools/check_notebooks.py --advisory # include the noisy checks
 
-Six rules, from AUTHORING.md §4 and §5. Four are deterministic and FAIL the
+Seven rules, from AUTHORING.md §4 and §5. Five are deterministic and FAIL the
 run; two are advisory and only print, because they have irreducible false
 positives and a check that cries wolf is a check nobody reads.
 
@@ -15,6 +15,7 @@ positives and a check that cries wolf is a check nobody reads.
                 marker indented >= 4 -- an indented closing fence does not
                 close, and the argument ships as grey monospace
       §4.1      every code cell is preceded by a prompt box (see below)
+      §4.1a     every prompt box carries a `try` (see check_every_box_has_a_try)
       §4.5      any code cell whose stored execution took more than 20 s must
                 have a clock marker in the markdown above it
 
@@ -180,6 +181,33 @@ def check_every_cell_has_a_box(nb, fails):
                          f"(§4.1)")
 
 
+def check_every_box_has_a_try(nb, fails):
+    """§4.1a — every prompt box names one modification and its consequence.
+
+    Hard rather than advisory, and that was a decision rather than a default.
+    The field was missing from 289 of the 538 boxes until 2026-09-03, because
+    nothing enforced it and ten lectures were converted in bulk. It is now
+    present on all 538, so a hard rule cannot fire on anything that exists —
+    which is exactly the moment to make it hard, since from here the only way
+    to violate it is to write a new box without one.
+
+    The counter-argument was that `_prompt.py` says to omit `try` where there
+    is genuinely nothing to vary. In practice no box turned out to be like
+    that: even the setup cell has a seed to change, and "nothing came to mind"
+    is the failure the docstring already warns against. If a genuine exception
+    ever appears, it belongs here as a named exemption rather than as silence.
+    """
+    for i, c in enumerate(cells(nb)):
+        if c["cell_type"] != "markdown":
+            continue
+        text = src(c).lstrip()
+        if not text.startswith("> **Prompt"):
+            continue
+        if "**try**" not in text:
+            head = text.split("\n", 1)[0][:60]
+            fails.append(f"cell {i}: prompt box with no try — {head} (§4.1a)")
+
+
 def check_clock_markers(nb, fails, threshold=20.0):
     """§7.1 — a slow cell must say so in the markdown above it."""
     cs = cells(nb)
@@ -268,6 +296,7 @@ def main() -> int:
         check_indentation(nb, fails)
         check_annotation_budget(nb, fails)
         check_every_cell_has_a_box(nb, fails)
+        check_every_box_has_a_try(nb, fails)
         check_clock_markers(nb, fails)
 
         notes: list[str] = []
