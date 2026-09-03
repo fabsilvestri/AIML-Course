@@ -112,7 +112,11 @@ def build() -> list:
         prompt(output="library versions printed, one seed set everywhere, plot "
                       "defaults fixed once",
                constraint="not examinable — engineering hygiene, kept out of "
-                          "the way of the argument"),
+                          "the way of the argument",
+        **{"try": "set figure.figsize to (5, 3.2) here and re-run the "
+                  "notebook. Every plot below shrinks, and the 2020 cliff "
+                  "turns into a step. A default set once is a decision about "
+                  "what your reader will notice."}),
         code(SETUP)]
 
     cells += [
@@ -127,7 +131,11 @@ boarded a bus, how many boarded a train, and what kind of day it was.
                constraint="download only if the file is not already on disk, so "
                           "the notebook is re-runnable offline",
                check="print the row count and compare it with what the "
-                     "publisher states"),
+                     "publisher states",
+        **{"try": "delete datasets/ridership.tgz, re-run, and compare the "
+                  "printed row count with the one you saw the first time. The "
+                  "CTA republishes this file. A number that moves when you "
+                  "re-download is a number that needs a date beside it."}),
         code(LOADER),
         md("""
 ### Tidying, and one line that matters
@@ -145,7 +153,13 @@ Count the duplicates rather than assuming there are none.
                input="the raw frame, one row a day, columns as published",
                output="a frame indexed by date with bus and rail only",
                constraint="drop `total` — it is exactly bus + rail — and drop duplicate rows, reporting how many",
-               check="print the count removed and the date range that survives"),
+               check="print the count removed and the date range that survives",
+               **{"try": "keep the total column and test the claim that it "
+                         "carries nothing: does (df.bus + df.rail == "
+                         "df.total).all() hold on every row? If it does, "
+                         "dropping it cost no information. If it does not, "
+                         "you have found a data-quality problem that the tidy "
+                         "step would otherwise have hidden."}),
         code('''
 df = raw.copy()
 df.columns = ["date", "day_type", "bus", "rail", "total"]
@@ -170,7 +184,11 @@ date says.
                input="the tidied frame",
                output="how many days of each type, and the three days around Memorial Day 2019",
                constraint="do not assume U means Sunday — show a case where it is a public holiday on a Monday",
-               check="the three printed values are A, U, U"),
+               check="the three printed values are A, U, U",
+               **{"try": "look up 2019-01-01 and 2019-07-04 — a Tuesday and a "
+                         "Thursday. What does day_type say about them, and "
+                         "what would a model given only the day of the week "
+                         "have predicted for those two days?"}),
         code('''
 print(df["day_type"].value_counts().to_string())
 
@@ -189,7 +207,12 @@ different facts, and none of them is visible at the other two scales.
                input="the rail series, all twenty-one years",
                output="one line plot, rail boardings against date",
                constraint="thin line, no markers — the shape is the point, not the individual days",
-               check="the 2020 cliff is visible without being pointed at"),
+               check="the 2020 cliff is visible without being pointed at",
+               **{"try": "restrict the plot to 2016 onward. The slow decline "
+                         "through the 2010s vanishes and the cliff becomes "
+                         "the whole story. Both plots are honest; they answer "
+                         "different questions, and only one of them is the "
+                         "question this notebook asks."}),
         code('''
 fig, ax = plt.subplots(figsize=(11, 3.2))
 df["rail"].plot(ax=ax, lw=0.6, color="#0b3d62")
@@ -207,7 +230,11 @@ returns to the cliff to ask what a model owes you when the world changes.
                input="bus and rail over ten weeks of 2019",
                output="both series on one axis, with markers",
                constraint="a window short enough that individual days are distinguishable",
-               check="every week shows a weekend trough; some weeks show a third"),
+               check="every week shows a weekend trough; some weeks show a third",
+               **{"try": "widen this window to a full year, keeping the "
+                         "markers. The weekly trough is still there and is no "
+                         "longer legible. A figure's window is an argument "
+                         "about what you want the reader to be able to see."}),
         code('''
 fig, ax = plt.subplots(figsize=(11, 3.2))
 df.loc["2019-03":"2019-05", ["bus", "rail"]].plot(ax=ax, marker=".", ms=4)
@@ -231,7 +258,12 @@ tell it is to show it the last week, or the last eight.
                input="the tidied frame",
                output="the rail pool and the days that can be scored",
                constraint="fix the span and the window length HERE, before the derivation and before any baseline — a window chosen after seeing a result is a hyperparameter fitted on the test set",
-               check="assert the first WINDOW days are excluded from the targets. They are consumed by the history every model needs, so they cannot be scored."),
+               check="assert the first WINDOW days are excluded from the targets. They are consumed by the history every model needs, so they cannot be scored.",
+               **{"try": "set WINDOW = 14 and re-run everything below. More "
+                         "days become scoreable and every MAE moves. Nothing "
+                         "here stops you trying 14, 28 and 56 and keeping the "
+                         "best — except that you would then have to say which "
+                         "days you chose it on."}),
         code('''
 # The pool we will work on, and the days we will be scored on. The first 56 days
 # are consumed by the window the models need, so they cannot be targets.
@@ -264,7 +296,11 @@ prompt(
        input="the rail pool, and the same series differenced at lag 1 and lag 7",
        output="an augmented Dickey-Fuller p-value for each, with a verdict",
        constraint="install statsmodels only if it is missing, so the notebook runs on a bare environment",
-       check="the level series should fail to look stationary where the differenced ones do not. Decide before running which of the three you expect to fail. The raw  series should not look stationary; the seasonal difference should. If all  three pass, you have read the sign backwards — which is the single most  common ADF error and it never raises anything."),
+       check="the level series should fail to look stationary where the differenced ones do not. Decide before running which of the three you expect to fail. The raw  series should not look stationary; the seasonal difference should. If all  three pass, you have read the sign backwards — which is the single most  common ADF error and it never raises anything.",
+       **{"try": "run adf on the pool restricted to 2019 alone. The p-value "
+                 "moves a long way on a few hundred days: the test's power "
+                 "depends on the length of the series, so 'not stationary' "
+                 "can mean 'not enough data to say'."}),
         code('''
 try:
     from statsmodels.tsa.stattools import adfuller
@@ -301,7 +337,12 @@ prompt(
        input="the pool, and its autocorrelation at lags 1, 7 and 14",
        output="predicted and measured standard deviation of each difference",
        constraint="predict from the identity Var(X_t - X_t-h) = 2 gamma(0)(1 - rho(h)) BEFORE measuring, so the theory is exposed to the data",
-       check="flag any lag where differencing makes the spread larger, which is the point of the cell. Print predicted/measured as a ratio and expect 1.00 to within a per cent  at every lag. If lag 7 agrees and lag 1 does not, suspect your estimate of  rho, not the identity."),
+       check="flag any lag where differencing makes the spread larger, which is the point of the cell. Print predicted/measured as a ratio and expect 1.00 to within a per cent  at every lag. If lag 7 agrees and lag 1 does not, suspect your estimate of  rho, not the identity.",
+       **{"try": "add lags 2, 3 and 21 to the loop and compare predicted with "
+                 "measured at each. The identity holds at every lag; the "
+                 "verdict — bigger spread or smaller — flips exactly where "
+                 "rho crosses 1/2. Find the smallest lag at which "
+                 "differencing this series helps."}),
         code('''
 from statsmodels.tsa.stattools import acf
 
@@ -352,7 +393,12 @@ prompt(
        input="five months of the rail series, raw and differenced at lags 1 and 7",
        output="three stacked panels sharing an x axis",
        constraint="a zero line on each, so 'bigger swings' is visible rather than asserted",
-       check="the first difference should look wilder than the series it came from. The zero line should be visibly crossed on the differenced panels and  nowhere near the raw one. If all three look alike, the y-limits are shared  and the figure is showing you nothing."),
+       check="the first difference should look wilder than the series it came from. The zero line should be visibly crossed on the differenced panels and  nowhere near the raw one. If all three look alike, the y-limits are shared  and the figure is showing you nothing.",
+       **{"try": "pass sharey=True to plt.subplots. The two differenced "
+                 "panels flatten to nothing, and the figure now argues the "
+                 "opposite of its own titles. Which version is honest, and "
+                 "what would you have to add to the flattened one to make it "
+                 "honest too?"}),
         code('''
 fig, axes = plt.subplots(3, 1, figsize=(11, 6), sharex=True)
 recent = pool["2019-01":"2019-05"]
@@ -375,7 +421,11 @@ prompt(
        input="autocorrelation of the pool and of its seasonal difference, lags 0 to 42",
        output="both on one bar chart",
        constraint="plot them side by side at each lag, not on two charts, so the collapse at lag 7 is directly comparable",
-       check="spikes at 7, 14 and 21 in the raw series; nothing much left after differencing. Read lag 7 and lag 14 specifically and say the two numbers out loud. Those  two bars are the claim. The other forty-one are scenery, and scanning all  forty-three is how you talk yourself into a pattern."),
+       check="spikes at 7, 14 and 21 in the raw series; nothing much left after differencing. Read lag 7 and lag 14 specifically and say the two numbers out loud. Those  two bars are the claim. The other forty-one are scenery, and scanning all  forty-three is how you talk yourself into a pattern.",
+       **{"try": "extend the lags to 120. Nothing new appears in the "
+                 "differenced series and the raw one keeps decaying. Then say "
+                 "why the check above asked you to read two bars rather than "
+                 "all forty-three."}),
         code('''
 lags = np.arange(0, 43)
 acf_level = [pool.autocorr(lag=int(k)) if k else 1.0 for k in lags]
@@ -415,7 +465,13 @@ thinks in, and one unit of it is one person.
                input="two aligned series, either of which may have gaps",
                output="mean absolute error, in boardings",
                constraint="ignore days where either side is missing rather than filling them",
-               check="mae(x, x) is 0, and a series against a shifted copy of itself is not"),
+               check="mae(x, x) is 0, and a series against a shifted copy of itself is not",
+               **{"try": "delete the mask and subtract the two series "
+                         "directly. It still returns a number, because pandas "
+                         "skips NaN in mean(). Now do the same after "
+                         ".to_numpy() and watch it become nan. Which of those "
+                         "two failures would you rather have in a notebook "
+                         "you are not reading closely?"}),
         code('''
 def mae(truth, forecast):
     """Mean absolute error, ignoring days where either side is missing."""
@@ -431,7 +487,12 @@ print(f"mae against a shift     {mae(pool, pool.shift(7)):,.0f} boardings")
             input="March to May 2019, rail and bus",
             output="MAE and MAPE for copy-last-week on each",
             constraint="quote the window in the same sentence as the number — the same forecast scores very differently over three spring months than over three years",
-            check="also report the single worst day. One holiday costs more than eight ordinary days put together, and a mean absolute error hides that entirely."),
+            check="also report the single worst day. One holiday costs more than eight ordinary days put together, and a mean absolute error hides that entirely.",
+            **{"try": "compute the same MAPE over December instead of March "
+                      "to May. It rises sharply, and rail ridership did not "
+                      "become harder to predict — the denominators got "
+                      "smaller. That is the MAPE trap of the table above, "
+                      "measured rather than asserted."}),
         code('''
 for name, col in (("rail", "rail"), ("bus", "bus")):
     part  = df[col]["2019-03":"2019-05"]
@@ -459,7 +520,13 @@ require no fitting at all:
                input="the 2016-01 to 2019-05 rail pool",
                output="MAE for four forecasts that require no fitting",
                constraint="every forecast scored on exactly the same days, so they are comparable",
-               check="copying last week beats copying yesterday — if not, the alignment is wrong"),
+               check="copying last week beats copying yesterday — if not, the alignment is wrong",
+               **{"try": "add 'copy 28 days back' to the table: also a whole "
+                         "number of weeks, but four times as far away. Where "
+                         "does it land relative to the day-before and last- "
+                         "week rows, and what does that say about how much of "
+                         "the naive forecast is the weekday and how much is "
+                         "the recency?"}),
         code('''
 baselines = {
     "a constant (the mean)":  pd.Series(pool[:"2018-12"].mean(), index=target.index),
@@ -486,7 +553,13 @@ Everything below is measured against it, including the parts that disappoint.
                input="the naive-forecast MAE",
                output="the target MAE, stated before any model is fitted",
                constraint="state the target BEFORE fitting, so it cannot be chosen afterwards to fit the result",
-               check="the target is printed, so it cannot be quietly revised"),
+               check="the target is printed, so it cannot be quietly revised",
+               **{"try": "set TARGET_IMPROVEMENT to 0.30 and re-run "
+                         "everything below. Nothing in this notebook reaches "
+                         "it. The honest response is to report that, not to "
+                         "lower the target after seeing the results — which "
+                         "is exactly why the cell asks you to change it now "
+                         "rather than later."}),
         code('''
 NAIVE_MAE = mae(target, pool.shift(7)[WINDOW:])
 
@@ -517,7 +590,12 @@ in the usual way expects inputs near 1.
                input="a series as a tensor, and a window length",
                output="a Dataset yielding (window, next step) pairs",
                constraint="the target must be the step AFTER the window and never inside it — an off-by-one leaks one day and nothing later complains",
-               check="length is len(series) - window_length"),
+               check="length is len(series) - window_length",
+               **{"try": "change end = idx + self.window_length to end = idx "
+                         "+ self.window_length - 1. The target is now the "
+                         "last day of the window, every MAE below collapses "
+                         "towards zero, and nothing anywhere raises. That is "
+                         "what a one-day leak looks like from the outside."}),
         code('''
 class TimeSeriesDataset(torch.utils.data.Dataset):
     """Every window of `window_length` steps, and the step that follows it."""
@@ -543,7 +621,11 @@ leak of exactly one day, and no later cell would complain.
                input="six integers and a window of three",
                output="every window printed with the value that follows it",
                constraint="test the class on data small enough to check by eye before trusting it",
-               check="read the output and confirm the target is never inside the window"),
+               check="read the output and confirm the target is never inside the window",
+               **{"try": "give the toy series six values and window_length = "
+                         "6. The dataset has length zero and the loop prints "
+                         "nothing at all. Which assert further down would "
+                         "have caught that, and how many cells later?"}),
         code('''
 toy = torch.tensor([[0], [1], [2], [3], [4], [5]])
 for window, t in TimeSeriesDataset(toy, window_length=3):
@@ -553,7 +635,11 @@ for window, t in TimeSeriesDataset(toy, window_length=3):
                input="the rail pool, scaled by a million",
                output="X of shape (rows, 56, 1) and y of shape (rows, 1)",
                constraint="assert the shapes rather than printing them, so a wrong shape stops the notebook",
-               check="rows equals len(pool) - 56"),
+               check="rows equals len(pool) - 56",
+               **{"try": "drop the .unsqueeze(1) and re-run. X becomes (rows, "
+                         "56) and the assert fires here. Then comment the "
+                         "assert out and see how far the notebook gets before "
+                         "the shape becomes somebody else's error message."}),
         code('''
 series = torch.tensor(pool.values / 1e6, dtype=torch.float32).unsqueeze(1)
 dataset = TimeSeriesDataset(series, WINDOW)
@@ -579,7 +665,12 @@ check against the data.
                input="the fitted linear model's 56 coefficients",
                output="coefficient against lag, with whole weeks marked",
                constraint="lag 1 on the right, so the axis reads as time running backwards from today",
-               check="print the mean weight on weekly lags against all others rather than eyeballing"),
+               check="print the mean weight on weekly lags against all others rather than eyeballing",
+               **{"try": "refit on the first 200 rows only and replot. Are "
+                         "the weekly spikes still the largest coefficients, "
+                         "and how much noise sits on the other lags? "
+                         "Interpretability is a property of a particular fit, "
+                         "not of the model class."}),
         code('''
 from sklearn.linear_model import LinearRegression
 
@@ -624,7 +715,11 @@ prompt(
        input="the pool as 56-lag windows",
        output="a cross-validated MAE from a shuffled five-fold split",
        constraint="this is the previous lecture's broken cell, reproduced exactly",
-       check="look at the fold spread — they agree with each other, which is what a stable measurement of the wrong quantity looks like. It must reproduce Lecture 19's figure to the boarding. If it does not, one  of the two notebooks has drifted and every comparison below is void — go  back and fix that before reading on."),
+       check="look at the fold spread — they agree with each other, which is what a stable measurement of the wrong quantity looks like. It must reproduce Lecture 19's figure to the boarding. If it does not, one  of the two notebooks has drifted and every comparison below is void — go  back and fix that before reading on.",
+       **{"try": "raise the twenty seeds to a hundred and read the spread "
+                 "across seeds again. It barely moves: the shuffled protocol "
+                 "is stable, and it is stably measuring the wrong quantity. "
+                 "Stability is not validity."}),
         code('''
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import KFold, TimeSeriesSplit, cross_val_score
@@ -657,7 +752,11 @@ print(f"over 20 seeds   MAE {RANDOM_CV:>10,.0f}   "
             input="the same windows, fit on everything up to the end of 2018",
             output="MAE on the five months that follow, and the naive forecast on the same rows",
             constraint="score the naive baseline on the SAME test rows — otherwise a gap between protocols could be the rows being harder rather than the protocol being honest",
-            check="report both, and their ratio. The ratio is a skill score, and it is the only thing comparable between two protocols that scored different days."),
+            check="report both, and their ratio. The ratio is a skill score, and it is the only thing comparable between two protocols that scored different days.",
+            **{"try": "move the cut from 2019-01-01 to 2018-07-01. Both MAEs "
+                      "change and the skill ratio changes much less, because "
+                      "the ratio divides out how hard the rows are. That is "
+                      "the reason to report it."}),
         code('''
 dates = pool.index[WINDOW:]
 tr = dates < "2019-01-01"
@@ -680,7 +779,12 @@ print("the rows are. That is what makes the two protocols comparable at all.")
             input="twenty random splits with the SAME training and test sizes as the rolling backtest",
             output="the mean MAE",
             constraint="match the sizes — TimeSeriesSplit's first fold trains on a fifth of the data, so a comparison against it confounds the protocol with the training-set size",
-            check="this is the row that isolates the protocol. Same model, same sizes, same metric; only the ordering differs."),
+            check="this is the row that isolates the protocol. Same model, same sizes, same metric; only the ordering differs.",
+            **{"try": "set L = 200, keeping T = 98, and re-run. Both "
+                      "protocols get worse and the gap between them narrows. "
+                      "How much of the backtest's disadvantage was the "
+                      "protocol, and how much was training on a fifth of the "
+                      "data?"}),
         code('''
 from sklearn.model_selection import ShuffleSplit
 
@@ -729,7 +833,12 @@ prompt(
        input="the same X and y",
        output="the same five-fold MAE, split by time instead",
        constraint="no training row may come after a test row; change one call and nothing else",
-       check="report the gap against the shuffled number in boardings and per cent. Compare the largest training index with the smallest test index and assert  the gap. One line, and it fails loudly the day someone sorts the frame  upstream."),
+       check="report the gap against the shuffled number in boardings and per cent. Compare the largest training index with the smallest test index and assert  the gap. One line, and it fails loudly the day someone sorts the frame  upstream.",
+       **{"try": "print the largest training index and the smallest test "
+                 "index for each fold, as the check asks. Then shuffle X and "
+                 "y with a random permutation and print them again: "
+                 "TimeSeriesSplit still splits by position, and position is "
+                 "no longer time."}),
         code('''
 cv = TimeSeriesSplit(n_splits=5)          # was KFold(shuffle=True)
 folds_time = -cross_val_score(model, X, y, cv=cv,
@@ -762,7 +871,11 @@ prompt(
        input="the same X and y again",
        output="MAE with a gap of one window between train and test",
        constraint="no training row may be ADJACENT to a test row either — two consecutive days are nearly the same number",
-       check="print mean and fold spread for all three protocols together. The gapped number must be **worse** again than the plain time split. Each  time you remove a route for information to travel, the score gets worse  and more honest. A protocol that improves the score is a protocol you  should distrust."),
+       check="print mean and fold spread for all three protocols together. The gapped number must be **worse** again than the plain time split. Each  time you remove a route for information to travel, the score gets worse  and more honest. A protocol that improves the score is a protocol you  should distrust.",
+       **{"try": "set gap=0 and read the margin back. Whatever returns is "
+                 "adjacency — two consecutive days being nearly the same "
+                 "number — and it is a separate leak from the ordering one, "
+                 "with a separate fix."}),
         code('''
 # Condition 2, made explicit: leave a gap the width of one window between the
 # end of training and the start of testing, so no test target can be predicted
@@ -788,7 +901,11 @@ prompt(
        input="the naive baseline and the four protocols' MAEs",
        output="the margin over the baseline that each protocol reports",
        constraint="quote the margin, not the MAE — the margin is what the shuffle was inflating",
-       check="state what share of the claimed margin was protocol rather than model. The margin should shrink monotonically as the protocol gets stricter. If  it does not, either a protocol is mis-implemented or the baseline is being  measured over a different set of days than the models."),
+       check="state what share of the claimed margin was protocol rather than model. The margin should shrink monotonically as the protocol gets stricter. If  it does not, either a protocol is mis-implemented or the baseline is being  measured over a different set of days than the models.",
+       **{"try": "add a fifth row: forward 5-fold with gap = 2 * WINDOW. Does "
+                 "the margin keep shrinking? Where it stops shrinking is "
+                 "where the purge has begun removing training data rather "
+                 "than removing a leak."}),
         code('''
 target = pool[WINDOW:]
 naive = pool.shift(7)[WINDOW:]
@@ -834,7 +951,11 @@ prompt(
        input="the whole series, through 2021",
        output="the mean level before and after March 2020, and a plot spanning both",
        constraint="this is not a leak and not a bug — say so plainly; the protocol was right and the model still stopped working",
-       check="the ratio of the two levels is printed, not described. Print the mean level either side of March 2020. If the two differ by more  than the model's entire error budget, the question is not 'why is the  model wrong' but 'when did this model stop being about the world'."),
+       check="the ratio of the two levels is printed, not described. Print the mean level either side of March 2020. If the two differ by more  than the model's entire error budget, the question is not 'why is the  model wrong' but 'when did this model stop being about the world'.",
+       **{"try": "refit on 2016 to 2019 and score on 2020-04 to 2020-08, "
+                 "beside copy-last-week on exactly the same days. Then write "
+                 "the two sentences the checklist asks for: was the model "
+                 "wrong, or was the question?"}),
         code('''
 level_2019 = df["rail"]["2019-01":"2019-05"].mean()
 level_2020 = df["rail"]["2020-04":"2020-08"].mean()
