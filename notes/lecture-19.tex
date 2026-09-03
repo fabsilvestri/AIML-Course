@@ -1,0 +1,1056 @@
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+
+\begin{document}
+\notestitle{19}{Information retrieval: the lexical foundation}{SciFact (BEIR), 5{,}183 abstracts}
+
+\section{The problem}
+
+Eighteen lectures of this course have been about prediction: given an input,
+produce a label, a number, or a sequence. Retrieval is not that.
+
+The input is a \term{query} and a \term{corpus}. The output is an
+\term{ordering} of the corpus. Nobody wants a yes or a no; they want the
+evidence, ranked, so that a person can read the top few and decide.
+
+That change of output changes everything downstream of it. There is no fixed
+set of classes, because the corpus changes daily. There is no single right
+answer, because several documents may be relevant and their order matters. And
+you cannot afford to score the whole corpus with a neural network for every
+query, because there are millions of documents and the user is waiting.
+
+\subsection{Why it is not classification}
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+\toprule
+ & \textbf{Classification} & \textbf{Retrieval} \\
+\midrule
+Input             & one document              & a query and a corpus \\
+Output            & a label from a fixed set  & an ordering of the corpus \\
+Classes           & fixed, known at training  & the corpus, changing daily \\
+Right answer      & one                       & several, and their order matters \\
+Cost per prediction & one forward pass        & the whole corpus, if you are naive \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+You could phrase retrieval as classification --- one class per document --- and
+it would be useless. The classes change every time a document is added, there
+are millions of them, and each has a handful of examples.
+
+\subsection{The shape of every search system}
+
+Every production search system has the same three stages.
+
+\begin{enumerate}[leftmargin=*]
+  \item \term{Retrieve}: millions $\rightarrow$ hundreds. Must be cheap.
+  \item \term{Re-rank}: hundreds $\rightarrow$ tens. Can be expensive.
+  \item \term{Present}: tens $\rightarrow$ ten. Diversity, freshness, policy.
+\end{enumerate}
+
+This lecture is stage~1, and stage~1 decides the ceiling:
+
+\begin{keybox}[title={The first-stage ceiling}]
+A document the first stage never returns \emph{cannot} be recovered by any
+later stage, however good that stage is. This is why we will keep quoting
+recall@100 for a system whose output is ten results. The first stage is not
+judged on what the user sees; it is judged on what it makes possible.
+\end{keybox}
+
+Stage~2 is \lecture{20}. Stage~3 is mostly not machine learning and mostly not
+in this course.
+
+\subsection{An assumption we import}
+
+Whatever we build, a person reads its output, and that person's attention is
+not uniform: the first result is examined far more often than the second,
+almost nobody reaches the tenth, and the second page effectively does not
+exist.
+
+Nothing in this lecture \emph{measures} that. It is an assumption imported from
+outside, and it is flagged as one here because every metric in
+Section~\ref{sec:deriv} is an attempt to encode it --- and the differences
+between those metrics are differences of opinion about the shape of the decay.
+
+\subsection{The corpus, counted}
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Quantity} & \textbf{SciFact} \\
+\midrule
+Abstracts                                  & 5{,}183 \\
+Claims with judgements (test)              & 300 \\
+Mean abstract length, in tokens            & 225.2 \\
+Median abstract length                     & 213 \\
+Vocabulary                                 & 35{,}734 \\
+Relevant documents per claim, mean         & 1.13 \\
+Claims with exactly one relevant document  & 92.3\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The last row matters more than it looks. With one relevant document per claim
+most of the time, recall@10 and the reciprocal rank measure nearly the same
+thing. On a corpus where every query had twenty relevant documents, they would
+not, and half of Section~\ref{sec:deriv} would read differently.
+
+SciFact is used here for one reason: it is small enough that we can score
+\emph{every} document for \emph{every} query, exactly, with no approximate
+index in the way. Every number in this lecture and the next is therefore a
+property of the method rather than of an index setting nobody inspected.
+
+\subsection{The baseline: return the corpus unranked}
+
+Before any method, ask what \emph{no} method scores. Return every document in
+its stored corpus order, the same order for every query:
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Metric} & \textbf{Fixed order} \\
+\midrule
+Recall@10        & 0.0033 \\
+Reciprocal rank  & 0.0017 \\
+NDCG@10          & 0.0012 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Effectively zero --- and that is the point. Unlike accuracy under imbalance in
+\lecture{3}, a ranking metric has an honest floor near zero. So ``better than
+nothing'' is never an argument in retrieval: the comparison that matters is
+always against the \emph{previous method}, and for the next thirty years that
+method has been BM25.
+
+\section{From filtering to scoring}
+
+\subsection{First: what is a term?}
+
+Before any weighting there is a decision almost nobody writes up: how the text
+becomes a list of things to count. Take a real claim from the corpus,
+``0-dimensional biomaterials show inductive properties.'' Lower-case it and
+split on non-alphanumeric characters and you get six tokens:
+
+\begin{center}\code{0 \ dimensional \ biomaterials \ show \ inductive \ properties}\end{center}
+
+That is already three decisions, and one of them has done damage:
+\code{0-dimensional} has become \code{0} and \code{dimensional}, two terms that
+mean nothing apart. Count how many abstracts contain each:
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Term} & \textbf{Abstracts containing it} \\
+\midrule
+\code{0}             & 951 \\
+\code{dimensional}   & 72 \\
+\code{biomaterials}  & 1 \\
+\code{show}          & 1{,}012 \\
+\code{inductive}     & 2 \\
+\code{properties}    & 211 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\code{biomaterials} occurs in one abstract of 5{,}183 and \code{show} in
+1{,}012. One of those terms decides the answer and the other decides nothing
+--- and no weighting scheme has been chosen yet. The outcome is already largely
+determined by the tokeniser.
+
+\subsubsection{What we are deliberately not doing: stemming}
+
+Our tokeniser treats the following as unrelated terms:
+
+\begin{center}
+\small
+\begin{tabular}{llll}
+\toprule
+\code{cell} 1{,}837 & \code{cells} 1{,}969 & \code{cellular} 514 & \\
+\code{infect} 10 & \code{infects} 7 & \code{infection} 337 & \code{infected} 166 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A stemmer would merge each row and pool the evidence: a query for
+\code{infect} would then reach the 337 abstracts containing \code{infection}
+rather than only 10. It also merges things that should not be merged, and the
+net effect on scores is corpus-dependent and usually small. We leave it out
+because every unexplained step between the text and the number is somewhere a
+result can hide --- and because the mismatch it half-solves has a much better
+answer in \lecture{20}.
+
+\subsection{The obvious first idea, and its measurement}
+
+Boolean retrieval returns the documents containing \emph{all} the query terms:
+\[ \text{result} \;=\; \bigcap_{t \in q} \text{postings}(t). \]
+It is exact, it is fast, and it is how search worked for thirty years. Before
+reading on, predict: on a corpus of scientific abstracts, and claims written by
+scientists, how many abstracts contain every word of a claim?
+
+\begin{failbox}[title={Boolean retrieval, over all 300 test claims}]
+\begin{center}
+\small
+\begin{tabular}{lr}
+Claims matching no document at all & 98.0\% \\
+Mean documents matching every term & 0.023 \\
+Most any claim matched             & 2 \\
+\end{tabular}
+\end{center}
+98.0\% of claims return an \emph{empty page}. Not a bad ranking --- nothing at
+all. And the failure is silent, because an empty result set is
+indistinguishable from ``no such document exists''.
+\end{failbox}
+
+The conjunction is brittle: one word of the claim absent from an otherwise
+perfect abstract, and the abstract is excluded entirely. This is the
+observation that reorganises the whole field:
+
+\begin{keybox}[title={Stop filtering; start scoring}]
+Every document gets a number. The user gets the largest ones. A missing term
+then costs \emph{something} rather than \emph{everything}.
+\end{keybox}
+
+\subsection{Why scoring is nevertheless cheap}
+
+Scoring every document sounds worse than filtering, not better. Naively, per
+query on this corpus, you would touch 5{,}183 documents and read 1.17~million
+tokens --- and this is a tiny corpus. A web index is $10^{10}$ documents and
+the user is waiting 200~ms.
+
+But almost every one of those documents shares \emph{no} term with the query
+and contributes exactly zero to any sensible score. Reading them is the waste,
+and the fix is a data structure rather than a model.
+
+\begin{definition}[Inverted index]
+For every term, store the list of documents containing it, together with the
+count. One term's entry is called its \term{postings list}.
+\end{definition}
+
+\begin{verbatim}
+post = defaultdict(list)
+for i, doc in enumerate(docs):
+    for term, tf in Counter(doc).items():
+        post[term].append((i, tf))
+\end{verbatim}
+
+Four lines, and it is the entire data structure the field is built on. Scoring
+then visits only $\bigcup_{t \in q} \text{postings}(t)$ --- the documents that
+can possibly score above zero:
+
+\begin{verbatim}
+s = np.zeros(N)
+for t in query:
+    for i, tf in post.get(t, []):
+        s[i] += weight(t, tf, length[i])
+\end{verbatim}
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+Vocabulary (distinct terms)      & 35{,}734 \\
+Postings (term--document pairs)  & 633{,}514 \\
+Full matrix, were it dense       & 185 million cells \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The postings occupy 0.3\% of the dense matrix. Sparsity here is not an
+optimisation; it is the reason the field is possible at all. Everything that
+remains to be decided is the function \code{weight}.
+
+\section{Term weighting, and BM25}
+
+Start from the obvious idea: a document mentioning \emph{biomaterials} five
+times is probably more about biomaterials than one mentioning it once. So score
+by how often the query terms occur. Two failures arrive immediately.
+
+\begin{enumerate}[leftmargin=*]
+  \item \term{Common words dominate.} Every abstract contains \emph{of} and
+        \emph{the}, so a query containing them matches everything equally.
+  \item \term{Long documents win.} A 900-word abstract contains more of
+        everything than a 100-word one and is not thereby more relevant.
+\end{enumerate}
+
+The rest of the method is two corrections, one for each failure, and each has a
+parameter --- so each can be measured rather than argued about.
+
+\subsection{Saturation, and the parameter $k_1$}
+
+The first correction: the tenth occurrence of a word should not count ten times
+the first.
+\[
+  \frac{\text{tf}\,(k_1+1)}{\text{tf} + k_1} \;\longrightarrow\; k_1 + 1
+  \quad\text{as tf}\to\infty .
+\]
+
+\begin{center}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+tf     & 1 & 2 & 3 & 5 & 10 & 20 \\
+factor & 1.000 & 1.310 & 1.462 & 1.610 & 1.743 & 1.818 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+From one to two occurrences the factor rises by 0.310; from ten to twenty it
+rises by 0.075. The curve is bounded, so no single word can dominate a score by
+repetition --- which is, incidentally, the first anti-spam device in search.
+
+$k_1$ sets how fast the saturation bites: small $k_1$ saturates almost
+immediately, large $k_1$ approaches raw counting. Measured over 150 claims with
+$b$ held at 0.4:
+
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+$k_1$    & 0.5 & 0.9 & 1.2 & 2.0 \\
+NDCG@10  & 0.6883 & 0.6937 & 0.6944 & 0.6926 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The spread across a fourfold change in $k_1$ is 0.0061. That is the honest
+finding, and it is not the one you would guess from how much has been written
+about tuning this parameter: on abstracts, $k_1$ barely matters. It matters on
+long documents, where a term can occur fifty times. \emph{Report the corpus
+with the parameter, always.}
+
+\subsection{Inverse document frequency}
+
+The second correction weights a term by how rare it is:
+\[
+  \mathrm{idf}(t) \;=\; \log\!\left(1 + \frac{N - n_t + 0.5}{n_t + 0.5}\right),
+\]
+for $N$ documents of which $n_t$ contain $t$.
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Term} & \textbf{Abstracts} & \textbf{idf} \\
+\midrule
+\code{of}  & 5{,}173 & 0.0020 \\
+\code{the} & 5{,}159 & 0.0047 \\
+\code{and} & 5{,}158 & 0.0049 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\code{of} appears in 5{,}173 of 5{,}183 abstracts and earns a weight of 0.0020.
+\emph{No stop-word list was needed.} The weighting derives the stop words from
+the corpus it is given.
+
+\begin{keybox}[title={idf replaces the stop-word list}]
+Classical systems shipped a hand-written list of words to delete. That list is
+language-specific and must be maintained; it is corpus-blind, so in a corpus
+about the band \emph{The Who} deleting \emph{the} and \emph{who} destroys the
+query; and its decision is binary, with nothing between delete and keep.
+
+A weight of 0.0020 is not deletion, it is near-deletion, and it is computed
+\emph{from this corpus}. If a word is common here, it is discounted here, and
+nobody maintains anything. This is the same move as learning a representation
+instead of engineering features --- arriving thirty years earlier.
+\end{keybox}
+
+The particular form above is used rather than the older $\log(N/n_t)$ because
+it stays well-behaved for a term appearing in almost every document. Whichever
+you use, say which: the two agree closely where $n_t$ is small and diverge
+exactly where a stop word lives.
+
+\subsection{Length normalisation, and the parameter $b$}
+
+\[
+  \text{tf}' \;=\; \frac{\text{tf}}
+  {\text{tf} + k_1\!\left(1 - b + b\,\dfrac{|d|}{\text{avgdl}}\right)}
+\]
+with $b = 0$ meaning no normalisation, so long documents keep their advantage,
+and $b = 1$ meaning length is divided out completely.
+
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+$b$      & 0.0 & 0.4 & 0.75 & 1.0 \\
+NDCG@10  & 0.6861 & 0.6937 & 0.6917 & 0.7011 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The spread is again small, and again that \emph{is} the finding: SciFact
+abstracts are of similar length --- 225 tokens on average --- so there is
+little here for this correction to correct. On web pages, whose lengths span
+three orders of magnitude, there would be.
+
+\subsection{BM25, assembled}
+
+\begin{derivbox}[title={BM25}]
+\[
+  \text{BM25}(q,d) \;=\; \sum_{t \in q} \mathrm{idf}(t)\,
+  \frac{\text{tf}_{t,d}\,(k_1+1)}
+       {\text{tf}_{t,d} + k_1\!\left(1-b+b\frac{|d|}{\text{avgdl}}\right)}
+\]
+\begin{itemize}[leftmargin=*,nosep]
+  \item the \term{idf} factor: rare terms count for more;
+  \item the \term{saturating tf}: the tenth occurrence adds far less than the
+        second, because $k_1$ bounds the growth;
+  \item the \term{length term}: $b$ decides how much of the document's length
+        is divided out.
+\end{itemize}
+\end{derivbox}
+
+Every piece is there because a specific failure demanded it. That is why BM25
+has survived thirty years of replacement attempts, and it is the baseline every
+neural retriever is measured against --- including the one in \lecture{20}.
+
+\subsection{One document, scored term by term}
+
+The claim \emph{``Incidence rates of cervical cancer have decreased.''} against
+the 274-token abstract BM25 ranked first for it:
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Term} & \textbf{tf} & \textbf{idf} & \textbf{contribution} \\
+\midrule
+\code{cervical}  & 3 & 4.736 & 6.786 \\
+\code{incidence} & 5 & 3.238 & 5.145 \\
+\code{rates}     & 2 & 2.979 & 3.802 \\
+\code{cancer}    & 5 & 1.902 & 3.023 \\
+\code{have}      & 3 & 1.008 & 1.445 \\
+\code{of}        & 6 & 0.002 & 0.003 \\
+\midrule
+\textbf{Total}   &   &       & \textbf{20.204} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\code{cervical} occurs three times and is worth 6.786. \code{of} occurs six
+times --- twice as often --- and is worth 0.003. That ratio is the whole method
+working, and this abstract is one of the judged-relevant ones.
+
+\subsection{BM25, measured}
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Metric} & \textbf{Fixed order} & \textbf{BM25} \\
+\midrule
+Precision@1 & 0.0000 & 0.5433 \\
+Recall@10   & 0.0033 & 0.7784 \\
+Recall@100  & 0.0117 & 0.8852 \\
+MRR         & 0.0017 & 0.6350 \\
+NDCG@10     & 0.0012 & 0.6611 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The right abstract is in the top ten for 77.8\% of claims and top of the list
+for 54.3\%. No training, no labels, no gradient --- a data structure and two
+corrections.
+
+Hold on to recall@100: 88.5\%. Almost everything relevant is retrieved
+\emph{somewhere} in the first hundred. The gap between @10 and @100 is exactly
+what re-ranking exists to close, and it is half of \lecture{20}.
+
+\subsection{Which correction was doing the work?}
+
+An argument is not a measurement. Remove each correction in turn, full test
+set:
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Scoring function} & \textbf{NDCG@10} \\
+\midrule
+raw term frequency               & 0.0944 \\
+no idf                           & 0.5350 \\
+no saturation, no length         & 0.4801 \\
+no length normalisation          & 0.6490 \\
+BM25                             & 0.6611 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{itemize}[leftmargin=*]
+  \item \term{idf is most of the method.} Removing it costs 0.1261. Without
+        it, common words drown the rare ones that identify the document.
+  \item \term{Saturation earns its place.} idf alone on raw counts reaches
+        0.4801 against the full method's 0.6611 --- roughly 0.18 of NDCG.
+  \item \term{Length normalisation is nearly free here}, worth about 0.012,
+        which is consistent with the $b$ sweep and with abstracts being of
+        similar length.
+\end{itemize}
+
+\begin{keybox}[title={The transferable part}]
+Not the ordering --- that is a fact about SciFact. It is that each term of a
+formula can be \emph{removed and priced}, and that a component nobody has
+priced is a component nobody has justified. The same procedure applies to every
+architecture in Part~IV.
+\end{keybox}
+
+\begin{trybox}[title={Exercise 19.1}]
+Set $b = 0$ in the notebook and re-score; then remove the idf factor entirely
+and re-score again. Before running either, write down which of the two you
+expect to cost more, and by how much. One of them barely matters on this
+corpus, and you should be able to say which and why from the corpus statistics
+alone.
+\end{trybox}
+
+\section{Derivation: evaluating a ranking}\label{sec:deriv}
+
+\subsection{What we are given}
+
+A derivation needs its inputs named. For one query we have
+
+\begin{itemize}[leftmargin=*,nosep]
+  \item a ranked list $d_1, d_2, \ldots, d_n$ --- the system's output, an
+        ordering of the corpus;
+  \item a set $R$ of relevant documents --- the judgements, made by people, and
+        treated as truth for now.
+\end{itemize}
+
+Everything that follows is a function of those two objects and nothing else. No
+scores, no probabilities, no model --- which is exactly why the same metrics
+apply to BM25 here and to a transformer in \lecture{20}.
+
+The one assumption is that $R$ is correct and complete. It is neither, and
+Section~\ref{sec:pooling} is about what that costs.
+
+\subsection{A worked example, used throughout}
+
+The claim \emph{``Incidence rates of cervical cancer have decreased.''} has
+three relevant abstracts in the corpus. BM25 placed them at ranks 1, 2 and 8:
+
+\begin{center}
+\small
+\begin{tabular}{cccccccccc}
+\toprule
+\checkmark & \checkmark & $\cdot$ & $\cdot$ & $\cdot$ & $\cdot$ & $\cdot$ & \checkmark & $\cdot$ & $\cdot$ \\
+1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\scope{How this example was chosen: it is the first test claim for which BM25
+puts at least three relevant abstracts in the top ten, chosen so that the
+arithmetic is visible --- a single hit gives a one-term sum and demonstrates
+nothing about a discount. It is therefore better than typical, and the honest
+summary of the method remains the mean over all 300 claims.}
+
+\subsection{Precision and recall, at a cutoff}
+
+\[
+  \text{P}@k = \frac{|R \cap \text{top-}k|}{k},
+  \qquad
+  \text{R}@k = \frac{|R \cap \text{top-}k|}{|R|}.
+\]
+
+P@$k$ asks: of what I showed you, how much was good. R@$k$ asks: of what was
+good, how much did I show you.
+
+On the example with $k=10$, all three relevant abstracts are inside the top
+ten, so $\text{R}@10 = 3/3 = 1$: perfect recall. And that is the problem. The
+third abstract sits at rank 8, where a user may never look, and recall@10
+cannot say so. It counts a \emph{set}; it does not read an \emph{order}.
+
+\subsection{The cutoff is arbitrary}
+
+Every fixed $k$ hides the same thing in a different place. Too small, and a
+method that fills ranks 11--20 with the answer scores zero, identically to one
+that never finds it. Too large, and rank 1 and rank 100 count the same, so the
+metric stops rewarding the ordering it exists to measure.
+
+What we actually want is a number that \emph{decreases smoothly} as a relevant
+document moves down, rather than falling off a cliff at one chosen position.
+Every metric below is a different answer to that single requirement.
+
+\subsection{Reciprocal rank}
+
+\[ \text{RR} = \frac{1}{\text{rank of the first relevant document}} \]
+
+Our example finds one at rank 1, so $\text{RR} = 1.0000$. Averaged over queries
+this is \term{MRR}, and over all 300 claims BM25 scores 0.6350.
+
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+First hit at rank & 1 & 2 & 5 & 10 \\
+RR & 1.0000 & 0.5000 & 0.2000 & 0.1000 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Smooth, bounded, and it moves when the order moves. But it stops reading after
+the first hit: our ranking scores 1.0000 whether the other two abstracts sit at
+ranks 2 and 8 or nowhere at all. That makes MRR right for ``is there a good
+answer near the top?'' and wrong for ``did I find the evidence?''.
+
+\subsection{Average precision}
+
+\[
+  \text{AP} = \frac{1}{|R|} \sum_{i \,:\, d_i \in R} \text{P}@i
+\]
+--- the precision at each rank where a relevant document appears.
+
+\begin{center}
+\small
+\begin{tabular}{ccc}
+\toprule
+\textbf{Hit at rank $i$} & \textbf{Relevant so far} & \textbf{P@$i$} \\
+\midrule
+1 & 1 & 1.0000 \\
+2 & 2 & 1.0000 \\
+8 & 3 & 0.3750 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\[ \text{AP} = \tfrac{1}{3}\left(1.0000 + 1.0000 + 0.3750\right) = 0.7917. \]
+
+Every hit contributes, and one further down contributes less because the
+precision above it is worse.
+
+\begin{failbox}[title={Where marks are lost}]
+Divide by $|R|$, not by the number of hits actually found. Dividing by the hit
+count gives \emph{mean precision}, which is a different and more flattering
+quantity, and it is the commonest error in this material.
+\end{failbox}
+
+\subsection{Where AP stops, and what replaces it}
+
+AP assumes relevance is \emph{binary}. Often it is not. An abstract that
+directly tests a claim and one that mentions it in passing are both
+``relevant'', and AP cannot prefer the first. Web-search judgements are
+routinely graded: perfect, excellent, good, fair, bad.
+
+So there are now two requirements: a \term{gain} that depends on how relevant a
+document is, and a \term{discount} that depends on where it sits. Separating
+those two is the whole idea of the last metric.
+
+\subsubsection{Why a logarithm, and not something else}
+
+The discount could be any decreasing function. Three candidates, with what each
+implies about a user:
+
+\begin{center}
+\small
+\begin{tabular}{llll}
+\toprule
+\textbf{Discount} & \textbf{Rank 1 vs 2} & \textbf{Rank 9 vs 10} & \textbf{Says} \\
+\midrule
+$1$ (none)         & equal   & equal   & position is irrelevant \\
+$1/i$              & halves  & $-10\%$ & position is nearly everything \\
+$1/\log_2(i{+}1)$  & $-37\%$ & $-4\%$  & position matters, mildly \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+No derivation picks one; they encode different beliefs. The logarithm is
+convention, chosen because it is gentle enough that positions 5 and 10 remain
+distinguishable while rank 1 still leads. Convention is not truth: if you
+report NDCG you have adopted this curve, and you should be able to say so out
+loud.
+
+\subsection{Discounted cumulative gain, and its normalisation}
+
+\[ \text{DCG}@k = \sum_{i=1}^{k} \frac{g_i}{\log_2(i+1)} \]
+
+\begin{center}
+\small
+\begin{tabular}{crr}
+\toprule
+\textbf{Hit at rank $i$} & $\log_2(i+1)$ & \textbf{contribution} \\
+\midrule
+1 & 1.0000 & 1.0000 \\
+2 & 1.5850 & 0.6309 \\
+8 & 3.1699 & 0.3155 \\
+\midrule
+\textbf{DCG@10} & & \textbf{1.9464} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Is 1.9464 good? The question has no answer, because DCG depends on how many
+relevant documents exist: a claim with ten relevant abstracts can reach a far
+larger DCG than one with three, however well both are ranked. So divide by the
+best this query could possibly have scored --- the ideal ranking, all relevant
+documents first.
+
+\begin{center}
+\small
+\begin{tabular}{cr}
+\toprule
+\textbf{Ideal rank} & \textbf{contribution} \\
+\midrule
+1 & 1.0000 \\
+2 & 0.6309 \\
+3 & 0.5000 \\
+\midrule
+\textbf{IDCG@10} & \textbf{2.1309} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{derivbox}[title={NDCG}]
+\[
+  \text{NDCG}@k = \frac{\text{DCG}@k}{\text{IDCG}@k}
+  = \frac{1.9464}{2.1309} = 0.9134 .
+\]
+\end{derivbox}
+
+The same ranking, under four metrics:
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+Recall@10 & 1.0000 \\
+RR        & 1.0000 \\
+AP        & 0.7917 \\
+NDCG@10   & 0.9134 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Recall calls this ranking perfect. It is not: one abstract sits at rank 8.
+\emph{The metric you report decides what you are allowed to notice.}
+
+\subsection{One relevant document, moved}
+
+The simplest possible ranking: one relevant document, and the only question is
+where it sits.
+
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Rank} & 1 & 2 & 5 & 10 \\
+\midrule
+RR        & 1.0000 & 0.5000 & 0.2000 & 0.1000 \\
+NDCG@10   & 1.0000 & 0.6309 & 0.3869 & 0.2891 \\
+Recall@10 & 1.0000 & 1.0000 & 1.0000 & 1.0000 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Recall@10 is constant at 1 across the whole row: it cannot distinguish the best
+possible ranking from the worst one that still makes the page. RR falls
+fastest; NDCG falls more gently, by construction. And with 92.3\% of our claims
+having exactly one relevant abstract, \emph{this row is our corpus, most of the
+time}.
+
+\subsection{Which one to report}
+
+\begin{center}
+\small
+\begin{tabular}{ll}
+\toprule
+\textbf{Question} & \textbf{Metric} \\
+\midrule
+Is there a good answer at the top?          & MRR \\
+Did I find everything, order aside?         & Recall@$k$ \\
+Did I find everything, order counted?       & AP \\
+Graded relevance, position counted?         & NDCG@$k$ \\
+Will the second stage have anything to work with? & Recall@100 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{keybox}[title={The rule}]
+Choose the metric from the \emph{question}, before you see any scores.
+Choosing it afterwards, from the numbers, is how a paper comes to report
+recall@100 for the system that lost on NDCG@10 --- and it is the single
+commonest dishonesty in this literature.
+\end{keybox}
+
+\subsection{Averaging over queries}
+
+One more choice, usually made silently. Given per-query scores, do you average
+the \emph{scores} or pool the \emph{counts}?
+
+\begin{itemize}[leftmargin=*,nosep]
+  \item \term{Macro}: mean of the per-query metric. Every query counts equally,
+        including one with a single relevant document.
+  \item \term{Micro}: pool hits and totals across queries first. Queries with
+        many relevant documents dominate.
+\end{itemize}
+
+Every number in these notes is macro: the mean over 300 claims of that claim's
+own metric. MRR and NDCG are essentially always reported that way; precision
+and recall sometimes are not, and the two can differ substantially.
+
+The variance across queries is large and almost never reported. A mean NDCG of
+0.6611 contains claims scoring 1 and claims scoring 0.
+
+\subsection{What none of these metrics measure}
+
+\begin{itemize}[leftmargin=*,nosep]
+  \item \term{Latency.} A ranking that takes a minute has a real score of zero
+        and no metric here notices.
+  \item \term{Redundancy.} Ten identical relevant documents score perfectly and
+        serve the user once.
+  \item \term{The unjudged.} Anything the pool never saw is counted as
+        irrelevant --- Section~\ref{sec:pooling}.
+  \item \term{Harm.} A confidently ranked wrong answer and a merely absent one
+        score identically.
+\end{itemize}
+
+A metric is a choice of what to look at, and it is therefore also a choice of
+what to ignore.
+
+\begin{trybox}[title={Exercise 19.2}]
+Take the relevance pattern $\checkmark\,\cdot\,\checkmark\,\cdot\,\cdot\,\cdot\,\cdot\,\cdot\,\cdot\,\checkmark$
+(relevant at ranks 1, 3 and 10, three relevant documents in total) and compute
+P@10, R@10, RR, AP and NDCG@10 by hand. Then check each against
+\code{rank\_metrics} in the notebook. The written paper has asked for exactly
+this in each of the last three years.
+\end{trybox}
+
+\section{Where the judgements come from}\label{sec:pooling}
+
+Every metric above takes $R$ as given. Somebody had to decide, for 300 claims
+against 5{,}183 abstracts, which pairs are relevant. Judging all of them is
+1.55~million decisions for this very small corpus. For a web collection it is
+not large --- it is impossible.
+
+\begin{keybox}[title={Pooling}]
+Run several systems, take the top $k$ from each, judge the union, and treat
+everything unjudged as \emph{not relevant}. That last clause is an assumption,
+and it is doing a great deal of work.
+\end{keybox}
+
+\begin{failbox}[title={What pooling misses}]
+\begin{itemize}[leftmargin=*,nosep]
+  \item A document no pooled system ranked highly is unjudged, and therefore
+        counted as irrelevant --- whether or not it is.
+  \item So a genuinely new method, which finds documents the pool never saw, is
+        \emph{penalised for succeeding}.
+  \item The pool was built from the systems of its day, so an old collection
+        quietly encodes the assumptions of old methods.
+\end{itemize}
+Reported gains on a mature benchmark are partly gains at \emph{matching the
+pool}. It is why a method can win on the benchmark and disappoint in
+production, and why a leaderboard difference of a point or two is rarely worth
+defending.
+\end{failbox}
+
+This is the same shape as the label noise of \lecture{3} and the survivorship
+of \lecture{2}: the ground truth is a measurement, made by someone, under
+constraints.
+
+\subsection{SciFact specifically}
+
+SciFact's judgements come from the authors of the claims, who cited the
+abstracts. They are therefore unusually reliable and unusually \emph{sparse}:
+92.3\% of claims have exactly one relevant abstract, mean 1.13. An abstract
+that supports a claim but was not cited is unjudged, and scored as a miss.
+
+Which means our 0.6611 is a \emph{lower bound} on what a reader would call the
+quality of this ranking, not an estimate of it. Reporting it as ``BM25 achieves
+0.6611'' without that sentence is the kind of claim this course exists to stop.
+
+\subsection{Graded relevance changes the answer}
+
+SciFact's judgements are binary. Where they are graded, the gain in DCG is
+usually taken as $g_i = 2^{\text{rel}_i} - 1$ rather than $\text{rel}_i$
+itself:
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Grade} & \textbf{Linear gain} & $\mathbf{2^{\text{rel}}-1}$ \\
+\midrule
+0 --- bad       & 0 & 0 \\
+1 --- fair      & 1 & 1 \\
+2 --- good      & 2 & 3 \\
+3 --- excellent & 3 & 7 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The exponential says an excellent document at rank 3 is worth more than two
+fair ones at ranks 1 and 2 --- a claim about users, not about mathematics, and
+one you should be prepared to defend when you make it. Two systems can trade
+places when the gain function changes and nothing else does. State which you
+used.
+
+\section{The failure BM25 cannot fix}
+
+\begin{failbox}[title={The worst single-evidence claim in the test set}]
+\emph{``In mice, P. chabaudi parasites are able to proliferate faster early in
+infection when inoculated at lower numbers than when inoculated at high
+numbers.''}
+
+BM25 ranks its one relevant abstract \textbf{4{,}999 of 5{,}183}.
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+Query terms in the vocabulary        & 19 \\
+Terms the relevant abstract contains & 2 \\
+Which terms                          & \code{in}, \code{to} \\
+Mean idf of the shared terms         & 0.0378 \\
+Mean idf of the missing terms        & 3.2928 \\
+\end{tabular}
+\end{center}
+
+The abstract shares \code{in} and \code{to} with the claim it is evidence for.
+There is nothing for BM25 to match on, and no parameter setting rescues this.
+\end{failbox}
+
+That was the worst case. It is not an isolated one. Over every judged
+claim--abstract pair in the test set:
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+Mean fraction of query terms absent from the relevant abstract & 40.9\% \\
+Pairs sharing fewer than half the query terms                  & 28.6\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A relevant document is missing 40.9\% of the query's words on average. People
+restate, abbreviate, use the Latin name, or describe the mechanism instead of
+naming it --- and a method whose only evidence is shared strings cannot follow
+them.
+
+\begin{keybox}[title={The structural limit}]
+BM25 matches \emph{strings}. Relevance is about \emph{meaning}. That gap is not
+a tuning problem, and it is exactly what an embedding is for --- which is
+\lecture{20}, and the reason Part~V comes after Part~IV rather than before it.
+\end{keybox}
+
+\subsection{The ceiling, and what is left on the table}
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Metric} & \textbf{BM25} & \textbf{The most it could be} \\
+\midrule
+Recall@10  & 0.7784 & 1.0000 \\
+Recall@100 & 0.8852 & 1.0000 \\
+NDCG@10    & 0.6611 & 1.0000 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+There are two different opportunities here and they need different methods.
+Between recall@10 (77.8\%) and recall@100 (88.5\%) sit documents BM25 found but
+ranked too low --- a \emph{re-ranking} problem, solvable by an expensive model
+over a hundred candidates. The remaining 11.5\% were never retrieved at all; no
+re-ranker can reach them, and only a first stage that matches on something
+other than words can. Those are the two halves of \lecture{20}.
+
+\section{Reference}
+
+\subsection{Five questions to ask of any retrieval result}
+
+\begin{enumerate}[leftmargin=*]
+  \item \term{Which metric, and at what cutoff?} ``Better retrieval'' with no
+        metric named is not a claim.
+  \item \term{Against which baseline?} If BM25 is absent from the table, ask
+        why. It is free, and it is often close.
+  \item \term{Whose judgements, produced how?} Pooled from which systems, and
+        how long ago?
+  \item \term{Same corpus, same queries, same preprocessing?} A different
+        tokeniser is a different experiment.
+  \item \term{How large is the difference against the spread across queries?}
+        A gain of 0.005 on 300 queries is not a finding.
+\end{enumerate}
+
+\subsection{Where students lose marks}
+
+\begin{itemize}[leftmargin=*,nosep]
+  \item Computing DCG but forgetting to divide by the ideal, and then comparing
+        across queries.
+  \item Using $\log_2(i)$ rather than $\log_2(i+1)$, which divides by zero at
+        rank 1.
+  \item Dividing AP by the number of retrieved hits instead of $|R|$ --- that
+        is mean precision, not average precision.
+  \item Quoting a metric with no cutoff. ``NDCG of 0.66'' is incomplete.
+  \item Describing BM25 as ``tf--idf''. It is tf--idf \emph{with the two
+        corrections that make it work}.
+\end{itemize}
+
+\subsection{Vocabulary}
+
+\begin{center}
+\small
+\begin{tabular}{ll}
+\toprule
+Inverted index  & term $\rightarrow$ the documents containing it, with counts \\
+Postings list   & one term's entry in that index \\
+idf             & a term's weight, falling as more documents contain it \\
+BM25            & saturating tf, length-normalised, idf-weighted \\
+MRR             & mean of $1/(\text{rank of first hit})$ \\
+NDCG@$k$        & discounted gain over the best possible discounted gain \\
+qrels           & the relevance judgements themselves \\
+Pooling         & judging the union of several systems' top results \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Scope}
+
+\term{Examinable.} The retrieval problem and why it is not classification; the
+inverted index and why sparsity makes retrieval possible; idf, saturating tf
+and length normalisation, and BM25 assembled from them; Section~\ref{sec:deriv}
+in full --- P@$k$, R@$k$, RR, AP, DCG, NDCG and which question each answers;
+pooling, and what unjudged documents do to a reported score.
+
+\term{Not examinable --- engineering.} Index compression, skip pointers, query
+parsing, and any particular search library.
+
+\term{Beyond the syllabus.} The probabilistic derivation of BM25 from the RSJ
+model; query expansion and relevance feedback; learning to rank.
+
+\subsection{Reading}
+
+\begin{itemize}[leftmargin=*,nosep]
+  \item These notes are the primary source; the textbook does not cover
+        retrieval.
+  \item Manning, Raghavan and Sch\"utze, \emph{Introduction to Information
+        Retrieval} --- chapters 1, 2 and 6 for the index and term weighting,
+        chapter 8 for evaluation. Free online.
+  \item Robertson and Zaragoza, \emph{The Probabilistic Relevance Framework:
+        BM25 and Beyond} --- where BM25 comes from, if you want the derivation
+        we skipped.
+  \item The SciFact and BEIR papers, for how these judgements were made.
+\end{itemize}
+
+\subsection{Summary}
+
+\begin{keybox}[title={One line to keep}]
+A ranking is scored by a question, and the question must be chosen before the
+scores are seen.
+\end{keybox}
+
+Retrieval returns an ordering of a corpus, not a label, and the metrics,
+baselines and methods all follow from that. The inverted index makes it cheap:
+postings are 0.3\% of the dense matrix. BM25 is three corrections to counting
+words, each answering a stated failure, and it reaches 0.6611 NDCG@10 with no
+training at all. A ranking metric answers a question --- recall@10 called our
+worked example perfect while an abstract sat at rank 8. And every one of those
+numbers rests on judgements someone made on a pool, with everything unjudged
+counted as irrelevant.
+
+\end{document}

@@ -1,0 +1,131 @@
+% =====================================================================
+%  Shared preamble for the Part V lecture notes (lectures 19-22).
+%
+%  These four lectures sit outside Geron, so the notes ARE the primary
+%  source and are examined on the same terms as the textbook parts.
+%  Everything here is chosen to make that readable on paper: one column,
+%  generous measure, and the same six-colour palette as the slides so a
+%  student moving between the two is not re-learning what red means.
+%
+%  Build with pdflatex (twice, for the toc and the refs):
+%      cd notes && latexmk -pdf lecture-19.tex
+%  or  make -C notes
+% =====================================================================
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{newtxtext,newtxmath}      % Times-like: prints well, reads well
+\usepackage[scaled=0.86]{inconsolata} % code, at a size that sits beside Times
+\usepackage{microtype}
+% newtx defines \Bbbk, \openbox, \proof and \endproof; amssymb and amsthm
+% then redefine them and abort. Freeing the four names before those two
+% packages load is the standard fix, and it costs nothing here: we use
+% amsthm only for \newtheorem.
+\let\Bbbk\relax
+\usepackage{amsmath,amssymb}
+\let\openbox\relax
+\let\proof\relax
+\let\endproof\relax
+\usepackage{amsthm}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\usepackage{titlesec}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\tcbuselibrary{skins,breakable}
+
+% ---- the course palette, from assets/css/custom.css -------------------
+\definecolor{aimlprimary}{HTML}{0B3D62}   % deep blue  - structure
+\definecolor{aimlaccent} {HTML}{C0392B}   % brick red  - failures
+\definecolor{aimlsuccess}{HTML}{14663A}   % green      - repairs
+\definecolor{aimlmath}   {HTML}{6C3483}   % purple     - the derivation
+\definecolor{aimlmuted}  {HTML}{4B5563}
+\definecolor{aimlrule}   {HTML}{B0BCC7}
+\definecolor{aimlsoft}   {HTML}{F4F7F9}
+
+\usepackage[a4paper,margin=32mm,top=30mm,bottom=30mm]{geometry}
+\setlength{\parskip}{0.45\baselineskip}
+\setlength{\parindent}{0pt}
+\linespread{1.06}
+
+% ---- headings --------------------------------------------------------
+\titleformat{\section}{\Large\bfseries\color{aimlprimary}}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\large\bfseries\color{aimlprimary}}{\thesubsection}{0.7em}{}
+\titleformat{\subsubsection}{\bfseries\color{aimlmuted}}{}{0em}{}
+\titlespacing*{\section}{0pt}{1.6\baselineskip}{0.5\baselineskip}
+\titlespacing*{\subsection}{0pt}{1.2\baselineskip}{0.35\baselineskip}
+
+% ---- boxes -----------------------------------------------------------
+% One box per role, and the role is the colour. A student who has seen the
+% slides already knows what each one means before reading a word of it.
+\newtcolorbox{keybox}[1][]{
+  breakable, enhanced, colback=aimlsoft, colframe=aimlprimary,
+  boxrule=0.4pt, left=8pt, right=8pt, top=6pt, bottom=6pt,
+  fonttitle=\bfseries\small, coltitle=white, colbacktitle=aimlprimary,
+  attach boxed title to top left={yshift=-2mm, xshift=4mm},
+  boxed title style={boxrule=0pt, arc=1pt}, #1}
+
+\newtcolorbox{failbox}[1][]{
+  breakable, enhanced, colback=white, colframe=aimlaccent,
+  boxrule=0.9pt, left=8pt, right=8pt, top=6pt, bottom=6pt,
+  fonttitle=\bfseries\small, coltitle=white, colbacktitle=aimlaccent,
+  attach boxed title to top left={yshift=-2mm, xshift=4mm},
+  boxed title style={boxrule=0pt, arc=1pt}, #1}
+
+\newtcolorbox{derivbox}[1][]{
+  breakable, enhanced, colback=white, colframe=aimlmath,
+  boxrule=0.6pt, left=8pt, right=8pt, top=6pt, bottom=6pt,
+  fonttitle=\bfseries\small, coltitle=white, colbacktitle=aimlmath,
+  attach boxed title to top left={yshift=-2mm, xshift=4mm},
+  boxed title style={boxrule=0pt, arc=1pt}, #1}
+
+% An exercise. Deliberately the same shape as the notebook's `try` field:
+% one change, and what should happen to the output.
+\newtcolorbox{trybox}[1][]{
+  breakable, enhanced, colback=white, colframe=aimlsuccess,
+  boxrule=0.5pt, left=8pt, right=8pt, top=6pt, bottom=6pt,
+  fonttitle=\bfseries\small, coltitle=white, colbacktitle=aimlsuccess,
+  attach boxed title to top left={yshift=-2mm, xshift=4mm},
+  boxed title style={boxrule=0pt, arc=1pt}, #1}
+
+% ---- small semantics -------------------------------------------------
+\newcommand{\scope}[1]{\textcolor{aimlmuted}{\small #1}}
+\newcommand{\term}[1]{\textbf{#1}}
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\lecture}[1]{Lecture~#1}
+
+\newtheorem{definition}{Definition}[section]
+\newtheorem{proposition}[definition]{Proposition}
+
+% ---- title block -----------------------------------------------------
+% \notestitle{19}{Information retrieval: the lexical foundation}{SciFact (BEIR)}
+\newcommand{\notestitle}[3]{%
+  \thispagestyle{empty}
+  \begin{flushleft}
+    {\color{aimlmuted}\small\sffamily
+     APPLICATIONS OF MACHINE LEARNING \quad$\cdot$\quad
+     BSc Mathematics of Artificial Intelligence}\\[2mm]
+    {\color{aimlrule}\rule{\textwidth}{0.8pt}}\\[4mm]
+    {\color{aimlmuted}\large Lecture #1 \quad$\cdot$\quad Part V \quad$\cdot$\quad
+     Extended notes}\\[3mm]
+    {\Huge\bfseries\color{aimlprimary}\baselineskip=1.15\baselineskip #2\par}\vspace{4mm}
+    {\color{aimlmuted}\large Dataset: #3}\\[3mm]
+    {\color{aimlrule}\rule{\textwidth}{0.8pt}}
+  \end{flushleft}
+  \vspace{2mm}
+  \begin{keybox}[title={Why these notes exist}]
+    Lectures 19--22 sit outside G\'eron, the course's primary text. For those
+    four lectures \emph{these notes are the primary source}, and they are
+    examined on exactly the same terms as the textbook parts. Everything in
+    the slide deck for this lecture is here, with the arguments written out at
+    length rather than compressed onto a slide; the numbers are the ones the
+    accompanying notebook prints, and every one of them is a measurement on
+    the corpus named above rather than a figure quoted from a paper.
+  \end{keybox}
+  \vspace{1mm}
+  {\small\tableofcontents}
+  \vspace{2mm}
+  \noindent{\color{aimlrule}\rule{\textwidth}{0.4pt}}
+  \vspace{1mm}
+}
