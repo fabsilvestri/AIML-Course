@@ -62,7 +62,12 @@ def build() -> list:
             input="nothing",
             output="versions and the seed",
             constraint="cap the BLAS threads before numpy is imported",
-            check="print the versions. The protocol comparison below is exact arithmetic, but the SVD is not, and its thread count changes the last digits."),
+            check="print the versions. The protocol comparison below is exact arithmetic, but the SVD is not, and its thread count changes the last digits.",
+            **{"try": "set OMP_NUM_THREADS to 1 and run the notebook again. "
+                      "The protocol table is bit-identical and the SVD's last "
+                      "digits are not. Which numbers here are exact "
+                      "arithmetic, and which are a floating-point summary "
+                      "that happens to look exact?"}),
         code('''
 import os
 os.environ.setdefault("OMP_NUM_THREADS", "4")
@@ -85,7 +90,12 @@ rng = np.random.default_rng(SEED)
             input="the ratings file",
             output="the positive interactions, with timestamps",
             constraint="keep the timestamps — half of this notebook is the difference between splitting a history at random and splitting it in time, and without them that comparison cannot be made",
-            check="assert the release's counts, then report how many ratings survive the threshold. A film rated 3 is now indistinguishable from one never seen, which is deliberate."),
+            check="assert the release's counts, then report how many ratings survive the threshold. A film rated 3 is now indistinguishable from one never seen, which is deliberate.",
+            **{"try": "lower the threshold to rating >= 3. The positive count "
+                      "roughly doubles, every HR@10 in the notebook moves, "
+                      "and not one model changed. A binarisation threshold is "
+                      "a definition of the task and belongs in the same "
+                      "sentence as the number."}),
         code('''
 URL   = "https://files.grouplens.org/datasets/movielens/ml-1m.zip"
 CACHE = Path("datasets/movielens")
@@ -137,7 +147,13 @@ evaluation, which is why it survived as a default.
             input="the interaction table, sorted by time",
             output="one held-out interaction per user, under each rule",
             constraint="hold out exactly one per user under both rules, so the two protocols differ in WHICH interaction and in nothing else",
-            check="assert one row per user WITH POSITIVES, not per user — a user who never gave a 4 or a 5 has nothing to hold out, and asserting against the full user count fails on exactly that."),
+            check="assert one row per user WITH POSITIVES, not per user — a user who never gave a 4 or a 5 has nothing to hold out, and asserting against the full user count fails on exactly that.",
+            **{"try": "hold out each user's FIRST interaction instead of "
+                      "their last. It is neither a random split nor a "
+                      "temporal one — it trains on a user's future to predict "
+                      "their past. Which of the two protocols below does its "
+                      "HR@10 land nearer, and why is that the interesting "
+                      "part?"}),
         code('''
 last   = imp.groupby("u").tail(1)[["u", "i"]]
 rand   = (imp.groupby("u")
@@ -163,7 +179,14 @@ print(f"same interaction in both    {overlap:,}  ({100*overlap/n_eval:.1f}%)")
             input="a held-out set",
             output="the binary interaction matrix with those interactions removed",
             constraint="remove exactly the held-out pairs and nothing else — removing all of a user's interactions with an item, when they interacted twice, quietly changes the training set between protocols",
-            check="assert the training matrix has exactly len(imp) - n_u ones. If it has fewer, more was removed than was held out."),
+            check="assert the training matrix has exactly len(imp) - n_u ones. If it has fewer, more was removed than was held out.",
+            **{"try": "change the discard to remove EVERY occurrence of a "
+                      "held-out pair rather than one. Compare the two printed "
+                      "training-interaction counts with len(imp) minus the "
+                      "number of evaluated users. Any shortfall is a user who "
+                      "rated the same film twice, and it makes the two "
+                      "protocols' training sets differ by more than what was "
+                      "held out."}),
         code('''
 def build(hold):
     held = set(map(tuple, hold.values))
@@ -201,7 +224,12 @@ A recommender that does not beat it has not been shown to personalise anything.
             input="a training matrix",
             output="a scoring function per user, for the factorisation and for popularity",
             constraint="fit the factorisation once per split and reuse it for both candidate protocols — refitting per protocol would confound the two decisions",
-            check="the popularity scorer must not depend on the user at all. If it does, it is not the baseline it claims to be."),
+            check="the popularity scorer must not depend on the user at all. If it does, it is not the baseline it claims to be.",
+            **{"try": "set k = 8, then k = 128. The factorisation moves and "
+                      "popularity does not, because popularity never reads "
+                      "the rank. Which of the four protocol cells does k move "
+                      "most, and is that the model getting better or the task "
+                      "getting easier?"}),
         code('''
 from numpy.linalg import svd
 
@@ -285,7 +313,12 @@ One model. One dataset. Four protocols. Predict the spread before you run it.
             input="both splits, both candidate rules, both methods",
             output="HR@10 and NDCG@10 for each of the eight cells",
             constraint="change one thing at a time and hold everything else fixed — the same fitted model is scored under both candidate rules, and the same candidate rule is applied to both splits",
-            check="assert the model beats popularity under every protocol. If the ordering flips somewhere, say so rather than hiding it — a reversal is a finding, not a bug."),
+            check="assert the model beats popularity under every protocol. If the ordering flips somewhere, say so rather than hiding it — a reversal is a finding, not a bug.",
+            **{"try": "raise n_neg from 100 to 1,000 and re-run. The sampled "
+                      "column moves towards the full-catalogue one. Sampling "
+                      "is not a different metric — it is the same metric at a "
+                      "different candidate-set size, and 100 is a number "
+                      "nobody in the literature defends."}),
         code('''
 results = {}
 for split, hold, R in (("temporal", last, R_temporal), ("random", rand, R_random)):
@@ -307,7 +340,12 @@ for split in ("temporal", "random"):
             input="the results dictionary",
             output="HR@10 for each protocol, and the ratio between the extremes",
             constraint="print the ratio explicitly — the whole lecture is that number, and reading it off two decimals in different rows is how it gets missed",
-            check="the same model under two protocols should span close to an order of magnitude. If it does not, one of the four evaluations is not doing what it claims."),
+            check="the same model under two protocols should span close to an order of magnitude. If it does not, one of the four evaluations is not doing what it claims.",
+            **{"try": "add the NDCG columns to this table. The ratio between "
+                      "the extremes is close to HR's and not identical, "
+                      "because NDCG rewards position and HR does not. Does "
+                      "the factor this lecture turns on survive the change of "
+                      "metric?"}),
         code('''
 print(f"{'HR@10':<26} {'full':>8} {'sampled':>9}")
 for split in ("temporal", "random"):
@@ -329,7 +367,13 @@ scored.
             input="the same results",
             output="the effect of each decision separately",
             constraint="isolate one decision at a time, holding the other fixed, and report the effect on BOTH methods — if a change lifts the unpersonalised baseline by the same factor, it is the task getting easier and not the model learning",
-            check="the sampling effect should be much larger than the split effect. Both should apply to popularity too."),
+            check="the sampling effect should be much larger than the split effect. Both should apply to popularity too.",
+            **{"try": "compute the two effects the other way round: sampling "
+                      "first on the random split, then the split under "
+                      "sampling. If the two factors multiply to the same "
+                      "total either way, the decisions are independent. If "
+                      "they do not, they interact, and neither one can "
+                      "honestly be reported alone."}),
         code('''
 print("effect of the split (full catalogue):")
 for method in ("factorisation", "popularity"):
@@ -348,7 +392,12 @@ for method in ("factorisation", "popularity"):
             input="two cells from opposite corners",
             output="popularity under the generous protocol, against the model under the honest one",
             constraint="print them side by side, because that is how they appear in a paper that quotes a baseline from another paper",
-            check="both numbers are arithmetically correct. That is what makes the comparison dangerous rather than merely wrong."),
+            check="both numbers are arithmetically correct. That is what makes the comparison dangerous rather than merely wrong.",
+            **{"try": "write out the two sentences a paper would print under "
+                      "these two numbers. Both are true. Then write the "
+                      "single sentence that would make them comparable — it "
+                      "is longer than both put together, which is why it is "
+                      "the one usually left out."}),
         code('''
 generous = results[("random", "popularity")]["hr_samp"]
 honest_m = results[("temporal", "factorisation")]["hr_full"]
@@ -375,7 +424,12 @@ protocol differs, which is everyone.
             input="the results",
             output="the factorisation divided by popularity, under each of the four",
             constraint="four ratios, one per protocol, and never a ratio across protocols",
-            check="the spread of the ratios should be far smaller than the spread of the absolutes. That gap is the argument for always reporting a baseline."),
+            check="the spread of the ratios should be far smaller than the spread of the absolutes. That gap is the argument for always reporting a baseline.",
+            **{"try": "add the NDCG ratios to this block. If the ratios are "
+                      "stable across metrics as well as across protocols, you "
+                      "have found the quantity worth reporting. If they are "
+                      "not, you have to say which metric you chose and why — "
+                      "before you saw either."}),
         code('''
 ratios = []
 for split in ("temporal", "random"):
@@ -393,7 +447,12 @@ print(f"the ratio spanned only  x{max(ratios)/min(ratios):.2f}")
             input="the temporal, full-catalogue cells",
             output="one sentence with every clause that makes it true",
             constraint="state the protocol in the same sentence as the number — a number without it is not a measurement",
-            check="also print the chance floor, so the small absolute number is legible as a hard task rather than a failure."),
+            check="also print the chance floor, so the small absolute number is legible as a hard task rather than a failure.",
+            **{"try": "recompute the chance floor as 10 divided by the number "
+                      "of films that user has NOT already seen. For a heavy "
+                      "user the task is measurably easier. Should the floor "
+                      "be one number for the whole evaluation, or one per "
+                      "user, and which of the two would you put on a slide?"}),
         code('''
 f_hr = results[("temporal", "factorisation")]["hr_full"]
 p_hr = results[("temporal", "popularity")]["hr_full"]
@@ -420,7 +479,11 @@ produce large ones. That drift is not fraud, and it does the same damage.
             input="what each method recommends",
             output="catalogue coverage — the fraction of films that ever appear in anyone's top ten",
             constraint="count distinct items across all users' recommendations, not per user — a model that gives everyone a different ordering of the same fifty films has high per-user diversity and no coverage",
-            check="popularity's coverage should be near zero by construction. If the factorisation's is also near zero, it is a popularity list with extra steps."),
+            check="popularity's coverage should be near zero by construction. If the factorisation's is also near zero, it is a popularity list with extra steps.",
+            **{"try": "compute coverage at 100 rather than at 10. Both "
+                      "methods rise and the gap between them changes shape. A "
+                      "coverage figure without its k is exactly as incomplete "
+                      "as a recall without its candidate-set size."}),
         code('''
 def coverage(score, R, hold):
     shown = set()
