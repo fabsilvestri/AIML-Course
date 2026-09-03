@@ -100,12 +100,23 @@ The PDFs are **tracked**, because the site links to them; the `.aux/.log/
 .out/.toc` are gitignored. `check_decks.py` fails if `index.html` links a notes
 PDF that is not on disk.
 
-Every figure in the notes is one the corresponding notebook prints — they were
-written from the decks, which `check_consistency` had already verified against
-the notebooks, so the three artefacts agree by construction. If you change a
-deck's number, change the notes' too: **nothing checks the notes against the
-notebooks automatically.** That is the one piece of drift this repo cannot
-detect, and it is written down here rather than left to be discovered.
+Every figure in the notes is one the corresponding notebook prints, and that is
+**verified rather than asserted**: `tools/check_notes.py` is `check_consistency`
+pointed at `notes/*.tex`, sharing its machinery so there is one rule about
+numbers in this repo instead of two. It anchors on `figures.json` — a number in
+the notes is considered only when it is quoting one of that lecture's
+measurements — then requires the notebook to have printed it. It strips
+`verbatim` blocks and mathematics first, for the same reason the deck check
+strips `<pre>`: neither is a claim about a measurement.
+
+```sh
+python3 tools/check_notes.py          # all four
+python3 tools/check_notes.py 21       # one of them
+```
+
+At the time of writing: 86 stated figures in lecture 19's notes, 43 in 21's and
+19 in 22's, every one of them reproduced. Run it for lecture 20's count; that
+notebook takes about ten minutes to execute cold.
 
 On the site they appear in two places: a third button on each of the four
 Part V lecture cards (`btn-notes`, emitted by `make_site.py` for any lecture

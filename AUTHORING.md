@@ -255,6 +255,7 @@ Lectures 19–22.
 
 ```bash
 python3 tools/check_consistency.py  # slides against their own notebooks
+python3 tools/check_notes.py        # Part V's notes against their notebooks
 python3 tools/check_all.py          # everything below
 python3 tools/check_notebooks.py    # notebook rules in §4
 python3 tools/check_decks.py        # deck structure
@@ -262,6 +263,13 @@ python3 tools/check_overflow.py     # §5.4
 python3 tools/check_provenance.py   # §3.2 — slide figures against figures.json
 python3 tools/check_diagrams.py     # d-*.svg palette and fonts
 ```
+
+`check_notes.py` is the same check pointed at `notes/*.tex`. Lectures 19–22
+are taught from those notes rather than from Géron, so for those four the PDF
+is the primary source and a figure that drifts there is a figure a student is
+examined on. It shares `check_consistency`'s machinery deliberately — anchor on
+`figures.json`, then require the notebook to have printed it — so there is one
+rule about numbers in this repo, not two.
 
 `check_consistency.py` is the one that finds things. Every other check verifies
 an artefact against itself — a slide against `figures.json`, a notebook against
