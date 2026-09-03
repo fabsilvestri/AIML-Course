@@ -120,7 +120,11 @@ def build() -> list:
         prompt(output="library versions printed, one seed set everywhere, plot "
                       "defaults fixed once",
                constraint="not examinable — engineering hygiene, kept out of "
-                          "the way of the argument"),
+                          "the way of the argument",
+        **{"try": "change the seed here and re-run the ladder in Section 15. "
+                  "The MAEs move by hundreds of boardings. Hold that spread "
+                  "in mind when the ladder reports the differences between "
+                  "six architectures."}),
         code(SETUP)]
 
     cells += [
@@ -135,7 +139,11 @@ boarded a bus, how many boarded a train, and what kind of day it was.
                constraint="download only if the file is not already on disk, so "
                           "the notebook is re-runnable offline",
                check="print the row count and compare it with what the "
-                     "publisher states"),
+                     "publisher states",
+        **{"try": "re-download the CSV and compare the printed row count with "
+                  "Lecture 15's. The two lectures have to be scored on the "
+                  "same days, and this is the one cell where that could "
+                  "quietly stop being true without anything raising."}),
         code(LOADER),
         md("""
 ### Tidying, and one line that matters
@@ -153,7 +161,12 @@ Count the duplicates rather than assuming there are none.
                input="the raw frame, one row a day, columns as published",
                output="a frame indexed by date with bus and rail only",
                constraint="drop `total` — it is exactly bus + rail — and drop duplicate rows, reporting how many",
-               check="print the count removed and the date range that survives"),
+               check="print the count removed and the date range that survives",
+               **{"try": "keep the duplicate rows and re-run the notebook. "
+                         "Every MAE moves a little and no assert fires. "
+                         "Duplicates in a time series are not a leak, they "
+                         "are a re-weighting: some days now count twice in "
+                         "the fit and once in the score."}),
         code('''
 df = raw.copy()
 df.columns = ["date", "day_type", "bus", "rail", "total"]
@@ -178,7 +191,12 @@ date says.
                input="the tidied frame",
                output="how many days of each type, and the three days around Memorial Day 2019",
                constraint="do not assume U means Sunday — show a case where it is a public holiday on a Monday",
-               check="the three printed values are A, U, U"),
+               check="the three printed values are A, U, U",
+               **{"try": "count the U days that fall on a Monday to Friday. "
+                         "Those are the public holidays, and they are the "
+                         "only reason this column beats a plain day-of-week "
+                         "feature. How many are in the pool, and is that "
+                         "enough to learn anything from?"}),
         code('''
 print(df["day_type"].value_counts().to_string())
 
@@ -202,7 +220,12 @@ in the usual way expects inputs near 1.
                input="a series as a tensor, and a window length",
                output="a Dataset yielding (window, next step) pairs",
                constraint="the target must be the step AFTER the window and never inside it — an off-by-one leaks one day and nothing later complains",
-               check="length is len(series) - window_length"),
+               check="length is len(series) - window_length",
+               **{"try": "return self.series[idx:end + 1] as the window. "
+                         "__len__ is unchanged and the target is now the last "
+                         "element of its own window. Which assert two cells "
+                         "down catches it, and how many cells would have run "
+                         "before it fired?"}),
         code('''
 class TimeSeriesDataset(torch.utils.data.Dataset):
     """Every window of `window_length` steps, and the step that follows it."""
@@ -228,7 +251,12 @@ leak of exactly one day, and no later cell would complain.
                input="six integers and a window of three",
                output="every window printed with the value that follows it",
                constraint="test the class on data small enough to check by eye before trusting it",
-               check="read the output and confirm the target is never inside the window"),
+               check="read the output and confirm the target is never inside the window",
+               **{"try": "make the toy values 10, 20, 30, 40, 50, 60 instead "
+                         "of 0 to 5. The pairs become unambiguous at a glance "
+                         "— with 0 to 5 a window of [0, 1, 2] could be read "
+                         "as positions rather than values. Choose test data "
+                         "whose values cannot be mistaken for its indices."}),
         code('''
 toy = torch.tensor([[0], [1], [2], [3], [4], [5]])
 for window, t in TimeSeriesDataset(toy, window_length=3):
@@ -238,7 +266,11 @@ for window, t in TimeSeriesDataset(toy, window_length=3):
                input="the tidied frame; rebuild the same pool and window as Lecture 15",
                output="X of shape (rows, 56, 1) and y of shape (rows, 1)",
                constraint="assert the shapes rather than printing them, so a wrong shape stops the notebook",
-               check="rows equals len(pool) - 56"),
+               check="rows equals len(pool) - 56",
+               **{"try": "change WINDOW to 28 here and leave Lecture 15 "
+                         "alone. Both notebooks still run, both print an MAE, "
+                         "and the two are no longer comparable. Which printed "
+                         "line would have told you, and does any assert?"}),
         code('''
 # The same pool and the same window as Lecture 15, rebuilt here rather than
 # inherited: a notebook that only runs because a previous one is still in memory
@@ -304,7 +336,12 @@ assumption: *what a value means does not depend on where in the window it sits.*
                input="a batch of windows, [batch, time, series]",
                output="one number per window",
                constraint="a linear head on the final step — the hidden state is bounded by tanh and ridership is not",
-               check="print the parameter count, split between recurrent and head"),
+               check="print the parameter count, split between recurrent and head",
+               **{"try": "delete the head and return outputs[:, -1] directly. "
+                         "tanh bounds the hidden state to (-1, 1) and the "
+                         "scaled targets sit near 0.6, so it half works — "
+                         "which is worse than failing. Now try the same thing "
+                         "on the raw boardings, where it cannot."}),
         code('''
 class SimpleRnn(nn.Module):
     def __init__(self, input_size=1, hidden_size=32, output_size=1):
@@ -342,7 +379,12 @@ Three choices worth stating:
                input="the training windows",
                output="a trained network, with held-out MAE printed as it goes",
                constraint="shuffle the WINDOWS but never the series; Huber loss so a strike day does not steer the fit; the same time split as the linear model",
-               check="held-out MAE should fall then flatten; if it rises, say so rather than picking the best epoch"),
+               check="held-out MAE should fall then flatten; if it rises, say so rather than picking the best epoch",
+               **{"try": "swap HuberLoss for MSELoss and re-run. The held-out "
+                         "MAE gets worse, and one strike day is the reason: "
+                         "squared error spends the model's capacity on the "
+                         "largest residual, which is the day nobody was "
+                         "staffing for anyway."}),
         code('''
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -372,7 +414,12 @@ for epoch in range(EPOCHS):
                input="the trained network and the held-out windows",
                output="one table: baseline, linear, RNN, against the target target",
                constraint="report the target beside the results, whether or not they beat it",
-               check="the naive baseline appears in the table, not only in the prose"),
+               check="the naive baseline appears in the table, not only in the prose",
+               **{"try": "delete the target line from the printout. The table "
+                         "still reads as a result — three models, three "
+                         "numbers, one of them best. Committing to a target "
+                         "before fitting is the only thing that turns that "
+                         "into a decision."}),
         code('''
 model.eval()
 with torch.no_grad():
@@ -419,7 +466,12 @@ prompt(
        input="rail, bus, and tomorrow's day type from the calendar",
        output="a five-column frame, day type one-hot encoded",
        constraint="shift(-1) on the CALENDAR is legitimate and shift(-1) on the target is a leak — the test is whether the value is knowable at prediction time",
-       check="assert the column names, so a silent change in encoding stops the notebook. For each shifted column ask: would I know this value at 6pm the day  before? If yes it is a feature, if no it is the answer. That question is  the whole of leak detection and it takes five seconds a column."),
+       check="assert the column names, so a silent change in encoding stops the notebook. For each shifted column ask: would I know this value at 6pm the day  before? If yes it is a feature, if no it is the answer. That question is  the whole of leak detection and it takes five seconds a column.",
+       **{"try": "use shift(+1) rather than shift(-1) on day_type: "
+                 "yesterday's, not tomorrow's. The column-name assert still "
+                 "passes and the model still trains, but the feature is now "
+                 "useless rather than leaky. Which of those two mistakes "
+                 "would you notice sooner?"}),
         code('''
 mulvar = df[["rail", "bus"]] / 1e6
 mulvar["next_day_type"] = df["day_type"].shift(-1)   # known in advance
@@ -446,7 +498,11 @@ prompt(
        input="the multivariate frame, a window and a horizon",
        output="windows over all series, with rail alone as the target",
        constraint="one windowing function used for every model below, so the comparison is like for like",
-       check="print the shapes and the train/test split sizes. Run it on a tiny array with distinct values and read the pairs by eye, as  Lecture 19 did with six integers. Shapes agreeing is not the same as  contents aligning, and only one of the two is checkable at scale."),
+       check="print the shapes and the train/test split sizes. Run it on a tiny array with distinct values and read the pairs by eye, as  Lecture 19 did with six integers. Shapes agreeing is not the same as  contents aligning, and only one of the two is checkable at scale.",
+       **{"try": "run make_windows on a five-row frame of distinct integers "
+                 "and read every pair by eye, as the check asks. Then check "
+                 "your reading against the printed shapes. Only one of the "
+                 "two would catch a target taken from the wrong column."}),
         code('''
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -476,7 +532,11 @@ prompt(
        input="windows of five series",
        output="a trained GRU and its held-out MAE",
        constraint="gates rather than a plain RNN, because a 56-step recurrence multiplies by the same matrix every step",
-       check="watch the held-out MAE as it trains rather than reading only the final number. The held-out MAE must fall and then flatten. If it rises, say so and  report the final epoch, not the best one you saw. Lecture 19's RNN rose at  epoch 160 and the honest number was the one at 200."),
+       check="watch the held-out MAE as it trains rather than reading only the final number. The held-out MAE must fall and then flatten. If it rises, say so and  report the final epoch, not the best one you saw. Lecture 19's RNN rose at  epoch 160 and the honest number was the one at 200.",
+       **{"try": "replace nn.GRU with nn.RNN in GruModel and change nothing "
+                 "else. Over a 56-step recurrence the same matrix is applied "
+                 "fifty-six times, and the held-out MAE is what the gates "
+                 "were buying."}),
         code('''
 class GruModel(nn.Module):
     def __init__(self, input_size=5, hidden_size=32, output_size=1):
@@ -515,7 +575,11 @@ prompt(
        input="the same GRU, on rail alone",
        output="its held-out MAE, beside the five-series version",
        constraint="change ONE thing — two changes at once is not an experiment",
-       check="the table separates 'gates helped' from 'more series helped'. You should be able to name, in one sentence, the single difference between  this run and the previous one. If the sentence needs an 'and', it is two  experiments and it answers neither."),
+       check="the table separates 'gates helped' from 'more series helped'. You should be able to name, in one sentence, the single difference between  this run and the previous one. If the sentence needs an 'and', it is two  experiments and it answers neither.",
+       **{"try": "add a fourth row: the GRU on rail and bus but WITHOUT the "
+                 "day-type columns. It separates 'more series helped' from "
+                 "'the calendar helped', which this table still confounds in "
+                 "one row."}),
         code('''
 # The same model on rail alone, to separate "gates helped" from "more series
 # helped". Two changes at once is not an experiment.
@@ -646,7 +710,12 @@ def mae_1e6(pred, truth):
             input="the tidied frame",
             output="univariate rail windows, multivariate windows, and a recipe-selection function",
             constraint="the selection slice comes out of the TRAINING period — nothing at or after the test cut is read here, and the function says so in its docstring",
-            check="print the multivariate columns. The next day's day-type is a legitimate feature because it is known in advance; the same column shifted the other way would be a leak."),
+            check="print the multivariate columns. The next day's day-type is a legitimate feature because it is known in advance; the same column shifted the other way would be a leak.",
+            **{"try": "move CUT_SEL to 2019-03-01, inside the test period. "
+                      "Every recipe is now selected on days the model is "
+                      "scored on, nothing raises, and every number in the "
+                      "ladder improves. That improvement is the failure, not "
+                      "the result."}),
         code('''
 CUT_SEL, CUT_END = "2018-07-01", "2019-01-01"
 
@@ -682,7 +751,11 @@ print(f"multivariate columns: {list(mul_f.columns)}")
             input="six (architecture, window set) pairs",
             output="one row each: test MAE, train MAE, chosen recipe, wall clock",
             constraint="report the TRAIN MAE beside the test MAE — without it, a model that is worse on both is indistinguishable from one that overfits, and those have opposite fixes",
-            check="the naive baseline goes in the same table. Six architectures that all fail to beat copying last week is a finding, and it is one the table has to be able to show."),
+            check="the naive baseline goes in the same table. Six architectures that all fail to beat copying last week is a finding, and it is one the table has to be able to show.",
+            **{"try": "read the train MAE column on its own. Which rows are "
+                      "worse on both, and which are far better on train than "
+                      "on test? Those two failures have opposite fixes, and "
+                      "the test column alone cannot tell them apart."}),
         code('''
 ladder = [("linear", Xu, yu, du, "Linear, 56 lags"),
           ("rnn",    Xu, yu, du, "Simple RNN, 32 units"),
@@ -710,7 +783,13 @@ print(f"\\n{'copy last week':28s}{NAIVE_MAE:>10,.0f}")
             input="the univariate windows, five shuffled folds",
             output="the RNN's MAE under the protocol Lecture 15 showed was wrong",
             constraint="the same architecture and the same recipe as the ladder's row — only the splitter changes, or the comparison is not about the splitter",
-            check="compare it with the ladder's forward-split row. The gap is the protocol, and it is larger than every architectural difference in the table above."),
+            check="compare it with the ladder's forward-split row. The gap is the protocol, and it is larger than every architectural difference in the table above.",
+            **{"try": "run the same five folds with KFold(5, shuffle=False). "
+                      "It is still not a forward split — fold 1 trains on the "
+                      "future of fold 5 — but it does keep neighbouring "
+                      "windows together. Where does its number fall between "
+                      "the two printed here, and which of the two leaks does "
+                      "that isolate?"}),
         code('''
 from sklearn.model_selection import KFold
 
@@ -737,7 +816,12 @@ day — so give the model fourteen outputs and read the error at each horizon.
             input="the multivariate windows, labelled with the next fourteen days",
             output="MAE at each horizon, beside a naive forecast at the same horizon",
             constraint="the naive reference has to be honest at every horizon — the last value of the SAME weekday still inside the window, which is a different window position for each h",
-            check="the error should rise with the horizon and then flatten. If it is flat from the start, the model is predicting the weekly pattern and nothing else."),
+            check="the error should rise with the horizon and then flatten. If it is flat from the start, the model is predicting the weekly pattern and nothing else.",
+            **{"try": "replace naive_pos with a constant 55 — yesterday, at "
+                      "every horizon. The naive column stops rising with h "
+                      "and the GRU suddenly looks excellent at t+14. A "
+                      "baseline that does not get harder with the horizon is "
+                      "not a baseline for that horizon."}),
         code('''
 Xa, ya, da = make_arrays(mul_f, horizon=14)
 model, best, _ = select_and_fit("gru", Xa, ya, da)
@@ -762,7 +846,12 @@ print(f"\\nt+1 {ahead[0]:,.0f} rises to t+14 {ahead[13]:,.0f}")
             input="the same fourteen-horizon task, on a 112-day window",
             output="MAE at each horizon",
             constraint="give it a LONGER window — the convolution halves the sequence before the recurrent layer, so it can afford one, and a fair comparison lets each architecture have the input it is built for",
-            check="report where it wins and where it loses rather than a single mean. It is better at the near horizons and worse at the far ones, and a mean would hide both."),
+            check="report where it wins and where it loses rather than a single mean. It is better at the near horizons and worse at the far ones, and a mean would hide both.",
+            **{"try": "give the conv+GRU the same 56-day window as the "
+                      "others. It loses its near-horizon advantage, because "
+                      "the convolution halves the sequence and it is now "
+                      "working from 28 effective steps. Which of the two "
+                      "comparisons is fair, and can both be?"}),
         code('''
 Xc, yc, dc = make_arrays(mul_f, w=112, horizon=14)
 model_c, best_c, _ = select_and_fit("convgru", Xc, yc, dc)
@@ -787,7 +876,11 @@ it is the case where a random split cannot see the problem at all.
             input="the series extended through 2021, and the spring of 2020",
             output="a shuffled cross-validation over the whole span, and a forward fit scored on March to June 2020",
             constraint="score the naive forecast on the same 2020 rows — it needs no fitting, so it separates 'the model was wrong' from 'the days were unlike anything before them'",
-            check="report the level as well as the error. A model can be wrong by 84,000 on days whose mean is 141,000, and that ratio is the whole story."),
+            check="report the level as well as the error. A model can be wrong by 84,000 on days whose mean is 141,000, and that ratio is the whole story.",
+            **{"try": "score the same forward fit on March to June 2019 "
+                      "instead of 2020, changing nothing else. The MAE falls "
+                      "by most of the gap. Neither the model nor the protocol "
+                      "changed between those two runs."}),
         code('''
 from sklearn.model_selection import cross_val_score
 
