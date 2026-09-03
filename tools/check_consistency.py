@@ -190,8 +190,14 @@ def facts(lecture: int) -> list[tuple[str, float]]:
                 walk(v, f"{path}[{i}]")
         elif isinstance(o, (int, float)) and not isinstance(o, bool):
             top = path.lstrip("/").split("/")[0].split("[")[0]
-            pre = top[:5] if top.startswith(("l0", "l1", "l2", "app")) else ""
-            root = re.match(r"(l\d\d|app\d\d)", top)
+            # `rec\d\d` was missing here until 2026-09-03, and the omission was
+            # silent in the worst way: facts(21) and facts(22) returned nothing,
+            # so stated_facts found nothing to anchor on, so `uniq` was empty,
+            # so the run printed a GREEN OK for two lectures it had not checked
+            # at all. Part V's two recommender lectures were the only ones whose
+            # figures.json keys are prefixed rec21_/rec22_ rather than lNN_,
+            # which is why they were the two that slipped.
+            root = re.match(r"(l\d\d|app\d\d|rec\d\d)", top)
             root = root.group(1) if root else ""
             if root in allowed:
                 out.append((path, float(o)))
@@ -355,7 +361,18 @@ def main() -> int:
             total += 1
             continue
         printed = printed_numbers(run)
-        stated = stated_facts(deck, facts(n))
+        own = facts(n)
+        if not own:
+            # A namespace that matches no key checks nothing, and until this
+            # guard existed it reported "ok" for doing so. A check that cannot
+            # fail is worse than no check, because it occupies the line where
+            # the real one would have been.
+            print(f"{RED}FAIL{OFF}  lecture {n:02d} — namespace "
+                  f"{NAMESPACES[n]} matches no key in figures.json, so nothing "
+                  f"was checked. Fix NAMESPACES or facts(), do not skip.")
+            total += 1
+            continue
+        stated = stated_facts(deck, own)
         seen, uniq, excused, excused_cross = set(), [], set(), set()
         for line, v, key, ctx in stated:
             if matches(v, printed) or v in seen:

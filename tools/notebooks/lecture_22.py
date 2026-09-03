@@ -205,6 +205,46 @@ for name, R in (("temporal", R_temporal), ("random", R_random)):
 '''),
     ]
 
+    # --------------------------------------------------- 2b: in-batch arithmetic
+    # The deck's "In-batch negatives, once more" slide states this table and
+    # nothing here computed it, so check_consistency had four figures with no
+    # provenance -- invisible until the rec\d\d namespace bug was fixed on
+    # 2026-09-03. It is four lines of arithmetic and it belongs to this lecture
+    # as much as to Lecture 20, because the sampling distribution is what the
+    # log q correction is about.
+    cells += [
+        md("""
+### 2b · In-batch negatives, and why the batch size is a modelling decision
+
+A two-tower model is trained by taking a batch of observed (user, item) pairs
+and using *every other item in the batch* as a negative. The arithmetic below
+is Lecture 20's, unchanged — with one difference that matters here: these
+negatives are drawn from the **interaction stream**, so an item's sampling
+probability is proportional to its popularity. That is precisely the $q(j)$
+the $\\log q$ correction needs, and skipping the correction puts popularity
+bias into the gradient rather than into the data.
+"""),
+        prompt(
+            label="in-batch negatives, counted",
+            input="a range of batch sizes",
+            output="encoder passes, scores available, and negatives per user",
+            constraint="separate the two columns that grow differently — the encodings are the cost and the scores are the benefit, and conflating them is why people call in-batch negatives free",
+            check="the scores column is the square of the batch. That quadratic is why two-tower papers report batch sizes in the thousands, and why the batch size is the number of classes in the problem being solved.",
+            **{"try": "add a column for the memory the score matrix needs in "
+                      "float32. At 512 it is about a megabyte; at 2,048 it is "
+                      "sixteen. The dot products are free in arithmetic and "
+                      "are not free in memory, and that is what caps the "
+                      "batch in practice."}),
+        code('''
+print(f"{'batch':>7} {'encoded':>9} {'scores':>12} {'negatives/user':>16}")
+for b in (8, 32, 128, 512, 2048):
+    print(f"{b:>7,} {2*b:>9,} {b*b:>12,} {b-1:>16,}")
+print()
+print("Encoding is the cost and grows linearly; the dot products are nearly")
+print("free and grow quadratically. The batch size is a modelling decision.")
+'''),
+    ]
+
     # ------------------------------------------------------------------ 3
     cells += [
         md("""
@@ -338,25 +378,30 @@ for split in ("temporal", "random"):
         prompt(
             label="the four cells, as a table",
             input="the results dictionary",
-            output="HR@10 for each protocol, and the ratio between the extremes",
+            output="HR@10 and NDCG@10 for each protocol, and the ratio between the extremes under each",
             constraint="print the ratio explicitly — the whole lecture is that number, and reading it off two decimals in different rows is how it gets missed",
-            check="the same model under two protocols should span close to an order of magnitude. If it does not, one of the four evaluations is not doing what it claims.",
-            **{"try": "add the NDCG columns to this table. The ratio between "
-                      "the extremes is close to HR's and not identical, "
-                      "because NDCG rewards position and HR does not. Does "
-                      "the factor this lecture turns on survive the change of "
-                      "metric?"}),
+            check="the same model under two protocols should span close to an order of magnitude, under BOTH metrics. If only one of them does, the effect is a property of the metric rather than of the protocol, and the lecture's argument does not hold.",
+            **{"try": "compare the two ratios. NDCG's is larger than HR's, "
+                      "because sampling moves position as well as membership. "
+                      "Which of the two would you quote, and does the "
+                      "argument of this lecture depend on the choice?"}),
         code('''
-print(f"{'HR@10':<26} {'full':>8} {'sampled':>9}")
-for split in ("temporal", "random"):
-    for method in ("factorisation", "popularity"):
-        v = results[(split, method)]
-        print(f"{split + ' · ' + method:<26} {v['hr_full']:>8.4f} {v['hr_samp']:>9.4f}")
+for metric, full, samp in (("HR@10", "hr_full", "hr_samp"),
+                           ("NDCG@10", "ndcg_full", "ndcg_samp")):
+    print(f"{metric:<26} {'full':>8} {'sampled':>9}")
+    for split in ("temporal", "random"):
+        for method in ("factorisation", "popularity"):
+            v = results[(split, method)]
+            print(f"{split + ' · ' + method:<26} {v[full]:>8.4f} {v[samp]:>9.4f}")
+    lo = results[("temporal", "factorisation")][full]
+    hi = results[("random", "factorisation")][samp]
+    print(f"{'same model, same data':<26} {lo:.4f} to {hi:.4f}"
+          f"   a factor of {hi / lo:.1f}")
+    print()
 
 honest = results[("temporal", "factorisation")]["hr_full"]
 best   = results[("random", "factorisation")]["hr_samp"]
-print()
-print(f"same model, same data: {honest:.4f} to {best:.4f} — a factor of {best/honest:.1f}")
+print(f"the headline: {honest:.4f} to {best:.4f} — a factor of {best/honest:.1f}")
 '''),
         md("""
 Nothing about the model changed. Only the two sentences describing how it was
