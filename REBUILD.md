@@ -48,7 +48,7 @@ Everything below was true and verified when it was written, and is pushed to
 | Decks | 24 / 24 on the new design, 70+ slides each |
 | Notebooks | 24 / 24, 538 code cells, every one behind a specification box |
 | Runs on CPU | all 24, cold, from a clean kernel |
-| `check_consistency` | re-running cold on 2026-09-03 (cache empty, every notebook re-executing); was 24 / 24 clean — 826 deck figures verified against notebook output |
+| `check_consistency` | **24 / 24 clean** — **932** deck figures verified against notebook output. The old count of 826 was over 22 lectures: 21 and 22 were reporting green while checking nothing, which is fixed and recorded under *Carried-over debts* |
 | `check_all` (5 fast checks) | clean |
 | Browser checks | no slide over the canvas on any of 25 pages; 39 diagrams clean |
 | Published on the site | 24 / 24 |
@@ -502,6 +502,27 @@ Things noticed during the rebuild that are not yet fixed.
   it is to write a new box without one. Verified by stripping a `try` from a
   copy of `lecture-24.ipynb` and watching the checker fail with the cell index
   and the box name.
+
+- ~~`check_consistency` reported green on two lectures it never checked~~ —
+  **found and CLOSED 2026-09-03.** `facts()` extracted a lecture's
+  `figures.json` namespace with `re.match(r"(l\d\d|app\d\d)", ...)`, and
+  lectures 21 and 22 are the only two whose keys are prefixed `rec21_`/`rec22_`.
+  So `facts()` returned nothing for them, `stated_facts` had nothing to anchor
+  on, the failure list came back empty, and the run printed *"ok — every stated
+  figure is printed by its notebook"* for two lectures it had not compared at
+  all. The headline "826 figures verified" was 22 lectures, not 24; the honest
+  figure over all 24 is **932**.
+
+  Two changes: `facts()` accepts `rec\d\d`, and `main()` now FAILS when a
+  namespace matches no key rather than reporting ok. The general lesson is the
+  second one — *a check that cannot fail is worse than no check, because it
+  occupies the line where the real one would have been.* Ask it of every
+  checker in `tools/`.
+
+  With the fix, lecture 22 failed on five figures immediately: the in-batch
+  negatives table at batches 128, 512 and 2,048, and the sampled NDCG@10 for
+  the temporal factorisation. Repaired by adding the computation, per the
+  standing instruction, not by editing the slide.
 
 - Old decks and notebooks 2–24 still describe Build/Fix, planted defects,
   "commit a number", the twelve threads and the weak-prompt device. Every one is
