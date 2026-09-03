@@ -65,7 +65,12 @@ def build() -> list:
             input="nothing",
             output="versions, seeds, device, and N_CATALOGUE",
             constraint="`N_CATALOGUE = 200` as a named constant — every recall in this notebook is over that many candidates, and a recall without its candidate-set size is not a number",
-            check="the candidate-set size belongs in the same sentence as the recall, every time. Put it in a constant so the printout carries it."),
+            check="the candidate-set size belongs in the same sentence as the recall, every time. Put it in a constant so the printout carries it.",
+            **{"try": "set N_CATALOGUE = 50 and run the notebook through. "
+                      "Every recall rises and not one model improved: R@10 "
+                      "over 50 candidates is a different question from R@10 "
+                      "over 200. That is the whole reason this is a named "
+                      "constant rather than a literal."}),
         code('''
 # Not examinable, and only needed on some machines: PyTorch, numpy and
 # torchvision can each end up loading their own OpenMP runtime, and with more
@@ -128,7 +133,12 @@ same reason `KFold(shuffle=True, random_state=42)` gives them the same folds.
             input="the COCO split index and the first 200 images by id",
             output="200 catalogue entries with their captions and files",
             constraint="sort by `cocoid` and take the first 200 — two students with differently ordered frames then get the same 200 images, for the same reason a seeded KFold gives them the same folds",
-            check="assert the count, that every entry has at least two captions, and that the SKUs are unique. Normalise the caption whitespace on the way in. COCO's captions carry stray newlines, and a query that differs from a description only in whitespace is a bug you will chase later."),
+            check="assert the count, that every entry has at least two captions, and that the SKUs are unique. Normalise the caption whitespace on the way in. COCO's captions carry stray newlines, and a query that differs from a description only in whitespace is a bug you will chase later.",
+            **{"try": "sort by filename instead of cocoid and take the first "
+                      "200. You get a different catalogue, every number in "
+                      "the notebook moves, and nothing warns you. Then say "
+                      "what would have to be true for the two catalogues to "
+                      "be interchangeable."}),
         code('''
 CACHE = Path("datasets/app12")
 CACHE.mkdir(parents=True, exist_ok=True)
@@ -180,7 +190,11 @@ would measure nothing.
             input="the catalogue entries",
             output="the images, the descriptions and the queries as three parallel lists",
             constraint="use DIFFERENT captions for the two sides — the five captions are evidence, not part of the product, and caption 1 as description with caption 2 as query means two different people's sentences about the same picture",
-            check="assert the three lists are the same length AND that the first description differs from the first query. The assert that the two sides differ. One line, and it is the difference between measuring retrieval and measuring string equality."),
+            check="assert the three lists are the same length AND that the first description differs from the first query. The assert that the two sides differ. One line, and it is the difference between measuring retrieval and measuring string equality.",
+            **{"try": "set queries = descriptions. The assert on the last "
+                      "line fires immediately. Comment it out and run Section "
+                      "15: R@1 is 100%, because you are now measuring string "
+                      "equality with extra steps and a hash table would win."}),
         code('''
 e = catalogue[0]
 print(e["sku"])
@@ -214,7 +228,13 @@ ranked uniformly at random, gives `P(rank <= k) = k/n` exactly.
             input="a square similarity matrix whose truth is the diagonal",
             output="Recall@1, 5 and 10, the median rank, and the random-ranking values",
             constraint="ties count AGAINST the model — use `>=`, not `>` — and compute the random baseline ARITHMETICALLY as k/n rather than by simulation",
-            check="assert the matrix is square before reading a diagonal out of it. A baseline you can compute in closed form beats a simulated one. One relevant entry among n, ranked uniformly, gives P(rank ≤ k) = k/n exactly — no seeds, no noise."),
+            check="assert the matrix is square before reading a diagonal out of it. A baseline you can compute in closed form beats a simulated one. One relevant entry among n, ranked uniformly, gives P(rank ≤ k) = k/n exactly — no seeds, no noise.",
+            **{"try": "change the >= in ranks_of_truth to >. A constant "
+                      "scorer now reports R@1 = 100%, as the cell already "
+                      "prints. Then decide which way the rule should break "
+                      "for two candidates that genuinely score the same, and "
+                      "say why the pessimistic choice is the only defensible "
+                      "default."}),
         code('''
 def ranks_of_truth(sim):
     """sim[i, j] = score of query i against candidate j; truth is j == i."""
@@ -268,7 +288,13 @@ inference for 200 images.
             input="the 200 catalogue images",
             output="768-dimensional CLS vectors",
             constraint="`add_pooling_layer=False` — that checkpoint carries no pooler weights, so asking for one gives you a RANDOMLY INITIALISED layer with no error and no warning",
-            check="assert the shape is (200, 768). When a checkpoint warns that weights were newly initialised, read it. It is the single most-ignored message in the transformers library."),
+            check="assert the shape is (200, 768). When a checkpoint warns that weights were newly initialised, read it. It is the single most-ignored message in the transformers library.",
+            **{"try": "drop add_pooling_layer=False and read the warning "
+                      "transformers prints. You now have a randomly "
+                      "initialised pooler; use pooler_output instead of the "
+                      "CLS token and watch the recalls. Nothing raises, and "
+                      "that warning was the only signal you were ever going "
+                      "to get."}),
         code('''
 from transformers import AutoImageProcessor, ViTModel
 
@@ -302,7 +328,12 @@ average in the padding.
             input="the 200 query sentences",
             output="384-dimensional mean-pooled embeddings",
             constraint="pool with the ATTENTION MASK — forget it and you average in the padding, and longer sentences are diluted more than short ones",
-            check="assert the shape is (200, 384). Any mean over a padded sequence needs the mask. If your pooling line has no `attention_mask` in it, it is wrong."),
+            check="assert the shape is (200, 384). Any mean over a padded sequence needs the mask. If your pooling line has no `attention_mask` in it, it is wrong.",
+            **{"try": "delete the mask from the pooling and average over all "
+                      "positions. Longer sentences are diluted more than "
+                      "short ones, so the ranking now partly encodes sentence "
+                      "length. How would you detect that from the similarity "
+                      "matrix alone?"}),
         code('''
 from transformers import AutoModel, AutoTokenizer
 
@@ -338,7 +369,12 @@ Reviewer question 3: **what is the shape here?**
             input="the two feature matrices",
             output="their shapes, and the ValueError from multiplying them",
             constraint="catch the error and PRINT it rather than letting the notebook stop — the exception is the content of the cell",
-            check="768 and 384 is a loud failure. The quiet version is two encoders that happen to share a dimension, where the multiplication succeeds and means nothing."),
+            check="768 and 384 is a loud failure. The quiet version is two encoders that happen to share a dimension, where the multiplication succeeds and means nothing.",
+            **{"try": "truncate first and run V[:, :384] @ T.T. It succeeds, "
+                      "returns a 200 by 200 matrix of entirely plausible "
+                      "numbers, and means exactly as much as the ValueError "
+                      "did. A loud failure is a gift; this is the quiet "
+                      "version of the same mistake."}),
         code('''
 print(f"V {V.shape}   T {T.shape}")
 try:
@@ -367,7 +403,12 @@ else.
             input="the two feature matrices",
             output="Recall@1, 5, 10 for a JL projection, a truncation and a zero-pad",
             constraint="do it THREE ways, so nobody can blame the particular fix",
-            check="assert each similarity matrix is square and 200 by 200 before reporting it. Transpose before reporting. `report` expects rows to be queries, and the matrices here are built image-major — a silent transpose measures image-to-text and calls it text-to-image."),
+            check="assert each similarity matrix is square and 200 by 200 before reporting it. Transpose before reporting. `report` expects rows to be queries, and the matrices here are built image-major — a silent transpose measures image-to-text and calls it text-to-image.",
+            **{"try": "delete the .T from one of the three report calls. The "
+                      "recalls change, because you are now measuring image- "
+                      "to-text and calling it text-to-image. On a square "
+                      "matrix a transpose is silent, which is why the "
+                      "constraint names it."}),
         code('''
 def unit(x):
     return x / np.linalg.norm(x, axis=1, keepdims=True)
@@ -403,7 +444,12 @@ single objective that compared them. **Expected wall clock: 1–2 min** for the 
             input="the same images and queries",
             output="image and text features in a shared 512-dimensional space",
             constraint="`unit()` BOTH sides — `get_image_features` and `get_text_features` return vectors that are NOT normalised",
-            check="assert both matrices have the same shape and the model's own projection dimension. One difference from section 4: both towers were trained by a single objective that COMPARED them. Same architecture family, one difference, and it is the whole result."),
+            check="assert both matrices have the same shape and the model's own projection dimension. One difference from section 4: both towers were trained by a single objective that COMPARED them. Same architecture family, one difference, and it is the whole result.",
+            **{"try": "skip the unit() on one side only, then re-run the "
+                      "recall table in Section 14. The ranking changes, "
+                      "because an unnormalised inner product mixes direction "
+                      "with loudness. Which side matters more, and why does "
+                      "that depend on the length ratio printed in Section 8?"}),
         code('''
 from transformers import CLIPModel, CLIPProcessor
 
@@ -466,7 +512,11 @@ semantics; the length is whatever the last linear layer happened to scale to.
             input="the raw embedding lengths",
             output="their range, for images and for text",
             constraint="report the RATIO of longest to shortest, not just the extremes",
-            check="four lines, and they are the setup for the entire assistant failure. Measure the thing you are about to claim matters."),
+            check="four lines, and they are the setup for the entire assistant failure. Measure the thing you are about to claim matters.",
+            **{"try": "sort the images by their embedding length and look at "
+                      "the longest and the shortest few. Is there anything "
+                      "visibly in common within either group? If the length "
+                      "carried semantics there would be."}),
         code('''
 norms = np.linalg.norm(I_raw, axis=1)
 print(f"image embedding lengths: min {norms.min():.2f}   max {norms.max():.2f}"
@@ -497,7 +547,13 @@ share the total equally. So the standard deviation is exactly `1 / sqrt(d)`.
             input="random unit vectors at six dimensionalities",
             output="the measured sd of the cosine against 1/√d, and how often |cos| exceeds 0.5",
             constraint="sweep the DIMENSION — the effect is entirely about d, and a single dimensionality shows a number rather than a law",
-            check="in high dimensions two unrelated things are ORTHOGONAL, not opposite. That is why the contrastive loss targets zero for a non-matching pair, and it is the concentration result from application 5 in a new costume."),
+            check="in high dimensions two unrelated things are ORTHOGONAL, not opposite. That is why the contrastive loss targets zero for a non-matching pair, and it is the concentration result from application 5 in a new costume.",
+            **{"try": "add d = 1 and d = 3 to the sweep. At d = 1 a unit "
+                      "vector is +1 or -1 and nothing else, so the cosine is "
+                      "+/-1 and its sd is 1 — which is still exactly "
+                      "1/sqrt(d). The law does not break at small d. The "
+                      "intuition that unrelated means opposite is what only "
+                      "holds there."}),
         code('''
 rng = np.random.default_rng(SEED)
 
@@ -532,7 +588,13 @@ Now the same measurement on the trained embeddings themselves.
             input="the CLIP features",
             output="mean, sd and minimum for image-image, image-unrelated-caption and matched pairs, plus the distance between the two centroids",
             constraint="report the MINIMUM as well as the mean — the claim is that nothing is anywhere near −1, and only the minimum tests it",
-            check="why the gap exists is an open research question, outside the book and not examinable. THAT it exists is measurable in four lines and is on the exam."),
+            check="why the gap exists is an open research question, outside the book and not examinable. THAT it exists is measurable in four lines and is on the exam.",
+            **{"try": "add the same constant vector to every image embedding "
+                      "BEFORE the unit(). For a fixed query every image's "
+                      "score moves by the same amount, so no ranking within a "
+                      "row can change — and the modality gap does. Now add it "
+                      "AFTER the unit() instead, and explain why the ranking "
+                      "moves this time."}),
         code('''
 off = ~np.eye(N_CATALOGUE, dtype=bool)
 ii, it = I @ I.T, I @ Q.T
@@ -575,7 +637,11 @@ Everything is familiar except `tau`. Set it to 1 and watch.
             input="the similarity matrix at six temperatures",
             output="the loss, p(correct), p(hardest wrong) and top-1 at each",
             constraint="print log B beside the table — a contrastive loss is measured against a batch-dependent ceiling and is meaningless without it",
-            check="from thread 11, ∂L/∂S_ij = (p_ij − 1[j=i])/τ, so a small τ concentrates the push on the few hardest negatives. That is what the temperature is for."),
+            check="from thread 11, ∂L/∂S_ij = (p_ij − 1[j=i])/τ, so a small τ concentrates the push on the few hardest negatives. That is what the temperature is for.",
+            **{"try": "add tau = 100 to the table. The loss climbs towards "
+                      "log 200 and the top-1 column still does not move. Say "
+                      "in one sentence why no temperature whatever can change "
+                      "the accuracy of a fixed similarity matrix."}),
         code('''
 def infonce(sim, tau):
     """Symmetric InfoNCE on a matrix of cosines. Returns a dict of diagnostics."""
@@ -623,7 +689,12 @@ The temperature is not a hyperparameter anybody tunes by hand. The model stores
             input="CLIP's own logit_scale parameter",
             output="1/τ, τ, and the loss at that temperature",
             constraint="read it OUT OF THE MODEL rather than choosing one — it is not a hyperparameter anybody tunes by hand",
-            check="when a model has learned a hyperparameter, ask it. `clip.logit_scale` is one attribute access and it is the correct value by construction."),
+            check="when a model has learned a hyperparameter, ask it. `clip.logit_scale` is one attribute access and it is the correct value by construction.",
+            **{"try": "print clip.logit_scale itself rather than its "
+                      "exponential, and compare it with the clamp CLIP "
+                      "applies at log 100. The learned value sits at its own "
+                      "ceiling. What does that say about the direction the "
+                      "objective was still pushing when training stopped?"}),
         code('''
 scale = clip.logit_scale.exp().item()
 print(f"learned logit scale 1/tau = {scale:.2f}")
@@ -649,7 +720,13 @@ the number of classes in the problem you are solving, and the chance level is
             input="batches of 2, 8, 32, 128 and 200",
             output="top-1 and loss at each, beside chance 1/B and the ceiling log B",
             constraint="average over many random batches at each size — a single draw at B=2 is one coin flip",
-            check="a contrastive loss value is not comparable across papers. It is measured against a batch-dependent ceiling of log B, and almost nobody states their B beside it."),
+            check="a contrastive loss value is not comparable across papers. It is measured against a batch-dependent ceiling of log B, and almost nobody states their B beside it.",
+            **{"try": "add B = 1 to the table. The loss is exactly zero and "
+                      "top-1 is 100%, because a one-class problem has no "
+                      "wrong answer available. Every contrastive loss you "
+                      "will ever read has a B behind it, and this row is the "
+                      "limit that shows why quoting one without it is "
+                      "meaningless."}),
         code('''
 tau = 1 / scale
 print(f"{'B':>5} {'top-1':>8} {'chance 1/B':>12} {'loss':>8} {'log B':>8}")
@@ -678,7 +755,12 @@ Under-specified in exactly one place. Find it before you run the cell.
             input="'encode the images with a ViT and the captions with a sentence transformer, then check whether an image and its caption are similar'",
             output="the mean cosine of each matched pair, and the share above 0.05",
             constraint="compute only the DIAGONAL, as the prompt implies — this is the failure, not the fix",
-            check="reviewer question 5, in an unusual form. The default nobody asked for here is the missing control group."),
+            check="reviewer question 5, in an unusual form. The default nobody asked for here is the missing control group.",
+            **{"try": "print the mean of the whole 200 by 200 matrix beside "
+                      "the diagonal mean. How far apart are they? This cell "
+                      "reports a level, and only that difference means "
+                      "anything — which is exactly what the prompt forgot to "
+                      "ask for."}),
         code('''
 # --- what the weak prompt returns --------------------------------------------
 Vp = unit(unit(V) @ R)
@@ -701,7 +783,12 @@ the default nobody asked for is the missing control group.
             input="the full 200 × 200 similarity matrix",
             output="the mean and sd of the diagonal and off-diagonal, and Cohen's d",
             constraint="report a STANDARDISED difference — the raw gap between two means is unreadable without the spread they are drawn from",
-            check="`ddof=1` on both variances, and n printed beside each. 200 against 39,800 is a very asymmetric comparison and the reader should see it."),
+            check="`ddof=1` on both variances, and n printed beside each. 200 against 39,800 is a very asymmetric comparison and the reader should see it.",
+            **{"try": "recompute d using the truncation from Section 6 "
+                      "instead of the JL projection. It changes, and none of "
+                      "the three fixes is more correct than the others. An "
+                      "effect size near zero that survives all three is "
+                      "stronger evidence than any single one of them."}),
         code('''
 S = sims_two_spaces["JL projection 768->384"]
 off = ~np.eye(N_CATALOGUE, dtype=bool)
@@ -761,7 +848,12 @@ time, then about 10 s of inference for 500 images.
             input="500 CIFAR-10 test images",
             output="their CLIP features",
             constraint="use a dataset WITH LABELS — the catalogue has none, so nothing in it can tell us the model is loaded correctly and preprocessing its inputs the way it was trained to",
-            check="assert the counts and that there are ten classes. Say `over 500 images` wherever you quote the accuracy. A subset is a subset even when the point of the cell is not the number."),
+            check="assert the counts and that there are ten classes. Say `over 500 images` wherever you quote the accuracy. A subset is a subset even when the point of the cell is not the number.",
+            **{"try": "try to run this known-answer test on the ViT and "
+                      "MiniLM pair instead. You cannot: the ViT has no text "
+                      "tower, so there are no ten sentences to compare "
+                      "against. Which of the two systems can be tested at all "
+                      "before it is deployed?"}),
         code('''
 from torchvision.datasets import CIFAR10
 
@@ -783,7 +875,12 @@ print(f"{N_CIFAR} CIFAR-10 images encoded: {F.shape}")
             input="three prompt templates",
             output="zero-shot accuracy under each, against chance",
             constraint="try SEVERAL templates and print all of them — a single template hides that the number depends on it",
-            check="a 'zero-shot' number is a number for ONE PARTICULAR SENTENCE. The spread across templates is part of the result."),
+            check="a 'zero-shot' number is a number for ONE PARTICULAR SENTENCE. The spread across templates is part of the result.",
+            **{"try": "add three templates of your own and report all six. "
+                      "Then pick the best one and work out what you would "
+                      "have to do to be allowed to report its number. The "
+                      "answer is a validation split, and CIFAR-10 ships with "
+                      "one."}),
         code('''
 for template in ["{}", "a photo of a {}", "a low-resolution photo of a {}"]:
     W = unit(clip_text([template.format(c) for c in classes]))
@@ -810,7 +907,12 @@ Only the encoders changed.
             input="the CLIP features",
             output="recall for the two-space route and both directions of the joint one, with the arithmetic baseline",
             constraint="same 200 images, same 200 queries, same metric, same tie rule, same baseline — ONLY the encoders changed",
-            check="assert the similarity matrix is square. Print the random baseline in the same table, every time. It is the only thing that makes 34% legible."),
+            check="assert the similarity matrix is square. Print the random baseline in the same table, every time. It is the only thing that makes 34% legible.",
+            **{"try": "report R@1 for the joint model over a random 50-image "
+                      "subset of this catalogue as well. It rises sharply, "
+                      "and the model is byte-for-byte identical. A recall is "
+                      "a recall over a stated candidate set, or it is not a "
+                      "measurement."}),
         code('''
 sim_clip = Q @ I.T                        # rows: text queries, columns: images
 assert sim_clip.shape == (N_CATALOGUE, N_CATALOGUE)
@@ -829,7 +931,12 @@ print(f"\\n{'random ranking (arithmetic)':34s} " +
             input="the CLIP similarity matrix",
             output="matched against unrelated, and Cohen's d",
             constraint="run the IDENTICAL analysis as section 7 — the comparison is between two values of d, and it is only a comparison if the computation is the same",
-            check="when you fix something, re-run the diagnostic that detected it, unchanged. A new diagnostic on the fixed version proves nothing about the old one."),
+            check="when you fix something, re-run the diagnostic that detected it, unchanged. A new diagnostic on the fixed version proves nothing about the old one.",
+            **{"try": "run this same block on the two-space matrix and print "
+                      "both effect sizes on one line. The same computation, "
+                      "two encoders, two numbers: that pair is the entire "
+                      "result of the lecture, and neither number means "
+                      "anything without the other."}),
         code('''
 matched, unrelated = np.diag(sim_clip), sim_clip[~np.eye(N_CATALOGUE, dtype=bool)]
 pooled = np.sqrt((matched.var(ddof=1) + unrelated.var(ddof=1)) / 2)
@@ -854,7 +961,13 @@ the 200 entries, by a fixed rule so the experiment repeats.
             input="the written descriptions, with 60 of them deleted by a fixed rule",
             output="recall with and without the descriptions, on the affected entries and via the image route",
             constraint="delete by a FIXED RULE (`i % 10 < 3`) so the experiment repeats, and set the deleted columns to −inf so they are not in the index at all",
-            check="assert exactly 60 entries were blanked. The image route is untouched on exactly those 60 entries, because it never read a description. That contrast is the number the next lecture repairs."),
+            check="assert exactly 60 entries were blanked. The image route is untouched on exactly those 60 entries, because it never read a description. That contrast is the number the next lecture repairs.",
+            **{"try": "change the deletion rule to i % 10 < 5, so half the "
+                      "catalogue loses its description. The text route's R@1 "
+                      "on the affected entries stays at exactly zero and the "
+                      "overall recall falls further. A structural zero does "
+                      "not get worse; more of the catalogue simply falls into "
+                      "it."}),
         code('''
 D = unit(minilm(descriptions))
 Qt = unit(minilm(queries))

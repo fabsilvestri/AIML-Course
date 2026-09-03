@@ -66,7 +66,13 @@ def build() -> list:
             input="nothing",
             output="versions, seeds, device, N_CATALOGUE",
             constraint="the same constants as the previous lecture, so the numbers are comparable",
-            check="`torch.nn.functional as Fn` rather than `F` — `F` is already the feature matrix in the previous notebook's namespace, and a collision there is the kind of bug that produces a confident wrong number."),
+            check="`torch.nn.functional as Fn` rather than `F` — `F` is already the feature matrix in the previous notebook's namespace, and a collision there is the kind of bug that produces a confident wrong number.",
+            **{"try": "import torch.nn.functional as F instead, then bind F "
+                      "to a feature matrix later, as the previous lecture "
+                      "does. Nothing raises until cross_entropy is looked up "
+                      "on a numpy array twenty cells away. A namespace "
+                      "collision is a bug whose stack trace points nowhere "
+                      "near its cause."}),
         code('''
 # Not examinable, and only needed on some machines: PyTorch, numpy and
 # torchvision can each end up loading their own OpenMP runtime, and with more
@@ -117,7 +123,12 @@ entries. Cached from the previous lecture if you ran it in this runtime.
             input="the split index and the first 200 images by id",
             output="the identical 200 entries, with descriptions and queries",
             constraint="the same deterministic rule — sorted by cocoid, first 200 — so this notebook and the last are talking about the same corpus",
-            check="assert the count and that the SKUs are unique. Whitespace-normalise the captions on the way in, exactly as before. Two notebooks that normalise differently have different queries."),
+            check="assert the count and that the SKUs are unique. Whitespace-normalise the captions on the way in, exactly as before. Two notebooks that normalise differently have different queries.",
+            **{"try": "delete the whitespace normalisation here but leave it "
+                      "in the previous lecture's notebook, then compare the "
+                      "two R@1 figures. A query that differs only by a "
+                      "newline is a different query, and the two notebooks "
+                      "are no longer talking about the same corpus."}),
         code('''
 CACHE = Path("datasets/app12")
 CACHE.mkdir(parents=True, exist_ok=True)
@@ -157,7 +168,12 @@ print(f"catalogue: {len(catalogue)} entries")
             input="the images and queries",
             output="both the RAW features and the unit-normalised ones",
             constraint="keep `I_raw` and `Q_raw` deliberately — the assistant failure in section 6 is about what happens when you use them, and it cannot be demonstrated if they were normalised in place",
-            check="assert both normalised matrices really have unit rows. `np.allclose(norm, 1.0)` as an assert, not a print. It is two lines, and section 6 is entirely about the run where it would have fired."),
+            check="assert both normalised matrices really have unit rows. `np.allclose(norm, 1.0)` as an assert, not a print. It is two lines, and section 6 is entirely about the run where it would have fired.",
+            **{"try": "normalise in place — set I_raw = unit(I_raw) on this "
+                      "line — and then run Section 2. The assistant failure "
+                      "disappears and the section has nothing left to show. "
+                      "Keeping the broken input alive is what makes the bug "
+                      "measurable rather than merely describable."}),
         code('''
 from transformers import CLIPModel, CLIPProcessor
 
@@ -233,7 +249,12 @@ One clause missing — the clause section 2 spent five minutes on.
             input="'write the symmetric contrastive loss for a batch of image and text embeddings, with a temperature of 0.01'",
             output="the loss, computed on the RAW features",
             constraint="run it exactly as returned. It runs, the docstring is accurate, and the shapes, the target and the factor of one half are all right",
-            check="reviewer question 5 again. The default nobody asked for is that a function called `get_*_features` returns something unnormalised."),
+            check="reviewer question 5 again. The default nobody asked for is that a function called `get_*_features` returns something unnormalised.",
+            **{"try": "call the same contrastive_loss on the normalised I and "
+                      "Q, at the same tau. Same function, same shapes, same "
+                      "target, different number. Which line of that docstring "
+                      "would have had to be wrong for a reader to catch this "
+                      "without running it?"}),
         code('''
 # The temperature CLIP itself was trained with, rather than a number chosen to
 # make the demonstration work: logit_scale is stored as a log and exponentiated.
@@ -286,7 +307,13 @@ Reviewer question 5 again: the default nobody asked for.
             input="the loss and accuracy both ways",
             output="both, plus the rank correlation between embedding length and queries won",
             constraint="show the MECHANISM, not just the loss difference — count how many queries each image wins and correlate that with its length",
-            check="the corrected specification's assertion is the part that would have caught it in silence: assert every row of both matrices has unit norm to within 1e-5. Two lines, and the bug becomes a crash."),
+            check="the corrected specification's assertion is the part that would have caught it in silence: assert every row of both matrices has unit norm to within 1e-5. Two lines, and the bug becomes a crash.",
+            **{"try": "recompute the rank correlation against the TEXT "
+                      "embedding lengths instead of the image ones. It "
+                      "collapses, because a text length is constant down a "
+                      "column and cancels out of that argmax. Which side of "
+                      "an unnormalised dot product does the softmax actually "
+                      "punish, and why only that one?"}),
         code('''
 good = infonce(I @ Q.T, tau)
 bad  = infonce(I_raw @ Q_raw.T, tau)
@@ -326,7 +353,12 @@ write the missing ones.
             input="the descriptions and queries through MiniLM",
             output="R@1 on the 60 blanked entries, with and without their descriptions",
             constraint="the same fixed blanking rule as the previous lecture, and the same −inf convention for 'not in the index at all'",
-            check="assert exactly 60 entries were blanked. Reproduce the fault before repairing it, from the same rule and the same seed. A repair measured against a differently-broken baseline is not measured."),
+            check="assert exactly 60 entries were blanked. Reproduce the fault before repairing it, from the same rule and the same seed. A repair measured against a differently-broken baseline is not measured.",
+            **{"try": "flip the rule to i % 10 >= 3, so the other 140 entries "
+                      "lose their descriptions instead. R@1 on the blanked "
+                      "set is still exactly zero. A structural zero does not "
+                      "depend on which entries you choose, and that is what "
+                      "makes it structural rather than bad luck."}),
         code('''
 from transformers import AutoTokenizer, BlipForConditionalGeneration, BlipProcessor
 from transformers import AutoModel
@@ -372,7 +404,12 @@ print(f"R@1 on the 60 blanked entries — described: "
             input="the 60 images with no description",
             output="a generated caption for each, with four shown beside their human captions",
             constraint="generate for the BLANKED entries only — captioning all 200 would replace descriptions that already exist and confound the measurement",
-            check="assert one caption came back per blanked entry. Print human and generated side by side for a few. It is the only way to see that the generated ones are shorter, blander and occasionally wrong."),
+            check="assert one caption came back per blanked entry. Print human and generated side by side for a few. It is the only way to see that the generated ones are shorter, blander and occasionally wrong.",
+            **{"try": "set num_beams=1 and re-run. The captions get shorter "
+                      "and blander and one or two change meaning. Then repeat "
+                      "the measurement in the next cell: how much of the "
+                      "recovered recall was the beam width rather than the "
+                      "captioner?"}),
         code('''
 proc = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
 cap = BlipForConditionalGeneration.from_pretrained(
@@ -400,7 +437,12 @@ for j, g in list(zip(blanked, generated))[:4]:
             input="the description matrix with the generated captions filled in",
             output="R@1 on the 60, four ways, and the overall text-route figure",
             constraint="measure on the SAME 60 entries throughout — the overall number is diluted by the 140 that never changed",
-            check="three things not to claim: a generated caption is not evidence about the product; 60 entries is a small sample with a wide interval; and we are scoring generated captions against human captions of the SAME image, which is a friendly test. The failure mode to watch for is an auto-caption that is WRONG, making an entry findable under the wrong query — worse than unfindable, and nothing measured here detects it."),
+            check="three things not to claim: a generated caption is not evidence about the product; 60 entries is a small sample with a wide interval; and we are scoring generated captions against human captions of the SAME image, which is a friendly test. The failure mode to watch for is an auto-caption that is WRONG, making an entry findable under the wrong query — worse than unfindable, and nothing measured here detects it.",
+            **{"try": "caption all 200 entries and replace every description, "
+                      "the human ones included. The overall R@1 falls. The "
+                      "repair is worth a great deal where there was nothing "
+                      "and is a downgrade everywhere else, which is exactly "
+                      "what the constraint above is protecting."}),
         code('''
 D_filled = D.copy()
 D_filled[blanked] = unit(minilm(generated))
@@ -448,7 +490,12 @@ which one you measured.
             input="six deliberately ambiguous queries",
             output="the model, the prompt helper, and the top-5 shortlist per query",
             constraint="decide how to CHECK it before generating anything — 'the answer is good' is not measurable in a lecture, so require cited SKUs, which either exist in the catalogue or do not",
-            check="assert the shortlist has the shape you expect. `do_sample=False`. A sampled generation gives a different answer every run and the grounding rate becomes a random variable you have not characterised."),
+            check="assert the shortlist has the shape you expect. `do_sample=False`. A sampled generation gives a different answer every run and the grounding rate becomes a random variable you have not characterised.",
+            **{"try": "set do_sample=True and run the grounding measurement "
+                      "three times. The percentage moves every run. A "
+                      "grounding rate computed from a sampled generation is a "
+                      "random variable, and nothing in this notebook has "
+                      "characterised its spread."}),
         code('''
 from transformers import AutoModelForCausalLM
 
@@ -489,7 +536,12 @@ assert top5.shape == (len(AMBIGUOUS), 5)
             input="the same six queries, asked both ways",
             output="how many cited SKUs actually exist, under each condition",
             constraint="identical prompts except for the shortlist — the only difference must be whether the model was given the catalogue",
-            check="the retriever is now the ceiling. If the right entry is not in the top five, no amount of generation recovers it — which is why the R@5 from the previous lecture is the number that matters here."),
+            check="the retriever is now the ceiling. If the right entry is not in the top five, no amount of generation recovers it — which is why the R@5 from the previous lecture is the number that matters here.",
+            **{"try": "count each SKU once per answer rather than once per "
+                      "mention — question 4 of the checklist below. A model "
+                      "that cites one real stock number five times currently "
+                      "earns five successes. Does the gap between the two "
+                      "conditions survive the fix?"}),
         code('''
 t0 = time.perf_counter()
 closed_cited, grounded_cited = [], []
