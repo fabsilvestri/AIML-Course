@@ -64,7 +64,12 @@ def build() -> list:
             input="nothing",
             output="versions, seeds, device",
             constraint="report the device rather than demanding one — this notebook is sized for CPU, and the GRU cells are the slowest thing in the course there",
-            check="when a notebook is deliberately smaller than the deck, say by how much and say what is preserved. 'The ordering is the point' is a claim you can check."),
+            check="when a notebook is deliberately smaller than the deck, say by how much and say what is preserved. 'The ordering is the point' is a claim you can check.",
+            **{"try": "if the notebook found an accelerator, force device = "
+                      "'cpu' here and time one training run each way. On "
+                      "sequences this short the transfers can cost more than "
+                      "the arithmetic saves. Measure it before you assume the "
+                      "accelerator is helping."}),
         code('''
 # Not examinable, and only needed on some machines: PyTorch, numpy and
 # torchvision can each end up loading their own OpenMP runtime, and with more
@@ -121,7 +126,11 @@ The split into `train` and `test` ships with the corpus. We do not make our own.
             input="the IMDb tarball",
             output="25,000 training and 25,000 test reviews with their labels",
             constraint="use the split that SHIPS with the corpus — we do not make our own, because every published number on this dataset uses that cut",
-            check="assert both halves are 25,000 and that the labels are 0/1. Print the positive share of BOTH halves. Balanced-by-construction is a claim about the file, and it costs one line to verify."),
+            check="assert both halves are 25,000 and that the labels are 0/1. Print the positive share of BOTH halves. Balanced-by-construction is a claim about the file, and it costs one line to verify.",
+            **{"try": "print train_y[:10] and train_y[-10:]. The corpus ships "
+                      "every positive review first and every negative one "
+                      "last, which is why the next cell permutes before it "
+                      "slices, and why any prefix of this file is one class."}),
         code('''
 URL  = "https://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz"
 ROOT = Path("datasets")
@@ -166,7 +175,11 @@ touched again until the very last cell.
             input="the 25,000 training reviews",
             output="5,000 fit and 2,000 validation reviews",
             constraint="both from the TRAINING half — the test half is not touched again until the very last cell",
-            check="assert the two index sets are disjoint and the sizes are right. Whenever you slice a corpus, ask whether it is sorted by label. This one is, and so are most of the classic text datasets."),
+            check="assert the two index sets are disjoint and the sizes are right. Whenever you slice a corpus, ask whether it is sorted by label. This one is, and so are most of the classic text datasets.",
+            **{"try": "drop the permutation: fit_i, val_i = np.arange(N_FIT), "
+                      "np.arange(N_FIT, N_FIT + N_VAL). Both asserts still "
+                      "pass, and every model below trains on 5,000 positive "
+                      "reviews. Which assert would have caught it?"}),
         code('''
 N_FIT, N_VAL = 5_000, 2_000        # the deck uses 20,000 and 5,000
 
@@ -193,7 +206,12 @@ are. Both decide something about the model.
             input="the training reviews",
             output="the length distribution, and what a cut at MAXLEN costs",
             constraint="report BOTH what fraction of REVIEWS get truncated and what fraction of WORDS survive — they are very different numbers",
-            check="a truncation length is a hyperparameter. State what it discards, in both units, before adopting it."),
+            check="a truncation length is a hyperparameter. State what it discards, in both units, before adopting it.",
+            **{"try": "set MAXLEN = 64 and read the two percentages again. "
+                      "They move by very different amounts, because one "
+                      "counts documents and the other counts words. Which of "
+                      "the two belongs beside a claim that the truncation is "
+                      "harmless?"}),
         code('''
 WORD_RE = re.compile(r"[a-z0-9']+")
 
@@ -218,7 +236,12 @@ print(f"cutting at {MAXLEN}: truncates {over:.1%} of reviews, "
             input="every token in the training half",
             output="how many distinct words, how many appear exactly once, and the length histogram",
             constraint="count the HAPAX words — the ones seen exactly once — as a share of the vocabulary",
-            check="clip the histogram before plotting. One review of 2,470 words stretches the axis so that the bulk of the distribution is three pixels wide."),
+            check="clip the histogram before plotting. One review of 2,470 words stretches the axis so that the bulk of the distribution is three pixels wide.",
+            **{"try": "recount the hapax share over the 5,000 fit reviews "
+                      "alone — the vocabulary the models actually get. It "
+                      "rises. A word is rare relative to how much text you "
+                      "have, and the models see a fifth of what this "
+                      "histogram was drawn from."}),
         code('''
 counts = Counter(w for t in train_tok for w in t)
 hapax  = sum(1 for _, c in counts.items() if c == 1)
@@ -249,7 +272,12 @@ Two anchors. The trivial one, and the one that is actually hard to beat.
             input="the test labels",
             output="the majority-class accuracy",
             constraint="take the max of the two shares rather than assuming which class is commoner",
-            check="a trivial baseline that is trivially beaten still belongs in the table. It is the zero of the scale."),
+            check="a trivial baseline that is trivially beaten still belongs in the table. It is the zero of the scale.",
+            **{"try": "compute the same majority baseline on train_y. It is "
+                      "the same number, which is what balanced by "
+                      "construction means, and it is the condition that makes "
+                      "accuracy defensible here and did not hold in Lecture "
+                      "3."}),
         code('''
 majority = max(test_y.mean(), 1 - test_y.mean())
 print(f"always predict one class:  {majority:.1%}")
@@ -259,7 +287,11 @@ print(f"always predict one class:  {majority:.1%}")
             input="all 25,000 training reviews, first unigrams alone and then unigrams with bigrams",
             output="a tf-idf logistic regression and its test accuracy",
             constraint="`fit_transform` on train and `transform` on test — different verbs, and the vocabulary is a fitted object like any other",
-            check="assert the two matrices have the same number of COLUMNS, which is what fails if `fit_transform` was called twice. Thirty seconds of counting words is the thing your recurrent network has to beat. Measure it before you build anything."),
+            check="assert the two matrices have the same number of COLUMNS, which is what fails if `fit_transform` was called twice. Thirty seconds of counting words is the thing your recurrent network has to beat. Measure it before you build anything.",
+            **{"try": "set min_df=1 and re-run the unigram model. The feature "
+                      "count roughly doubles, with columns that appear in a "
+                      "single document. How much accuracy does that buy? It "
+                      "is the hapax finding of Section 3, priced."}),
         code('''
 # ⏱ about 30 seconds for the two of them: 25,000 documents each.
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -307,7 +339,12 @@ The **function** ignores the shift. `float32` does not.
             input="three logits near 1000",
             output="the naive softmax, and the same thing with the max subtracted",
             constraint="suppress the overflow warnings deliberately with `np.errstate` — the overflow is the demonstration, not an accident, and an unsuppressed warning reads as a bug in the notebook",
-            check="print where exp overflows float32. It is about 88.7, which is a much smaller number than people expect."),
+            check="print where exp overflows float32. It is about 88.7, which is a much smaller number than people expect.",
+            **{"try": "change z to float64 and re-run. The naive form "
+                      "survives 1000 and fails at about 709 instead. The bug "
+                      "did not go away; its threshold moved, which is the "
+                      "worst kind of fix because it moves out of your test "
+                      "cases."}),
         code('''
 z = np.array([1000., 1001., 1002.], dtype=np.float32)
 
@@ -324,7 +361,12 @@ print(f"\\nexp overflows float32 past x = {np.log(np.finfo(np.float32).max):.2f}
             input="three small logits, shifted by 50",
             output="both softmaxes",
             constraint="use values that do NOT overflow, so the invariance is demonstrated separately from the numerical failure",
-            check="assert the two agree to 1e-6. When a property holds mathematically and fails numerically, demonstrate each on its own inputs."),
+            check="assert the two agree to 1e-6. When a property holds mathematically and fails numerically, demonstrate each on its own inputs.",
+            **{"try": "shift by 500 instead of 50. In float32 the exponential "
+                      "overflows, both sides become nan, and the assert "
+                      "fires. The invariance is exact in mathematics and has "
+                      "a range in floating point. Which of the two does your "
+                      "code depend on?"}),
         code('''
 # and the invariance itself, on values that do not overflow
 a = np.array([1., 2., 3.], dtype=np.float32)
@@ -356,7 +398,12 @@ it.
             input="random logits and targets",
             output="autograd's gradient beside the analytic p − y",
             constraint="`reduction='sum'` — the mean would divide every gradient by the batch size, and the assertion would then fail for a reason that has nothing to do with the mathematics",
-            check="assert agreement to 1e-10, that each row of the gradient sums to zero, and that every component is in [−1, 1]. The row-sum assert is the interesting one. The gradient has no component along the all-ones direction, which is the derivative form of the shift invariance above."),
+            check="assert agreement to 1e-10, that each row of the gradient sums to zero, and that every component is in [−1, 1]. The row-sum assert is the interesting one. The gradient has no component along the all-ones direction, which is the derivative form of the shift invariance above.",
+            **{"try": "change reduction to the default 'mean' and re-run. The "
+                      "assert fires, and the two disagree by exactly a factor "
+                      "of 7 — the batch size. A failing test whose ratio is a "
+                      "round number is telling you which convention you got "
+                      "wrong, not that the derivation is."}),
         code('''
 torch.manual_seed(RANDOM_STATE)
 z = torch.randn(7, 5, dtype=torch.float64, requires_grad=True)
@@ -396,7 +443,11 @@ because most rows then have a loss near zero where both forms agree trivially.
             input="2,000 rows at each of ten loss levels",
             output="the non-finite rate and median relative error of the naive form against the combined one",
             constraint="sweep HOW WRONG THE ROW IS, not the scale of the logits — the naive form has to represent e^(−loss) as a float32, so the loss is the quantity the failure depends on",
-            check="assert the stable form never fails, at either end of the sweep. Score against float64 rather than against each other. Two float32 computations agreeing tells you nothing about either."),
+            check="assert the stable form never fails, at either end of the sweep. Score against float64 rather than against each other. Two float32 computations agreeing tells you nothing about either.",
+            **{"try": "add gap = 200 to the sweep. The naive form is non- "
+                      "finite on every row and the combined one still is not. "
+                      "Then work out on paper what p(true class) is at a loss "
+                      "of 200, and why no float32 can hold it."}),
         code('''
 K, N = 10, 2_000
 idx = np.arange(N)
@@ -436,7 +487,12 @@ assert rows[0][3] == 0.0 and rows[-1][3] == 0.0, "the stable form should never f
             input="the sweep",
             output="median relative error on a log axis, and the non-finite rate as a percentage",
             constraint="two panels, because the two failures are different kinds — silent inaccuracy and outright inf/nan — and one axis cannot show both",
-            check="clamp the log-axis values away from zero before plotting. A median error of exactly 0.0 is not plottable on a log scale and matplotlib's response is to drop the point silently."),
+            check="clamp the log-axis values away from zero before plotting. A median error of exactly 0.0 is not plottable on a log scale and matplotlib's response is to drop the point silently.",
+            **{"try": "delete the np.maximum(..., 1e-9) and redraw. Any "
+                      "median error that is exactly zero disappears from the "
+                      "log axis without complaint, and the combined form's "
+                      "curve gains holes that read as missing measurements "
+                      "rather than as perfect ones."}),
         code('''
 g = np.array([r[0] for r in rows], dtype=float)
 fig, ax = plt.subplots(1, 2, figsize=(10, 3))
@@ -460,7 +516,11 @@ The first failure is loud. The second is the one that ships.
             input="[100, 0, −100] and [0, 0, −100], target class 2",
             output="the naive, combined, float64 and PyTorch values for each",
             constraint="show the LOUD failure and the QUIET one, in that order — the first overflows and the second returns a finite, plausible, wrong number",
-            check="assert the first is non-finite and the second is off by more than 1e-3, so both failures are pinned. Print PyTorch's answer beside your own. It agrees with the combined form, which is evidence that the combined form is what the library does."),
+            check="assert the first is non-finite and the second is off by more than 1e-3, so both failures are pinned. Print PyTorch's answer beside your own. It agrees with the combined form, which is evidence that the combined form is what the library does.",
+            **{"try": "add a third row, [0., 0., -30.]. Both forms agree, "
+                      "because exp(-30) is comfortably representable. Find "
+                      "the smallest gap at which the quiet failure starts, "
+                      "and compare it with the 88.7 from Section 5."}),
         code('''
 lse1 = lambda v: v.max() + np.log(np.exp(v - v.max()).sum())
 
@@ -510,7 +570,12 @@ minimising the KL divergence to the label.
             input="a random distribution, against a one-hot and a label-smoothed target",
             output="entropy, KL, their sum, and the cross-entropy",
             constraint="test with BOTH targets — for a one-hot target the entropy is zero and the identity is invisible",
-            check="assert H + KL equals CE to 1e-12 for both, and that the one-hot entropy is exactly zero. Guard the logs against zeros with a mask on p > 0. 0·log 0 is 0 by convention and nan in floating point."),
+            check="assert H + KL equals CE to 1e-12 for both, and that the one-hot entropy is exactly zero. Guard the logs against zeros with a mask on p > 0. 0·log 0 is 0 by convention and nan in floating point.",
+            **{"try": "make the smoothed target uniform, np.full(5, 0.2). Its "
+                      "entropy rises to log 5, and the identity still holds. "
+                      "That entropy is a floor the cross-entropy cannot go "
+                      "below — so which of the three quantities is the one a "
+                      "training loop can actually reduce?"}),
         code('''
 rngk = np.random.default_rng(RANDOM_STATE)
 q      = rngk.dirichlet(np.ones(5))
@@ -540,7 +605,12 @@ course.
             input="the 5,000 fit reviews",
             output="a word-to-index map, and the out-of-vocabulary rate on test",
             constraint="build it from the fit split ONLY — building a vocabulary is FITTING, and it obeys the same rule as every other fitted object in this course",
-            check="assert indices 0 and 1 are reserved, for padding and [UNK]. The problem is not the SIZE of the vocabulary. A word vocabulary is closed and language is not, so no size fixes it."),
+            check="assert indices 0 and 1 are reserved, for padding and [UNK]. The problem is not the SIZE of the vocabulary. A word vocabulary is closed and language is not, so no size fixes it.",
+            **{"try": "build w2i from train_x rather than fit_x and read the "
+                      "two out-of-vocabulary rates again. Both fall, and "
+                      "neither means anything any more: part of the model has "
+                      "now been fitted on 20,000 reviews it was not allowed "
+                      "to see."}),
         code('''
 VOCAB = 20_000
 fit_counts = Counter(w for s in fit_x for w in word_tokens(s))
@@ -571,7 +641,11 @@ other corpus and shipped.
             input="one sentence with two rare words in it",
             output="the word tokenizer's view beside WordPiece's",
             constraint="show the word tokenizer producing [UNK] for exactly the words that carry the sentiment",
-            check="print the pieces-per-word ratio and both vocabulary sizes. A subword tokenizer buys coverage and spends sequence length, and the next sections are about that trade."),
+            check="print the pieces-per-word ratio and both vocabulary sizes. A subword tokenizer buys coverage and spends sequence length, and the next sections are about that trade.",
+            **{"try": "add a word the tokenizer has certainly never met — "
+                      "invent one. WordPiece returns pieces for it and never "
+                      "[UNK]; the word tokenizer returns [UNK]. Which of the "
+                      "two failures is easier to notice further downstream?"}),
         code('''
 from transformers import AutoTokenizer
 
@@ -593,7 +667,11 @@ print(f"vocabulary: ours {VOCAB:,}   WordPiece {tk.vocab_size:,}")
             input="2,000 randomly chosen test reviews",
             output="the [UNK] rate over subword tokens",
             constraint="sample RANDOMLY — the corpus ships positives first, so `test_x[:2000]` is all positives",
-            check="assert the rate is below 0.1%, which is what 'almost never misses' should mean. Measure rather than assume. 'Subword tokenizers have no OOV problem' is nearly true and the nearly is worth four lines."),
+            check="assert the rate is below 0.1%, which is what 'almost never misses' should mean. Measure rather than assume. 'Subword tokenizers have no OOV problem' is nearly true and the nearly is worth four lines.",
+            **{"try": "raise the sample from 2,000 reviews to the whole test "
+                      "set. Does the rate stay under the asserted 0.1%? An "
+                      "assert on a sampled rate is an assert with a "
+                      "confidence interval, and this cell does not print one."}),
         code('''
 # How often does WordPiece have to give up? Measure rather than assume.
 # NB: the corpus ships positives first, so test_x[:2000] is all positives. It
@@ -624,7 +702,12 @@ anything.
             input="a batch of token ids",
             output="the embedded batch, and the table's parameter count",
             constraint="`padding_idx=0` — it pins row 0 at zero and KEEPS it there, so padding never learns anything",
-            check="assert the output shape, and assert row 0 is still exactly zero. Assert the padding row is zero AFTER training too, not just at construction. That is the only way to know the flag did what it claims."),
+            check="assert the output shape, and assert row 0 is still exactly zero. Assert the padding row is zero AFTER training too, not just at construction. That is the only way to know the flag did what it claims.",
+            **{"try": "drop padding_idx=0, then check emb.weight[0] after "
+                      "training the correct model in Section 12 and again "
+                      "after the last-of-padding model in Section 13. Only "
+                      "one of them moves it. Say which, and why the packing "
+                      "is the reason."}),
         code('''
 emb = nn.Embedding(num_embeddings=VOCAB, embedding_dim=128, padding_idx=0)
 x   = torch.randint(0, VOCAB, (32, MAXLEN))
@@ -647,7 +730,12 @@ about where each review ends.
             input="variable-length token sequences",
             output="a rectangular batch and the true lengths",
             constraint="keep the LENGTHS. A padded batch has lost the information about where each review ends, and the model needs it back",
-            check="assert every length is between 1 and MAXLEN, and that nothing is written past the true length of the first row. Assert that the region past the true length is zero. It is one line and it is the invariant the whole padding scheme depends on."),
+            check="assert every length is between 1 and MAXLEN, and that nothing is written past the true length of the first row. Assert that the region past the true length is zero. It is one line and it is the invariant the whole padding scheme depends on.",
+            **{"try": "delete the max(len(s), 1) and encode a review that "
+                      "tokenises to nothing — an empty string will do. "
+                      "pack_padded_sequence raises on a zero length, which is "
+                      "the good case. What would the last-of-padding branch "
+                      "have done with it instead?"}),
         code('''
 def pad_batch(seqs):
     X = np.zeros((len(seqs), MAXLEN), dtype=np.int64)
@@ -681,7 +769,12 @@ embedding and the packing.
             input="a padded batch and its lengths",
             output="two logits per review",
             constraint="`pack_padded_sequence` with `enforce_sorted=False`, and take the final hidden state of BOTH directions",
-            check="assert the head returns exactly two logits for a batch of four. `lengths.cpu()` in the pack call. It requires a CPU tensor and the error message when it is on the GPU names neither the argument nor the fix."),
+            check="assert the head returns exactly two logits for a batch of four. `lengths.cpu()` in the pack call. It requires a CPU tensor and the error message when it is on the GPU names neither the argument nor the fix.",
+            **{"try": "replace torch.cat([h[0], h[1]], dim=1) with "
+                      "torch.cat([h[0], h[0]], dim=1). The shapes are "
+                      "unchanged, the parameter count is identical, nothing "
+                      "raises, and the backward direction is now dead weight. "
+                      "What happens to the accuracy?"}),
         code('''
 EMB_DIM, HIDDEN = 128, 64
 
@@ -723,7 +816,13 @@ in the course on a CPU, which is why the corpus is subsampled.
             input="the training and validation splits",
             output="a trained model, keeping the weights from the BEST validation epoch",
             constraint="count accuracy over the SET, not as a mean of batch accuracies — the entry from application 6",
-            check="clone the state dict when you save it. `net.state_dict()` returns references to live tensors, so without the clone your 'best' weights keep training."),
+            check="clone the state dict when you save it. `net.state_dict()` returns references to live tensors, so without the clone your 'best' weights keep training.",
+            **{"try": "drop the .clone() when best_state is saved and re-run "
+                      "with more epochs. On CPU, .cpu() returns the same "
+                      "tensor rather than a copy, so the saved best weights "
+                      "keep training with the live model and 'keeping epoch "
+                      "1' hands you epoch 2. It is a bug that only bites on "
+                      "the machine without the accelerator."}),
         code('''
 BATCH, EPOCHS, LR = 64, 2, 1e-3     # the deck uses 4 epochs
 
@@ -782,7 +881,12 @@ def train(net, Xf, Lf, yf, Xv, Lv, yv, double_softmax=False, tag=""):
             input="the word-tokenised batches",
             output="the trained model and its validation curve",
             constraint="re-seed immediately before, so every configuration below starts from the same initialisation",
-            check="`torch.manual_seed` before EACH run, not once at the top. Any cell that consumes randomness in between shifts every configuration after it."),
+            check="`torch.manual_seed` before EACH run, not once at the top. Any cell that consumes randomness in between shifts every configuration after it.",
+            **{"try": "delete the torch.manual_seed line and run this cell "
+                      "twice. The two validation curves differ by more than "
+                      "some of the differences this notebook goes on to "
+                      "attribute to the tokenizer. That spread is the error "
+                      "bar the single-seed comparisons below do not have."}),
         code('''
 torch.manual_seed(RANDOM_STATE)
 scratch, curve_scratch, loss_scratch = train(
@@ -808,7 +912,13 @@ padding for every review shorter than `MAXLEN` — which is most of them.
             input="'write a PyTorch model that classifies a padded batch of token ids with an embedding and a GRU, returning two logits'",
             output="the same model summarising at `out[:, -1, :]`, and what it costs",
             constraint="run it and compare — under-specified in exactly ONE place, and the code is otherwise correct",
-            check="the prompt named the batch as padded and did not say what to do about it. A specification that mentions padding must say how the summary avoids it."),
+            check="the prompt named the batch as padded and did not say what to do about it. A specification that mentions padding must say how the summary avoids it.",
+            **{"try": "set MAXLEN = 512 and re-run this cell, then set it to "
+                      "the median review length. The bug gets worse and then "
+                      "better. The measured cost of a padding bug is a "
+                      "property of your padding, not of the model — which is "
+                      "why the invariance test below is the better "
+                      "instrument."}),
         code('''
 torch.manual_seed(RANDOM_STATE)
 padbug, curve_padbug, _ = train(
@@ -831,7 +941,12 @@ ways and the logits must not move.
             input="the same review, padded two different ways",
             output="whether the logits move",
             constraint="test INVARIANCE, not shape — a padding bug is exactly the class of error that an output-shape test cannot see",
-            check="assert the correct model's logits agree to 1e-4, and print how far the buggy one moves. Feed the same content two ways and require the same answer. It is the text equivalent of evaluating the same model twice."),
+            check="assert the correct model's logits agree to 1e-4, and print how far the buggy one moves. Feed the same content two ways and require the same answer. It is the text equivalent of evaluating the same model twice.",
+            **{"try": "pad the same review by hand to twice MAXLEN and repeat "
+                      "the two-way test. The correct model is unmoved and the "
+                      "buggy one moves further still. An invariance test you "
+                      "can dial is also a measurement of how badly the "
+                      "invariance fails."}),
         code('''
 scratch.eval(); padbug.eval()
 n = int(Lf_w[0])
@@ -860,7 +975,12 @@ the work.
             input="the same reviews, tokenised into subwords",
             output="the subword batches, and a model trained on them from random vectors",
             constraint="change the tokenizer and NOTHING else — same architecture, same seed, same epochs — so the measurement says which change did the work",
-            check="assert the batch shape before training on it. A subword tokenizer is not a better tokenizer by itself. It is a vocabulary that someone else's pretraining can be poured into."),
+            check="assert the batch shape before training on it. A subword tokenizer is not a better tokenizer by itself. It is a vocabulary that someone else's pretraining can be poured into.",
+            **{"try": "raise MAXLEN to 256 for the subword batches only, so "
+                      "both models see roughly the same number of WORDS "
+                      "rather than the same number of positions. Does the "
+                      "subword model catch up? That isolates the second of "
+                      "the three explanations in the paragraph below."}),
         code('''
 def encode_pieces(texts):
     out  = tk(list(texts), truncation=True, max_length=MAXLEN,
@@ -900,7 +1020,13 @@ someone else's pretraining can be poured into.
             input="DistilBERT's 768-wide embedding table",
             output="a 128-wide projection of it, rescaled to match nn.Embedding's own scale",
             constraint="rescale after projecting — PCA components have the variance of the data, and dropping a table with the wrong scale into a randomly-initialised architecture changes the effective learning rate of everything downstream",
-            check="assert the projected shape, and report how much variance 128 components keep. When you transplant a fitted object into a different architecture, match its scale to what the architecture expects. `Z / Z.std() * 0.1` is that line, and it is easy to leave out."),
+            check="assert the projected shape, and report how much variance 128 components keep. When you transplant a fitted object into a different architecture, match its scale to what the architecture expects. `Z / Z.std() * 0.1` is that line, and it is easy to leave out.",
+            **{"try": "delete the Z / Z.std() * 0.1 line and re-run both "
+                      "configurations. The table now arrives carrying PCA's "
+                      "variance instead of nn.Embedding's, and every gradient "
+                      "downstream is scaled by it. Compare the frozen curve "
+                      "with and without the line: is the transplant still "
+                      "worth anything?"}),
         code('''
 # The same vocabulary already has a trained embedding table. It is 768 wide and
 # our architecture is 128 wide, so project with PCA — thread 5, from Lecture 10.
@@ -924,7 +1050,11 @@ print(f"{EMB_DIM} components keep "
             input="the pretrained table, once held fixed and once allowed to move",
             output="both validation curves",
             constraint="run BOTH — frozen isolates what the pretrained vectors are worth, and tuned shows what adapting them adds",
-            check="two runs, one variable. Frozen against tuned is the cheapest possible ablation and it answers a question the single tuned run cannot."),
+            check="two runs, one variable. Frozen against tuned is the cheapest possible ablation and it answers a question the single tuned run cannot.",
+            **{"try": "freeze the GRU as well and train the head alone. "
+                      "Whatever accuracy survives is what a linear probe on "
+                      "somebody else's vectors is worth, and it is the honest "
+                      "floor the tuned run should be measured against."}),
         code('''
 torch.manual_seed(RANDOM_STATE)
 _, curve_frozen, _ = train(
@@ -950,7 +1080,11 @@ last time the test half is scored.
             input="all 25,000 test reviews, encoded both ways",
             output="every configuration's test accuracy, beside both anchors",
             constraint="encode with BOTH tokenizers — the word models and the subword models cannot share a test batch",
-            check="assert both encodings produced 25,000 rows. Keep the anchors in the final table. The bag of words is in that column for a reason, and it is not there to be flattered."),
+            check="assert both encodings produced 25,000 rows. Keep the anchors in the final table. The bag of words is in that column for a reason, and it is not there to be flattered.",
+            **{"try": "add the subword/random and subword/frozen models to "
+                      "this table. You now have five test scores, and the "
+                      "moment you report the best of them you have used the "
+                      "test set as a validation set five times over."}),
         code('''
 Xt_w, Lt_w = encode_words(test_x)
 Xt_s, Lt_s = encode_pieces(test_x)
@@ -971,7 +1105,11 @@ for name, acc in results.items():
             input="every configuration's validation curve",
             output="all four on one axis",
             constraint="one axis, so the four are comparable, and integer epoch ticks — there are two of them and matplotlib will otherwise offer 1.5",
-            check="when you have very few points, plot markers and not just lines. A line between two points invites extrapolation that the data cannot support."),
+            check="when you have very few points, plot markers and not just lines. A line between two points invites extrapolation that the data cannot support.",
+            **{"try": "raise EPOCHS to 6 and redraw. The curves separate and "
+                      "at least one of them turns over. Two points per "
+                      "configuration was never enough to show a shape; it was "
+                      "enough to fit inside a free Colab session."}),
         code('''
 plt.figure(figsize=(9, 3))
 for label, c in (("our words, random", curve_scratch),
@@ -1003,7 +1141,12 @@ pass, which is exactly the cost being measured.
             input="the full test set, three times per configuration",
             output="the median seconds per pass and the milliseconds per review",
             constraint="time raw strings IN and labels OUT, tokenising INCLUDED — that is what the desk pays per review — and take the MEDIAN of several passes, never a single one",
-            check="assert counting words is the cheapest, which is the expected ordering and worth failing loudly if it is not. None of these is anywhere near the stated hour, so the cost column does not decide anything here. A requirement that turns out not to bind is still worth measuring: you did not know it did not bind until you measured."),
+            check="assert counting words is the cheapest, which is the expected ordering and worth failing loudly if it is not. None of these is anywhere near the stated hour, so the cost column does not decide anything here. A requirement that turns out not to bind is still worth measuring: you did not know it did not bind until you measured.",
+            **{"try": "call score_time with repeats=1 and run the cell three "
+                      "times. The three answers differ by more than the gap "
+                      "between two of the configurations. That is what the "
+                      "median is for, and why one wall clock is not a "
+                      "measurement."}),
         code('''
 def score_time(fn, repeats=3):
     """Median of `repeats` full passes. The mean is dominated by whichever
