@@ -114,8 +114,14 @@ def lecture_list() -> str:
             if pub:
                 out += ['        <div class="links">',
                         f'          <a class="btn" href="slides/lecture-{n:02d}.html">Slides</a>',
-                        f'          <a class="btn btn-colab" href="{COLAB.format(n)}">Notebook</a>',
-                        '        </div>']
+                        f'          <a class="btn btn-colab" href="{COLAB.format(n)}">Notebook</a>']
+                # The lecture-notes lectures -- those with no chapter -- carry a
+                # third link. For them the PDF is the primary source, not a
+                # supplement, so it sits beside the other two rather than below.
+                if not src:
+                    out.append(
+                        f'          <a class="btn btn-notes" href="notes/lecture-{n:02d}.pdf">Notes (PDF)</a>')
+                out.append('        </div>')
             else:
                 out += ['        <div class="links">',
                         '          <span class="btn btn-soon">In preparation</span>',

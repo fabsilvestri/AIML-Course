@@ -209,6 +209,15 @@ def check_site_index() -> list[str]:
             if f"notebooks/lecture-{n:02d}.ipynb" not in src:
                 out.append(f"index.html links lecture {n:02d}'s slides but not "
                            f"its notebook")
+        # Part V's extended notes. The page links a PDF for lectures 19-22 and
+        # those PDFs are build artefacts of notes/*.tex, so they can go missing
+        # exactly the way a converted deck can -- and a dead link to the
+        # PRIMARY SOURCE of an examinable lecture is worse than a dead link to
+        # a supplement.
+        if f'href="notes/lecture-{n:02d}.pdf"' in src:
+            if not (ROOT / f"notes/lecture-{n:02d}.pdf").exists():
+                out.append(f"index.html links lecture {n:02d}'s notes PDF, "
+                           f"which does not exist — run make -C notes")
 
     if 'class="pending"' in src:
         out.append('index.html: still says "in preparation" somewhere')

@@ -1,0 +1,891 @@
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+
+\begin{document}
+\notestitle{21}{Recommender systems: from ratings to factors}{MovieLens 1M}
+
+\section{The problem, and the data}
+
+6{,}040 users. 3{,}706 films. 1{,}000{,}209 ratings on a 1--5 scale. Two
+questions, and they are not the same question.
+
+\begin{itemize}[leftmargin=*,nosep]
+  \item \term{Rating prediction} --- what would this user give this film?
+        Scored by RMSE. That is this lecture.
+  \item \term{Top-$N$ recommendation} --- which ten films should we show?
+        Scored by the ranking metrics of \lecture{19}. That is \lecture{22}.
+\end{itemize}
+
+They come apart, which is the subject of the next lecture: a model that
+predicts every rating within half a star can still recommend badly, because the
+films a user would rate highly are not the films they have not seen.
+
+\subsection{Why MovieLens, and what it is not}
+
+It has \emph{explicit ratings}, which most systems do not have --- but without
+them, rating prediction cannot be taught at all. It has \emph{timestamps},
+which is why this release and not the smaller one: half of \lecture{22} is the
+difference between splitting a history at random and splitting it in time. And
+a million ratings is large enough that the results are not noise and small
+enough to factorise on a CPU in seconds.
+
+\begin{keybox}[title={And what it is not}]
+A research dataset from a system that \emph{asked people to rate films}. It is
+not a log of a production recommender, its users are self-selected, and its
+sparsity pattern is unlike a real catalogue's. Everything measured here
+transfers as a \emph{method}, not as a number.
+\end{keybox}
+
+\subsection{The matrix, and what is not in it}
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+Users $\times$ films        & 22.4 million cells \\
+Ratings present             & 1{,}000{,}209 \\
+Density                     & 4.5\% \\
+Ratings per user, median    & 96 \\
+Ratings per film, median    & 124 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+95.5\% of the matrix is missing, and this is the central fact of the lecture.
+
+\begin{keybox}[title={Missing is not zero}]
+A cell is empty because the user never saw the film, or saw it and did not rate
+it, or was never shown it by whatever system was running at the time. Every one
+of those is a different meaning, and none of them is ``disliked''.
+\end{keybox}
+
+\subsubsection{Not missing at random}
+
+Worse: the pattern of what is missing is \emph{informative}. People rate films
+they chose to watch, and they chose them because they expected to like them. A
+horror film unrated by a user who hates horror is missing \emph{because} they
+hate horror --- which is a rating of a kind, and it is not in the data. Every
+model in this lecture trains on observed entries and is evaluated on observed
+entries, so none of them ever sees this.
+
+That is the same shape as \lecture{19}'s pooling: the data records what someone
+chose to look at, and the choice was not random. In retrieval it made recall a
+lower bound; here it biases the training set itself.
+
+\subsection{What ``a user'' means in the model}
+
+$p_u$ is a vector attached to an \emph{account}, and an account is not a
+person.
+
+\begin{itemize}[leftmargin=*,nosep]
+  \item A household shares one account, so $p_u$ averages several tastes into
+        one point --- and the average of two tastes is often nobody's.
+  \item A person's taste changes; $p_u$ is a single vector with no time in it,
+        and MovieLens spans years.
+  \item The same person on two devices is two users, with two independent
+        vectors estimated from half the data each.
+\end{itemize}
+
+Nothing in the objective represents any of this. A model whose unit of analysis
+is wrong will be confidently wrong, and no amount of held-out RMSE reveals it.
+
+\subsection{What people actually give}
+
+\begin{center}
+\small
+\begin{tabular}{lccccc}
+\toprule
+Rating & 1 & 2 & 3 & 4 & 5 \\
+Share  & 5.6\% & 10.8\% & 26.1\% & 34.9\% & 22.6\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Mean 3.58, heavily skewed upward: 57.5\% of ratings are 4 or 5. People mostly
+rate things they liked, which means the scale is not being used as a scale ---
+it is being used as ``good'', ``very good'', and occasionally ``I want you to
+know this was bad''.
+
+\subsection{Why RMSE, and its quiet assumption}
+
+\[
+  \text{RMSE} = \sqrt{\frac{1}{|\Omega_{\text{test}}|}
+  \sum_{(u,i)\in\Omega_{\text{test}}} \big(r_{ui} - \hat r_{ui}\big)^2}
+\]
+
+Squared error, so a two-star miss costs four times a one-star miss. That is
+defensible and worth stating: it says being badly wrong occasionally is worse
+than being slightly wrong often.
+
+The quiet assumption is bigger. RMSE averages over the \emph{observed} test
+ratings --- films these users chose to watch and rate. It says nothing about
+the films they did not, which is precisely the set a recommender operates on.
+\lecture{22} replaces it for that reason. Today it is the right metric for
+``what would they rate it'' and the wrong one for ``what should we show''.
+
+\subsection{The long tail}
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Top films by rating count} & \textbf{Share of all ratings} \\
+\midrule
+top 1\%  & 8.7\% \\
+top 5\%  & 28.3\% \\
+top 10\% & 44.4\% \\
+top 20\% & 65.2\% \\
+\midrule
+Films with fewer than 20 ratings & 17.9\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two consequences to keep. First, a model can score well by learning popularity
+and nothing else --- \lecture{22} measures exactly that. Second, the films
+where a recommendation would be \emph{valuable} are the ones with least data.
+
+\begin{keybox}[title={The tail is where the value is}]
+A recommendation is useful to the extent the user would not have found the item
+anyway. The top 1\% of films hold 8.7\% of ratings: recommending those is easy,
+scores well, and tells the user nothing they did not know. And 17.9\% of films
+have under twenty ratings --- exactly where every model here has least to work
+with.
+
+Nothing measured in this lecture rewards usefulness. RMSE over held-out
+ratings, and even NDCG over held-out interactions, give full credit for a
+correct popular recommendation and the same credit for a correct obscure one.
+\end{keybox}
+
+\section{Baselines: how much of a rating is the user, and how much the film}
+
+\subsection{The split, stated first}
+
+90/10 on the ratings, at random, one seed, fixed before any model was fitted:
+900{,}189 ratings to fit and 100{,}020 to test. Every number in this lecture
+uses that split.
+
+\begin{failbox}[title={A random split of ratings is not innocent}]
+It puts a user's \emph{future} ratings in the training set and their past in
+the test set, which no deployed system ever gets. It is the standard protocol
+for rating prediction, it is convenient, and it is optimistic. \lecture{22}
+measures exactly how optimistic.
+\end{failbox}
+
+\subsection{The baselines}
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Predictor} & \textbf{RMSE} \\
+\midrule
+The global mean, for everyone & 1.1185 \\
+This user's mean rating       & 1.0367 \\
+This film's mean rating       & 0.9826 \\
+Both, as biases               & 0.9109 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A single number for everybody scores 1.1185. Knowing which film takes it to
+0.9826; knowing who \emph{and} which film takes it to 0.9109. No interaction
+between the two has been modelled yet --- nothing so far knows that
+\emph{this} user likes \emph{this kind} of film.
+
+\subsection{The bias model, written out}
+
+\[ \hat r_{ui} = \mu + b_u + b_i \]
+
+Fitted by alternating closed forms, each regularised by the count, because a
+user with three ratings should not be given a large offset:
+
+\[
+  b_u = \frac{\sum_{i \in I_u}\big(r_{ui} - \mu - b_i\big)}{|I_u| + \lambda}.
+\]
+
+That $\lambda$ in the denominator is shrinkage --- the ridge penalty of
+\lecture{5} arriving in a new place: with few observations, pull the estimate
+toward zero.
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+ & \textbf{Lowest} & \textbf{Highest} \\
+\midrule
+User offset $b_u$ & $-2.2156$ & $+1.4690$ \\
+Film offset $b_i$ & $-1.8545$ & $+1.0546$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The harshest user rates nearly 2.2 stars below the mean on everything and the
+most generous 1.5 above. That spread is larger than most of what the rest of
+this lecture will add.
+
+\begin{keybox}[title={Why this matters more than it looks}]
+A recommender that ignores biases spends its capacity re-learning that some
+users are generous and some films are popular --- effects with nothing personal
+in them. Modelling them explicitly and cheaply frees the interesting part of
+the model for the interesting part of the problem.
+\end{keybox}
+
+\subsection{Cold start, named now}
+
+A user with no ratings has no $p_u$ to solve for; a film with no ratings has no
+$q_i$. The factorisation has nothing to say about either, and the failure is
+total rather than gradual. A new user falls back to popularity, or you ask for
+a few ratings up front. A new item falls back to content: genre, cast,
+description, an embedding of the synopsis. A new \emph{system} has neither,
+which is why every recommender starts life as a popularity list --- and why a
+real one is always a hybrid of a factorisation and something that works without
+history.
+
+\section{Derivation: matrix factorisation, and the SVD it is not}
+
+\subsection{What we are given}
+
+A matrix $R \in \mathbb{R}^{m\times n}$ with $m = 6{,}040$ users and
+$n = 3{,}706$ films, of which we observe a set $\Omega$ of entries:
+\[ |\Omega| = 1{,}000{,}209, \qquad \frac{|\Omega|}{mn} = 4.5\%. \]
+
+$R$ is \emph{not} a sparse matrix in the sense of \lecture{19}, where the zeros
+were real zeros. Here the unobserved entries have no value at all --- not zero,
+not the mean, not anything. Every difficulty in this derivation comes from that
+one sentence, and every wrong method comes from forgetting it.
+
+\subsection{The low-rank hypothesis}
+
+Assume tastes are simpler than the data: that there are $d$ underlying factors
+--- how much a film is a comedy, how dark, how old --- and that a rating is how
+much the user wants each factor times how much the film has of it.
+\[ \hat r_{ui} = p_u \cdot q_i, \qquad p_u, q_i \in \mathbb{R}^d, \]
+equivalently $\hat R = PQ^{\top}$ with $\operatorname{rank} \le d$. The
+parameter count falls from $mn$ to $d(m+n)$, which at $d = 16$ is about a
+hundredth of the matrix.
+
+It is a \emph{hypothesis}, not a fact. Its justification is that it predicts
+held-out ratings better than the alternatives, and we check that rather than
+assert it.
+
+\subsection{Lecture 8 already solved this --- or did it}
+
+The best rank-$d$ approximation of a matrix in the Frobenius norm is its
+truncated SVD. Eckart--Young:
+\[
+  \min_{\operatorname{rank}(X)\le d} \|R - X\|_F
+  \;=\; \big\|R - U_d\Sigma_d V_d^{\top}\big\|_F .
+\]
+So the answer looks as though it is already in our hands: take the SVD of the
+ratings matrix, keep $d$ singular values, read off $P$ and $Q$.
+
+\begin{failbox}[title={One condition, and it is not met}]
+The Frobenius norm sums over \emph{every} entry of $R$. To evaluate it --- let
+alone minimise it --- every entry must have a value, and 95.5\% of ours do not.
+\end{failbox}
+
+Be precise about what the theorem says, because the derivation turns on it. It
+is a statement about \emph{one given matrix} $R$; the norm sums over every
+entry with equal weight; and it says nothing about entries $R$ does not have,
+because the question is not defined. The theorem is not wrong. It is being
+misused. Filling the matrix does not extend the theorem to our problem --- it
+\emph{changes our problem} into one the theorem covers, and the two problems
+have different answers.
+
+\subsection{So fill them in?}
+
+Two obvious choices, both actually tried, both measured on the same held-out
+ratings.
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Rank-32 SVD of\ldots} & \textbf{RMSE} \\
+\midrule
+the matrix filled with zeros           & 2.3274 \\
+the matrix filled with the global mean & 0.9920 \\
+\midrule
+predicting the global mean for everyone & 1.1185 \\
+the bias model                          & 0.9109 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Filling with zeros scores 2.3274 --- more than twice the error of predicting
+one number for everybody, \emph{from the mathematically optimal rank-32
+approximation}.
+
+Ratings run from 1 to 5, so a zero is not a low rating: it is off the scale.
+The approximation is dragged toward zero everywhere and the predictions for
+observed pairs come out far too low. Filling with the mean at least puts the
+fill inside the range, so the damage is bounded: 0.9920, merely worse than the
+bias model rather than catastrophic. Both are the same error --- one is simply
+more visible, and the more visible error is the safer one to make.
+
+\begin{keybox}[title={The transferable error}]
+Imputing missing values to make a method applicable makes the method answer a
+different question. It is the same mistake as filling a missing feature with a
+column mean and then reporting the model as if the data had been complete.
+\end{keybox}
+
+\subsection{Change the objective, not the data}
+
+The problem was never the SVD. It was that we asked for a fit to \emph{every}
+entry. So ask only for what we can observe:
+
+\begin{derivbox}[title={The factorisation objective}]
+\[
+  \min_{P,Q} \sum_{(u,i)\in\Omega} \big(r_{ui} - p_u\cdot q_i\big)^2
+  \;+\; \lambda\big(\|P\|_F^2 + \|Q\|_F^2\big)
+\]
+\begin{itemize}[leftmargin=*,nosep]
+  \item $\Omega$ --- the observed entries, \emph{and only those}. This is the
+        whole departure from the SVD.
+  \item $p_u\cdot q_i$ --- a rank-$d$ model written entrywise rather than as a
+        matrix product, because the matrix product is over cells we do not
+        have.
+  \item $\lambda$ --- without which a user with three ratings gets a perfect
+        fit and no information.
+\end{itemize}
+Three symbols, three decisions. If you can reconstruct why each is there, you
+have the derivation.
+\end{derivbox}
+
+The unobserved entries are now \emph{absent} from the objective rather than
+assigned a value. Nothing is imputed and nothing is assumed about what a user
+would have said. And in doing so we have left the world where the SVD applies.
+
+\subsection{What was given up}
+
+\begin{center}
+\small
+\begin{tabular}{p{0.13\textwidth}p{0.33\textwidth}p{0.4\textwidth}}
+\toprule
+ & \textbf{Truncated SVD} & \textbf{This objective} \\
+\midrule
+Solution   & closed form & iterative \\
+Uniqueness & unique (up to sign and ties) & not unique --- $PM$, $QM^{-\top}$
+score identically \\
+Factors    & orthogonal, ordered by variance & neither \\
+Optimum    & global & local --- the problem is non-convex in $(P,Q)$ jointly \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+All four losses are real, and the last two matter in practice: you cannot
+interpret factor 3 the way you interpret principal component 3, because a
+different run gives different, equally good factors.
+
+\subsection{Regularisation is not optional}
+
+A user with three ratings and $d = 16$ has more parameters than observations,
+so the objective can be driven to zero on that user while learning nothing. The
+penalty is ridge regression again, from \lecture{5}, doing the same job: with
+few observations, prefer the smaller coefficients. It also has a second job
+here --- it breaks the scaling degeneracy, since $P \to 2P$, $Q \to Q/2$ is no
+longer free.
+
+\subsection{Hold one side fixed}
+
+The objective is not convex in $P$ and $Q$ together. But fix $Q$, and every
+term involving $p_u$ is a quadratic in $p_u$ alone:
+\[
+  \min_{p_u} \sum_{i \in I_u} \big(r_{ui} - p_u\cdot q_i\big)^2
+  + \lambda\|p_u\|^2 ,
+\]
+which is a \emph{ridge regression}, with the films this user rated as the rows
+of the design matrix and their ratings as the target. It is separate for each
+user: no user's solution depends on another's.
+
+\begin{derivbox}[title={The ALS half-step}]
+Write $Q_u$ for the $|I_u| \times d$ matrix of the films user $u$ rated and
+$r_u$ for their ratings. Setting the gradient to zero,
+\[
+  p_u = \big(Q_u^{\top}Q_u + \lambda I\big)^{-1} Q_u^{\top} r_u .
+\]
+The normal equation of \lecture{2} with the ridge term of \lecture{5}. The
+system is $d\times d$ --- $16\times16$ here --- regardless of how many films
+the user rated.
+
+Note where the missing entries went: $Q_u$ contains \emph{only the films this
+user rated}. Nothing was imputed; the unobserved entries simply never enter the
+system.
+\end{derivbox}
+
+By symmetry, fixing $P$ makes each $q_i$ a ridge regression over the users who
+rated film $i$. So: fix $Q$ and solve for every $p_u$; fix $P$ and solve for
+every $q_i$; repeat.
+
+\begin{proposition}
+Each half-step solves its subproblem exactly, so neither can increase the
+objective. The objective is bounded below by zero, so the sequence of objective
+values converges.
+\end{proposition}
+
+It converges to a \emph{local} minimum: monotone descent is not global
+optimality, and a different initialisation gives a different answer. That is
+the price of changing the objective, and it was paid knowingly.
+
+\subsubsection{What a sweep costs}
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+Systems solved per sweep & 6{,}040 users $+$ 3{,}706 films \\
+Size of each system      & $d \times d$ \\
+At $d = 16$              & $16\times16$ \\
+Ratings gathered per sweep & 900{,}189, twice \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Each system is tiny and independent of the others, so a sweep is embarrassingly
+parallel and its cost is dominated by \emph{gathering} each user's rows rather
+than by the linear algebra --- which is why the notebook groups the ratings
+once with a single \code{argsort} instead of taking a boolean mask per user.
+The same arithmetic, and the difference between seconds and minutes.
+
+\subsection{Or descend, one rating at a time}
+
+For each observed rating, take the error and step both vectors:
+\[
+  e_{ui} = r_{ui} - \hat r_{ui}, \qquad
+  p_u \mathrel{+}= \eta\,(e_{ui}q_i - \lambda p_u), \qquad
+  q_i \mathrel{+}= \eta\,(e_{ui}p_u - \lambda q_i).
+\]
+
+ALS parallelises across users and each step is exact, but needs a $d\times d$
+solve per user. SGD touches one rating at a time, so it suits implicit data and
+streams, but needs a learning rate.
+
+\begin{failbox}[title={Copy $p_u$ before you update it}]
+Using the already-updated $p_u$ in the $q_i$ step is a different algorithm. It
+still converges, and nothing warns you.
+\end{failbox}
+
+Same objective, different route. At $d = 32$, ALS reaches 0.8733 and SGD
+0.8615. Fifteen epochs of per-rating updates against twelve ALS sweeps: two
+routes to one objective, arriving in comparable places.
+
+\subsection{Put the biases back}
+
+The factorisation models the \emph{interaction}. The parts that are not
+interactions --- a generous user, a popular film --- should not be spent on it:
+\[ \hat r_{ui} = \mu + b_u + b_i + p_u\cdot q_i . \]
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+Bias model alone ($d = 0$)                & 0.9109 \\
+Factorisation, $d = 16$, with biases      & 0.8587 \\
+Factorisation, $d = 16$, without biases   & 0.8559 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The biases alone close 79.9\% of the distance from the global mean to the full
+model. \emph{Most of a rating is not personal.}
+
+\begin{keybox}[title={An honest wrinkle}]
+At $d = 16$ the model \emph{without} explicit biases scores slightly better
+than the one with them. The textbook claim is that biases help; here they do
+not, and the reason is visible in the algebra --- a factor dimension can hold a
+constant, so a rank-16 factorisation can represent the biases itself, using two
+of its sixteen dimensions to do it.
+
+What is still true: biases are worth having because they are cheap, stable and
+interpretable, they help most at low rank, and they let the factors be about
+interaction. Not because they always lower RMSE --- and the difference here,
+0.0028, is small enough that reporting it as a finding either way would be
+overreaching.
+\end{keybox}
+
+\subsection{How many factors?}
+
+\begin{center}
+\small
+\begin{tabular}{lccccccc}
+\toprule
+$d$   & 1 & 2 & 4 & 8 & 16 & 32 & 64 \\
+RMSE  & 0.8912 & 0.8836 & 0.8705 & 0.8602 & 0.8587 & 0.8733 & 0.9006 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Best at $d = 16$, and rising again by $d = 64$. A U-curve, which is
+\lecture{5} exactly: more capacity fits the training ratings better and the
+held-out ratings worse. The rank is a capacity parameter and it is chosen the
+way every capacity parameter in this course is chosen --- by measurement on
+data the model did not see.
+
+Even $d = 1$ scores 0.8912, already better than the bias model. One dimension
+of taste is worth something.
+
+\subsection{What the factors are not}
+
+\begin{itemize}[leftmargin=*,nosep]
+  \item They are not principal components: not orthogonal, not ordered, not
+        unique.
+  \item They are not genres. A run may put something genre-like in a dimension,
+        and the next run will not put it in the same one.
+  \item They are not interpretable individually.
+\end{itemize}
+
+\begin{derivbox}[title={The rotation nobody can see}]
+For any invertible $M$,
+\[ (PM)(QM^{-\top})^{\top} = PMM^{-1}Q^{\top} = PQ^{\top} . \]
+Every prediction is identical, so the objective cannot distinguish $P$ from
+$PM$. The solution is a whole family, and an optimiser returns whichever member
+its initialisation led to. The \emph{predictions} are determined --- that is
+what we wanted. The \emph{factors} are not, and no amount of staring at them
+fixes that.
+
+The regularisation narrows the family: it penalises $\|P\|$, so $M$ can no
+longer be an arbitrary scaling. Rotations of an isotropic penalty remain free.
+\end{derivbox}
+
+Say this out loud when someone shows you a factor plot. Reading meaning into an
+individual latent dimension is the recommender-systems version of reading a
+coefficient of a collinear regression: the model is not claiming what the plot
+claims.
+
+\section{Neighbourhoods, and feedback nobody gave}
+
+\subsection{The other family}
+
+Before factorisation there was a simpler idea, and it is still deployed:
+predict from similar things. \term{User-based} finds users who rated as you did
+and averages their ratings for the film in question; \term{item-based} finds
+films rated as this film was and averages this user's ratings of them.
+
+Item-based is what gets deployed, for a reason that is operational rather than
+statistical: there are usually far fewer items than users, item--item
+similarities change slowly, and they can be computed offline and cached.
+
+\subsection{Item--item similarity}
+
+\[
+  s_{ij} = \frac{\tilde r_i \cdot \tilde r_j}{\|\tilde r_i\|\,\|\tilde r_j\|}
+\]
+--- the cosine between two films' rating columns, where the tilde matters: the
+columns are \emph{bias-adjusted} first,
+$\tilde r_{ui} = r_{ui} - \mu - b_u - b_i$. Without that, every popular film is
+similar to every other popular film, because both columns are full of fours.
+
+That is the same trap as an unnormalised dot product in \lecture{20} and as
+term frequency without idf in \lecture{19}: subtract what is true of everything
+before measuring what is specific.
+
+\[
+  \hat r_{ui} = \mu + b_u + b_i +
+  \frac{\sum_{j\in N_k(i)} s_{ij}\,\tilde r_{uj}}{\sum_{j\in N_k(i)} s_{ij}}
+\]
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Method} & \textbf{RMSE} \\
+\midrule
+item--item, $k = 10$        & 0.9376 \\
+item--item, $k = 20$        & 0.9171 \\
+item--item, $k = 50$        & 0.8867 \\
+factorisation, $d = 16$     & 0.8587 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The best neighbourhood model does not reach the factorisation, and still beats
+the bias model.
+
+\subsection{Why factorisation wins, and where it does not}
+
+\begin{center}
+\small
+\begin{tabular}{p{0.16\textwidth}p{0.33\textwidth}p{0.37\textwidth}}
+\toprule
+ & \textbf{Neighbourhood} & \textbf{Factorisation} \\
+\midrule
+Uses         & direct co-rating evidence & a global low-rank structure \\
+Sparse items & few co-ratings, poor estimate & borrows strength from
+everything \\
+Explainable  & ``because you liked X'' & a dot product of latent vectors \\
+New rating   & update a cached similarity & refit, or fold in approximately \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Row three is why neighbourhood methods survive: a recommendation a user can be
+told the reason for is worth points a metric does not award. And in practice
+the two are combined --- exactly as BM25 and dense retrieval were combined in
+\lecture{20}, and for the same reason.
+
+\subsubsection{Where a neighbourhood method runs out}
+
+Two films are similar only if enough users rated \emph{both}. In the long tail
+there are no such users: 17.9\% of films have fewer than twenty ratings at all,
+for two such films the co-rating count is typically zero, and the cosine of two
+nearly empty columns is noise.
+
+\begin{keybox}[title={Borrowing strength}]
+A factorisation has no such problem: a tail film's $q_i$ is estimated from its
+few ratings \emph{and from where those raters sit in a space learned from
+everything else}. That is the real advantage of the low-rank model, and it is
+the same argument as pooling in a hierarchical model --- a parameter estimated
+from three observations is rescued by a structure estimated from a million.
+\end{keybox}
+
+\subsection{Explicit ratings are the easy case}
+
+\begin{center}
+\small
+\begin{tabular}{p{0.42\textwidth}p{0.48\textwidth}}
+\toprule
+\textbf{Explicit} & \textbf{Implicit} \\
+\midrule
+a rating, deliberately given & a click, a play, a purchase, a dwell time \\
+scarce --- most users rate nothing & abundant --- every interaction is one \\
+a scale, with a middle & presence or absence \\
+a stated preference & a revealed one, plus the interface \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+MovieLens is explicit, which is why it can be used to teach rating prediction
+at all. It is not representative: your first recommender will almost certainly
+have no ratings in it.
+
+Binarise our ratings at 4 or above and call that an interaction:
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+Explicit ratings           & 1{,}000{,}209 \\
+Of which positive ($\ge 4$) & 575{,}281 \\
+As a fraction              & 57.5\% \\
+Cells with no interaction  & 22.4 million \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+In a real system the first row would be zero and the second would be a click
+log ten times larger. The proportions are what matter: a few hundred thousand
+positives against tens of millions of cells whose meaning is unknown. This
+binarised view is what \lecture{22} uses throughout, which is why it is defined
+here.
+
+\subsection{Implicit feedback has no negatives}
+
+A user watched film A. What does that say about film B, which they did not
+watch? They disliked it --- a true negative. Or they have not seen it yet ---
+possibly the best recommendation available. Or they were never shown it, and
+that was the old system's choice rather than theirs.
+
+\begin{failbox}[title={The whole difficulty}]
+In explicit data the missing entries are excluded from the objective, and we
+saw exactly what happens when they are not. In implicit data the \emph{only
+thing that exists} is the positives, so an objective over observed entries
+alone is trivially satisfied by predicting ``yes'' for everything.
+\end{failbox}
+
+Two ways out.
+
+\begin{enumerate}[leftmargin=*]
+  \item \term{Weighted least squares over everything.} Treat every unobserved
+        cell as a zero with \emph{low confidence}, and observed ones as a one
+        with confidence rising in the number of interactions. All 22.4 million
+        cells enter the objective, with weights. This keeps the closed form ---
+        the weighting is arranged so that ALS still works --- and needs a
+        confidence function you have to justify.
+  \item \term{Pairwise ranking.} Never predict a value at all; require only
+        that an observed item outranks an unobserved one for that user. This
+        changes the objective into a ranking objective, which is what we
+        actually want, and gives up the closed form.
+\end{enumerate}
+
+\subsubsection{BPR: rank the pair, not the item}
+
+\begin{derivbox}[title={Bayesian personalised ranking}]
+\[
+  \max \sum_{(u,i,j)} \log \sigma\!\big(\hat r_{ui} - \hat r_{uj}\big)
+  \;-\; \lambda\|\Theta\|^2 ,
+\]
+with $i$ observed for $u$ and $j$ sampled from the unobserved.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Only the \emph{difference} is modelled, so no absolute score is ever
+        claimed --- and none was ever observed.
+  \item $j$ is \emph{sampled}, not enumerated, which is what makes it
+        affordable.
+  \item The logistic of a score difference is the pairwise logistic loss of
+        \lecture{4}, and the sampling is the negative sampling of \lecture{20}.
+\end{itemize}
+\end{derivbox}
+
+And it inherits \lecture{20}'s trap exactly: a sampled ``negative'' may be an
+item the user would love. \emph{Being unobserved is not evidence of dislike.}
+
+\section{Where we are}
+
+\begin{center}
+\small
+\begin{tabular}{lrl}
+\toprule
+\textbf{Model} & \textbf{RMSE} & \textbf{Knows} \\
+\midrule
+Global mean              & 1.1185 & nothing \\
+Film mean                & 0.9826 & which film \\
+Bias model               & 0.9109 & who, and which film \\
+SVD, mean-filled         & 0.9920 & an imputation it invented \\
+Item--item, $k = 50$     & 0.8867 & co-rating evidence \\
+Factorisation, $d = 16$  & 0.8587 & a low-rank structure \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Every row measured on the same held-out 100{,}020 ratings, with the same split
+and the same seed.
+
+\subsection{The distance travelled, in one number}
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+ & \textbf{RMSE} & \textbf{Distance closed} \\
+\midrule
+Global mean             & 1.1185 & 0\% \\
+Bias model              & 0.9109 & 79.9\% \\
+Item--item, $k = 50$    & 0.8867 & 89.2\% \\
+Factorisation, $d = 16$ & 0.8587 & 100\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two arithmetic means and a shrinkage parameter get you most of the way; the
+derivation, the alternating solves and sixteen latent dimensions get the rest.
+That ratio is not an argument against the model. It is an argument for always
+fitting the baseline first, so that you know which part of your result is the
+idea and which part is arithmetic.
+
+\subsection{What a deployed recommender actually is}
+
+\begin{enumerate}[leftmargin=*,nosep]
+  \item \term{Candidates}: catalogue $\rightarrow$ hundreds. Factorisation,
+        popularity, co-visitation, recency --- several sources, unioned.
+  \item \term{Rank}: hundreds $\rightarrow$ tens. A richer model with features
+        the first stage cannot afford.
+  \item \term{Policy}: diversity, freshness, business rules, exploration.
+\end{enumerate}
+
+The same three stages as \lecture{19}'s search pipeline, for the same reason:
+the accurate model does not scale to the catalogue. What we built today is
+stage 1. Stage 3 has no equation in it and decides more of what a user sees
+than stages 1 and 2 together.
+
+\begin{trybox}[title={Exercise 21.1}]
+Set the regularisation to zero and re-run the rank sweep. Watch where the
+U-curve moves and which rank stops being the best one. Then reproduce the
+zero-filled SVD figure yourself --- it is the most surprising number in Part~V
+and it takes four lines.
+\end{trybox}
+
+\section{Reference}
+
+\subsection{Five questions for a recommender result}
+
+\begin{enumerate}[leftmargin=*]
+  \item \term{Rating prediction or ranking?} RMSE and NDCG answer different
+        questions and are not comparable.
+  \item \term{What is the baseline?} The bias model is four lines and is often
+        close.
+  \item \term{How was it split?} Randomly over ratings, or in time?
+  \item \term{What happened to the missing entries?} Excluded, imputed, or
+        weighted --- and if imputed, with what.
+  \item \term{Explicit or implicit}, and if implicit, where did the negatives
+        come from?
+\end{enumerate}
+
+Question three is the one \lecture{22} turns into a measurement.
+
+\subsection{Where students lose marks}
+
+\begin{itemize}[leftmargin=*,nosep]
+  \item Saying ``matrix factorisation is the SVD''. It is not, and being able
+        to say why in one sentence is the most-asked oral question in this
+        part.
+  \item Writing the objective as a sum over all $(u,i)$ rather than over
+        $\Omega$.
+  \item Claiming ALS finds the global optimum. Each half-step is exact; the
+        joint problem is not convex.
+  \item Interpreting a latent factor as a genre.
+  \item Treating an unobserved entry as a negative in implicit data --- the
+        error the whole last section is about.
+\end{itemize}
+
+\subsection{Vocabulary}
+
+\begin{center}
+\small
+\begin{tabular}{ll}
+\toprule
+Explicit / implicit & a stated rating, against an observed interaction \\
+Cold start          & a user or item with no history to factorise \\
+Bias term           & the part of a rating that is not an interaction \\
+Latent factor       & a coordinate of $p_u$ or $q_i$; individually meaningless \\
+ALS                 & alternating ridge regressions, one side at a time \\
+BPR                 & a pairwise ranking objective for implicit data \\
+Long tail           & the majority of items, holding a minority of the interactions \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Scope}
+
+\term{Examinable.} The recommendation problem and how its data differs;
+missing-not-at-random; the derivation in full --- the low-rank model, why the
+SVD cannot be taken, the observed-entry objective, the ALS half-step and its
+closed form, the SGD update, biases; the rank as a capacity parameter;
+item--item neighbourhoods; why implicit feedback has no negatives, and BPR's
+response.
+
+\term{Not examinable --- engineering.} Recommender libraries, serving
+infrastructure, incremental refitting.
+
+\term{Beyond the syllabus.} SVD++ and time-aware factorisation, the full
+weighted-ALS derivation for implicit data, bandits for exploration.
+
+\subsection{Reading}
+
+\begin{itemize}[leftmargin=*,nosep]
+  \item These notes are the primary source.
+  \item Koren, Bell and Volinsky, \emph{Matrix Factorization Techniques for
+        Recommender Systems} --- the Netflix-era summary, and still the
+        clearest account of biases.
+  \item Hu, Koren and Volinsky, \emph{Collaborative Filtering for Implicit
+        Feedback Datasets} --- the weighted-ALS method.
+  \item Rendle et al., \emph{BPR} --- the pairwise objective.
+\end{itemize}
+
+\subsection{Summary}
+
+\begin{keybox}[title={One line to keep}]
+The missing entries \emph{are} the data. Impute them and you fit your own
+assumption.
+\end{keybox}
+
+Recommendation is retrieval with the query replaced by a history, and the
+labels are a by-product of use rather than a measurement. 95.5\% of the matrix
+is missing, and missing is not zero: filling it and taking the SVD scores
+2.3274, worse than predicting one number for everybody. Restrict the objective
+to observed entries and you leave the SVD behind --- no closed form, no
+uniqueness, no interpretable factors, and a model that works. ALS is a ridge
+regression per user; SGD is one update per rating; same objective, different
+route, comparable answers. And most of a rating is not personal: the biases
+alone reach 0.9109 against the full model's 0.8587.
+
+\end{document}
