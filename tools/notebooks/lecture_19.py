@@ -468,7 +468,14 @@ metrics will apply unchanged to the neural retrievers of Lecture 20.
             output="P@k, R@k, RR, AP and NDCG@10",
             constraint="log2(i+1), not log2(i) — the latter divides by zero at rank 1. And divide AP by |R|, not by the number of hits found: dividing by the hits gives mean precision, which is a different and more flattering quantity",
             check="check it against a hand-computed case in the next cell before trusting it on 300 claims.",
-            **{"try": "change the discount to log2(i) and watch rank 1 become infinite; change the AP denominator to the hit count and watch every score rise."}),
+            **{"try": "change the discount to log2(i). Rank 1 does not become "
+                      "infinite — it raises ZeroDivisionError, which is the good "
+                      "case. Then change the AP denominator to the hit count: "
+                      "nothing moves at all, because this loop runs to the end of "
+                      "the corpus and the hit count always reaches |R|. Truncate "
+                      "`ranked` to the top 100 first and the two finally differ. "
+                      "Average precision and mean precision only come apart on a "
+                      "truncated ranking."}),
         code('''
 def rank_metrics(ranked, R, ks=(1, 5, 10, 100)):
     out = {}

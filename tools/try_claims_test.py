@@ -479,6 +479,44 @@ def t():
     return len(hits) > 0, f"{len(hits)} asserts pin a 3+ decimal figure"
 check("L01-07", "the setup try's 'an assert may fire' hedge is justified", t)
 
+
+def t():
+    import math
+    # L19's rank_metrics walks the WHOLE corpus ranking, so the hit count always
+    # reaches |R| and the two AP denominators are identical. The try originally
+    # said "watch every score rise"; nothing moves. It only differs once the
+    # ranking is truncated, which is what the corrected try now asks for.
+    def ap(ranked, R, denom, k=None):
+        seq = ranked[:k] if k else ranked
+        s, hits = 0.0, 0
+        for i, d in enumerate(seq, 1):
+            if d in R:
+                hits += 1; s += hits / i
+        return s / (len(R) if denom == "R" else max(hits, 1))
+    corpus = [f"d{i}" for i in range(1, 5184)]
+    R = {"d1", "d3", "d900"}
+    same = ap(corpus, R, "R") == ap(corpus, R, "hits")
+    differ = ap(corpus, R, "R", 100) < ap(corpus, R, "hits", 100)
+    raises = False
+    try:
+        1.0 / math.log2(1)
+    except ZeroDivisionError:
+        raises = True
+    return (same and differ and raises), \
+           "identical on the full ranking, different at top-100, and log2(i) raises"
+check("L19", "the AP denominator only matters on a truncated ranking", t)
+
+def t():
+    # L14: the median minimises mean absolute error over constants, and the
+    # printed median (5) is not the rounded mean (7), so the MAE strictly falls.
+    import numpy as np
+    v = np.array([1] * 30 + [3] * 30 + [5] * 20 + [9] * 20 + [25] * 28)
+    m_mean = np.abs(v - round(v.mean())).mean()
+    m_med = np.abs(v - np.median(v)).mean()
+    return m_med < m_mean, \
+           f"MAE(round(mean)={round(v.mean())})={m_mean:.3f} > MAE(median={np.median(v):.0f})={m_med:.3f}"
+check("L14", "predicting the median lowers the count MAE below the rounded mean", t)
+
 for lec, claim, ok, detail in R:
     print(f"{'PASS' if ok else 'FAIL':4}  {lec}  {claim}")
     print(f"        {detail}")
