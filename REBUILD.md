@@ -186,6 +186,53 @@ Prefer quadrature to sampling in that file. The ReLU half-moment check was
 Monte-Carlo first and failed at 0.5034 against 0.5 — noise, not a wrong answer,
 and a test that cries wolf gets deleted rather than fixed.
 
+### The examination rule changed — 2026-09-04
+
+The old rule was written plus a **compulsory** oral, 50/50, each passed
+independently at 18/30. The lecturer's constraint is the number of orals: at
+twenty-five minutes each, a full cohort is several working days, every session.
+
+The rule now:
+
+| | |
+|---|---|
+| Written | out of 30, pass at 18, **capped at 27 on its own** |
+| Oral | **optional** — three questions drawn in front of the candidate from the 120 published exercises, seven to ten minutes |
+| Arithmetic | the oral moves the written mark by **at most ±3**; it cannot turn a passing written into a fail |
+| Timing | decided after the written mark is seen, and **binding once registered** |
+
+Three things make it work, and all three are load-bearing:
+
+* **The cap creates the only reason to sit it.** 28, 29 and 30 exist nowhere
+  else, so the candidates who turn up are the ones with something to show.
+* **The downside is real.** A free option is one everybody exercises, which is
+  the queue the change exists to remove. Three marks down is what makes it a
+  decision rather than a lottery ticket.
+* **The bank is published.** All 120 questions and their solutions are already
+  on the decks and in `notes/exercises.pdf`, so a risky oral is still a fair
+  one. This is why the exercise audit had to come first: the bank became the
+  examination the moment it became the oral.
+
+Note the thing that limits the deterrent: a student who dislikes the outcome
+can normally refuse the grade and resit. The cost that actually bites is the
+lost appello, not the lost marks. Worth confirming against the regolamento
+before the syllabus is filed — teaching starts around 2026-09-22.
+
+Stated in exactly three places (site, deck 1, deck 24), specified in
+AUTHORING §6.1, and enforced by `tools/check_assessment.py`, which is in
+`check_all.py`. Its three arms were each verified to fire by mutating a file
+and watching it fail — including the one that catches two pages disagreeing on
+a number rather than merely omitting it.
+
+Two edits elsewhere follow from the same change: Lectures 19 and 21 claimed
+some question was "the most-asked oral question", which cannot be true of a
+bank the students can read. Both now point at the written paper.
+
+**Do not use `git checkout --` to undo a probe on a file with uncommitted
+work.** Verifying the new check that way cost three files' worth of edits in
+this session and they had to be retyped. Save and restore the bytes in the
+probe itself.
+
 ### Job 1 — the try-field audit: **32 claims verified, six found false**
 
 `tools/try_claims_test.py` executes every claim that can be reproduced

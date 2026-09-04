@@ -291,6 +291,35 @@ Every section gets one of: **examinable**, **not examinable — engineering**, o
 The examinable surface is Géron Chapters 1–16 plus the lecture notes for
 Lectures 19–22.
 
+### 6.1 The examination rule is stated in three places, and nowhere else.
+
+The site's `#assessment` section, deck 1's Assessment slide, and deck 24's
+recap. Anywhere else, refer to it — never restate it. As of 2026-09-04 it is:
+
+* the written is marked out of 30, pass at 18, and **on its own capped at 27**;
+* the oral is **optional**: three questions drawn in front of the candidate
+  from the 120 published exercises, seven to ten minutes;
+* the oral moves the written mark by **at most ±3**, and cannot turn a passing
+  written into a fail;
+* the choice is made after the written mark is seen, and is binding.
+
+`tools/check_assessment.py` enforces three things: that no page still states
+the superseded rule, that each of the three states all four parts of the
+current one, and that the size of the bank quoted in the prose is the size of
+`EXERCISES`. It runs in `check_all.py`.
+
+Two consequences for lecture prose. A promise that the oral will put a notebook
+cell in front of the candidate is no longer true of every student, so promises
+of that shape belong to the written paper instead. And a claim about which
+question the oral asks **most often** cannot survive a published bank — the
+frequency claims in Lectures 19 and 21 now point at the paper.
+
+The check is strict enough that this document cannot restate the old rule
+either, not even as an example of what not to write. That is the correct
+behaviour: a checker that trusts a file to be quoting rather than asserting is
+a checker with an exemption in it, and exemptions are where the next stale
+sentence lives.
+
 ---
 
 ## 7 · Checks

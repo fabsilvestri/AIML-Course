@@ -47,6 +47,8 @@ FAST = [
      "every reproducible claim in a notebook `try` field holds"),
     ("exercise-claims", ["tools/exercise_claims_test.py"],
      "every number an exercise answer asserts recomputes"),
+    ("assessment",  ["tools/check_assessment.py"],
+     "the examination rule reads the same on the site, deck 1 and deck 24"),
 ]
 
 FULL = [
