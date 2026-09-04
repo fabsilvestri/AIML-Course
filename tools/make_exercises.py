@@ -1000,7 +1000,7 @@ def question_slides(n, items):
     return out
 
 
-def solution_slides(n, items):
+def solution_slides(n, items, **kwargs):
     """Two answers a slide, side by side.
 
     Three to a slide ran 706px on Lecture 2 against a footer at 674 -- the
@@ -1008,11 +1008,14 @@ def solution_slides(n, items):
     the deck's own specimen answers already use, so the pages match.
     """
     out = []
+    own = kwargs.get("own", False)
     out.append(slide(
         "",
-        '  <p class="kicker">Set last time</p>\n'
-        f'  <h1>Solutions<br>Lecture {n}</h1>\n'
-        '  <p class="clock">not presented</p>',
+        ('  <p class="kicker">Answered here, because there is no Lecture 25</p>\n'
+         if own else
+         f'  <p class="kicker">The five set at the end of Lecture {n}</p>\n')
+        + f'  <h1>Solutions<br>Lecture {n}</h1>\n'
+        + '  <p class="clock">not part of this lecture</p>',
         menu=f"◇ Solutions · Lecture {n}", cls="divider"))
     for part, (lo, hi) in enumerate(((0, 2), (2, 4), (4, 5))):
         chunk = items[lo:hi]
@@ -1054,14 +1057,26 @@ def short(q, limit=110):
 
 
 def build(n):
-    """Every exercise/solution slide lecture n's deck should carry."""
+    """Every exercise/solution slide lecture n's deck should carry.
+
+    ORDER MATTERS, and it is the lecturer's: this lecture's NEW exercises come
+    first, and last lecture's solutions come after them, at the very end of the
+    deck. The solutions are not part of lecture n -- they are the answers to
+    the set given out at the end of lecture n-1, parked where a student
+    revising will find them. Putting them before the new exercises would read
+    as though the lecture were about them.
+
+    Lecture 24 is the exception in the obvious way: its own exercises, then
+    lecture 23's solutions, then its own, because there is no lecture 25 to
+    carry them.
+    """
     out = []
-    if n - 1 in EXERCISES:
-        out += solution_slides(n - 1, EXERCISES[n - 1])
     if n in EXERCISES:
         out += question_slides(n, EXERCISES[n])
-        if n == 24:
-            out += solution_slides(24, EXERCISES[24])
+    if n - 1 in EXERCISES:
+        out += solution_slides(n - 1, EXERCISES[n - 1])
+    if n == 24 and n in EXERCISES:
+        out += solution_slides(24, EXERCISES[24], own=True)
     return out
 
 
