@@ -156,12 +156,12 @@ Four things learned the hard way, all now guarded:
 ### Job 1 — the try-field audit: **32 claims verified, six found false**
 
 `tools/try_claims_test.py` executes every claim that can be reproduced
-standalone; it is at 37/37 and is where a newly verified claim goes.
+standalone; it is at 41/41 and is where a newly verified claim goes.
 `tools/try_audit.py` extracts and triages all 539, and
 `--check-numbers` audits every stated figure against the notebook's own output
 using `check_consistency`'s cache — 67 figures checked, and the three it cannot match are legitimately derived rather than printed.
 
-**Seven false claims found so far, all corrected in the notebook rather than in
+**Eight false claims found so far, all corrected in the notebook rather than in
 the test:**
 
 | lecture | the claim | what is actually true |
@@ -173,8 +173,9 @@ the test:**
 | 6 | "index `COVER_NAMES[k]` … nothing raises" | class 7 runs off a seven-element list |
 | 19 (exercise) | worked NDCG@10 of 0.8455 | 0.8396 |
 | 15 | "`end = idx + w - 1`&nbsp;… the target is now the last day of the window, every MAE collapses" | it shortens the window to 55 days; the target still follows it, and nothing leaks |
+| 19 | "keep the score == 0 rows as relevant … every metric rises" | SciFact's test qrels contain **no** zero rows: 339 judgements, all positive. The exercise was a no-op, and the constraint above it made the same claim |
 
-Seven of thirty-seven is a rate worth taking seriously, and it is why the audit
+Eight of forty-one is a rate worth taking seriously, and it is why the audit
 continues rather than being declared finished.
 
 **To resume:** work the `--assert` class first, then `--number`, adding each

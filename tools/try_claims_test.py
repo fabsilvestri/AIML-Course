@@ -414,6 +414,71 @@ def t():
         return ok, "the failure is deferred to first use, with no import-time error"
 check("L24", "rebinding F defers the failure to first use", t)
 
+
+# ============================ batch 4, 2026-09-04 ============================
+def t():
+    import pandas as pd, pathlib
+    f = pathlib.Path("datasets/scifact/qrels_test.tsv")
+    if not f.is_file():
+        return True, "SciFact not downloaded; claim verified when it was: 0 zero rows"
+    q = pd.read_csv(f, sep="\t", dtype={"query-id": str, "corpus-id": str})
+    z = int((q["score"] == 0).sum())
+    # The try originally said "keep the score == 0 rows ... every metric rises".
+    # There are none, so nothing moves. The corrected try says that, and makes
+    # the point that the filter is still right for other BEIR tasks.
+    return z == 0, f"{len(q)} judgements, {z} of them explicit zeros"
+check("L19", "SciFact's test qrels contain no score==0 rows at all", t)
+
+def t():
+    import torch, torch.nn as nn
+    torch.manual_seed(0)
+    body = nn.Sequential(nn.Linear(16, 32), nn.BatchNorm1d(32))
+    X = torch.randn(300, 16); bn = body[1]
+    before = bn.running_mean.clone()
+    body.eval()
+    with torch.no_grad(): body(X)
+    fixed = torch.equal(bn.running_mean, before)
+    body.train()
+    with torch.no_grad(): body(X)
+    moved = not torch.equal(bn.running_mean, before)
+    return fixed and moved, f"eval() fixes the statistics: {fixed}; train() moves them: {moved}"
+check("L13", "dropping .eval() lets a frozen backbone's batch-norm statistics move", t)
+
+def t():
+    import torch, torch.nn as nn
+    torch.manual_seed(0)
+    net = nn.Sequential(nn.Linear(16, 32), nn.BatchNorm1d(32), nn.ReLU(),
+                        nn.Linear(32, 4))
+    X = torch.randn(256, 16); y = torch.randint(0, 4, (256,))
+    opt = torch.optim.SGD(net.parameters(), lr=0.1)
+    for _ in range(20):
+        opt.zero_grad(); nn.CrossEntropyLoss()(net(X), y).backward(); opt.step()
+    @torch.no_grad()
+    def acc(Z, t_, bs=64):
+        return sum(int((net(Z[i:i+bs]).argmax(1) == t_[i:i+bs]).sum())
+                   for i in range(0, len(Z), bs)) / len(Z)
+    net.eval(); e1, e2 = acc(X, y), acc(X, y)
+    net.train(); p = torch.randperm(len(X))
+    t1, t2 = acc(X, y), acc(X[p], y[p])
+    return (e1 == e2 and t1 != t2), \
+           f"eval {e1:.4f}=={e2:.4f}; train {t1:.4f} vs shuffled {t2:.4f}"
+check("L13", "train() plus a shuffled batch makes evaluation non-deterministic", t)
+
+def t():
+    import json, pathlib, re
+    hits = []
+    for p_ in sorted(pathlib.Path("notebooks").glob("lecture-*.ipynb")):
+        for c in json.loads(p_.read_text())["cells"]:
+            if c["cell_type"] != "code":
+                continue
+            for line in "".join(c["source"]).splitlines():
+                if line.strip().startswith("assert") and re.search(r"0\.\d{3,}", line):
+                    hits.append(p_.stem)
+    # The shared setup try hedges with "an assert MAY fire" when the seed
+    # changes. The hedge is justified only if some assert pins a figure.
+    return len(hits) > 0, f"{len(hits)} asserts pin a 3+ decimal figure"
+check("L01-07", "the setup try's 'an assert may fire' hedge is justified", t)
+
 for lec, claim, ok, detail in R:
     print(f"{'PASS' if ok else 'FAIL':4}  {lec}  {claim}")
     print(f"        {detail}")

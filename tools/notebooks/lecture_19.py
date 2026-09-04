@@ -198,18 +198,27 @@ print(f"first abstract   {len(toks[0])} tokens")
             label="the judgements, as a lookup",
             input="the qrels table",
             output="claim id -> set of relevant document ids, and the claim texts",
-            constraint="keep only judgements with a score above zero — BEIR files also carry explicit zeros, and counting them as relevant inflates every metric in this notebook",
+            constraint="keep only judgements with a score above zero, and PRINT how many that removes. On SciFact's test qrels it removes none — every row is a positive — but BEIR qrels for other tasks do carry explicit zeros, and this line is what makes the same code correct there",
             check="assert every claim kept has at least one relevant document, and report how many have exactly one. That fraction decides which metrics can distinguish anything here.",
-            **{"try": "keep the score == 0 rows as relevant and re-run. Every "
-                      "metric rises and no assert fires. Those zeros are "
-                      "judged IRRELEVANT — a human read the abstract and said "
-                      "no — so counting them is worse than counting a "
-                      "document nobody ever read."}),
+            **{"try": "count the score == 0 rows before you filter them. There "
+                      "are none: SciFact's test qrels are 339 positives, so this "
+                      "line removes nothing and no metric moves. It is still the "
+                      "right line — the identical code on a BEIR task whose qrels "
+                      "do carry zeros would count judged-irrelevant abstracts as "
+                      "relevant. Which of those two facts belongs in a paper, and "
+                      "which in a code review?"}),
         code('''
 rel = defaultdict(set)
 for _, r in qrels.iterrows():
     if int(r["score"]) > 0:                 # explicit zeros are judged-irrelevant
         rel[str(r["query-id"])].add(str(r["corpus-id"]))
+
+# How many did that filter actually remove? On this file, none -- and saying so
+# is the point. A defensive line whose effect you have not measured is a line
+# you cannot claim anything about.
+n_zero = int((qrels["score"] == 0).sum())
+print(f"judgements in the file      {len(qrels):,}")
+print(f"of which explicit zeros     {n_zero}")
 
 qtext = dict(zip(queries["_id"].astype(str), queries["text"]))
 qids  = [q for q in rel if q in qtext]
