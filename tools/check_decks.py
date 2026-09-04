@@ -118,6 +118,22 @@ def unbalanced_math(run: str) -> str | None:
     return None
 
 
+# A bare `%` inside maths is a LaTeX comment: KaTeX discards the rest of the
+# line, including the closing delimiter, and the formula silently loses its
+# tail. It reached slides/lecture-21.html and nothing caught it, because the
+# page still renders -- just without the number. Every other percentage in the
+# course escapes it, so a bare one inside $...$ is always the bug.
+MATH_SPAN = re.compile(r"\$\$(.+?)\$\$|\$([^$\n]+?)\$", re.S)
+
+
+def bare_percent_in_math(run: str) -> str | None:
+    for m in MATH_SPAN.finditer(run):
+        span = m.group(1) or m.group(2) or ""
+        if re.search(r"(?<!\\)%", span):
+            return " ".join(m.group(0).split())[:70]
+    return None
+
+
 def check(path: Path) -> list[str]:
     src = path.read_text()
     rel = path.relative_to(ROOT)
@@ -132,6 +148,11 @@ def check(path: Path) -> list[str]:
         if (bad := unbalanced_math(run)):
             out.append(f"{rel}:{line}: inline $ never closed — KaTeX renders "
                        f"the rest as literal text: {bad}")
+        # 1c. a bare % inside maths comments out the rest of the formula
+        if (bad := bare_percent_in_math(run)):
+            out.append(f"{rel}:{line}: bare % inside maths — KaTeX treats it "
+                       f"as a comment and drops the rest of the formula, "
+                       f"closing delimiter included. Write \\%: {bad}")
         # 2. weekdays
         if (m := WEEKDAYS.search(run)):
             out.append(f"{rel}:{line}: names a weekday ({m.group()}) — "

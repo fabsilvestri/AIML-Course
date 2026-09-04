@@ -475,7 +475,8 @@ ex(11, "One layer multiplies the standard deviation of the backward signal by "
        r"$\rho = \sqrt{n_{\text{out}}\operatorname{Var}(w)\,"
        r"\mathbb{E}[\varphi'^2]}$. State what $L$ layers do to it, and why only "
        r"$\rho = 1$ survives depth.", 5,
-   r"They multiply by $\rho^L$; anything else vanishes or explodes "
+   r"They multiply it by $\rho^{L-1}$ &mdash; $L-1$ steps between the first "
+   r"gradient and the last &mdash; so anything but 1 vanishes or explodes "
    "geometrically.",
    ["A constant applied $L$ times is exponential in $L$",
     "There is no regime where a repeated constant other than 1 is safe"])
@@ -761,11 +762,18 @@ ex(18, "A decoder must not attend to positions after the one it is "
     "itself respects order",
     "The training loss would fall and the model would be useless at "
     "generation time, when the future genuinely does not exist"])
+# Reworded 2026-09-04: the original asked "and how quickly", and its answer
+# ("tens of steps") appears only in notebook 18 -- on no deck a student revises
+# from. The deck does carry the safe rate, so the question now asks for that.
 ex(18, "A pretrained body is fine-tuned at $10^{-3}$, the rate that worked for "
-       "the from-scratch model. Predict what happens, and how quickly.", 4,
-   "The loss rises within tens of steps and does not recover.",
-   ["A pretrained body is destroyed in tens of steps, not thousands",
-    "The rate has to be about a hundred times smaller"])
+       "the from-scratch model. Predict what happens, and state the rate the "
+       "lecture uses instead.", 4,
+   r"The loss rises and does not recover &mdash; steps that size destroy what "
+   r"was pretrained. The lecture fine-tunes at $2\times10^{-5}$.",
+   ["A pretrained block already encodes something; a step tuned for random "
+    "initialisation is far too large for it",
+    r"About a hundred times smaller than the from-scratch rate, which is the "
+    r"ratio the deck states"])
 ex(18, "Two corpora, of 400 and 25,000 documents, each have a vectoriser fitted "
        "before the split. State which suffers more, and why.", 4,
    "The 400-document corpus.",
@@ -795,12 +803,22 @@ ex(19, r"State why $\log_2(i+1)$ is used rather than $\log_2(i)$ in DCG, and "
    "conventional.",
    ["The $+1$ is a necessity, not a preference",
     "The shape encodes a belief about attention, and reporting NDCG adopts it"])
+# Reworded 2026-09-04: "which mattered most" had the answer "idf", but the
+# deck's own ablation removes saturation only together with length
+# normalisation (0.1809 against idf's 0.1261), so a student reading the table
+# answers "saturation" and the rubric could not credit it. The question now
+# asks what the ablation can and cannot isolate, which is what it measures.
 ex(19, "BM25 has three parts. Name the failure of raw term counting each one "
-       "answers, and say which the ablation showed mattered most.", 5,
+       "answers, then say which part the ablation prices on its own as "
+       "costliest, and which part it cannot price alone.", 5,
    "idf answers common words dominating; saturation answers repetition; length "
-   "normalisation answers long documents. idf mattered most.",
-   ["Removing idf cost the most NDCG@10 of the three",
-    "Length normalisation was nearly free on abstracts of similar length"])
+   "normalisation answers long documents. Of those removed singly idf costs "
+   "most; saturation is never removed on its own.",
+   ["Removing idf alone costs 0.1261 NDCG@10 and removing length normalisation "
+    "alone costs 0.0120 &mdash; those are the two the ablation isolates",
+    "The remaining row drops saturation and length together for 0.1809, and a "
+    "measurement that removes two things at once cannot attribute the loss to "
+    "either of them"])
 ex(19, "98% of claims match no document under Boolean conjunction. State the "
        "property of the conjunction that causes it, and what the field does "
        "instead.", 4,

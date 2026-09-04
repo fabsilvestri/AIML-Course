@@ -526,7 +526,7 @@ Transfer and launch overhead dominates; the crossover is set by arithmetic per b
 {\color{aimlmuted}\small Ch 11}\par\medskip
 \question{One layer multiplies the standard deviation of the backward signal by $\rho = \sqrt{n_{\text{out}}\operatorname{Var}(w)\,\mathbb{E}[\varphi'^2]}$. State what $L$ layers do to it, and why only $\rho = 1$ survives depth.}{5}
 \begin{solution}[title={Solution}]
-They multiply by $\rho^L$; anything else vanishes or explodes geometrically.
+They multiply it by $\rho^{L-1}$ --- $L-1$ steps between the first gradient and the last --- so anything but 1 vanishes or explodes geometrically.
 \begin{itemize}[leftmargin=*,nosep]
   \item A constant applied $L$ times is exponential in $L$
   \item There is no regime where a repeated constant other than 1 is safe
@@ -862,12 +862,12 @@ A mask applied to the attention scores before the softmax, setting future positi
   \item The training loss would fall and the model would be useless at generation time, when the future genuinely does not exist
 \end{itemize}
 \end{solution}
-\question{A pretrained body is fine-tuned at $10^{-3}$, the rate that worked for the from-scratch model. Predict what happens, and how quickly.}{4}
+\question{A pretrained body is fine-tuned at $10^{-3}$, the rate that worked for the from-scratch model. Predict what happens, and state the rate the lecture uses instead.}{4}
 \begin{solution}[title={Solution}]
-The loss rises within tens of steps and does not recover.
+The loss rises and does not recover --- steps that size destroy what was pretrained. The lecture fine-tunes at $2\times10^{-5}$.
 \begin{itemize}[leftmargin=*,nosep]
-  \item A pretrained body is destroyed in tens of steps, not thousands
-  \item The rate has to be about a hundred times smaller
+  \item A pretrained block already encodes something; a step tuned for random initialisation is far too large for it
+  \item About a hundred times smaller than the from-scratch rate, which is the ratio the deck states
 \end{itemize}
 \end{solution}
 \question{Two corpora, of 400 and 25,000 documents, each have a vectoriser fitted before the split. State which suffers more, and why.}{4}
@@ -908,12 +908,12 @@ $\log_2(1) = 0$ would divide by zero at rank 1. The discount is conventional.
   \item The shape encodes a belief about attention, and reporting NDCG adopts it
 \end{itemize}
 \end{solution}
-\question{BM25 has three parts. Name the failure of raw term counting each one answers, and say which the ablation showed mattered most.}{5}
+\question{BM25 has three parts. Name the failure of raw term counting each one answers, then say which part the ablation prices on its own as costliest, and which part it cannot price alone.}{5}
 \begin{solution}[title={Solution}]
-idf answers common words dominating; saturation answers repetition; length normalisation answers long documents. idf mattered most.
+idf answers common words dominating; saturation answers repetition; length normalisation answers long documents. Of those removed singly idf costs most; saturation is never removed on its own.
 \begin{itemize}[leftmargin=*,nosep]
-  \item Removing idf cost the most NDCG@10 of the three
-  \item Length normalisation was nearly free on abstracts of similar length
+  \item Removing idf alone costs 0.1261 NDCG@10 and removing length normalisation alone costs 0.0120 --- those are the two the ablation isolates
+  \item The remaining row drops saturation and length together for 0.1809, and a measurement that removes two things at once cannot attribute the loss to either of them
 \end{itemize}
 \end{solution}
 \question{98\% of claims match no document under Boolean conjunction. State the property of the conjunction that causes it, and what the field does instead.}{4}

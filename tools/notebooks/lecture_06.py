@@ -1087,8 +1087,7 @@ print(f"patches all 20 agree on  {unanimous:.1%}")
         code('''
 from collections import Counter
 
-print("root feature:", {X_train.columns[f]: c
-                        for (f, _), c in Counter(roots).items()})
+print("root feature:", dict(Counter(X_train.columns[f] for f, _ in roots)))
 print("distinct root thresholds:", len({thr for _, thr in roots}))
 print("leaves per tree:", min(t.get_n_leaves() for t in trees), "-",
       max(t.get_n_leaves() for t in trees))

@@ -300,7 +300,16 @@ from sklearn.linear_model import LinearRegression
 
 _naive = pool.shift(7)[WINDOW:]
 _mask  = target.notna() & _naive.notna()
-NAIVE_MAE  = float((target[_mask] - _naive[_mask]).abs().mean())
+
+# The baseline has to be measured on the rows the models are scored on. Every
+# model below is scored on the forward test slice only, so a baseline averaged
+# over all 1,191 days would be a different set of days -- and Lecture 15 spent
+# an hour on why that comparison is not a comparison. The all-row figure is
+# kept, but only to show how far apart the two are.
+_test = _mask.copy()
+_test.iloc[:cut] = False
+NAIVE_ALL  = float((target[_mask] - _naive[_mask]).abs().mean())
+NAIVE_MAE  = float((target[_test] - _naive[_test]).abs().mean())
 TARGET_MAE = NAIVE_MAE * (1 - 0.10)          # the 10% we committed to
 
 _values = pool.values / 1e6
@@ -310,7 +319,8 @@ honest = 1e6 * float(np.abs(
     LinearRegression().fit(_Xl[:cut], _yl[:cut]).predict(_Xl[cut:]) - _yl[cut:]).mean())
 
 print(f"train {cut}, test {len(X) - cut}, split by time")
-print(f"naive (copy last week)  MAE {NAIVE_MAE:>10,.0f}")
+print(f"naive, test rows only   MAE {NAIVE_MAE:>10,.0f}")
+print(f"naive, all 1,191 days   MAE {NAIVE_ALL:>10,.0f}  <- not comparable")
 print(f"target                  MAE {TARGET_MAE:>10,.0f}")
 print(f"linear, forward split   MAE {honest:>10,.0f}")
 
@@ -719,6 +729,12 @@ def mae_1e6(pred, truth):
         code('''
 CUT_SEL, CUT_END = "2018-07-01", "2019-01-01"
 
+# The ladder scores from CUT_END, which is a third set of days again -- so it
+# needs its own baseline for the same reason.
+_lad = _mask & (target.index >= CUT_END)
+NAIVE_LADDER = float((target[_lad] - _naive[_lad]).abs().mean())
+print(f"copy last week, ladder rows only  MAE {NAIVE_LADDER:>10,.0f}")
+
 def select_and_fit(kind, X, y, dates):
     """Choose the recipe inside the training period, then refit on all of it.
 
@@ -776,7 +792,7 @@ for kind, X, y, dates, label in ladder:
     print(f"{label:28s}{test_mae:>10,.0f}{train_mae:>11,.0f}{best:>8s}"
           f"   ({time.perf_counter() - t0:.0f}s)")
 
-print(f"\\n{'copy last week':28s}{NAIVE_MAE:>10,.0f}")
+print(f"\\n{'copy last week':28s}{NAIVE_LADDER:>10,.0f}")
 '''),
         prompt(
             label="the recurrent model under a random split",

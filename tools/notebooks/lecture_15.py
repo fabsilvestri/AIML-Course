@@ -911,27 +911,42 @@ prompt(
 target = pool[WINDOW:]
 naive = pool.shift(7)[WINDOW:]
 mask = target.notna() & naive.notna()
-NAIVE_MAE = float((target[mask] - naive[mask]).abs().mean())
+NAIVE_ALL = float((target[mask] - naive[mask]).abs().mean())
 
 # Four protocols, one model, one dataset. The only thing that changes is which
-# rows are allowed to train on which other rows.
+# rows are allowed to train on which other rows -- and because each protocol
+# scores a DIFFERENT set of days, each one needs its baseline measured on its
+# own rows. That is the discipline of section 7 above, applied here: a single
+# shared denominator would divide four models by four different sets of days.
+def naive_on_folds(splitter):
+    """Copy-last-week, averaged the same way cross_val_score averages."""
+    return float(np.mean([1e6 * np.abs(X[te, -7] - y[te]).mean()
+                          for _, te in splitter.split(X)]))
+
 cut = int(len(X) * 0.8)
 holdout = 1e6 * np.abs(
     LinearRegression().fit(X[:cut], y[:cut]).predict(X[cut:]) - y[cut:]).mean()
 
-protocols = [("random 5-fold",           folds_random.mean()),
-             ("one forward hold-out",    holdout),
-             ("forward 5-fold",          folds_time.mean()),
-             ("forward 5-fold + purge",  folds_gap.mean())]
+protocols = [
+    ("random 5-fold",          folds_random.mean(),
+     naive_on_folds(KFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE))),
+    ("one forward hold-out",   holdout,
+     1e6 * float(np.abs(X[cut:, -7] - y[cut:]).mean())),
+    ("forward 5-fold",         folds_time.mean(),
+     naive_on_folds(TimeSeriesSplit(n_splits=5))),
+    ("forward 5-fold + purge", folds_gap.mean(),
+     naive_on_folds(TimeSeriesSplit(n_splits=5, gap=WINDOW))),
+]
 
-print(f"naive baseline {NAIVE_MAE:,.0f}")
+print(f"copy last week over all {len(X):,} days {NAIVE_ALL:>10,.0f}"
+      f"   <- comparable with nothing below")
 print()
-print(f"{'protocol':26s}{'MAE':>10s}{'margin':>10s}")
-for name, score in protocols:
-    print(f"{name:26s}{score:>10,.0f}{(NAIVE_MAE - score) / NAIVE_MAE:>9.1%}")
+print(f"{'protocol':26s}{'MAE':>10s}{'naive, same rows':>18s}{'margin':>9s}")
+for name, score, nv in protocols:
+    print(f"{name:26s}{score:>10,.0f}{nv:>18,.0f}{(nv - score) / nv:>8.1%}")
 
-claimed = 100 * (NAIVE_MAE - folds_random.mean()) / NAIVE_MAE
-real    = 100 * (NAIVE_MAE - folds_gap.mean())    / NAIVE_MAE
+claimed = 100 * (protocols[0][2] - protocols[0][1]) / protocols[0][2]
+real    = 100 * (protocols[3][2] - protocols[3][1]) / protocols[3][2]
 print()
 print(f"{100 * (claimed - real) / claimed:.0f}% of the claimed margin "
       f"was the protocol, not the model")
