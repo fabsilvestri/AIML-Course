@@ -36,6 +36,8 @@ import pathlib
 import re
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
@@ -76,6 +78,51 @@ def classify(text: str) -> list[str]:
     return out or ["qualitative"]
 
 
+
+# --------------------------------------------------------------- numbers
+# Every `try` that states a figure is a claim a student will check. Most of
+# those figures should already appear in the lecture's own executed output --
+# "the assert on 52,326 fires", "it costs 3,840 weights". Where one does not,
+# it is either arithmetic derived from the cell (fine, and listed so a human
+# can confirm it) or a number nobody has ever checked (the thing this finds).
+#
+# Deliberately the same rule as check_consistency: reuse its executed-notebook
+# cache and its rounding tolerance, so there is one notion of "the notebook
+# printed this" in the repo rather than two.
+def check_numbers(lectures=None, execute=False):
+    import check_consistency as cc
+    NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
+    rows = [r for r in tries() if not lectures or r[0] in lectures]
+    by_lec = {}
+    for n, label, text, code in rows:
+        by_lec.setdefault(n, []).append((label, text, code))
+
+    unmatched, total = [], 0
+    for n in sorted(by_lec):
+        nb = ROOT / f"notebooks/lecture-{n:02d}.ipynb"
+        run = cc.executed(nb, execute)
+        if run is None:
+            print(f"  lecture {n:02d}: notebook did not execute; skipped")
+            continue
+        printed = cc.printed_numbers(run)
+        for label, text, code in by_lec[n]:
+            for m in NUMBER.finditer(text):
+                raw = m.group(0).rstrip(".")
+                if cc.significant(raw) < 4:
+                    continue                     # too round to be a quotation
+                v = float(raw.replace(",", ""))
+                if 1900 <= v <= 2100 and float(v).is_integer():
+                    continue                     # a year
+                total += 1
+                # in the notebook's output, or written in the cell it talks about
+                if cc.matches(v, printed) or raw in code or raw.replace(",", "") in code:
+                    continue
+                ctx = " ".join(text.split())
+                i = ctx.find(raw)
+                unmatched.append((n, label, raw, ctx[max(0, i-40):i+45]))
+    return total, unmatched
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--assert", dest="asserty", action="store_true")
@@ -83,7 +130,20 @@ def main() -> int:
     ap.add_argument("--lecture", type=int)
     ap.add_argument("--code", type=int, default=0,
                     help="lines of the code cell to print beside each")
+    ap.add_argument("--check-numbers", action="store_true",
+                    help="every figure a try states, against the notebook's output")
+    ap.add_argument("--execute", action="store_true")
     a = ap.parse_args()
+
+    if a.check_numbers:
+        lec = [a.lecture] if a.lecture else None
+        total, bad = check_numbers(lec, a.execute)
+        for n, label, raw, ctx in bad:
+            print(f"L{n:02d}  {raw:>12}   …{ctx}…")
+            print(f"          in: {label[:70]}")
+        print(f"\n{len(bad)} of {total} stated figures are not in the "
+              f"notebook's output nor in the cell")
+        return 1 if bad else 0
 
     rows = list(tries())
     sel = rows
