@@ -227,6 +227,11 @@ def check_site_index() -> list[str]:
                 out.append(f"index.html links lecture {n:02d}'s notes PDF, "
                            f"which does not exist — run make -C notes")
 
+    # The collected exercise book, same contract as the other linked PDFs.
+    if 'href="notes/exercises.pdf"' in src and not (ROOT / "notes/exercises.pdf").exists():
+        out.append("index.html links notes/exercises.pdf, which does not exist "
+                   "— run tools/make_exercise_book.py then make -C notes")
+
     if 'class="pending"' in src:
         out.append('index.html: still says "in preparation" somewhere')
     return out

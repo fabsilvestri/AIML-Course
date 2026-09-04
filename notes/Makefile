@@ -8,7 +8,8 @@
 # .toc file. latexmk would do this for us; two explicit passes are one fewer
 # dependency and the build takes three seconds either way.
 
-TEX  := $(wildcard lecture-*.tex)
+# every document here except the shared preamble, which is \input by them
+TEX  := $(filter-out preamble.tex,$(wildcard *.tex))
 PDFS := $(TEX:.tex=.pdf)
 
 all: $(PDFS)

@@ -1,0 +1,1161 @@
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+
+% One exercise, then its solution. The solution is set immediately after the
+% question rather than at the back: this is a revision document, not an exam
+% paper, and a reader who has to flip to check an answer stops checking.
+\newtcolorbox{solution}[1][]{
+  breakable, enhanced, colback=white, colframe=aimlsuccess,
+  boxrule=0.5pt, left=8pt, right=8pt, top=5pt, bottom=5pt,
+  fonttitle=\bfseries\small, coltitle=white, colbacktitle=aimlsuccess,
+  attach boxed title to top left={yshift=-2mm, xshift=4mm},
+  boxed title style={boxrule=0pt, arc=1pt}, #1}
+
+\newcounter{exq}[section]
+\newcommand{\question}[2]{%
+  \refstepcounter{exq}%
+  \medskip
+  \noindent
+  \begin{minipage}{\textwidth}
+    \textbf{\theexq.}~#1 \hfill{\color{aimlmuted}\textbf{[#2]}}
+  \end{minipage}\par}
+
+\begin{document}
+\thispagestyle{empty}
+\begin{flushleft}
+  {\color{aimlmuted}\small\sffamily
+   APPLICATIONS OF MACHINE LEARNING \quad$\cdot$\quad
+   BSc Mathematics of Artificial Intelligence}\\[2mm]
+  {\color{aimlrule}\rule{\textwidth}{0.8pt}}\\[4mm]
+  {\Huge\bfseries\color{aimlprimary} Exercises and solutions\par}\vspace{3mm}
+  {\color{aimlmuted}\large All twenty-four lectures \quad$\cdot$\quad
+   120 questions, each answered}\\[3mm]
+  {\color{aimlrule}\rule{\textwidth}{0.8pt}}
+\end{flushleft}
+\vspace{2mm}
+
+\begin{keybox}[title={How to use this}]
+These are the five questions set at the end of each lecture's deck, in the
+style of the written paper, with the solutions that appear on the following
+lecture's deck. Everything here is on the slides already; this is the same
+material in one place, for revision.
+
+Each question is answerable from \textbf{its own lecture and the ones before
+it}, and from nothing else --- that is a rule the course checks mechanically,
+not an aspiration. So if a question seems to need something you have not met,
+the fault is ours: say so.
+
+The mark in brackets is what the question would be worth on the paper, and it
+is the best guide to how long an answer should be. Four marks is a short
+paragraph, not a page.
+\end{keybox}
+
+\vspace{1mm}
+{\small\tableofcontents}
+\newpage
+
+
+\section*{Lecture 1 \quad What machine learning is, and how we will work}
+\addcontentsline{toc}{section}{Lecture 1 \quad What machine learning is, and how we will work}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 1–2}\par\medskip
+\question{A colleague reports that their model reaches an RMSE of $48{,}000$ on the California housing data, and that they chose the model by trying six of them and keeping the best. State, in one sentence, what that number is an estimate of --- and what it is \emph{not} an estimate of.}{4}
+\begin{solution}[title={Solution}]
+It estimates the best-of-six score on that particular split; it does not estimate the error on new data.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Choosing the minimum of six numbers measured on the same data makes that minimum a \emph{selection}, not a measurement
+  \item The quantity a client cares about --- error on districts nobody has seen --- needs data that took part in no choice
+\end{itemize}
+\end{solution}
+\question{The median income column is capped at 15. Give one consequence for the \emph{model} and one for the \emph{evaluation}, and say which of the two you would raise with the client first.}{5}
+\begin{solution}[title={Solution}]
+Model: it can never learn what happens above the cap. Evaluation: the test set is capped too, so the error is silent about exactly those districts.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The cap is in both halves of the split, so no held-out number reveals it
+  \item Raise the evaluation one first: the model can be retrained, but a metric that cannot see the failure will not tell you to
+\end{itemize}
+\end{solution}
+\question{You are given a stratified split on income category and a naive random split of the same data. Both report similar RMSE. Does that mean the stratification was unnecessary? Answer yes or no, with a reason.}{4}
+\begin{solution}[title={Solution}]
+No.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Similar RMSE on \emph{one} draw says nothing about the spread over draws, and the stratification is there to reduce that spread
+  \item The failure a naive split causes is occasional and large, which is precisely what a single comparison cannot show
+\end{itemize}
+\end{solution}
+\question{The brief says the output feeds a downstream system that expects a price. Name the one thing this fact settles about the problem framing, and one thing it leaves open.}{4}
+\begin{solution}[title={Solution}]
+It settles that this is supervised regression, not classification. It leaves the metric open.
+\begin{itemize}[leftmargin=*,nosep]
+  \item 'A price' fixes the type of the output and nothing about how error is weighed
+  \item Whether being wrong by $50{,}000$ on a cheap district matters as much as on an expensive one is a question for the client, not the data
+\end{itemize}
+\end{solution}
+\question{In the working loop --- specify, generate, read, test, verify --- exactly one step is done by the assistant. Name it, and say what goes wrong if a student treats a second step as the assistant's.}{3}
+\begin{solution}[title={Solution}]
+Generate. If reading is also delegated, nothing checks that the code does what the specification asked for.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The specification is the student's claim about what the code must do
+  \item Only a reader who holds that claim can notice the code meeting a different one
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 2 \quad The end-to-end project}
+\addcontentsline{toc}{section}{Lecture 2 \quad The end-to-end project}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 2}\par\medskip
+\question{The normal equation is $\hat\theta = (X^{\mathsf T}X)^{-1}X^{\mathsf T}y$. Your design matrix has a column equal to the sum of two others. State what happens to $X^{\mathsf T}X$, and what \code{np.linalg.pinv} returns instead.}{5}
+\begin{solution}[title={Solution}]
+$X^{\mathsf T}X$ is singular; the pseudoinverse returns the minimum-norm least-squares solution.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A linear dependence among columns makes $X$ rank-deficient, so $X^{\mathsf T}X$ has a zero eigenvalue and no inverse
+  \item The fitted \emph{values} are still unique --- the projection onto the column space is --- only the coefficients are not
+\end{itemize}
+\end{solution}
+\question{A pipeline scales the features and then fits a ridge model, and is passed whole to \code{cross\_val\_score}. Explain what would go wrong if the scaling were done once, before the call.}{5}
+\begin{solution}[title={Solution}]
+The scaler would be fitted on every fold's validation rows, so each fold's score would be optimistic.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A scaler is a fitted object: its mean and variance are parameters learned from data
+  \item Fitting it before the split lets validation rows influence the transformation applied to themselves
+\end{itemize}
+\end{solution}
+\question{You report a 95\% confidence interval for the test RMSE. A colleague says the interval proves the model is better than the baseline. Give the one question you would ask before agreeing.}{4}
+\begin{solution}[title={Solution}]
+Was the baseline scored on the same test rows?
+\begin{itemize}[leftmargin=*,nosep]
+  \item An interval describes the uncertainty of \emph{one} estimate, not the difference between two
+  \item Comparing two systems needs their difference's spread, which needs them measured on the same rows
+\end{itemize}
+\end{solution}
+\question{k-fold cross-validation reports a mean of 0.71 with folds $[0.52, 0.79, 0.75, 0.74, 0.75]$. What do you conclude, and what would you do next?}{5}
+\begin{solution}[title={Solution}]
+One fold is an outlier; investigate it rather than reporting the mean.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Four folds agree closely and one does not, which is a property of the data in that fold, not noise around a common value
+  \item The mean of a bimodal set of scores describes none of them
+\end{itemize}
+\end{solution}
+\question{Explain, in two sentences, why the test set may be looked at exactly once, and what you may legitimately do if the number disappoints.}{4}
+\begin{solution}[title={Solution}]
+Looking at it more than once makes it a validation set. If it disappoints, you may report it --- not tune against it.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Every decision taken after seeing the test score is a decision the score no longer measures honestly
+  \item The permitted response is a new experiment on new held-out data, or an honest report of what was found
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 3 \quad Classification and its metrics}
+\addcontentsline{toc}{section}{Lecture 3 \quad Classification and its metrics}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 3}\par\medskip
+\question{On the MNIST 5-detector, a classifier that never fires scores $90.96\%$ accuracy on the training set. State what that number is a measurement of.}{3}
+\begin{solution}[title={Solution}]
+The share of the data that is not a 5.
+\begin{itemize}[leftmargin=*,nosep]
+  \item With no positive prediction, accuracy is exactly the negative class's base rate
+  \item It measures the data, not the model --- which is why it is the anchor every other number is read against
+\end{itemize}
+\end{solution}
+\question{Prove or disprove: as the decision threshold is lowered, precision increases monotonically.}{5}
+\begin{solution}[title={Solution}]
+Disprove --- precision is not monotone in the threshold.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Lowering the threshold admits one instance at a time; recall cannot fall, but precision rises or falls depending on whether that instance is a true or a false positive
+  \item A single false positive admitted at a high-precision point lowers it, and a later true positive can raise it again
+\end{itemize}
+\end{solution}
+\question{A client asks for ``90\% precision''. Explain why that is not yet a specification, and give the one thing you would add.}{4}
+\begin{solution}[title={Solution}]
+It names no recall, and precision alone is met by predicting almost nothing. Add the recall it must hold at.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A classifier firing once, correctly, has precision 1.0 and is useless
+  \item An operating point is a pair, and the threshold that achieves it is a decision someone has to own
+\end{itemize}
+\end{solution}
+\question{Two models have the same ROC AUC. One is far better on a precision--recall curve. What does that tell you about the problem?}{4}
+\begin{solution}[title={Solution}]
+The positive class is rare.
+\begin{itemize}[leftmargin=*,nosep]
+  \item ROC uses the false-positive \emph{rate}, whose denominator is the large negative class, so many false positives barely move it
+  \item PR uses precision, whose denominator is what the model predicted, so the same false positives dominate it
+\end{itemize}
+\end{solution}
+\question{The confusion matrix of the never-fires classifier has two zero cells. Name them, and say which single metric would have exposed the model immediately.}{4}
+\begin{solution}[title={Solution}]
+True positives and false positives are zero; recall exposes it, at 0.0.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Nothing was predicted positive, so both positive-prediction cells are empty
+  \item Recall divides by the actual positives, so it is 0 however rare they are
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 4 \quad Training models}
+\addcontentsline{toc}{section}{Lecture 4 \quad Training models}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 4}\par\medskip
+\question{Gradient descent on the same data, with the features unscaled, takes many more steps to converge than on scaled features. Explain why, in terms of the shape of the cost surface.}{5}
+\begin{solution}[title={Solution}]
+Unscaled features make the contours elongated, so the gradient points across the valley rather than along it.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The curvature in each direction is proportional to that feature's scale, so a large-scale feature dominates the step
+  \item The learning rate must then suit the steepest direction, which makes it far too small for the shallow one
+\end{itemize}
+\end{solution}
+\question{Your logistic regression on one-hot encoded columns produces coefficients that look wrong, and the design matrix has rank six less than its column count. State the cause and the standard repair.}{5}
+\begin{solution}[title={Solution}]
+Each fully encoded categorical adds a redundant column; drop one level per categorical.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The indicator columns of one categorical sum to the intercept column, which is an exact linear dependence
+  \item With a reference level dropped the coefficients become differences from that level, and are interpretable again
+\end{itemize}
+\end{solution}
+\question{A model reaches 0.80 accuracy and is \emph{badly calibrated}. Explain what that means, and name a decision it would make wrongly that accuracy cannot see.}{4}
+\begin{solution}[title={Solution}]
+Its predicted probabilities do not match observed frequencies; any decision using a cost-weighted threshold is then wrong.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Accuracy reads only the arg-max, so it is blind to the probability that produced it
+  \item Choosing a threshold from expected cost requires the probability to mean what it says
+\end{itemize}
+\end{solution}
+\question{Why does the log loss have no closed-form minimiser, when squared error does?}{4}
+\begin{solution}[title={Solution}]
+Its gradient is not linear in the parameters, so setting it to zero gives no solvable system.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Squared error is quadratic in $\theta$, so its gradient is affine and the stationary condition is a linear system
+  \item The sigmoid makes the log-loss gradient transcendental in $\theta$
+\end{itemize}
+\end{solution}
+\question{State the update rule for batch gradient descent, and say what changes in it for stochastic gradient descent --- and what does not.}{4}
+\begin{solution}[title={Solution}]
+$\theta \leftarrow \theta - \eta\nabla J$. Only the set the gradient is computed over changes; the rule does not.
+\begin{itemize}[leftmargin=*,nosep]
+  \item SGD estimates the same gradient from one instance rather than all of them
+  \item The estimate is unbiased and noisy, which is why the step size usually has to decay
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 5 \quad Regularisation and the bias–variance trade-off}
+\addcontentsline{toc}{section}{Lecture 5 \quad Regularisation and the bias–variance trade-off}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 4}\par\medskip
+\question{Write the bias--variance decomposition of the expected squared error, and name the one term no model can reduce.}{4}
+\begin{solution}[title={Solution}]
+$\mathbb{E}[(y-\hat f)^2] = \text{bias}^2 + \text{variance} + \sigma^2$; the noise $\sigma^2$ cannot be reduced.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Two passengers with identical features and different outcomes put a floor under any predictor
+  \item A model reporting error below that floor has been measured wrongly
+\end{itemize}
+\end{solution}
+\question{A learning curve shows training and validation error both high and close together, and flat as data is added. Diagnose it, and say whether more data would help.}{5}
+\begin{solution}[title={Solution}]
+High bias. More data would not help.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The two curves have already met, so the gap --- the variance --- is small
+  \item The remaining error is the model's inability to represent the function, which more rows do not change
+\end{itemize}
+\end{solution}
+\question{Ridge adds $\alpha I$ to $X^{\mathsf T}X$ before inverting. Give the numerical consequence, in terms of the condition number.}{4}
+\begin{solution}[title={Solution}]
+It raises every eigenvalue by $\alpha$, so the condition number falls and the inverse is stable.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Near-collinear columns give eigenvalues near zero, which the inverse amplifies
+  \item The bound on the solution's sensitivity improves as $\alpha$ grows --- at the cost of bias
+\end{itemize}
+\end{solution}
+\question{Why must features be scaled before ridge or lasso, when they need not be for ordinary least squares?}{4}
+\begin{solution}[title={Solution}]
+The penalty is on the coefficients, and a coefficient's size depends on its feature's units.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Least squares is equivariant to rescaling a column: the coefficient absorbs it
+  \item A penalised fit is not, so an unscaled feature is penalised in proportion to the units someone chose
+\end{itemize}
+\end{solution}
+\question{You tune $\alpha$ over a grid using cross-validation, then report the best cross-validated score as your estimate of future performance. Name the error, and quantify its direction.}{5}
+\begin{solution}[title={Solution}]
+The best-of-grid score is optimistic: it is a minimum over the same folds used to choose.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Selection over $k$ candidates on the same data biases the winner downward in error
+  \item The honest number comes from data that took part in no choice --- a held-out test set, scored once
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 6 \quad Decision trees}
+\addcontentsline{toc}{section}{Lecture 6 \quad Decision trees}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 5}\par\medskip
+\question{Gini and entropy give nearly the same trees on CoverType. State the property they share that explains it, and name a case where they can differ.}{4}
+\begin{solution}[title={Solution}]
+Both are strictly concave with a maximum at the uniform distribution and zero at a pure node; they differ only where two splits are nearly tied.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Any impurity with those properties ranks most candidate splits identically
+  \item Entropy weighs rare classes slightly more, so it can prefer a split that isolates a small class
+\end{itemize}
+\end{solution}
+\question{A decision tree is described as `nonparametric'. Explain what that means here, and what it implies about the need for hyperparameters.}{4}
+\begin{solution}[title={Solution}]
+Its structure is not fixed before fitting, so it will grow to fit the data exactly unless constrained.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The parameter count is decided by the data, not by the model class
+  \item Constraints such as depth or minimum leaf size are what stop it memorising
+\end{itemize}
+\end{solution}
+\question{The brief allows at most eight conditions per decision. You measure the number of conditions as \code{decision\_path().sum() - 1}. Explain the $-1$.}{3}
+\begin{solution}[title={Solution}]
+The decision path counts the nodes visited, including the leaf, and the leaf applies no condition.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A path of depth $d$ visits $d+1$ nodes
+  \item Without the subtraction the count exceeds the tree's own depth, which is what the assert catches
+\end{itemize}
+\end{solution}
+\question{Refitting a tree on two halves of the same data gives visibly different trees. Does this make the model unreliable? Answer, with a reason.}{5}
+\begin{solution}[title={Solution}]
+Not necessarily --- the predictions can be stable while the structure is not.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Greedy splitting makes the choice of root sensitive to near-ties among candidate thresholds
+  \item What matters is whether the accuracy moves; if it does not, the \emph{explanation} is unstable rather than the model
+\end{itemize}
+\end{solution}
+\question{Per-class recall shows one class far below the rest. Give two responses that do not involve changing the model, and say which you would try first.}{4}
+\begin{solution}[title={Solution}]
+Re-weight the classes, or change what is reported. Report first.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A single headline accuracy hides the class, so reporting per-class recall is free and immediate
+  \item Class weighting trades other classes' recall for it, which is a decision the client should make
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 7 \quad Ensembles and random forests}
+\addcontentsline{toc}{section}{Lecture 7 \quad Ensembles and random forests}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 6}\par\medskip
+\question{For $n$ predictors each of variance $\sigma^2$ and pairwise correlation $\rho$, the variance of their average is $\rho\sigma^2 + \frac{1-\rho}{n}\sigma^2$. State the limit as $n \to \infty$, and what it means for ensembles.}{5}
+\begin{solution}[title={Solution}]
+It tends to $\rho\sigma^2$ --- correlation, not ensemble size, sets the floor.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The second term vanishes; the first does not depend on $n$ at all
+  \item Adding members past a point buys nothing, which is why the design effort goes into \emph{decorrelating} them
+\end{itemize}
+\end{solution}
+\question{Extra-trees are usually faster to fit than a random forest and often no less accurate. Give the mechanism, in terms of the formula above.}{4}
+\begin{solution}[title={Solution}]
+Random split thresholds lower $\rho$, which lowers the floor.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Choosing the threshold at random rather than optimally makes members disagree more
+  \item Each member is individually worse --- higher $\sigma^2$ --- and the product can still improve
+\end{itemize}
+\end{solution}
+\question{You set \code{bootstrap=False} and \code{oob\_score=True}. State what happens and why.}{3}
+\begin{solution}[title={Solution}]
+It raises: with no bootstrap there are no out-of-bag rows.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Out-of-bag scoring uses the rows a member did not sample
+  \item Without sampling, every member sees every row and the estimate is undefined
+\end{itemize}
+\end{solution}
+\question{Impurity-based feature importance ranks a random decoy column above several real ones. Explain how that can happen, and name the measure you would use instead.}{5}
+\begin{solution}[title={Solution}]
+A high-cardinality column offers more split points, so it accumulates impurity decrease by chance. Use permutation importance.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Impurity importance rewards a column for being \emph{splittable}, not for being informative
+  \item Permutation importance measures the score lost when the column is shuffled, which a decoy cannot fake
+\end{itemize}
+\end{solution}
+\question{A forest improves accuracy over one tree by far less than the variance reduction would suggest. Is this a contradiction? Answer with a reason.}{4}
+\begin{solution}[title={Solution}]
+No --- variance is only one term of the error.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Averaging reduces variance and leaves bias untouched
+  \item If the remaining error is mostly bias or noise, removing variance moves the accuracy very little
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 8 \quad Dimensionality reduction and unsupervised learning}
+\addcontentsline{toc}{section}{Lecture 8 \quad Dimensionality reduction and unsupervised learning}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 7–8}\par\medskip
+\question{PCA is derived by maximising $\|XW\|_F^2$ subject to $W^{\mathsf T}W=I$. State why the data must be centred first, and what the first component becomes if it is not.}{5}
+\begin{solution}[title={Solution}]
+Without centring the leading direction points at the mean, not at the direction of greatest variance.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The objective measures distance from the origin, and only after centring is that the same as spread
+  \item On the Olivetti faces the uncentred first component is the mean face
+\end{itemize}
+\end{solution}
+\question{The Johnson--Lindenstrauss bound, evaluated for 400 images at $\varepsilon = 0.1$, asks for more dimensions than the data has. What do you conclude about the bound, and about the method?}{5}
+\begin{solution}[title={Solution}]
+The bound is vacuous here; the method still works.
+\begin{itemize}[leftmargin=*,nosep]
+  \item JL is a worst-case guarantee over all point sets, and this one is not worst case
+  \item A bound that does not bind is not evidence against the technique --- measure the distortion instead
+\end{itemize}
+\end{solution}
+\question{A pipeline fits PCA on the whole dataset and then splits. Name what leaked, and say whether the leak grows or shrinks as the corpus grows.}{4}
+\begin{solution}[title={Solution}]
+The components leaked; the damage shrinks as the corpus grows.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The principal directions are fitted parameters, so fitting them on test rows lets those rows shape their own representation
+  \item With more rows each individual test row moves the components less
+\end{itemize}
+\end{solution}
+\question{Inertia always falls as $k$ rises, so it cannot choose $k$. State what silhouette adds, and one situation where it also fails.}{5}
+\begin{solution}[title={Solution}]
+Silhouette compares within-cluster to nearest-other-cluster distance, so it can fall. It fails when the clusters are not compact and separated.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Inertia is monotone by construction: more centres can only shorten distances
+  \item Silhouette assumes the geometry k-means assumes, so elongated or nested clusters defeat both
+\end{itemize}
+\end{solution}
+\question{You have 4,096-dimensional face vectors and are told two faces are ``close''. Explain why that alone does not mean they are the same person.}{4}
+\begin{solution}[title={Solution}]
+Distance is not identity --- lighting and pose move a face further than identity does.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Pixel distance is dominated by whatever varies most, and that is illumination
+  \item The metric has to be one under which the thing you care about is the thing that varies
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 9 \quad Neural networks, from the perceptron up}
+\addcontentsline{toc}{section}{Lecture 9 \quad Neural networks, from the perceptron up}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 9}\par\medskip
+\question{A multilayer perceptron with the activation removed is written as $W_3W_2W_1x$. State what function class it can represent, and why depth then buys nothing.}{4}
+\begin{solution}[title={Solution}]
+Only linear maps --- the product of matrices is a matrix.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Composition of linear maps is linear, whatever the depth
+  \item The nonlinearity is what makes an extra layer a new function rather than a re-parameterisation
+\end{itemize}
+\end{solution}
+\question{Give the parameter count of a dense layer from $m$ inputs to $n$ units, and evaluate it for the first layer of a network on 28$\times$28 images with 300 units.}{4}
+\begin{solution}[title={Solution}]
+$mn + n$; here $784 \times 300 + 300 = 235{,}500$.
+\begin{itemize}[leftmargin=*,nosep]
+  \item One weight per input-output pair, plus one bias per unit
+  \item The first layer of an image network usually dominates the count, because $m$ is the pixel count
+\end{itemize}
+\end{solution}
+\question{A single TLU cannot represent XOR. State the property of XOR that prevents it, and the smallest change to the network that fixes it.}{4}
+\begin{solution}[title={Solution}]
+XOR is not linearly separable; one hidden layer fixes it.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A TLU's decision boundary is a hyperplane, and no line separates the two XOR classes
+  \item A hidden layer can re-represent the inputs so that the classes become separable in the new coordinates
+\end{itemize}
+\end{solution}
+\question{Fashion-MNIST is exactly balanced across ten classes. State the trivial baseline's accuracy, and why balance is what makes accuracy defensible here.}{3}
+\begin{solution}[title={Solution}]
+10\%. With equal class sizes and equal costs, accuracy is not dominated by one class.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The majority-class predictor scores the largest class share, which is one tenth
+  \item Lecture 3's objection to accuracy was imbalance, and it does not apply
+\end{itemize}
+\end{solution}
+\question{An architecture sweep finds the best hidden-layer size on this dataset. State what that result does and does not transfer to.}{4}
+\begin{solution}[title={Solution}]
+It transfers to this dataset and task; it does not transfer to another dataset.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The best capacity depends on the amount and difficulty of the data
+  \item Reporting it as a general recommendation is the error --- it is a measurement, not a rule
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 10 \quad PyTorch}
+\addcontentsline{toc}{section}{Lecture 10 \quad PyTorch}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 10}\par\medskip
+\question{Reverse-mode automatic differentiation costs one sweep for all partial derivatives; forward mode costs one per input. State the condition on the function's shape that makes reverse mode the right choice.}{4}
+\begin{solution}[title={Solution}]
+Many inputs, one output --- which is exactly a loss.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Forward mode's cost scales with the number of inputs, reverse mode's with the number of outputs
+  \item A neural network has millions of parameters and one scalar loss
+\end{itemize}
+\end{solution}
+\question{Explain why the loss must be a scalar for \code{.backward()} to be called without arguments.}{3}
+\begin{solution}[title={Solution}]
+The reverse sweep is seeded with $\partial L/\partial L = 1$, which only exists for a scalar.
+\begin{itemize}[leftmargin=*,nosep]
+  \item For a vector output there is no single derivative to seed with
+  \item PyTorch then requires an explicit vector to weight the outputs by
+\end{itemize}
+\end{solution}
+\question{The five lines of the training loop are reordered so that \code{opt.step()} comes before \code{loss.backward()}. State what the student observes.}{4}
+\begin{solution}[title={Solution}]
+Nothing raises, and the model stays at chance.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The step is taken with the gradients zeroed at the top of the iteration
+  \item The gradients computed afterwards are cleared before they are ever used
+\end{itemize}
+\end{solution}
+\question{A network with dropout is evaluated without calling \code{model.eval()}. Describe the symptom precisely, and the one-line diagnostic that catches it.}{5}
+\begin{solution}[title={Solution}]
+The score wobbles between identical calls. Evaluate twice and assert the two agree.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Dropout keeps sampling masks in training mode, so the metric is a random variable
+  \item A deterministic function of fixed weights and fixed data does not change between calls
+\end{itemize}
+\end{solution}
+\question{GPUs did not help at small model sizes in the measured comparison. Give the reason, and the quantity that decides where the crossover sits.}{4}
+\begin{solution}[title={Solution}]
+Transfer and launch overhead dominates; the crossover is set by arithmetic per byte moved.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A small matrix product finishes faster than the cost of getting it there
+  \item The device pays once the work per transferred byte is large enough
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 11 \quad Training deep networks}
+\addcontentsline{toc}{section}{Lecture 11 \quad Training deep networks}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 11}\par\medskip
+\question{One layer multiplies the standard deviation of the backward signal by $\rho = \sqrt{n_{\text{out}}\operatorname{Var}(w)\,\mathbb{E}[\varphi'^2]}$. State what $L$ layers do to it, and why only $\rho = 1$ survives depth.}{5}
+\begin{solution}[title={Solution}]
+They multiply by $\rho^L$; anything else vanishes or explodes geometrically.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A constant applied $L$ times is exponential in $L$
+  \item There is no regime where a repeated constant other than 1 is safe
+\end{itemize}
+\end{solution}
+\question{Preserving the forward signal asks for $\operatorname{Var}(w) = 1/n_{\text{in}}$ and preserving the gradient asks for $1/n_{\text{out}}$. State when the two agree, and what Glorot does when they do not.}{4}
+\begin{solution}[title={Solution}]
+They agree only when $n_{\text{in}} = n_{\text{out}}$; Glorot takes the harmonic mean, $2/(n_{\text{in}}+n_{\text{out}})$.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Any layer that changes width cannot satisfy both
+  \item The compromise accepts a small error in each direction rather than a large one in either
+\end{itemize}
+\end{solution}
+\question{He initialisation doubles the weight variance for ReLU. Derive the factor of two in one line.}{4}
+\begin{solution}[title={Solution}]
+ReLU zeroes half of a symmetric zero-mean input, so $\mathbb{E}[\text{ReLU}(z)^2] = \tfrac12\mathbb{E}[z^2]$.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Exactly half the variance is discarded at each layer
+  \item Doubling $\operatorname{Var}(w)$ puts it back
+\end{itemize}
+\end{solution}
+\question{A gradient profile that is a straight line on a log axis tells you something a curved one does not. State what, and why it identifies the cause.}{4}
+\begin{solution}[title={Solution}]
+The attenuation is the same factor at every layer, so it is the initialisation rather than one bad layer.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A constant ratio per layer is a straight line in log space
+  \item A single broken layer would show a step, not a slope
+\end{itemize}
+\end{solution}
+\question{Gradient clipping is applied to a network whose gradients are fifteen orders of magnitude too small. Predict the effect, and say what the attempt reveals about the diagnosis.}{4}
+\begin{solution}[title={Solution}]
+No effect --- clipping bounds gradients that are too large.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The threshold is never reached, so nothing is rescaled
+  \item Reaching for it means the failure mode was never measured
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 12 \quad Convolutional networks}
+\addcontentsline{toc}{section}{Lecture 12 \quad Convolutional networks}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 12}\par\medskip
+\question{A dense layer mapping a $3\times128\times128$ input to a $32\times128\times128$ output has $n_{\text{in}}n_{\text{out}}$ weights. Give the convolutional count for a $7\times7$ kernel, and say which symbols are absent from it.}{5}
+\begin{solution}[title={Solution}]
+$32\times3\times7\times7 = 4{,}704$. Neither $H$ nor $W$ appears.
+\begin{itemize}[leftmargin=*,nosep]
+  \item One kernel per output channel, reused at every position
+  \item The image size is genuinely absent --- that is what weight sharing means
+\end{itemize}
+\end{solution}
+\question{State the difference between equivariance and invariance, and say which of the two segmentation cannot afford.}{4}
+\begin{solution}[title={Solution}]
+Equivariance: $f(T x) = T f(x)$. Invariance: $f(T x) = f(x)$. Segmentation cannot afford invariance.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Invariance discards the position, and the answer to a segmentation question \emph{is} the position
+  \item Classification wants invariance for the same reason
+\end{itemize}
+\end{solution}
+\question{Convolution is equivariant to translation on the interior of an image but not at the border. Give the reason.}{3}
+\begin{solution}[title={Solution}]
+Zero padding invents input that was not there, so a shift moves real content into invented content.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The identity assumes the operator sees the same neighbourhood before and after the shift
+  \item At the edge it does not, so the equality is an interior statement
+\end{itemize}
+\end{solution}
+\question{A training run fails with out-of-memory. State which of parameters and activations usually dominates, and give the first thing to change.}{4}
+\begin{solution}[title={Solution}]
+Activations dominate; halve the batch.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Activation memory is linear in the batch size and parameter memory does not depend on it at all
+  \item Reducing the parameter count is near the bottom of the list
+\end{itemize}
+\end{solution}
+\question{Parameters and activations are anti-correlated across a convolutional stack. State where each is concentrated, and what that means for any intuition carried over from dense networks.}{4}
+\begin{solution}[title={Solution}]
+Activations are largest near the input, parameters near the output. Dense intuition points the wrong way.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Early layers have large maps and tiny kernels; late layers the reverse
+  \item In a dense network both grow together, so the habit transfers badly
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 13 \quad Transfer learning}
+\addcontentsline{toc}{section}{Lecture 13 \quad Transfer learning}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 12}\par\medskip
+\question{State the order in which a pretrained network's head must be replaced and its body frozen, and what goes wrong in the other order.}{4}
+\begin{solution}[title={Solution}]
+Freeze first, then replace. In the other order the new head is frozen too.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A newly constructed module has \code{requires\_grad=True}, so the freezing loop would turn it off
+  \item The symptom is a loss that never moves, with nothing raising
+\end{itemize}
+\end{solution}
+\question{Fine-tuning uses $10^{-4}$ on the pretrained block and $10^{-3}$ on the new head. Justify the difference in one sentence.}{4}
+\begin{solution}[title={Solution}]
+The block already encodes something and the head starts from noise; one rate cannot suit both.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A large step destroys what the block knows
+  \item A small step leaves the random head untrained
+\end{itemize}
+\end{solution}
+\question{Freezing a batch-norm layer's weights does not freeze the layer. State what still changes, and the call that stops it.}{4}
+\begin{solution}[title={Solution}]
+The running statistics are buffers, updated in the forward pass; \code{.eval()} stops them.
+\begin{itemize}[leftmargin=*,nosep]
+  \item \code{requires\_grad=False} governs gradients, not buffers
+  \item A frozen feature extractor left in train mode still drifts
+\end{itemize}
+\end{solution}
+\question{An augmented validation loader is used to select the epoch to keep. State the two things this costs, and the one-line test that detects it.}{5}
+\begin{solution}[title={Solution}]
+The score becomes a random variable and the chosen epoch changes. Evaluate twice and require identical answers.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Augmentation makes the metric depend on the evaluator's seed
+  \item A deterministic function of fixed weights and fixed data does not wobble
+\end{itemize}
+\end{solution}
+\question{A frozen-backbone probe is both more accurate and faster than training from scratch on 1,020 images. Explain why both, and name the cost that must still be counted.}{5}
+\begin{solution}[title={Solution}]
+The backbone is a fitted function reused for free; the feature extraction pass must still be counted in the total.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Only the head is fitted, so the variance problem moves to a dataset large enough to absorb it
+  \item The probe is not free just because the head is
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 14 \quad Detection and segmentation}
+\addcontentsline{toc}{section}{Lecture 14 \quad Detection and segmentation}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 12}\par\medskip
+\question{Two boxes are disjoint and moved further apart. State what IoU and its derivative do, and why no learning rate repairs it.}{5}
+\begin{solution}[title={Solution}]
+Both are identically zero; a constant has no descent direction.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Past contact the intersection is exactly zero for every separation
+  \item The gradient is absent rather than small, so no optimiser can act on it
+\end{itemize}
+\end{solution}
+\question{An IoU implementation without a clamp is tested on overlapping boxes only and passes. Give the input that breaks it, and the property test that would have caught it.}{5}
+\begin{solution}[title={Solution}]
+Boxes separated on both axes. Assert the result lies in $[0,1]$ and is zero exactly when the boxes are disjoint.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Two negative differences multiply to a positive 'intersection'
+  \item A range check alone is necessary and not sufficient --- the diagonal case can land inside $[0,1]$
+\end{itemize}
+\end{solution}
+\question{Average precision is defined with a maximum inside it. State what that maximum repairs, and which earlier lecture proved the problem.}{4}
+\begin{solution}[title={Solution}]
+It replaces the non-monotone precision by its running maximum --- the non-monotonicity proved in Lecture 3.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Precision falls at every false positive and can rise again
+  \item Integrating the raw curve would reward the sawtooth rather than the ranking
+\end{itemize}
+\end{solution}
+\question{mAP is a mean over classes of a mean over IoU thresholds. Give one thing each averaging hides.}{4}
+\begin{solution}[title={Solution}]
+The class mean hides that a one-instance class weighs as much as a 350-instance one; the threshold mean hides the spread between loose and tight matching.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Unweighted means ignore support
+  \item A single number in the middle stands for two very different regimes
+\end{itemize}
+\end{solution}
+\question{A team computes AP per image and averages those. State the direction of the error and its cause.}{4}
+\begin{solution}[title={Solution}]
+It is optimistic: single images contain few objects and often score 1.0.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Averaging many easy sub-problems is not the hard problem
+  \item It is the metric averaged per batch rather than over the set
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 15 \quad Time series}
+\addcontentsline{toc}{section}{Lecture 15 \quad Time series}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 13}\par\medskip
+\question{For a stationary series, $\operatorname{Var}(X_t - X_{t-h}) = 2\gamma(0)(1-\rho(h))$. State the condition on $\rho(h)$ under which differencing \emph{increases} the variance.}{4}
+\begin{solution}[title={Solution}]
+$\rho(h) < 1/2$.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The factor $2(1-\rho)$ exceeds 1 exactly then
+  \item So the reflex 'it is not stationary, difference it' can make the problem harder
+\end{itemize}
+\end{solution}
+\question{Explain why the seasonal-naive forecast is hard to beat on daily ridership, in terms of the autocorrelation function.}{4}
+\begin{solution}[title={Solution}]
+$\rho(7)$ is high, so the lag-7 difference is close to white noise --- and copying last week is the model that assumes it is.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The weekly cycle carries most of the structure
+  \item What remains after removing it is close to unpredictable
+\end{itemize}
+\end{solution}
+\question{State why MAPE is the wrong metric for transit ridership, using a specific day as the example.}{4}
+\begin{solution}[title={Solution}]
+It divides by the truth, so an error on Christmas --- a tenth of normal ridership --- counts ten times an equal error on an ordinary weekday.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The metric would spend capacity on the days nobody staffs for
+  \item MAE in boardings is in the units the operations team already uses
+\end{itemize}
+\end{solution}
+\question{A cross-validated forecast uses \code{KFold(shuffle=True)} and reports a good score. Name the two conditions the split violates.}{5}
+\begin{solution}[title={Solution}]
+No training row may come after a test row, and none may be adjacent to one.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Shuffling puts a point's own future in the training set
+  \item Neighbouring days are nearly the same number, so an adjacent row nearly gives away the answer
+\end{itemize}
+\end{solution}
+\question{In March 2020 the series level falls by three quarters and the model stops working. State whether this is a leak, a bug, or neither, and what it implies for deployment.}{4}
+\begin{solution}[title={Solution}]
+Neither --- the protocol was correct and the world changed. It implies monitoring, with a written trigger.
+\begin{itemize}[leftmargin=*,nosep]
+  \item No split protects against a regime change
+  \item A model never re-measured after deployment is an assumption wearing a number's clothes
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 16 \quad Recurrent networks}
+\addcontentsline{toc}{section}{Lecture 16 \quad Recurrent networks}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 13}\par\medskip
+\question{A recurrent network is trained on 56-day windows drawn from one series. Explain why shuffling the \emph{windows} is legitimate while shuffling the \emph{series} is not.}{4}
+\begin{solution}[title={Solution}]
+A window is a training example; the series is the thing the example is cut from.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The order inside a window is the signal, and shuffling windows leaves it intact
+  \item Shuffling the series destroys the very structure the model exists to read
+\end{itemize}
+\end{solution}
+\question{The head of the recurrent model is a linear layer on the final hidden state. State why the hidden state alone will not do.}{4}
+\begin{solution}[title={Solution}]
+tanh bounds it to $(-1,1)$ and ridership is not bounded.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A bounded output cannot reach the target range
+  \item Scaling by a million makes it half-work, which is worse than failing
+\end{itemize}
+\end{solution}
+\question{Gates were introduced after a plain recurrent cell failed over long windows. State the mechanism, in terms of what happens to the same matrix over 56 steps.}{4}
+\begin{solution}[title={Solution}]
+The same matrix is applied 56 times, so its spectrum is raised to the 56th power; gates provide a path whose derivative is near one.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Repeated multiplication is the vanishing-gradient argument of Lecture 11 in a new place
+  \item A gate lets information pass without being multiplied at every step
+\end{itemize}
+\end{solution}
+\question{A colleague reports a large improvement on the ridership forecast after making the recurrent layer bidirectional. State what has happened, and the one question that settles it.}{5}
+\begin{solution}[title={Solution}]
+It is leakage: a bidirectional layer reads the future. Ask whether the whole sequence is available at prediction time.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A second layer run backwards lets every position see values that have not happened when the forecast is made
+  \item It is Lecture 15's random split wearing a different hat --- the number goes up and the system cannot be deployed
+\end{itemize}
+\end{solution}
+\question{Report the training MAE beside the test MAE. Name the two failures the pair distinguishes, and say why the test column alone cannot.}{4}
+\begin{solution}[title={Solution}]
+Underfitting, where both are poor, and overfitting, where train is far better. They have opposite fixes.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A single bad test number is consistent with either
+  \item More capacity fixes one and makes the other worse
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 17 \quad Text}
+\addcontentsline{toc}{section}{Lecture 17 \quad Text}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 14}\par\medskip
+\question{Show that softmax is invariant to adding a constant to every logit, and state the numerical reason the implementation subtracts the maximum anyway.}{5}
+\begin{solution}[title={Solution}]
+$e^{c}$ cancels between numerator and denominator. Subtracting the max keeps every exponential below 1, and float32 overflows at about 88.7.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The function ignores the shift; the arithmetic does not
+  \item Moving to float64 only relocates the threshold to about 709
+\end{itemize}
+\end{solution}
+\question{Derive $\partial L/\partial \mathbf{z} = \mathbf{p} - \mathbf{y}$ for cross-entropy on a one-hot target, and state what the row sum of that gradient must be.}{5}
+\begin{solution}[title={Solution}]
+$L = -z_c + \log\sum_j e^{z_j}$, whose derivative is $\mathbf{p} - \mathbf{y}$; each row sums to zero.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The exponential of the true class cancels, so no chain rule through the softmax is needed
+  \item A zero row sum is the derivative form of the shift invariance
+\end{itemize}
+\end{solution}
+\question{A loss function is given probabilities rather than logits. State the two failure modes, and which one ships.}{5}
+\begin{solution}[title={Solution}]
+Overflow to inf or nan, and a finite but wrong value. The quiet one ships.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Taking the log of an underflowed probability is the loud failure
+  \item A row whose true class has small probability loses precision silently
+\end{itemize}
+\end{solution}
+\question{A model summarises a padded batch at \code{out[:, -1, :]}. State what that position holds for most reviews, and the invariance test that detects it.}{5}
+\begin{solution}[title={Solution}]
+Padding. Encode the same review with two different amounts of padding and require the logits to agree.
+\begin{itemize}[leftmargin=*,nosep]
+  \item That position is real content only for the longest reviews
+  \item An output-shape test cannot see this; an invariance test can
+\end{itemize}
+\end{solution}
+\question{A word-level vocabulary has a 40\% out-of-vocabulary rate over distinct test words. Explain why a larger vocabulary is not the fix.}{4}
+\begin{solution}[title={Solution}]
+A word vocabulary is closed and language is not.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Two words in five are seen once, so more capacity buys mostly those
+  \item Subword tokenisation changes the closure property rather than the size
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 18 \quad Attention and transformers}
+\addcontentsline{toc}{section}{Lecture 18 \quad Attention and transformers}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 14–15}\par\medskip
+\question{Scaled dot-product attention divides by $\sqrt{d_k}$. State what the variance of the unscaled dot product is, and what the softmax does without the division.}{5}
+\begin{solution}[title={Solution}]
+It grows with $d_k$; the softmax saturates and the gradient vanishes.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A sum of $d_k$ independent products has variance proportional to $d_k$
+  \item Large logits make the distribution nearly one-hot, so almost no gradient flows
+\end{itemize}
+\end{solution}
+\question{A student adds a softmax to a model whose loss is \code{CrossEntropyLoss}. Give the floor the loss cannot go below on two classes, and the arithmetic behind it.}{5}
+\begin{solution}[title={Solution}]
+$-\log(e/(e+1)) \approx 0.313$.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The second softmax receives values in $[0,1]$, so the largest achievable probability is $e/(e+1)$
+  \item Reading the loss column rather than the accuracy is what identifies it
+\end{itemize}
+\end{solution}
+\question{A pretrained body is fine-tuned at $10^{-3}$, the rate that worked for the from-scratch model. Predict what happens, and how quickly.}{4}
+\begin{solution}[title={Solution}]
+The loss rises within tens of steps and does not recover.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A pretrained body is destroyed in tens of steps, not thousands
+  \item The rate has to be about a hundred times smaller
+\end{itemize}
+\end{solution}
+\question{Two corpora, of 400 and 25,000 documents, each have a vectoriser fitted before the split. State which suffers more, and why.}{4}
+\begin{solution}[title={Solution}]
+The 400-document corpus.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The inverse document frequencies are an average, and removing a quarter of 25,000 draws barely moves them
+  \item At 400 the leaky vocabulary has columns that exist because a test document used them
+\end{itemize}
+\end{solution}
+\question{A corpus contains duplicate documents across the train/test split. State why no pipeline fixes it, and name the splitter that does.}{4}
+\begin{solution}[title={Solution}]
+Nothing was fitted wrongly --- the rows were separated wrongly. Use a grouped split.
+\begin{itemize}[leftmargin=*,nosep]
+  \item \code{fit} and \code{transform} were used correctly throughout
+  \item The repair is to keep both copies of an entry on the same side
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 19 \quad Information retrieval: the lexical foundation}
+\addcontentsline{toc}{section}{Lecture 19 \quad Information retrieval: the lexical foundation}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Lecture notes}\par\medskip
+\question{A ranking has relevant documents at ranks 1, 3 and 10, with three relevant documents in total. Compute AP and NDCG@10, showing the sums.}{6}
+\begin{solution}[title={Solution}]
+AP $=\tfrac13(1 + \tfrac23 + \tfrac3{10}) = 0.6556$; NDCG@10 $= \frac{1 + 0.5 + 0.2891}{1 + 0.6309 + 0.5} = 0.8396$.
+\begin{itemize}[leftmargin=*,nosep]
+  \item AP averages the precision at each hit and divides by $|R|$, not by the number of hits found
+  \item DCG discounts by $1/\log_2(i+1)$, and the ideal puts all three at ranks 1--3
+\end{itemize}
+\end{solution}
+\question{State why $\log_2(i+1)$ is used rather than $\log_2(i)$ in DCG, and whether the choice of discount is derived or conventional.}{4}
+\begin{solution}[title={Solution}]
+$\log_2(1) = 0$ would divide by zero at rank 1. The discount is conventional.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The $+1$ is a necessity, not a preference
+  \item The shape encodes a belief about attention, and reporting NDCG adopts it
+\end{itemize}
+\end{solution}
+\question{BM25 has three parts. Name the failure of raw term counting each one answers, and say which the ablation showed mattered most.}{5}
+\begin{solution}[title={Solution}]
+idf answers common words dominating; saturation answers repetition; length normalisation answers long documents. idf mattered most.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Removing idf cost the most NDCG@10 of the three
+  \item Length normalisation was nearly free on abstracts of similar length
+\end{itemize}
+\end{solution}
+\question{98\% of claims match no document under Boolean conjunction. State the property of the conjunction that causes it, and what the field does instead.}{4}
+\begin{solution}[title={Solution}]
+One missing term excludes the document entirely. Score rather than filter.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The conjunction is brittle, and an empty result looks like 'no such document exists'
+  \item Scoring makes a missing term cost something rather than everything
+\end{itemize}
+\end{solution}
+\question{Relevance judgements are made by pooling. State what happens to a document no pooled system ranked highly, and the consequence for a genuinely new method.}{4}
+\begin{solution}[title={Solution}]
+It is unjudged and scored as irrelevant, so a new method is penalised for finding it.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Everything outside the pool is treated as not relevant by convention
+  \item Gains on a mature benchmark are partly gains at matching the pool
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 20 \quad Information retrieval: dense retrieval}
+\addcontentsline{toc}{section}{Lecture 20 \quad Information retrieval: dense retrieval}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Lecture notes}\par\medskip
+\question{Explain why a bi-encoder can be indexed and a cross-encoder cannot, and say what the two differences have in common as a cause.}{5}
+\begin{solution}[title={Solution}]
+$E(d)$ does not depend on the query, so it can be precomputed; the cross-encoder reads the pair jointly. The same fact causes the accuracy difference.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Whether the query is present when the document is read decides both
+  \item Nothing can be stored for a function that does not exist until the query arrives
+\end{itemize}
+\end{solution}
+\question{A first stage has recall@100 of 0.885. State the highest recall a perfect re-ranker over those 100 candidates can reach, and what follows for where to spend effort.}{4}
+\begin{solution}[title={Solution}]
+0.885. Improving the first stage raises the ceiling; improving the second never does.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A re-ranker reorders a fixed candidate set and cannot retrieve
+  \item 11.5\% of relevant documents are simply absent from the candidates
+\end{itemize}
+\end{solution}
+\question{In-batch negatives are described as free. State precisely what is free and what is not, and why the batch size is a modelling decision rather than a memory setting.}{5}
+\begin{solution}[title={Solution}]
+The $B^2$ scores are nearly free; the $2B$ encoder passes are not. The batch size is the number of negatives each query is scored against, so it changes the task.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Encoding grows linearly in $B$ and the dot products quadratically, so the scores cost almost nothing beside the encoder
+  \item Doubling the batch doubles the negatives per query, which is a choice about the problem rather than about the hardware
+\end{itemize}
+\end{solution}
+\question{Hard negatives are mined from a first stage's top results. State the trap, and why it is worse at training time than at evaluation time.}{5}
+\begin{solution}[title={Solution}]
+Many are relevant but unjudged, so training teaches the model that a correct answer is wrong.
+\begin{itemize}[leftmargin=*,nosep]
+  \item At evaluation an unjudged document is an accounting error
+  \item At training it is a gradient pushing the model away from the right answer
+\end{itemize}
+\end{solution}
+\question{An approximate index reports recall 0.80. State what that number must be measured against, and what is conflated if it is not.}{4}
+\begin{solution}[title={Solution}]
+Against the exact scan, never against the relevance judgements.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Otherwise 'my index missed it' and 'my model ranked it low' become one number
+  \item They have different fixes, so they must be measured separately
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 21 \quad Recommender systems: from ratings to factors}
+\addcontentsline{toc}{section}{Lecture 21 \quad Recommender systems: from ratings to factors}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Lecture notes}\par\medskip
+\question{State why the truncated SVD cannot be applied directly to a ratings matrix, naming the condition of Eckart--Young that fails.}{5}
+\begin{solution}[title={Solution}]
+The Frobenius norm sums over every entry, and 95.5\% of them have no value.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The theorem is about one fully specified matrix
+  \item Filling the gaps changes the problem into a different one with a different answer
+\end{itemize}
+\end{solution}
+\question{A rank-32 SVD of the zero-filled matrix scores worse than predicting one number for everybody. Explain how the optimal approximation can lose to a constant.}{5}
+\begin{solution}[title={Solution}]
+It is optimal for the matrix it was given, and that matrix is mostly zeros.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Ratings run from 1 to 5, so a zero is off the scale rather than low
+  \item The approximation spends its capacity reproducing an assumption nobody made deliberately
+\end{itemize}
+\end{solution}
+\question{Write the ALS half-step for one user, and identify it as a familiar estimator.}{5}
+\begin{solution}[title={Solution}]
+$p_u = (Q_u^{\mathsf T}Q_u + \lambda I)^{-1}Q_u^{\mathsf T}r_u$ --- a ridge regression.
+\begin{itemize}[leftmargin=*,nosep]
+  \item $Q_u$ contains only the items that user rated, so the missing entries never enter the system
+  \item The system is $d \times d$ however many items the user rated
+\end{itemize}
+\end{solution}
+\question{For any invertible $M$, $(PM)(QM^{-\mathsf T})^{\mathsf T} = PQ^{\mathsf T}$. State what this settles about interpreting a latent factor.}{4}
+\begin{solution}[title={Solution}]
+The predictions are determined and the factors are not, so an individual dimension has no meaning.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The objective cannot distinguish $P$ from $PM$
+  \item A factor plot claims something the model is not claiming
+\end{itemize}
+\end{solution}
+\question{Implicit feedback has no negatives. State why an objective over observed entries alone fails, and name the two standard responses.}{5}
+\begin{solution}[title={Solution}]
+It is satisfied by predicting yes everywhere. Weighted least squares over all cells, or a pairwise ranking objective.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Only positives exist, so there is nothing to push down
+  \item The first keeps a closed form and needs a confidence function; the second models only differences
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 22 \quad Recommender systems: neural, and evaluated honestly}
+\addcontentsline{toc}{section}{Lecture 22 \quad Recommender systems: neural, and evaluated honestly}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Lecture notes}\par\medskip
+\question{A recommender is scored by RMSE on held-out ratings. State why that is the wrong metric, using the set the model actually operates on.}{5}
+\begin{solution}[title={Solution}]
+RMSE is computed on films the user chose to watch and rate; a recommender operates on the complement.
+\begin{itemize}[leftmargin=*,nosep]
+  \item It weights every prediction equally when only ten items are shown
+  \item A constant offset ruins RMSE and changes no ranking at all
+\end{itemize}
+\end{solution}
+\question{The same model scores HR@10 of 0.0926 and 0.8085 on the same data. Name the two decisions that differ, and which moves the number more.}{5}
+\begin{solution}[title={Solution}]
+Random against temporal split, and sampled-100 against the full catalogue. Sampling moves it far more.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Ten of 101 candidates is already a tenth of the set
+  \item A random ranker goes from 0.0027 to 0.0990 under the same change
+\end{itemize}
+\end{solution}
+\question{Explain why a sampled metric is not merely noisier than a full-catalogue one, and give the consequence for comparing two published systems.}{5}
+\begin{solution}[title={Solution}]
+The 100 negatives are drawn uniformly from a mostly-tail catalogue, so the distortion depends on the model. Orderings can reverse.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A popularity model competes against almost no popular items
+  \item A uniform bias would at least preserve rankings; this one does not
+\end{itemize}
+\end{solution}
+\question{A sampled softmax draws negatives in proportion to popularity. State the correction, and what enters the model if it is skipped.}{4}
+\begin{solution}[title={Solution}]
+Subtract $\log q(j)$ from each sampled negative's score. Without it, popularity bias enters the gradient.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The sample is not the catalogue, and the estimator is biased without reweighting
+  \item The model then systematically under-recommends popular items
+\end{itemize}
+\end{solution}
+\question{A recommender is trained on interactions produced by an earlier recommender. Name the effect, and the earlier lecture whose problem it repeats.}{4}
+\begin{solution}[title={Solution}]
+The feedback loop --- the pooling problem of Lecture 19.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The log records what a previous system chose to show
+  \item A model that would have shown something better scores badly, because the evidence was never collected
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 23 \quad Vision transformers and multimodal retrieval}
+\addcontentsline{toc}{section}{Lecture 23 \quad Vision transformers and multimodal retrieval}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 15–16}\par\medskip
+\question{Two encoders are trained separately, one on images and one on text. Explain why their cosine similarity carries no information about matching, using a rotation argument.}{5}
+\begin{solution}[title={Solution}]
+Any rotation of the image space leaves every image--image cosine and the image loss unchanged, while changing every image--text cosine.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The objective cannot distinguish the rotated space from the original
+  \item So it did not pick one, and the relative geometry is arbitrary
+\end{itemize}
+\end{solution}
+\question{In $d$ dimensions two independent random unit vectors have a cosine with standard deviation $1/\sqrt{d}$. State what an unrelated pair looks like at $d = 512$, and why $-1$ is the wrong intuition.}{5}
+\begin{solution}[title={Solution}]
+Near zero, with a spread of about 0.044. There is exactly one point at cosine $-1$, so most pairs cannot be there.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Unrelated means orthogonal in high dimensions, not opposite
+  \item It is why a contrastive loss targets zero for a non-matching pair
+\end{itemize}
+\end{solution}
+\question{A contrastive loss is computed at $\tau = 1$ on cosine scores. State why it barely trains, and what $\tau$ changes and does not change.}{5}
+\begin{solution}[title={Solution}]
+Cosines span at most 2, so the softmax is nearly uniform. $\tau$ changes where the gradient goes, not which column is largest.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A range of 2 gives a ratio of at most $e^2$ across all competitors
+  \item Temperature cannot change the accuracy of a fixed similarity matrix
+\end{itemize}
+\end{solution}
+\question{Recall@10 is reported over 200 candidates. State the exact random baseline, and why it is computed rather than simulated.}{3}
+\begin{solution}[title={Solution}]
+$10/200 = 5\%$.
+\begin{itemize}[leftmargin=*,nosep]
+  \item One relevant item ranked uniformly gives $P(\mathrm{rank} \le k) = k/n$
+  \item A closed form needs no seed and carries no noise
+\end{itemize}
+\end{solution}
+\question{An entry with no written description scores zero on a text retrieval route. State whether this is a ranking failure or a structural one, and what follows.}{4}
+\begin{solution}[title={Solution}]
+Structural --- an entry with no text is not in a text index at all.
+\begin{itemize}[leftmargin=*,nosep]
+  \item No amount of re-ranking reaches a document that was never indexed
+  \item The repair is another route, not a better scorer
+\end{itemize}
+\end{solution}
+
+
+\section*{Lecture 24 \quad Generation, retrieval-augmented systems, and where this leaves you}
+\addcontentsline{toc}{section}{Lecture 24 \quad Generation, retrieval-augmented systems, and where this leaves you}
+\setcounter{exq}{0}
+{\color{aimlmuted}\small Ch 15–16}\par\medskip
+\question{A contrastive loss is written as \code{img @ txt.T / tau} on the output of \code{get\_image\_features}. State the defect, and the assertion that would have caught it.}{5}
+\begin{solution}[title={Solution}]
+The features are not normalised, so the product is not a cosine. Assert every row has unit norm.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The entries carry both magnitudes, so the temperature divides a quantity with no fixed scale
+  \item Magnitude tracks length and token frequency, so long documents win by default
+\end{itemize}
+\end{solution}
+\question{An auto-caption is generated for catalogue entries that have no description. State what it recovers, and the failure mode nothing in the evaluation detects.}{5}
+\begin{solution}[title={Solution}]
+It recovers part of the lost recall. A caption that is wrong makes an entry findable under the wrong query.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Scoring generated captions against human captions of the same image is a friendly test
+  \item Worse than unfindable, and no metric here sees it
+\end{itemize}
+\end{solution}
+\question{A retrieval-augmented system is measured by whether cited stock numbers exist. State what that measures, and what it does not.}{4}
+\begin{solution}[title={Solution}]
+It measures grounding, not helpfulness.
+\begin{itemize}[leftmargin=*,nosep]
+  \item A cited entry can exist and still be a bad recommendation
+  \item It is the cheap half, and saying which half was measured is the point
+\end{itemize}
+\end{solution}
+\question{In a retrieval-augmented pipeline the retriever's recall bounds the whole system. Explain why, and what that implies about where to invest.}{4}
+\begin{solution}[title={Solution}]
+If the right entry is not retrieved, no generation recovers it.
+\begin{itemize}[leftmargin=*,nosep]
+  \item The generator can only work with what it is given
+  \item The first stage sets the ceiling, exactly as in Lecture 20
+\end{itemize}
+\end{solution}
+\question{Give the five rules the course ends on, and name the one that would have prevented the largest number of the failures it measured.}{5}
+\begin{solution}[title={Solution}]
+Split before fitting; preprocessing inside the cross-validated object; nothing from the test set in the training path; fixed seeds with per-fold scores; every number gets a baseline. The baseline rule.
+\begin{itemize}[leftmargin=*,nosep]
+  \item Most measured failures were numbers with nothing to be read against
+  \item A baseline is the cheapest of the five and catches the most
+\end{itemize}
+\end{solution}
+
+\end{document}

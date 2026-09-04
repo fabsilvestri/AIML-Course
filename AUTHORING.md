@@ -297,6 +297,7 @@ Lectures 19–22.
 
 ```bash
 python3 tools/make_deck_pdfs.py     # slides/pdf/lecture-NN.pdf, one page per slide
+python3 tools/make_exercise_book.py # notes/exercises.tex, then: make -C notes
 python3 tools/check_consistency.py  # slides against their own notebooks
 python3 tools/check_notes.py        # Part V's notes against their notebooks
 python3 tools/check_all.py          # everything below
