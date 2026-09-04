@@ -25,6 +25,15 @@
 @media print {
   @page { size: 1280px 720px; margin: 0; }
 
+
+  /* Print the colours. Chrome prints backgrounds by default from
+     --print-to-pdf but not from every dialog, and the decks carry meaning in
+     colour: a red panel is a failure and a purple one is the derivation. */
+  html, body, .reveal, .reveal .slides > section {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   html, body {
     width: 1280px !important;
     height: auto !important;
@@ -87,6 +96,23 @@
     break-after: auto !important;
   }
 
+
+  /* The centred slide kinds. custom.css gives these `display: flex` but has to
+     scope it to `.present`, because reveal writes `display:none` INLINE on
+     every other slide and only an important rule beats that — scoping keeps
+     the important rule from un-hiding all 77 at once on screen.
+     In print every slide is shown, so the same rule is needed without
+     `.present`, or a divider prints jammed against the top of its page with
+     the space below it empty. */
+  .reveal .slides > section.title-slide,
+  .reveal .slides > section.divider,
+  .reveal .slides > section.figslide,
+  .reveal .slides > section.commit-slide {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+  }
+
   /* a fragment is a build step on screen; on paper every step is present */
   .reveal .fragment,
   .reveal .fragment.visible,
@@ -113,16 +139,11 @@
 
 
   /* The deck footer sits AFTER the reveal container in the markup, so in
-     normal print flow it became a 78th, blank page. Fixed positioning both
-     removes that page and makes Chrome repeat it on every sheet, which is the
-     running footer the screen version already shows. */
-  .deck-footer {
-    position: fixed !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    margin: 0 !important;
-  }
+     normal print flow it became a blank final page. Fixed positioning removed
+     that page but painted a white band across the bottom of every sheet,
+     which is visible on the dark divider slides. Each slide already carries
+     its own identity, so on paper the footer simply goes. */
+  .deck-footer { display: none !important; }
 
   /* keep links legible in print rather than blue-on-white underlined twice */
   .reveal a { text-decoration: none !important; }
