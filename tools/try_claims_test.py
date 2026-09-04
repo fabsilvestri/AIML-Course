@@ -16,7 +16,8 @@ Two claims failed when this file was first run, both in Lecture 8, and both
 were corrected in the notebook rather than deleted from here -- the fixed
 versions are the ones now asserted.
 """
-import numpy as np, warnings
+import math
+import numpy as np, torch, torch.nn as nn, warnings
 warnings.filterwarnings("ignore")
 R = []
 def check(lec, claim, fn):
@@ -205,6 +206,111 @@ def t():
     ratio = (z.grad / g_mean).abs()
     return bool(np.allclose(ratio.numpy(), 7.0)), f"sum/mean ratio = {ratio.mean():.4f}"
 check("L17", "mean vs sum reduction differs by exactly the batch size 7", t)
+
+# ============================ batch 2, 2026-09-04 ============================
+def t():   # L11 float16
+    def mk(dtype):
+        layers, prev = [], 3072
+        for _ in range(20): layers += [nn.Linear(prev,100), nn.Sigmoid()]; prev=100
+        layers.append(nn.Linear(prev,10))
+        return nn.Sequential(*layers).to(dtype)
+    X = np.random.default_rng(0).normal(size=(128,3072)).astype(np.float32)
+    y = np.random.default_rng(1).integers(0,10,size=128)
+    torch.manual_seed(42); net = mk(torch.float16)
+    lins=[m for m in net if isinstance(m,nn.Linear)]; net.zero_grad()
+    nn.CrossEntropyLoss()(net(torch.as_tensor(X,dtype=torch.float16)),
+                          torch.as_tensor(y)).backward()
+    g=np.array([float(m.weight.grad.norm()) for m in lins])
+    z=int((g==0).sum())
+    return z>=2, f"{z}/21 layers exactly zero in float16 -> assert (g>0).all() fires"
+check("L11","float16 grad_profile: several layers underflow, the assert fires",t)
+
+def t():   # L17 shift by 500
+    a=np.array([1.,2.,3.],dtype=np.float32)
+    with np.errstate(over="ignore",invalid="ignore"):
+        p1=np.exp(a)/np.exp(a).sum(); p2=np.exp(a+500)/np.exp(a+500).sum()
+    fires = not (np.abs(p1-p2).max() < 1e-6)
+    return (fires and not np.isfinite(p2).all()), f"p2={p2} -> assert fires"
+check("L17","shifting by 500 makes float32 overflow and the assert fire",t)
+
+def t():   # L17 zero length packing
+    e=torch.randn(1,5,4)
+    try:
+        nn.utils.rnn.pack_padded_sequence(e, torch.tensor([0]), batch_first=True,
+                                          enforce_sorted=False)
+        return False,"did not raise"
+    except Exception as ex: return True, f"{type(ex).__name__}: {str(ex)[:70]}"
+check("L17","pack_padded_sequence raises on a length of zero",t)
+
+def t():   # L17 cat(h0,h0)
+    class M(nn.Module):
+        def __init__(s, dup):
+            super().__init__(); s.dup=dup
+            s.emb=nn.Embedding(50,128,padding_idx=0)
+            s.rnn=nn.GRU(128,64,batch_first=True,bidirectional=True)
+            s.head=nn.Linear(128,2)
+        def forward(s,x,l):
+            e=s.emb(x)
+            p=nn.utils.rnn.pack_padded_sequence(e,l,batch_first=True,enforce_sorted=False)
+            _,h=s.rnn(p)
+            return s.head(torch.cat([h[0],h[0] if s.dup else h[1]],dim=1))
+    x=torch.randint(1,50,(4,7)); l=torch.tensor([7,6,5,4])
+    a,b=M(False),M(True)
+    pa=sum(p.numel() for p in a.parameters()); pb=sum(p.numel() for p in b.parameters())
+    sa,sb=a(x,l).shape,b(x,l).shape
+    return (pa==pb and sa==sb==(4,2)), f"params {pa}=={pb}, shapes {tuple(sa)}=={tuple(sb)}, no raise"
+check("L17","cat([h0,h0]): identical shapes and parameter count, nothing raises",t)
+
+def t():   # L18 bias [5,-5]
+    head=nn.Linear(4,2)
+    with torch.no_grad():
+        head.weight.zero_(); head.bias.copy_(torch.tensor([5.,-5.]))
+    x=torch.randn(512,4); y=torch.tensor([0,1]).repeat(256)
+    l=float(nn.CrossEntropyLoss()(head(x),y))
+    return abs(l-math.log(2))>=0.05, f"loss={l:.4f} vs log2={math.log(2):.4f} -> assert fires"
+check("L18","a [5,-5] bias puts the untrained loss far from log 2",t)
+
+def t():   # L21 fill_diagonal skipped
+    rng=np.random.default_rng(0); R_tr=rng.normal(size=(200,40)).astype(np.float32)
+    Rn=R_tr/(np.linalg.norm(R_tr,axis=0)+1e-9); S=Rn.T@Rn
+    d=np.diag(S).copy()
+    return bool(np.allclose(d,1.0,atol=1e-5)) and not np.allclose(d,0), \
+           f"diagonal is {d.min():.4f}..{d.max():.4f} -> assert allclose(diag,0) fires"
+check("L21","without fill_diagonal every film is its own neighbour at 1.0",t)
+
+def t():   # L06 drop the -1
+    from sklearn.tree import DecisionTreeClassifier
+    rng=np.random.default_rng(0); X=rng.normal(size=(400,6)); y=(X[:,0]+X[:,1]>0).astype(int)
+    tr=DecisionTreeClassifier(random_state=0).fit(X,y)
+    v=np.asarray(tr.decision_path(X).sum(axis=1)).ravel()
+    with_m1=(v-1).max(); without=v.max()
+    return (with_m1==tr.get_depth() and without!=tr.get_depth()), \
+           f"depth={tr.get_depth()}, visited-1 max={with_m1} (passes), visited max={without} (fires)"
+check("L06","dropping the -1 makes the path-length assert fire",t)
+
+def t():   # L19 qrels read as int
+    docs_id=["4983","1032","0012"]
+    as_str={"4983"}; as_int={4983}
+    return not (as_int <= set(docs_id)) and (as_str <= set(docs_id)), \
+           "int ids are disjoint from string doc ids -> the subset assert fires"
+check("L19","qrels read without dtype=str makes the subset assert fire",t)
+
+def t():   # L23 queries=descriptions
+    descriptions=["a cat on a mat"]; queries=list(descriptions)
+    fires = not (descriptions[0]!=queries[0])
+    return fires, "descriptions[0] != queries[0] is False -> assert fires"
+check("L23","setting queries = descriptions fires the difference assert",t)
+
+def t():   # L17 arange split: asserts pass, one class only
+    N_FIT,N_VAL=50,20
+    y=np.array([1]*100+[0]*100)          # corpus ships positives first
+    fit_i=np.arange(N_FIT); val_i=np.arange(N_FIT,N_FIT+N_VAL)
+    disjoint=set(fit_i).isdisjoint(val_i); sizes=len(fit_i)==N_FIT and len(val_i)==N_VAL
+    one_class=len(set(y[fit_i]))==1
+    return (disjoint and sizes and one_class), \
+           f"disjoint={disjoint} sizes ok={sizes} fit is one class={one_class}"
+check("L17","the arange split passes both asserts and trains on one class",t)
+
 
 for lec, claim, ok, detail in R:
     print(f"{'PASS' if ok else 'FAIL':4}  {lec}  {claim}")

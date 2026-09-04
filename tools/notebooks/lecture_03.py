@@ -118,7 +118,12 @@ every image, silently, because a string is never equal to an integer.
             output="what `y == 5` matches before and after casting to uint8",
             constraint="show the count BEFORE the cast — the point is that it is zero and raises nothing",
             check="after the cast, the ten digits 0-9 are all present. Count your positives immediately after building a boolean label, and compare with what you expect. Zero is a number the code will not complain about.",
-            **{"try": "delete the cast and re-run the next cell. The label count goes to zero and nothing raises — that is the failure this cell exists to prevent."}),
+            **{"try": "delete the cast AND the two asserts under it, then re-run "
+                      "the next cell. Every label count is zero and nothing "
+                      "raises — which is exactly why those asserts are here "
+                      "rather than twenty cells later. Now put them back and "
+                      "delete only the cast: it fires immediately, in the cell "
+                      "that caused it."}),
         code('''
 print("before:", y.dtype, repr(y[0]))
 print("y == 5 finds", (y == 5).sum(), "images")     # zero!

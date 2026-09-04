@@ -208,6 +208,17 @@ for q in qids:
 bm25 = {k: float(np.mean([r[k] for r in rows])) for k in rows[0]}
 print(f"BM25 ndcg@10 {bm25['ndcg@10']:.4f}   r@10 {bm25['r@10']:.4f}   "
       f"r@100 {bm25['r@100']:.4f}")
+
+# The reproduction assert the specification above asks for, and which was
+# missing until 2026-09-04. Every comparison in this notebook subtracts this
+# baseline, so if the rebuilt BM25 is not Lecture 19's BM25 to the fourth
+# decimal, nothing below is a comparison -- it is two different experiments.
+# Pinning a number is right here for the same reason it is right in Lecture 13,
+# where the architecture is re-typed and its parameter count is asserted
+# against the previous lecture's: it is an invariant ACROSS notebooks.
+assert abs(bm25["ndcg@10"] - 0.6611) < 1e-4, (
+    f"BM25 scores {bm25['ndcg@10']:.4f} here and 0.6611 in Lecture 19 — "
+    f"the baseline moved, so stop and find out why before reading on")
 '''),
     ]
 
