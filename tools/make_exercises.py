@@ -650,6 +650,321 @@ ex(15, "In March 2020 the series level falls by three quarters and the model "
     "number's clothes"])
 
 
+
+# ------------------------------------------------------------------ L16
+ex(16, "A recurrent network is trained on 56-day windows drawn from one "
+       "series. Explain why shuffling the <em>windows</em> is legitimate while "
+       "shuffling the <em>series</em> is not.", 4,
+   "A window is a training example; the series is the thing the example is cut "
+   "from.",
+   ["The order inside a window is the signal, and shuffling windows leaves it "
+    "intact",
+    "Shuffling the series destroys the very structure the model exists to read"])
+ex(16, "The head of the recurrent model is a linear layer on the final hidden "
+       "state. State why the hidden state alone will not do.", 4,
+   "tanh bounds it to $(-1,1)$ and ridership is not bounded.",
+   ["A bounded output cannot reach the target range",
+    "Scaling by a million makes it half-work, which is worse than failing"])
+ex(16, "Gates were introduced after a plain recurrent cell failed over long "
+       "windows. State the mechanism, in terms of what happens to the same "
+       "matrix over 56 steps.", 4,
+   "The same matrix is applied 56 times, so its spectrum is raised to the 56th "
+   "power; gates provide a path whose derivative is near one.",
+   ["Repeated multiplication is the vanishing-gradient argument of Lecture 11 "
+    "in a new place",
+    "A gate lets information pass without being multiplied at every step"])
+ex(16, "A recipe is selected on a slice running to 2019-03-01, and the test "
+       "period begins 2019-01-01. State what has happened and what the symptom "
+       "looks like.", 5,
+   "The selection slice overlaps the test period; every number improves.",
+   ["Recipes are now chosen on days they are later scored on",
+    "Nothing raises, and the improvement is the failure rather than the result"])
+ex(16, "Report the training MAE beside the test MAE. Name the two failures the "
+       "pair distinguishes, and say why the test column alone cannot.", 4,
+   "Underfitting, where both are poor, and overfitting, where train is far "
+   "better. They have opposite fixes.",
+   ["A single bad test number is consistent with either",
+    "More capacity fixes one and makes the other worse"])
+
+# ------------------------------------------------------------------ L17
+ex(17, "Show that softmax is invariant to adding a constant to every logit, "
+       "and state the numerical reason the implementation subtracts the maximum "
+       "anyway.", 5,
+   "$e^{c}$ cancels between numerator and denominator. Subtracting the max "
+   "keeps every exponential below 1, and float32 overflows at about 88.7.",
+   ["The function ignores the shift; the arithmetic does not",
+    "Moving to float64 only relocates the threshold to about 709"])
+ex(17, r"Derive $\partial L/\partial \mathbf{z} = \mathbf{p} - \mathbf{y}$ for "
+       "cross-entropy on a one-hot target, and state what the row sum of that "
+       "gradient must be.", 5,
+   r"$L = -z_c + \log\sum_j e^{z_j}$, whose derivative is $\mathbf{p} - "
+   r"\mathbf{y}$; each row sums to zero.",
+   ["The exponential of the true class cancels, so no chain rule through the "
+    "softmax is needed",
+    "A zero row sum is the derivative form of the shift invariance"])
+ex(17, "A loss function is given probabilities rather than logits. State the "
+       "two failure modes, and which one ships.", 5,
+   "Overflow to inf or nan, and a finite but wrong value. The quiet one ships.",
+   ["Taking the log of an underflowed probability is the loud failure",
+    "A row whose true class has small probability loses precision silently"])
+ex(17, "A model summarises a padded batch at <code>out[:, -1, :]</code>. State "
+       "what that position holds for most reviews, and the invariance test that "
+       "detects it.", 5,
+   "Padding. Encode the same review with two different amounts of padding and "
+   "require the logits to agree.",
+   ["That position is real content only for the longest reviews",
+    "An output-shape test cannot see this; an invariance test can"])
+ex(17, "A word-level vocabulary has a 40% out-of-vocabulary rate over distinct "
+       "test words. Explain why a larger vocabulary is not the fix.", 4,
+   "A word vocabulary is closed and language is not.",
+   ["Two words in five are seen once, so more capacity buys mostly those",
+    "Subword tokenisation changes the closure property rather than the size"])
+
+# ------------------------------------------------------------------ L18
+ex(18, r"Scaled dot-product attention divides by $\sqrt{d_k}$. State what the "
+       "variance of the unscaled dot product is, and what the softmax does "
+       "without the division.", 5,
+   "It grows with $d_k$; the softmax saturates and the gradient vanishes.",
+   ["A sum of $d_k$ independent products has variance proportional to $d_k$",
+    "Large logits make the distribution nearly one-hot, so almost no gradient "
+    "flows"])
+ex(18, "A student adds a softmax to a model whose loss is "
+       "<code>CrossEntropyLoss</code>. Give the floor the loss cannot go below "
+       "on two classes, and the arithmetic behind it.", 5,
+   r"$-\log(e/(e+1)) \approx 0.313$.",
+   ["The second softmax receives values in $[0,1]$, so the largest achievable "
+    "probability is $e/(e+1)$",
+    "Reading the loss column rather than the accuracy is what identifies it"])
+ex(18, "A pretrained body is fine-tuned at $10^{-3}$, the rate that worked for "
+       "the from-scratch model. Predict what happens, and how quickly.", 4,
+   "The loss rises within tens of steps and does not recover.",
+   ["A pretrained body is destroyed in tens of steps, not thousands",
+    "The rate has to be about a hundred times smaller"])
+ex(18, "Two corpora, of 400 and 25,000 documents, each have a vectoriser fitted "
+       "before the split. State which suffers more, and why.", 4,
+   "The 400-document corpus.",
+   ["The inverse document frequencies are an average, and removing a quarter of "
+    "25,000 draws barely moves them",
+    "At 400 the leaky vocabulary has columns that exist because a test document "
+    "used them"])
+ex(18, "A corpus contains duplicate documents across the train/test split. State "
+       "why no pipeline fixes it, and name the splitter that does.", 4,
+   "Nothing was fitted wrongly &mdash; the rows were separated wrongly. Use a "
+   "grouped split.",
+   ["<code>fit</code> and <code>transform</code> were used correctly throughout",
+    "The repair is to keep both copies of an entry on the same side"])
+
+# ------------------------------------------------------------------ L19
+ex(19, "A ranking has relevant documents at ranks 1, 3 and 10, with three "
+       "relevant documents in total. Compute AP and NDCG@10, showing the sums.", 6,
+   r"AP $=\tfrac13(1 + \tfrac23 + \tfrac3{10}) = 0.6556$; NDCG@10 $= "
+   r"\frac{1 + 0.5 + 0.2891}{1 + 0.6309 + 0.5} = 0.8396$.",
+   ["AP averages the precision at each hit and divides by $|R|$, not by the "
+    "number of hits found",
+    r"DCG discounts by $1/\log_2(i+1)$, and the ideal puts all three at ranks "
+    "1&ndash;3"])
+ex(19, r"State why $\log_2(i+1)$ is used rather than $\log_2(i)$ in DCG, and "
+       "whether the choice of discount is derived or conventional.", 4,
+   r"$\log_2(1) = 0$ would divide by zero at rank 1. The discount is "
+   "conventional.",
+   ["The $+1$ is a necessity, not a preference",
+    "The shape encodes a belief about attention, and reporting NDCG adopts it"])
+ex(19, "BM25 has three parts. Name the failure of raw term counting each one "
+       "answers, and say which the ablation showed mattered most.", 5,
+   "idf answers common words dominating; saturation answers repetition; length "
+   "normalisation answers long documents. idf mattered most.",
+   ["Removing idf cost the most NDCG@10 of the three",
+    "Length normalisation was nearly free on abstracts of similar length"])
+ex(19, "98% of claims match no document under Boolean conjunction. State the "
+       "property of the conjunction that causes it, and what the field does "
+       "instead.", 4,
+   "One missing term excludes the document entirely. Score rather than filter.",
+   ["The conjunction is brittle, and an empty result looks like 'no such "
+    "document exists'",
+    "Scoring makes a missing term cost something rather than everything"])
+ex(19, "Relevance judgements are made by pooling. State what happens to a "
+       "document no pooled system ranked highly, and the consequence for a "
+       "genuinely new method.", 4,
+   "It is unjudged and scored as irrelevant, so a new method is penalised for "
+   "finding it.",
+   ["Everything outside the pool is treated as not relevant by convention",
+    "Gains on a mature benchmark are partly gains at matching the pool"])
+
+# ------------------------------------------------------------------ L20
+ex(20, "Explain why a bi-encoder can be indexed and a cross-encoder cannot, and "
+       "say what the two differences have in common as a cause.", 5,
+   "$E(d)$ does not depend on the query, so it can be precomputed; the "
+   "cross-encoder reads the pair jointly. The same fact causes the accuracy "
+   "difference.",
+   ["Whether the query is present when the document is read decides both",
+    "Nothing can be stored for a function that does not exist until the query "
+    "arrives"])
+ex(20, "A first stage has recall@100 of 0.885. State the highest recall a "
+       "perfect re-ranker over those 100 candidates can reach, and what follows "
+       "for where to spend effort.", 4,
+   "0.885. Improving the first stage raises the ceiling; improving the second "
+   "never does.",
+   ["A re-ranker reorders a fixed candidate set and cannot retrieve",
+    "11.5% of relevant documents are simply absent from the candidates"])
+ex(20, "In-batch negatives are described as free. State precisely what is free "
+       "and what is not, and what actually caps the batch size.", 4,
+   "The $B^2$ scores are nearly free; the $2B$ encoder passes are not. Memory "
+   "caps the batch.",
+   ["Encoding grows linearly and the dot products quadratically",
+    "The score matrix alone is about a gigabyte at $B = 16{,}384$ in float32"])
+ex(20, "Hard negatives are mined from a first stage's top results. State the "
+       "trap, and why it is worse at training time than at evaluation time.", 5,
+   "Many are relevant but unjudged, so training teaches the model that a correct "
+   "answer is wrong.",
+   ["At evaluation an unjudged document is an accounting error",
+    "At training it is a gradient pushing the model away from the right answer"])
+ex(20, "An approximate index reports recall 0.80. State what that number must be "
+       "measured against, and what is conflated if it is not.", 4,
+   "Against the exact scan, never against the relevance judgements.",
+   ["Otherwise 'my index missed it' and 'my model ranked it low' become one "
+    "number",
+    "They have different fixes, so they must be measured separately"])
+
+# ------------------------------------------------------------------ L21
+ex(21, "State why the truncated SVD cannot be applied directly to a ratings "
+       "matrix, naming the condition of Eckart&ndash;Young that fails.", 5,
+   "The Frobenius norm sums over every entry, and 95.5% of them have no value.",
+   ["The theorem is about one fully specified matrix",
+    "Filling the gaps changes the problem into a different one with a different "
+    "answer"])
+ex(21, "A rank-32 SVD of the zero-filled matrix scores worse than predicting one "
+       "number for everybody. Explain how the optimal approximation can lose to "
+       "a constant.", 5,
+   "It is optimal for the matrix it was given, and that matrix is mostly zeros.",
+   ["Ratings run from 1 to 5, so a zero is off the scale rather than low",
+    "The approximation spends its capacity reproducing an assumption nobody made "
+    "deliberately"])
+ex(21, "Write the ALS half-step for one user, and identify it as a familiar "
+       "estimator.", 5,
+   r"$p_u = (Q_u^{\mathsf T}Q_u + \lambda I)^{-1}Q_u^{\mathsf T}r_u$ &mdash; a "
+   "ridge regression.",
+   ["$Q_u$ contains only the items that user rated, so the missing entries never "
+    "enter the system",
+    r"The system is $d \times d$ however many items the user rated"])
+ex(21, r"For any invertible $M$, $(PM)(QM^{-\mathsf T})^{\mathsf T} = "
+       r"PQ^{\mathsf T}$. State what this settles about interpreting a latent "
+       "factor.", 4,
+   "The predictions are determined and the factors are not, so an individual "
+   "dimension has no meaning.",
+   ["The objective cannot distinguish $P$ from $PM$",
+    "A factor plot claims something the model is not claiming"])
+ex(21, "Implicit feedback has no negatives. State why an objective over observed "
+       "entries alone fails, and name the two standard responses.", 5,
+   "It is satisfied by predicting yes everywhere. Weighted least squares over "
+   "all cells, or a pairwise ranking objective.",
+   ["Only positives exist, so there is nothing to push down",
+    "The first keeps a closed form and needs a confidence function; the second "
+    "models only differences"])
+
+# ------------------------------------------------------------------ L22
+ex(22, "A recommender is scored by RMSE on held-out ratings. State why that is "
+       "the wrong metric, using the set the model actually operates on.", 5,
+   "RMSE is computed on films the user chose to watch and rate; a recommender "
+   "operates on the complement.",
+   ["It weights every prediction equally when only ten items are shown",
+    "A constant offset ruins RMSE and changes no ranking at all"])
+ex(22, "The same model scores HR@10 of 0.0926 and 0.8085 on the same data. Name "
+       "the two decisions that differ, and which moves the number more.", 5,
+   "Random against temporal split, and sampled-100 against the full catalogue. "
+   "Sampling moves it far more.",
+   ["Ten of 101 candidates is already a tenth of the set",
+    "A random ranker goes from 0.0027 to 0.0990 under the same change"])
+ex(22, "Explain why a sampled metric is not merely noisier than a full-catalogue "
+       "one, and give the consequence for comparing two published systems.", 5,
+   "The 100 negatives are drawn uniformly from a mostly-tail catalogue, so the "
+   "distortion depends on the model. Orderings can reverse.",
+   ["A popularity model competes against almost no popular items",
+    "A uniform bias would at least preserve rankings; this one does not"])
+ex(22, "A sampled softmax draws negatives in proportion to popularity. State the "
+       "correction, and what enters the model if it is skipped.", 4,
+   r"Subtract $\log q(j)$ from each sampled negative's score. Without it, "
+   "popularity bias enters the gradient.",
+   ["The sample is not the catalogue, and the estimator is biased without "
+    "reweighting",
+    "The model then systematically under-recommends popular items"])
+ex(22, "A recommender is trained on interactions produced by an earlier "
+       "recommender. Name the effect, and the earlier lecture whose problem it "
+       "repeats.", 4,
+   "The feedback loop &mdash; the pooling problem of Lecture 19.",
+   ["The log records what a previous system chose to show",
+    "A model that would have shown something better scores badly, because the "
+    "evidence was never collected"])
+
+# ------------------------------------------------------------------ L23
+ex(23, "Two encoders are trained separately, one on images and one on text. "
+       "Explain why their cosine similarity carries no information about "
+       "matching, using a rotation argument.", 5,
+   "Any rotation of the image space leaves every image&ndash;image cosine and "
+   "the image loss unchanged, while changing every image&ndash;text cosine.",
+   ["The objective cannot distinguish the rotated space from the original",
+    "So it did not pick one, and the relative geometry is arbitrary"])
+ex(23, "In $d$ dimensions two independent random unit vectors have a cosine with "
+       r"standard deviation $1/\sqrt{d}$. State what an unrelated pair looks like "
+       "at $d = 512$, and why $-1$ is the wrong intuition.", 5,
+   "Near zero, with a spread of about 0.044. There is exactly one point at "
+   "cosine $-1$, so most pairs cannot be there.",
+   ["Unrelated means orthogonal in high dimensions, not opposite",
+    "It is why a contrastive loss targets zero for a non-matching pair"])
+ex(23, r"A contrastive loss is computed at $\tau = 1$ on cosine scores. State why "
+       r"it barely trains, and what $\tau$ changes and does not change.", 5,
+   r"Cosines span at most 2, so the softmax is nearly uniform. $\tau$ changes "
+   "where the gradient goes, not which column is largest.",
+   ["A range of 2 gives a ratio of at most $e^2$ across all competitors",
+    "Temperature cannot change the accuracy of a fixed similarity matrix"])
+ex(23, "Recall@10 is reported over 200 candidates. State the exact random "
+       "baseline, and why it is computed rather than simulated.", 3,
+   r"$10/200 = 5\%$.",
+   [r"One relevant item ranked uniformly gives $P(\mathrm{rank} \le k) = k/n$",
+    "A closed form needs no seed and carries no noise"])
+ex(23, "An entry with no written description scores zero on a text retrieval "
+       "route. State whether this is a ranking failure or a structural one, and "
+       "what follows.", 4,
+   "Structural &mdash; an entry with no text is not in a text index at all.",
+   ["No amount of re-ranking reaches a document that was never indexed",
+    "The repair is another route, not a better scorer"])
+
+# ------------------------------------------------------------------ L24
+ex(24, "A contrastive loss is written as <code>img @ txt.T / tau</code> on the "
+       "output of <code>get_image_features</code>. State the defect, and the "
+       "assertion that would have caught it.", 5,
+   "The features are not normalised, so the product is not a cosine. Assert "
+   "every row has unit norm.",
+   ["The entries carry both magnitudes, so the temperature divides a quantity "
+    "with no fixed scale",
+    "Magnitude tracks length and token frequency, so long documents win by "
+    "default"])
+ex(24, "An auto-caption is generated for catalogue entries that have no "
+       "description. State what it recovers, and the failure mode nothing in the "
+       "evaluation detects.", 5,
+   "It recovers part of the lost recall. A caption that is wrong makes an entry "
+   "findable under the wrong query.",
+   ["Scoring generated captions against human captions of the same image is a "
+    "friendly test",
+    "Worse than unfindable, and no metric here sees it"])
+ex(24, "A retrieval-augmented system is measured by whether cited stock numbers "
+       "exist. State what that measures, and what it does not.", 4,
+   "It measures grounding, not helpfulness.",
+   ["A cited entry can exist and still be a bad recommendation",
+    "It is the cheap half, and saying which half was measured is the point"])
+ex(24, "In a retrieval-augmented pipeline the retriever's recall bounds the whole "
+       "system. Explain why, and what that implies about where to invest.", 4,
+   "If the right entry is not retrieved, no generation recovers it.",
+   ["The generator can only work with what it is given",
+    "The first stage sets the ceiling, exactly as in Lecture 20"])
+ex(24, "Give the five rules the course ends on, and name the one that would have "
+       "prevented the largest number of the failures it measured.", 5,
+   "Split before fitting; preprocessing inside the cross-validated object; "
+   "nothing from the test set in the training path; fixed seeds with per-fold "
+   "scores; every number gets a baseline. The baseline rule.",
+   ["Most measured failures were numbers with nothing to be read against",
+    "A baseline is the cheapest of the five and catches the most"])
+
+
 def slide(title, body, menu=None, cls=""):
     menu = menu or title
     c = f' class="{cls}"' if cls else ""
@@ -729,7 +1044,7 @@ def short(q, limit=110):
     exactly what check_decks caught on Lectures 12 and 16 the first time this
     ran -- so back up to before the unclosed delimiter rather than shipping it.
     """
-    plain = " ".join(re.sub(r"<[^>]+>", "", q).split())
+    plain = " ".join(re.sub("<[^>]+>", "", q).split())
     if len(plain) <= limit:
         return plain
     cut = plain[:limit].rsplit(" ", 1)[0]
@@ -762,7 +1077,7 @@ def inject(n) -> str | None:
         # lambda, not the string: the block is full of LaTeX, and re.sub reads
         # a backslash in a replacement as a group escape -- "\\hat" is a
         # PatternError, and "\\1" would silently splice in a capture group.
-        src = re.sub(re.escape(BEGIN) + r".*?" + re.escape(END) + r"\n",
+        src = re.sub(re.escape(BEGIN) + ".*?" + re.escape(END) + "\n",
                      lambda _m: block, src, flags=re.S)
     else:
         # before the closing "Next" divider, which is always the last slide

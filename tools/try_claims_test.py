@@ -312,6 +312,43 @@ def t():   # L17 arange split: asserts pass, one class only
 check("L17","the arange split passes both asserts and trains on one class",t)
 
 
+
+# ---- exercise arithmetic, added 2026-09-04 ---------------------------------
+# The exercises set on every deck are answered one lecture later, and a wrong
+# worked answer is worse than a wrong `try`: a student checks it against their
+# own working and concludes THEY are wrong. L19's NDCG was published as 0.8455
+# and is 0.8396. Every hand-computable answer belongs here.
+def t():
+    import math
+    ranks, R = [1, 3, 10], 3
+    ap = sum((k + 1) / r for k, r in enumerate(ranks)) / R
+    dcg = sum(1 / math.log2(r + 1) for r in ranks)
+    idcg = sum(1 / math.log2(i + 1) for i in range(1, R + 1))
+    return (abs(ap - 0.6556) < 5e-5 and abs(dcg / idcg - 0.8396) < 5e-5), \
+           f"AP={ap:.4f} (0.6556), NDCG={dcg / idcg:.4f} (0.8396)"
+check("L19 ex", "the worked AP and NDCG on ranks 1, 3, 10", t)
+
+def t():
+    return 784 * 300 + 300 == 235_500, f"784*300+300 = {784 * 300 + 300:,}"
+check("L09 ex", "first-layer parameter count is 235,500", t)
+
+def t():
+    import math
+    floor = -math.log(math.e / (math.e + 1))
+    return abs(floor - 0.313) < 5e-4, f"-log(e/(e+1)) = {floor:.4f}"
+check("L18 ex", "the two-class double-softmax floor is 0.313", t)
+
+def t():
+    import math
+    return abs(1 / math.sqrt(512) - 0.0442) < 5e-4, \
+           f"1/sqrt(512) = {1 / math.sqrt(512):.4f}"
+check("L23 ex", "an unrelated cosine at d=512 has spread about 0.044", t)
+
+def t():
+    return 32 * 3 * 7 * 7 == 4704 and abs((1 - 0.885) - 0.115) < 1e-9, \
+           "conv weights 4,704; 1 - 0.885 = 11.5%"
+check("L12/L20 ex", "the conv weight count and the recall ceiling gap", t)
+
 for lec, claim, ok, detail in R:
     print(f"{'PASS' if ok else 'FAIL':4}  {lec}  {claim}")
     print(f"        {detail}")
