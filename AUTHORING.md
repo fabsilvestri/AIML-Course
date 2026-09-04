@@ -178,6 +178,28 @@ is genuinely nothing to vary — no box in the course turned out to be that case
 so if one ever appears it goes in the checker as a named exemption rather than
 as silence.
 
+### 4.1b Exercises use their own deck, and the ones before it.
+
+An exercise at the end of lecture N may use anything taught in lectures 1..N
+and nothing else. No forward references, and nothing from outside the course.
+
+`tools/check_exercises.py` settles the half a machine can: for every
+*technical* term an exercise uses &mdash; an acronym, an identifier, a proper
+noun, judged against the system dictionary so ordinary English is skipped
+&mdash; it finds the earliest deck that term appears in, and fails if that
+deck comes after N. The exercise block is stripped from each deck before the
+search, or every exercise would count as its own evidence.
+
+The other half needs a reader, and two things it found are the pattern to look
+for:
+
+* **Notebook machinery is not deck material.** Lecture 16's exercise asked
+  about selecting a recipe on a held-out slice, which exists only in the
+  notebook; on that deck "recipe" means a procedure for building a forecaster.
+* **An answer can contradict its own deck.** Lecture 20's exercise answered
+  that memory caps the batch size, where the deck says the batch size is "a
+  modelling decision rather than a memory setting".
+
 ### 4.2 Comments explain why, not what.
 
 `# fit on train only, so the test statistics never enter the training path` —

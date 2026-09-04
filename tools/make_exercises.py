@@ -673,12 +673,20 @@ ex(16, "Gates were introduced after a plain recurrent cell failed over long "
    ["Repeated multiplication is the vanishing-gradient argument of Lecture 11 "
     "in a new place",
     "A gate lets information pass without being multiplied at every step"])
-ex(16, "A recipe is selected on a slice running to 2019-03-01, and the test "
-       "period begins 2019-01-01. State what has happened and what the symptom "
-       "looks like.", 5,
-   "The selection slice overlaps the test period; every number improves.",
-   ["Recipes are now chosen on days they are later scored on",
-    "Nothing raises, and the improvement is the failure rather than the result"])
+# Replaced 2026-09-04: the original asked about selecting a recipe on a
+# held-out slice, which is the NOTEBOOK's machinery and appears nowhere on
+# Lecture 16's deck -- "recipe" there means a procedure for building a
+# forecaster. The deck does cover bidirectional layers, and frames them
+# explicitly as leakage, which makes a better question anyway.
+ex(16, "A colleague reports a large improvement on the ridership forecast "
+       "after making the recurrent layer bidirectional. State what has "
+       "happened, and the one question that settles it.", 5,
+   "It is leakage: a bidirectional layer reads the future. Ask whether the "
+   "whole sequence is available at prediction time.",
+   ["A second layer run backwards lets every position see values that have "
+    "not happened when the forecast is made",
+    "It is Lecture 15's random split wearing a different hat &mdash; the "
+    "number goes up and the system cannot be deployed"])
 ex(16, "Report the training MAE beside the test MAE. Name the two failures the "
        "pair distinguishes, and say why the test column alone cannot.", 4,
    "Underfitting, where both are poor, and overfitting, where train is far "
@@ -806,12 +814,21 @@ ex(20, "A first stage has recall@100 of 0.885. State the highest recall a "
    "never does.",
    ["A re-ranker reorders a fixed candidate set and cannot retrieve",
     "11.5% of relevant documents are simply absent from the candidates"])
+# Corrected 2026-09-04: the original answered "memory caps the batch", which
+# is not on Lecture 20's deck -- the deck says the opposite emphasis, that the
+# batch size is "a modelling decision rather than a memory setting". The
+# figure it used, B = 16,384, was a SCORE count on that deck (at B = 128), not
+# a batch size anyone had discussed.
 ex(20, "In-batch negatives are described as free. State precisely what is free "
-       "and what is not, and what actually caps the batch size.", 4,
-   "The $B^2$ scores are nearly free; the $2B$ encoder passes are not. Memory "
-   "caps the batch.",
-   ["Encoding grows linearly and the dot products quadratically",
-    "The score matrix alone is about a gigabyte at $B = 16{,}384$ in float32"])
+       "and what is not, and why the batch size is a modelling decision rather "
+       "than a memory setting.", 5,
+   "The $B^2$ scores are nearly free; the $2B$ encoder passes are not. The "
+   "batch size is the number of negatives each query is scored against, so it "
+   "changes the task.",
+   ["Encoding grows linearly in $B$ and the dot products quadratically, so the "
+    "scores cost almost nothing beside the encoder",
+    "Doubling the batch doubles the negatives per query, which is a choice "
+    "about the problem rather than about the hardware"])
 ex(20, "Hard negatives are mined from a first stage's top results. State the "
        "trap, and why it is worse at training time than at evaluation time.", 5,
    "Many are relevant but unjudged, so training teaches the model that a correct "

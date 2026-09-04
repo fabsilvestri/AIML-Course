@@ -54,6 +54,11 @@ FULL = [
     # the fast one for the same reason `consistency` does -- it executes
     # notebooks -- and it lives in a runner at all because a check nobody runs
     # is the exact failure that produced the missing `try` fields.
+    # Fast: it only reads the decks. It lives in the FULL set anyway because
+    # it is about the exercises rather than the lecture, and the fast set is
+    # what runs after every edit to a lecture.
+    ("exercises",   ["tools/check_exercises.py"],
+     "no exercise reaches forward past its own deck"),
     ("notes",       ["tools/check_notes.py"],
      "every figure in the Part V notes is one its notebook prints  [executes notebooks]"),
     ("overflow",    ["tools/check_overflow.py"],
