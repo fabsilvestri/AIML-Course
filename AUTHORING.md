@@ -234,6 +234,26 @@ Write `&lt;` and `&gt;`, as `$z_i &gt; z_j$` already does.
 `python3 tools/check_overflow.py` before committing. A slide that overflows on
 the projector is a slide nobody reads the bottom of.
 
+### 5.4a The deck must print.
+
+Every deck is also a PDF handout, linked from the course page between *Slides*
+and *Notebook* and rebuilt by `tools/make_deck_pdfs.py`. Pagination is done by
+`assets/css/print.css` in **pure CSS**, one slide per 1280&times;720 page.
+
+Do not reach for reveal.js's own `?print-pdf`. On the vendored 5.2.1 it sets
+`view="print"` and then never paginates &mdash; `<html>` keeps
+`reveal-full-page`, no `.pdf-page` is created, and the result is a single
+page. The stock reveal demo in `lib/` fails the same way, so it is reveal's
+path rather than these decks. The site advertised that route for months and it
+had never worked.
+
+Two consequences for authoring:
+
+* anything positioned outside `.reveal` needs a print rule, or it lands on a
+  page of its own &mdash; `.deck-footer` did;
+* a fragment is a build step on screen and every step is present on paper, so
+  do not use fragments to hide a correction you would not want printed.
+
 ### 5.5 Never name a weekday.
 
 Lectures refer to one another by number or relatively, so the material is
@@ -254,6 +274,7 @@ Lectures 19–22.
 ## 7 · Checks
 
 ```bash
+python3 tools/make_deck_pdfs.py     # slides/pdf/lecture-NN.pdf, one page per slide
 python3 tools/check_consistency.py  # slides against their own notebooks
 python3 tools/check_notes.py        # Part V's notes against their notebooks
 python3 tools/check_all.py          # everything below

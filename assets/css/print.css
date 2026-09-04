@@ -1,0 +1,129 @@
+/* ===================================================================== *
+ * Print layout for the decks — one slide per page, no JavaScript.
+ *
+ * WHY THIS EXISTS. reveal.js 5.2.1 paginates for print by adding
+ * `.reveal-print` to <html> and wrapping each slide in a `.pdf-page`, and it
+ * does that from JavaScript during initialise. On this build it never runs:
+ * with `?print-pdf` the config reports view="print" and isPrintView() true,
+ * and yet <html> keeps `reveal-full-page`, no `.pdf-page` is ever created,
+ * and printing yields a single page. The stock reveal demo behaves the same
+ * way, so it is reveal's own path rather than anything in these decks.
+ *
+ * That mattered because the site told students to "append ?print-pdf to a
+ * deck's URL and print to PDF", which quietly did not work.
+ *
+ * So the pagination is done here in CSS instead. It depends on nothing but
+ * the markup, which makes it immune to the next reveal upgrade, and it is
+ * safe because check_overflow.py already guarantees every slide fits inside
+ * 1280x720 — the page size below is the same box that check measures.
+ *
+ * `!important` throughout is deliberate and unavoidable: reveal writes
+ * `display`, `transform`, `left`, `top` and `opacity` as INLINE styles, and a
+ * stylesheet only beats an inline style when it is important.
+ * ===================================================================== */
+
+@media print {
+  @page { size: 1280px 720px; margin: 0; }
+
+  html, body {
+    width: 1280px !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .reveal-viewport, .reveal {
+    position: static !important;
+    width: 1280px !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  /* reveal centres and scales this with a transform; undo all of it */
+  .reveal .slides {
+    position: static !important;
+    transform: none !important;
+    zoom: 1 !important;
+    width: 1280px !important;
+    height: auto !important;
+    left: 0 !important;
+    top: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    text-align: left !important;
+    perspective: none !important;
+    perspective-origin: 50% 50% !important;
+  }
+
+  /* one page per slide */
+  .reveal .slides > section,
+  .reveal .slides > section > section {
+    display: block !important;
+    position: relative !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    transform: none !important;
+    width: 1280px !important;
+    height: 720px !important;
+    min-height: 720px !important;
+    max-height: 720px !important;
+    left: 0 !important;
+    top: 0 !important;
+    margin: 0 !important;
+    padding: 40px 70px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    page-break-inside: avoid !important;
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+  .reveal .slides > section:last-of-type,
+  .reveal .slides > section:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  /* a fragment is a build step on screen; on paper every step is present */
+  .reveal .fragment,
+  .reveal .fragment.visible,
+  .reveal .fragment.current-fragment {
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
+  }
+
+  /* screen chrome that has no meaning on paper */
+  .reveal .controls,
+  .reveal .progress,
+  .reveal .slide-number,
+  .reveal .backgrounds,
+  .reveal .speaker-notes,
+  .reveal aside.notes,
+  .slide-menu-button,
+  .slide-menu,
+  .slide-menu-overlay,
+  .reveal-chalkboard,
+  .chalkboard-buttons,
+  #chalkboard,
+  canvas.chalkboard { display: none !important; }
+
+
+  /* The deck footer sits AFTER the reveal container in the markup, so in
+     normal print flow it became a 78th, blank page. Fixed positioning both
+     removes that page and makes Chrome repeat it on every sheet, which is the
+     running footer the screen version already shows. */
+  .deck-footer {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* keep links legible in print rather than blue-on-white underlined twice */
+  .reveal a { text-decoration: none !important; }
+}

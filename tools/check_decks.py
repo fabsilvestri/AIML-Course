@@ -209,6 +209,14 @@ def check_site_index() -> list[str]:
             if f"notebooks/lecture-{n:02d}.ipynb" not in src:
                 out.append(f"index.html links lecture {n:02d}'s slides but not "
                            f"its notebook")
+        # The printed deck. Same contract as the notes PDFs below: it is a
+        # build artefact of tools/make_deck_pdfs.py, so it can go missing while
+        # the page still links it.
+        if f'href="slides/pdf/lecture-{n:02d}.pdf"' in src:
+            if not (ROOT / f"slides/pdf/lecture-{n:02d}.pdf").exists():
+                out.append(f"index.html links lecture {n:02d}'s deck PDF, "
+                           f"which does not exist — run tools/make_deck_pdfs.py")
+
         # Part V's extended notes. The page links a PDF for lectures 19-22 and
         # those PDFs are build artefacts of notes/*.tex, so they can go missing
         # exactly the way a converted deck can -- and a dead link to the

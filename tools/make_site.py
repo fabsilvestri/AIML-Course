@@ -114,6 +114,9 @@ def lecture_list() -> str:
             if pub:
                 out += ['        <div class="links">',
                         f'          <a class="btn" href="slides/lecture-{n:02d}.html">Slides</a>',
+                        # Between Slides and Notebook: the same deck, printed.
+                        # Built by tools/make_deck_pdfs.py, one page per slide.
+                        f'          <a class="btn btn-pdf" href="slides/pdf/lecture-{n:02d}.pdf">PDF</a>',
                         f'          <a class="btn btn-colab" href="{COLAB.format(n)}">Notebook</a>']
                 # The lecture-notes lectures -- those with no chapter -- carry a
                 # third link. For them the PDF is the primary source, not a
