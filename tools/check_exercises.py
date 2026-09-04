@@ -96,6 +96,18 @@ def deck_text(n: int) -> str:
     return html.unescape(s).lower()
 
 
+def qa(n: int) -> list[tuple[int, str, str]]:
+    """(number, question, solution text) for each exercise on deck n."""
+    import sys as _s
+    _s.path.insert(0, str(ROOT / "tools"))
+    from make_exercises import EXERCISES
+    out = []
+    for k, it in enumerate(EXERCISES.get(n, []), start=1):
+        sol = it["a"] + " " + " ".join(it["why"])
+        out.append((k, it["q"], sol))
+    return out
+
+
 def exercises(n: int) -> list[tuple[int, str]]:
     """(number, all of its text) for each exercise on deck n."""
     s = (ROOT / f"slides/lecture-{n:02d}.html").read_text(encoding="utf-8")
@@ -109,12 +121,80 @@ def exercises(n: int) -> list[tuple[int, str]]:
     return list(enumerate(out, start=1))
 
 
+
+# ------------------------------------------------------------- figures
+# A figure quoted in an exercise or a solution is a claim about a measurement
+# this course made. It must therefore appear on a deck the student has seen.
+# Anything else is either a typo or a number from nowhere, and on an exam
+# paper both are the same kind of wrong.
+# `{,}` is how a thousands separator is written in LaTeX, and the exercise
+# data carries both forms. Without it here, 235{,}500 parses as "235" and
+# "500" and the check reports two figures that do not exist.
+NUMBER = re.compile(r"\d[\d,]*(?:\{,\})?[\d,]*(?:\.\d+)?")
+
+
+def significant(raw: str) -> int:
+    d = raw.replace(",", "").lstrip("-")
+    if "." in d:
+        whole, frac = d.split(".", 1)
+        whole = whole.lstrip("0")
+        return len(whole) + len(frac) if whole else len(frac.lstrip("0")) or 1
+    return len(d.rstrip("0")) or 1
+
+
+# A figure the QUESTION asks the student to compute is not a quotation from a
+# deck and cannot be on one. Same contract as check_consistency's exemption
+# lists: a reason, or it does not belong here.
+COMPUTED = {
+    (19, 1): "the question is 'compute AP and NDCG@10, showing the sums' — "
+             "0.6556 and 0.8396 ARE the answer, and are asserted in "
+             "tools/try_claims_test.py instead",
+    (9, 2):  "the question asks for the parameter count; 235,500 is the "
+             "arithmetic it demands",
+    (12, 1): "same: 4,704 is the convolutional weight count being asked for",
+}
+
+
+def check_figures(corpus) -> int:
+    bad = 0
+    for n in range(1, 25):
+        seen = " ".join(corpus[m] for m in range(1, n + 1))
+        seen_nums = {m.group(0).replace(",", "")
+                     for m in NUMBER.finditer(seen)}
+        for k, q, sol in qa(n):
+            for where, text in (("question", q), ("solution", sol)):
+                for m in NUMBER.finditer(text):
+                    raw = m.group(0).rstrip(".").replace("{,}", ",")
+                    if significant(raw) < 3:
+                        continue          # 5, 10, 100: structure, not a result
+                    v = raw.replace(",", "")
+                    if v in seen_nums:
+                        continue
+                    # allow a rounding of something on a deck
+                    try:
+                        f = float(v)
+                    except ValueError:
+                        continue
+                    if any(abs(f - float(s2)) <= 5e-4 * max(abs(f), 1)
+                           for s2 in seen_nums
+                           if re.fullmatch(r"\d+(?:\.\d+)?", s2)):
+                        continue
+                    if (n, k) in COMPUTED:
+                        continue
+                    bad += 1
+                    print(f"FIGURE  lecture {n:02d} ex {k} ({where}): "
+                          f"{raw} appears on no deck up to {n}")
+                    print(f"        {' '.join(text.split())[:104]}")
+    return bad
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
 
     corpus = {n: deck_text(n) for n in range(1, 25)}
+    figures = check_figures(corpus)
     bad = 0
     for n in range(1, 25):
         seen_by = " ".join(corpus[m] for m in range(1, n + 1))
@@ -146,11 +226,16 @@ def main() -> int:
                           f"in lecture {m}")
                 print(f"        {' '.join(text.split())[:110]}…")
     print()
-    if bad:
-        print(f"{bad} exercise(s) reach forward to material the student has "
-              f"not been shown")
+    if bad or figures:
+        if bad:
+            print(f"{bad} exercise(s) reach forward to material the student "
+                  f"has not been shown")
+        if figures:
+            print(f"{figures} figure(s) quoted by an exercise appear on no "
+                  f"deck the student has seen")
         return 1
-    print("every exercise uses only its own deck and the ones before it")
+    print("every exercise uses only its own deck and the ones before it, "
+          "and every figure it quotes is on one")
     return 0
 
 

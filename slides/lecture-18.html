@@ -1196,7 +1196,7 @@ tr2, te2 = next(gss.split(np.arange(len(X)), y, groups=groups))
   <h2>Exercises &mdash; Lecture 18</h2>
   <ul class="ex-list">
     <li>Scaled dot-product attention divides by $\sqrt{d_k}$. State what the variance of the unscaled dot product is, and what the softmax does without the division. <span class="ex-marks">[5]</span></li>
-    <li>A student adds a softmax to a model whose loss is <code>CrossEntropyLoss</code>. Give the floor the loss cannot go below on two classes, and the arithmetic behind it. <span class="ex-marks">[5]</span></li>
+    <li>A decoder must not attend to positions after the one it is predicting. State the mechanism that enforces it, and what would leak without it. <span class="ex-marks">[5]</span></li>
     <li>A pretrained body is fine-tuned at $10^{-3}$, the rate that worked for the from-scratch model. Predict what happens, and how quickly. <span class="ex-marks">[4]</span></li>
   </ul>
   <p class="ex-note">Solutions on Lecture 19&rsquo;s deck.</p>
@@ -1222,10 +1222,10 @@ tr2, te2 = next(gss.split(np.arange(len(X)), y, groups=groups))
   <div class="cols">
     <div>
       <p class="smaller"><strong>1.</strong> Show that softmax is invariant to adding a constant to every logit, and state the numerical reason the&hellip;</p>
-      <p class="lead"><span class="fix">$e^{c}$ cancels between numerator and denominator. Subtracting the max keeps every exponential below 1, and float32 overflows at about 88.7.</span></p>
+      <p class="lead"><span class="fix">$e^{c}$ cancels between numerator and denominator. Subtracting the max keeps every exponential below 1, and float32 overflows past about 88.7.</span></p>
       <ul class="tight smaller">
         <li>The function ignores the shift; the arithmetic does not</li>
-        <li>Moving to float64 only relocates the threshold to about 709</li>
+        <li>A confident network reaching logits of 100 is completely ordinary, and $e^{100}$ is not representable &mdash; the sum becomes infinite and the ratio a NaN</li>
       </ul>
     </div>
     <div>
@@ -1265,11 +1265,11 @@ tr2, te2 = next(gss.split(np.arange(len(X)), y, groups=groups))
   <h2>Solutions &mdash; Lecture 17 (3)</h2>
   <div class="cols">
     <div>
-      <p class="smaller"><strong>5.</strong> A word-level vocabulary has a 40% out-of-vocabulary rate over distinct test words. Explain why a larger&hellip;</p>
-      <p class="lead"><span class="fix">A word vocabulary is closed and language is not.</span></p>
+      <p class="smaller"><strong>5.</strong> Enlarging a word vocabulary drives the share of unseen distinct test words down, but the curve flattens above&hellip;</p>
+      <p class="lead"><span class="fix">A word vocabulary is closed and language is not. Subword tokenisation.</span></p>
       <ul class="tight smaller">
-        <li>Two words in five are seen once, so more capacity buys mostly those</li>
-        <li>Subword tokenisation changes the closure property rather than the size</li>
+        <li>Two words in five are seen exactly once, so more capacity buys mostly those &mdash; and the next review can still contain a word nobody has written yet</li>
+        <li>Starting from characters covers every string by construction, so the floor is zero rather than forty per cent</li>
       </ul>
     </div>
   </div>

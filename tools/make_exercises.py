@@ -198,12 +198,13 @@ ex(4, "Gradient descent on the same data, with the features unscaled, takes "
 ex(4, "Your logistic regression on one-hot encoded columns produces "
       "coefficients that look wrong, and the design matrix has rank six less "
       "than its column count. State the cause and the standard repair.", 5,
-   "Each fully encoded categorical adds a redundant column; drop one level per "
-   "categorical.",
-   ["The indicator columns of one categorical sum to the intercept column, "
-    "which is an exact linear dependence",
-    "With a reference level dropped the coefficients become differences from "
-    "that level, and are interpretable again"])
+   "Five come from the encoder, one from you. The repair is both: drop one "
+   "level per categorical, and delete the engineered column.",
+   ["Each one-hot block sums to 1 in every row, and so does the intercept "
+    "column &mdash; five categoricals, five exact dependencies",
+    "The sixth is <code>FamilySize = SibSp + Parch + 1</code>, an identity "
+    "rather than a correlation. Dropping a level alone leaves rank 23 of 24, "
+    "because the dependency you wrote yourself survives it"])
 ex(4, "A model reaches 0.80 accuracy and is <em>badly calibrated</em>. Explain "
       "what that means, and name a decision it would make wrongly that "
       "accuracy cannot see.", 4,
@@ -699,9 +700,11 @@ ex(17, "Show that softmax is invariant to adding a constant to every logit, "
        "and state the numerical reason the implementation subtracts the maximum "
        "anyway.", 5,
    "$e^{c}$ cancels between numerator and denominator. Subtracting the max "
-   "keeps every exponential below 1, and float32 overflows at about 88.7.",
+   "keeps every exponential below 1, and float32 overflows past about 88.7.",
    ["The function ignores the shift; the arithmetic does not",
-    "Moving to float64 only relocates the threshold to about 709"])
+    "A confident network reaching logits of 100 is completely ordinary, and "
+    "$e^{100}$ is not representable &mdash; the sum becomes infinite and the "
+    "ratio a NaN"])
 ex(17, r"Derive $\partial L/\partial \mathbf{z} = \mathbf{p} - \mathbf{y}$ for "
        "cross-entropy on a one-hot target, and state what the row sum of that "
        "gradient must be.", 5,
@@ -722,27 +725,42 @@ ex(17, "A model summarises a padded batch at <code>out[:, -1, :]</code>. State "
    "require the logits to agree.",
    ["That position is real content only for the longest reviews",
     "An output-shape test cannot see this; an invariance test can"])
-ex(17, "A word-level vocabulary has a 40% out-of-vocabulary rate over distinct "
-       "test words. Explain why a larger vocabulary is not the fix.", 4,
-   "A word vocabulary is closed and language is not.",
-   ["Two words in five are seen once, so more capacity buys mostly those",
-    "Subword tokenisation changes the closure property rather than the size"])
+ex(17, "Enlarging a word vocabulary drives the share of unseen distinct test "
+       "words down, but the curve flattens above 40% and never reaches zero. "
+       "Explain why a larger vocabulary is not the fix, and name what is.", 4,
+   "A word vocabulary is closed and language is not. Subword tokenisation.",
+   ["Two words in five are seen exactly once, so more capacity buys mostly "
+    "those &mdash; and the next review can still contain a word nobody has "
+    "written yet",
+    "Starting from characters covers every string by construction, so the "
+    "floor is zero rather than forty per cent"])
 
 # ------------------------------------------------------------------ L18
 ex(18, r"Scaled dot-product attention divides by $\sqrt{d_k}$. State what the "
        "variance of the unscaled dot product is, and what the softmax does "
        "without the division.", 5,
-   "It grows with $d_k$; the softmax saturates and the gradient vanishes.",
-   ["A sum of $d_k$ independent products has variance proportional to $d_k$",
+   r"$\operatorname{Var}(s) = d_k$, so $s$ has standard deviation "
+   r"$\sqrt{d_k}$; without the division the softmax saturates and the "
+   r"gradient vanishes.",
+   [r"A sum of $d_k$ independent zero-mean products, each of variance 1, has "
+    r"variance $d_k$ &mdash; at $d_k = 64$ typical scores are already of "
+    r"order 8",
     "Large logits make the distribution nearly one-hot, so almost no gradient "
     "flows"])
-ex(18, "A student adds a softmax to a model whose loss is "
-       "<code>CrossEntropyLoss</code>. Give the floor the loss cannot go below "
-       "on two classes, and the arithmetic behind it.", 5,
-   r"$-\log(e/(e+1)) \approx 0.313$.",
-   ["The second softmax receives values in $[0,1]$, so the largest achievable "
-    "probability is $e/(e+1)$",
-    "Reading the loss column rather than the accuracy is what identifies it"])
+# Replaced 2026-09-04: the original asked for the double-softmax floor. That
+# failure lives in Lecture 18's NOTEBOOK and on no deck at all -- neither 18's
+# nor 17's states the premise or the value -- so a student reading the slides
+# could not answer it. Masking is on this deck and is examinable.
+ex(18, "A decoder must not attend to positions after the one it is "
+       "predicting. State the mechanism that enforces it, and what would leak "
+       "without it.", 5,
+   "A mask applied to the attention scores before the softmax, setting "
+   r"future positions to $-\infty$. Without it the model sees the token it is "
+   "being asked to predict.",
+   ["Attention is all-to-all by construction, so nothing in the mechanism "
+    "itself respects order",
+    "The training loss would fall and the model would be useless at "
+    "generation time, when the future genuinely does not exist"])
 ex(18, "A pretrained body is fine-tuned at $10^{-3}$, the rate that worked for "
        "the from-scratch model. Predict what happens, and how quickly.", 4,
    "The loss rises within tens of steps and does not recover.",
@@ -973,13 +991,19 @@ ex(24, "In a retrieval-augmented pipeline the retriever's recall bounds the whol
    "If the right entry is not retrieved, no generation recovers it.",
    ["The generator can only work with what it is given",
     "The first stage sets the ceiling, exactly as in Lecture 20"])
-ex(24, "Give the five rules the course ends on, and name the one that would have "
-       "prevented the largest number of the failures it measured.", 5,
-   "Split before fitting; preprocessing inside the cross-validated object; "
-   "nothing from the test set in the training path; fixed seeds with per-fold "
-   "scores; every number gets a baseline. The baseline rule.",
-   ["Most measured failures were numbers with nothing to be read against",
-    "A baseline is the cheapest of the five and catches the most"])
+# Corrected 2026-09-04: the five rules given here were not the five on the
+# deck. The deck's are the "What did not change, in twenty-four lectures"
+# slide, and the second half now asks for a property the deck states.
+ex(24, "Give the five rules the course ends on, and state the property the "
+       "deck points out that all five share.", 5,
+   "Split before anything is fitted; compute the trivial baseline first; two "
+   "numbers measured on different rows are not comparable; a difference "
+   "smaller than the spread is not a difference; change one thing. None of "
+   "them is mathematics.",
+   ["Every one governs what a number may be compared with, not how a model "
+    "is fitted &mdash; which is why none of them needed any",
+    "They are the five that would have caught every row of the catalogue of "
+    "silent failures, each of which runs to completion and raises nothing"])
 
 
 def slide(title, body, menu=None, cls=""):

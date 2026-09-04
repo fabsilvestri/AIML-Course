@@ -157,6 +157,35 @@ Four things learned the hard way, all now guarded:
 * A bare `<` inside `$...$` starts an HTML tag (AUTHORING §5.3a), and a named
   weekday breaks §5.5. Both were caught by `check_decks`, not by reading.
 
+#### The correctness audit — all 120 read, 2026-09-04
+
+Every question and every solution was read against its own deck. Six defects,
+all now fixed, and each is a class worth knowing about:
+
+| Where | Defect | Class |
+|---|---|---|
+| L17 Q1 | quoted 709, the float64 overflow point, which is on no deck | figure the student never saw |
+| L18 Q2 | premise (the double-softmax floor) lives in the notebook only | question unanswerable from the slides |
+| L04 Q2 | said all six rank deficiencies come from the encoder; five do, and the sixth is the engineered `FamilySize` | answer thinner than the deck |
+| L17 Q5 | stated 40% as *the* type-OOV rate; it is the **floor**, and at the deck's 20,000-word vocabulary the rate is 77% | a real number in the wrong role |
+| L18 Q1 | "the variance grows with $d_k$" where the deck derives $\operatorname{Var}(s) = d_k$ exactly | vaguer than what was asked for |
+| L24 Q5 | listed five rules that were **not** the deck's five | confidently wrong, and the worst of them |
+
+The last one is the reason a mechanical check cannot close this job: every one
+of those five rules is a true, on-topic, in-scope sentence about this course.
+`check_exercises` had nothing to object to. Only reading the slide catches it.
+
+What *is* mechanical now: `tools/exercise_claims_test.py` recomputes every
+number an answer asserts — the parameter counts, the AP and NDCG sums, the
+harmonic mean behind Glorot, the JL bound at $n = 400$, the $\rho < 1/2$
+crossover, `bootstrap=False` with `oob_score=True` raising. It and
+`try_claims_test.py` are both in `check_all.py` now; neither was, which is how
+a check nobody runs becomes a check nobody wrote.
+
+Prefer quadrature to sampling in that file. The ReLU half-moment check was
+Monte-Carlo first and failed at 0.5034 against 0.5 — noise, not a wrong answer,
+and a test that cries wolf gets deleted rather than fixed.
+
 ### Job 1 — the try-field audit: **32 claims verified, six found false**
 
 `tools/try_claims_test.py` executes every claim that can be reproduced

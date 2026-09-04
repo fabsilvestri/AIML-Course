@@ -40,6 +40,13 @@ FAST = [
     # splitting or reordering older modules.
     ("names",       ["tools/check_names.py"],
      "every name a notebook uses is defined before it is used"),
+    # Both of these execute the claim rather than reading it. They are the only
+    # checks that can catch a sentence that is well-formed, on-topic, traceable
+    # to a figure, and wrong -- which is the defect every other check misses.
+    ("claims",      ["tools/try_claims_test.py"],
+     "every reproducible claim in a notebook `try` field holds"),
+    ("exercise-claims", ["tools/exercise_claims_test.py"],
+     "every number an exercise answer asserts recomputes"),
 ]
 
 FULL = [

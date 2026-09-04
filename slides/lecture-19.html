@@ -1334,18 +1334,18 @@ for t in query:
   <div class="cols">
     <div>
       <p class="smaller"><strong>1.</strong> Scaled dot-product attention divides by $\sqrt{d_k}$. State what the variance of the unscaled dot product is,&hellip;</p>
-      <p class="lead"><span class="fix">It grows with $d_k$; the softmax saturates and the gradient vanishes.</span></p>
+      <p class="lead"><span class="fix">$\operatorname{Var}(s) = d_k$, so $s$ has standard deviation $\sqrt{d_k}$; without the division the softmax saturates and the gradient vanishes.</span></p>
       <ul class="tight smaller">
-        <li>A sum of $d_k$ independent products has variance proportional to $d_k$</li>
+        <li>A sum of $d_k$ independent zero-mean products, each of variance 1, has variance $d_k$ &mdash; at $d_k = 64$ typical scores are already of order 8</li>
         <li>Large logits make the distribution nearly one-hot, so almost no gradient flows</li>
       </ul>
     </div>
     <div>
-      <p class="smaller"><strong>2.</strong> A student adds a softmax to a model whose loss is CrossEntropyLoss. Give the floor the loss cannot go below&hellip;</p>
-      <p class="lead"><span class="fix">$-\log(e/(e+1)) \approx 0.313$.</span></p>
+      <p class="smaller"><strong>2.</strong> A decoder must not attend to positions after the one it is predicting. State the mechanism that enforces it,&hellip;</p>
+      <p class="lead"><span class="fix">A mask applied to the attention scores before the softmax, setting future positions to $-\infty$. Without it the model sees the token it is being asked to predict.</span></p>
       <ul class="tight smaller">
-        <li>The second softmax receives values in $[0,1]$, so the largest achievable probability is $e/(e+1)$</li>
-        <li>Reading the loss column rather than the accuracy is what identifies it</li>
+        <li>Attention is all-to-all by construction, so nothing in the mechanism itself respects order</li>
+        <li>The training loss would fall and the model would be useless at generation time, when the future genuinely does not exist</li>
       </ul>
     </div>
   </div>

@@ -207,10 +207,10 @@ Unscaled features make the contours elongated, so the gradient points across the
 \end{solution}
 \question{Your logistic regression on one-hot encoded columns produces coefficients that look wrong, and the design matrix has rank six less than its column count. State the cause and the standard repair.}{5}
 \begin{solution}[title={Solution}]
-Each fully encoded categorical adds a redundant column; drop one level per categorical.
+Five come from the encoder, one from you. The repair is both: drop one level per categorical, and delete the engineered column.
 \begin{itemize}[leftmargin=*,nosep]
-  \item The indicator columns of one categorical sum to the intercept column, which is an exact linear dependence
-  \item With a reference level dropped the coefficients become differences from that level, and are interpretable again
+  \item Each one-hot block sums to 1 in every row, and so does the intercept column --- five categoricals, five exact dependencies
+  \item The sixth is \code{FamilySize = SibSp + Parch + 1}, an identity rather than a correlation. Dropping a level alone leaves rank 23 of 24, because the dependency you wrote yourself survives it
 \end{itemize}
 \end{solution}
 \question{A model reaches 0.80 accuracy and is \emph{badly calibrated}. Explain what that means, and name a decision it would make wrongly that accuracy cannot see.}{4}
@@ -797,10 +797,10 @@ Underfitting, where both are poor, and overfitting, where train is far better. T
 {\color{aimlmuted}\small Ch 14}\par\medskip
 \question{Show that softmax is invariant to adding a constant to every logit, and state the numerical reason the implementation subtracts the maximum anyway.}{5}
 \begin{solution}[title={Solution}]
-$e^{c}$ cancels between numerator and denominator. Subtracting the max keeps every exponential below 1, and float32 overflows at about 88.7.
+$e^{c}$ cancels between numerator and denominator. Subtracting the max keeps every exponential below 1, and float32 overflows past about 88.7.
 \begin{itemize}[leftmargin=*,nosep]
   \item The function ignores the shift; the arithmetic does not
-  \item Moving to float64 only relocates the threshold to about 709
+  \item A confident network reaching logits of 100 is completely ordinary, and $e^{100}$ is not representable --- the sum becomes infinite and the ratio a NaN
 \end{itemize}
 \end{solution}
 \question{Derive $\partial L/\partial \mathbf{z} = \mathbf{p} - \mathbf{y}$ for cross-entropy on a one-hot target, and state what the row sum of that gradient must be.}{5}
@@ -827,12 +827,12 @@ Padding. Encode the same review with two different amounts of padding and requir
   \item An output-shape test cannot see this; an invariance test can
 \end{itemize}
 \end{solution}
-\question{A word-level vocabulary has a 40\% out-of-vocabulary rate over distinct test words. Explain why a larger vocabulary is not the fix.}{4}
+\question{Enlarging a word vocabulary drives the share of unseen distinct test words down, but the curve flattens above 40\% and never reaches zero. Explain why a larger vocabulary is not the fix, and name what is.}{4}
 \begin{solution}[title={Solution}]
-A word vocabulary is closed and language is not.
+A word vocabulary is closed and language is not. Subword tokenisation.
 \begin{itemize}[leftmargin=*,nosep]
-  \item Two words in five are seen once, so more capacity buys mostly those
-  \item Subword tokenisation changes the closure property rather than the size
+  \item Two words in five are seen exactly once, so more capacity buys mostly those --- and the next review can still contain a word nobody has written yet
+  \item Starting from characters covers every string by construction, so the floor is zero rather than forty per cent
 \end{itemize}
 \end{solution}
 
@@ -843,18 +843,18 @@ A word vocabulary is closed and language is not.
 {\color{aimlmuted}\small Ch 14–15}\par\medskip
 \question{Scaled dot-product attention divides by $\sqrt{d_k}$. State what the variance of the unscaled dot product is, and what the softmax does without the division.}{5}
 \begin{solution}[title={Solution}]
-It grows with $d_k$; the softmax saturates and the gradient vanishes.
+$\operatorname{Var}(s) = d_k$, so $s$ has standard deviation $\sqrt{d_k}$; without the division the softmax saturates and the gradient vanishes.
 \begin{itemize}[leftmargin=*,nosep]
-  \item A sum of $d_k$ independent products has variance proportional to $d_k$
+  \item A sum of $d_k$ independent zero-mean products, each of variance 1, has variance $d_k$ --- at $d_k = 64$ typical scores are already of order 8
   \item Large logits make the distribution nearly one-hot, so almost no gradient flows
 \end{itemize}
 \end{solution}
-\question{A student adds a softmax to a model whose loss is \code{CrossEntropyLoss}. Give the floor the loss cannot go below on two classes, and the arithmetic behind it.}{5}
+\question{A decoder must not attend to positions after the one it is predicting. State the mechanism that enforces it, and what would leak without it.}{5}
 \begin{solution}[title={Solution}]
-$-\log(e/(e+1)) \approx 0.313$.
+A mask applied to the attention scores before the softmax, setting future positions to $-\infty$. Without it the model sees the token it is being asked to predict.
 \begin{itemize}[leftmargin=*,nosep]
-  \item The second softmax receives values in $[0,1]$, so the largest achievable probability is $e/(e+1)$
-  \item Reading the loss column rather than the accuracy is what identifies it
+  \item Attention is all-to-all by construction, so nothing in the mechanism itself respects order
+  \item The training loss would fall and the model would be useless at generation time, when the future genuinely does not exist
 \end{itemize}
 \end{solution}
 \question{A pretrained body is fine-tuned at $10^{-3}$, the rate that worked for the from-scratch model. Predict what happens, and how quickly.}{4}
@@ -1149,12 +1149,12 @@ If the right entry is not retrieved, no generation recovers it.
   \item The first stage sets the ceiling, exactly as in Lecture 20
 \end{itemize}
 \end{solution}
-\question{Give the five rules the course ends on, and name the one that would have prevented the largest number of the failures it measured.}{5}
+\question{Give the five rules the course ends on, and state the property the deck points out that all five share.}{5}
 \begin{solution}[title={Solution}]
-Split before fitting; preprocessing inside the cross-validated object; nothing from the test set in the training path; fixed seeds with per-fold scores; every number gets a baseline. The baseline rule.
+Split before anything is fitted; compute the trivial baseline first; two numbers measured on different rows are not comparable; a difference smaller than the spread is not a difference; change one thing. None of them is mathematics.
 \begin{itemize}[leftmargin=*,nosep]
-  \item Most measured failures were numbers with nothing to be read against
-  \item A baseline is the cheapest of the five and catches the most
+  \item Every one governs what a number may be compared with, not how a model is fitted --- which is why none of them needed any
+  \item They are the five that would have caught every row of the catalogue of silent failures, each of which runs to completion and raises nothing
 \end{itemize}
 \end{solution}
 
