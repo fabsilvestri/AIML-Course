@@ -108,7 +108,7 @@ def check_numbers(lectures=None, execute=False):
         for label, text, code in by_lec[n]:
             for m in NUMBER.finditer(text):
                 raw = m.group(0).rstrip(".")
-                if cc.significant(raw) < 4:
+                if cc.significant(raw) < 3:
                     continue                     # too round to be a quotation
                 v = float(raw.replace(",", ""))
                 if 1900 <= v <= 2100 and float(v).is_integer():

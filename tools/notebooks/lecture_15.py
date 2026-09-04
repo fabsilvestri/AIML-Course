@@ -590,11 +590,13 @@ in the usual way expects inputs near 1.
                output="a Dataset yielding (window, next step) pairs",
                constraint="the target must be the step AFTER the window and never inside it — an off-by-one leaks one day and nothing later complains",
                check="length is len(series) - window_length",
-               **{"try": "change end = idx + self.window_length to end = idx "
-                         "+ self.window_length - 1. The target is now the "
-                         "last day of the window, every MAE below collapses "
-                         "towards zero, and nothing anywhere raises. That is "
-                         "what a one-day leak looks like from the outside."}),
+               **{"try": "change `end = idx + self.window_length` to `end = idx + "
+                      "self.window_length - 1` and read the shapes two cells "
+                      "down. The target is still the step after the window — what "
+                      "changed is that the window is 55 days rather than 56, so "
+                      "every model quietly sees less history than the constant "
+                      "says. The shape assert catches it. Would you have noticed "
+                      "without one?"}),
         code('''
 class TimeSeriesDataset(torch.utils.data.Dataset):
     """Every window of `window_length` steps, and the step that follows it."""

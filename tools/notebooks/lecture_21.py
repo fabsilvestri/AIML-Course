@@ -123,6 +123,12 @@ r["i"] = pd.factorize(r["item"])[0]
 n_u, n_i = r["u"].nunique(), r["i"].nunique()
 assert (len(r), n_u, n_i) == (1000209, 6040, 3706), "not the ml-1m release"
 
+# The raw ids are NOT contiguous, and the gap is the whole reason for the
+# factorise above. Printed rather than asserted quietly, so the try field's
+# claim about 246 empty columns is one a student can check here.
+print(f"raw film ids run 1 to {r['item'].max():,}, and {n_i:,} of them are used")
+print(f"using them raw would add {r['item'].max() - n_i} all-zero columns")
+
 density = len(r) / (n_u * n_i)
 print(f"{len(r):,} ratings, {n_u:,} users, {n_i:,} films")
 print(f"cells in the matrix        {n_u*n_i:,}")

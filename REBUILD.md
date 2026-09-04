@@ -156,12 +156,12 @@ Four things learned the hard way, all now guarded:
 ### Job 1 — the try-field audit: **32 claims verified, six found false**
 
 `tools/try_claims_test.py` executes every claim that can be reproduced
-standalone; it is at 32/32 and is where a newly verified claim goes.
+standalone; it is at 37/37 and is where a newly verified claim goes.
 `tools/try_audit.py` extracts and triages all 539, and
 `--check-numbers` audits every stated figure against the notebook's own output
-using `check_consistency`'s cache.
+using `check_consistency`'s cache — 67 figures checked, and the three it cannot match are legitimately derived rather than printed.
 
-**Six false claims found so far, all corrected in the notebook rather than in
+**Seven false claims found so far, all corrected in the notebook rather than in
 the test:**
 
 | lecture | the claim | what is actually true |
@@ -172,8 +172,9 @@ the test:**
 | 3 | "delete the cast … nothing raises" | the cell's own dtype assert fires |
 | 6 | "index `COVER_NAMES[k]` … nothing raises" | class 7 runs off a seven-element list |
 | 19 (exercise) | worked NDCG@10 of 0.8455 | 0.8396 |
+| 15 | "`end = idx + w - 1`&nbsp;… the target is now the last day of the window, every MAE collapses" | it shortens the window to 55 days; the target still follows it, and nothing leaks |
 
-Six of thirty-two is a rate worth taking seriously, and it is why the audit
+Seven of thirty-seven is a rate worth taking seriously, and it is why the audit
 continues rather than being declared finished.
 
 **To resume:** work the `--assert` class first, then `--number`, adding each

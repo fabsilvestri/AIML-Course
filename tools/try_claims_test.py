@@ -349,6 +349,71 @@ def t():
            "conv weights 4,704; 1 - 0.885 = 11.5%"
 check("L12/L20 ex", "the conv weight count and the recall ceiling gap", t)
 
+
+# ============================ batch 3, 2026-09-04 ============================
+def t():
+    import torch
+    series = torch.arange(60).float().unsqueeze(1)
+    w = 56
+    win_ok,  tgt_ok  = series[0:w],     series[w]
+    win_bad, tgt_bad = series[0:w - 1], series[w - 1]
+    inside = float(tgt_bad) in [float(v) for v in win_bad.flatten()]
+    # The try originally claimed this put the target INSIDE the window and
+    # collapsed every MAE. It does neither: the window is one step shorter and
+    # the target still follows it. The corrected try says so.
+    return (len(win_ok) == 56 and len(win_bad) == 55 and not inside), \
+           f"window 56 -> 55, target still after it, inside={inside}"
+check("L15", "end = idx + w - 1 shortens the window; it does not leak", t)
+
+def t():
+    import pandas as pd, numpy as np
+    df = pd.DataFrame({"rail": np.arange(30.), "bus": np.arange(30.),
+                       "day_type": (["W"] * 5 + ["A"] + ["U"]) * 4 + ["W"] * 2})
+    def cols(shift):
+        m = df[["rail", "bus"]].copy()
+        m["next_day_type"] = df["day_type"].shift(shift)
+        return list(pd.get_dummies(m, dtype=float).columns)
+    return cols(-1) == cols(+1), "the column-name assert passes either way"
+check("L16", "shift(+1) leaves the column-name assert passing", t)
+
+def t():
+    import torch, torch.nn as nn
+    torch.manual_seed(0)
+    conv = nn.Conv2d(3, 8, 7, padding=3, bias=False).eval()
+    x = torch.randn(1, 3, 128, 128); S = 16
+    with torch.no_grad():
+        a = conv(torch.roll(x, S, dims=3))
+        b = torch.roll(conv(x), S, dims=3)
+    m = S + 8
+    interior = (a[..., m:-m, m:-m] - b[..., m:-m, m:-m]).abs().max().item()
+    border = (a[..., :4, :4] - b[..., :4, :4]).abs().max().item()
+    scale = b[..., m:-m, m:-m].abs().max().item()
+    return (interior / scale < 1e-5 and border > 100 * max(interior, 1e-12)), \
+           f"interior relative {interior / scale:.1e}, border {border:.3e}"
+check("L12", "equivariance holds on the interior and fails at the border", t)
+
+def t():
+    import numpy as np
+    Xtr = np.zeros((49_999, 32, 32, 3), dtype=np.uint8)
+    try:
+        assert Xtr.shape == (50_000, 32, 32, 3)
+        return False, "shape assert did not fire"
+    except AssertionError:
+        return True, "the shape assert fires first, before the balance one"
+check("L11", "dropping one image fires the shape assert before the balance one", t)
+
+def t():
+    import numpy as np
+    import torch.nn.functional as F
+    ok = callable(F.cross_entropy)
+    F = np.zeros((3, 3))
+    try:
+        F.cross_entropy
+        return False, "no error"
+    except AttributeError:
+        return ok, "the failure is deferred to first use, with no import-time error"
+check("L24", "rebinding F defers the failure to first use", t)
+
 for lec, claim, ok, detail in R:
     print(f"{'PASS' if ok else 'FAIL':4}  {lec}  {claim}")
     print(f"        {detail}")
