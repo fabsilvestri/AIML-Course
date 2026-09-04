@@ -395,11 +395,10 @@ in between still available, which a list cannot offer.
             output="the tf factor, for a document of exactly average length",
             constraint="show that it is bounded — the tenth occurrence of a word must not count ten times the first, or a page repeating a word wins every query",
             check="tabulate the factor at tf = 1, 2, 3, 5, 10, 20 and confirm the increments shrink.",
-            **{"try": "set k1 = 0 and tabulate again. Every term frequency "
-                      "gives a factor of exactly 1: the term has become a "
-                      "Boolean indicator and BM25 has collapsed to idf- "
-                      "weighted matching. Which row of the ablation in "
-                      "Section 6 is that?"}),
+            **{"try": "set k1 = 0 and tabulate again. Every term frequency gives "
+                      "a factor of exactly 1: the term has become a Boolean "
+                      "indicator and BM25 has collapsed to idf-weighted matching. "
+                      "Which row of the ablation in Section 6 is that?"}),
         code('''
 K1, B = 0.9, 0.4          # the two BM25 parameters, tuned by measurement below
 

@@ -141,11 +141,11 @@ on refusing to pretend otherwise.
             output="the distribution, and the mean",
             constraint="report shares rather than counts — the shape is the point, and it is not the uniform 1-5 the scale suggests",
             check="the distribution should be heavily skewed upward. People mostly rate things they liked.",
-            **{"try": "compute the mean rating per user and then average "
-                      "those. It is not the overall mean printed here, "
-                      "because heavy raters carry different weight in the "
-                      "two. Which of them is the right anchor for the user- "
-                      "mean baseline in the next section?"}),
+            **{"try": "compute the mean rating per user and then average those. "
+                      "It is not the overall mean printed here, because heavy "
+                      "raters carry different weight in the two. Which of them is "
+                      "the right anchor for the user-mean baseline in the next "
+                      "section?"}),
         code('''
 dist = r["rating"].value_counts().sort_index()
 for k, v in dist.items():

@@ -943,10 +943,10 @@ plt.tight_layout(); plt.show()
             output="mAP at 0.50, at 0.75, and averaged across the ten",
             constraint="only classes that ACTUALLY APPEAR — a class with no annotations has no AP, and counting it as zero would be inventing a measurement",
             check="say '73 classes' out loud alongside '128 images'. Both are part of the number.",
-            **{"try": "count the seven absent categories as AP = 0 and re- "
-                      "run. The mAP falls by almost a tenth, and you have "
-                      "just published a measurement of seven classes that "
-                      "never appeared in the corpus."}),
+            **{"try": "count the seven absent categories as AP = 0 and re-run. "
+                      "The mAP falls by almost a tenth, and you have just "
+                      "published a measurement of seven classes that never "
+                      "appeared in the corpus."}),
         code('''
 present = sorted({int(c) for g in gt.values() for c in g["labels"]})
 print(f"{len(present)} of COCO's 80 categories appear in our 128 images")

@@ -130,10 +130,10 @@ afterwards, because `download=True` checks before it fetches.
             output="50,000 train and 10,000 test images as uint8, and the class names",
             constraint="assert the class counts are EXACTLY balanced in both splits — that fact decides the metric two sections down",
             check="assert both shapes and both balance conditions. `download=True` checks before it fetches, so re-running is instant. A cell that re-downloads 170 MB every run is a cell people stop running.",
-            **{"try": "drop the first training image and its label, then re- "
-                      "run. The shape assert fires before the balance one. "
-                      "Which of the two would you rather have been told "
-                      "about, and does the order they are written in matter?"}),
+            **{"try": "drop the first training image and its label, then re-run. "
+                      "The shape assert fires before the balance one. Which of "
+                      "the two would you rather have been told about, and does "
+                      "the order they are written in matter?"}),
         code('''
 train_ds = torchvision.datasets.CIFAR10("datasets", train=True,  download=True)
 test_ds  = torchvision.datasets.CIFAR10("datasets", train=False, download=True)
@@ -923,10 +923,10 @@ Check the factor of two rather than taking it:
             constraint="measure the ratio rather than quoting 1/2 — it is one line, and the whole He correction rests on it",
             check="the logistic's derivative never exceeds 1/4, which is the other half of the story and the direct cause of the previous lecture's failure.",
             **{"try": "measure the same ratio for a pre-activation with a "
-                      "non-zero mean, torch.randn(500_000) + 1. It is no "
-                      "longer 1/2. He's correction assumes a symmetric zero- "
-                      "mean pre-activation, and a drifting bias breaks that "
-                      "assumption long before it breaks the network."}),
+                      "non-zero mean, torch.randn(500_000) + 1. It is no longer "
+                      "1/2. He's correction assumes a symmetric zero-mean "
+                      "pre-activation, and a drifting bias breaks that assumption "
+                      "long before it breaks the network."}),
         code('''
 z = torch.randn(500_000)
 print(f"E[z^2]            {(z**2).mean():.4f}")
@@ -1231,10 +1231,10 @@ below differs from its neighbour in exactly one argument.
             output="a trained network and its history, including the test accuracy",
             constraint="ONE function, one seed, one subset, one epoch count — so every row of every table differs from its neighbour in exactly one argument",
             check="a harness check: a 2-layer ReLU network must reach better than 0.2 in three epochs, or the harness itself cannot learn and every table below is measuring the harness. Test the instrument before the experiment. Three epochs on two layers costs seconds and rules out the most expensive possible mistake.",
-            **{"try": "lower the harness threshold from 0.2 to 0.1 and re- "
-                      "run. It now passes for a network sitting at chance, "
-                      "which is precisely what the check was written to rule "
-                      "out. A threshold set at the baseline is not a check."}),
+            **{"try": "lower the harness threshold from 0.2 to 0.1 and re-run. It "
+                      "now passes for a network sitting at chance, which is "
+                      "precisely what the check was written to rule out. A "
+                      "threshold set at the baseline is not a check."}),
         code('''
 Xf = torch.tensor(X_fit,  device=device); yf = torch.tensor(y_fit,  device=device)
 Xv = torch.tensor(X_val,  device=device); yv = torch.tensor(y_val,  device=device)

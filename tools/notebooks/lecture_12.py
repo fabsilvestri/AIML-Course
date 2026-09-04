@@ -796,12 +796,11 @@ content. Check that too, rather than taking the caveat on trust.
             output="the difference there",
             constraint="check the caveat rather than stating it — the previous cell's assert is only meaningful if the excluded region really is different",
             check="when an identity holds only on part of the domain, measure it on the other part too. Orders of magnitude larger is the evidence that your exclusion was necessary rather than convenient.",
-            **{"try": "set padding_mode='circular' on the convolution and re- "
-                      "run both cells. The border difference collapses, "
-                      "because roll and circular padding now agree about what "
-                      "lies off the edge. The identity was never about the "
-                      "interior; it was about the two of them agreeing on a "
-                      "boundary condition."}),
+            **{"try": "set padding_mode='circular' on the convolution and re-run "
+                      "both cells. The border difference collapses, because roll "
+                      "and circular padding now agree about what lies off the "
+                      "edge. The identity was never about the interior; it was "
+                      "about the two of them agreeing on a boundary condition."}),
         code('''
 edge_a = y_of_shift[..., :4, :4]
 edge_b = shift_of_y[..., :4, :4]

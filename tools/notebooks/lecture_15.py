@@ -521,12 +521,11 @@ require no fitting at all:
                output="MAE for four forecasts that require no fitting",
                constraint="every forecast scored on exactly the same days, so they are comparable",
                check="copying last week beats copying yesterday — if not, the alignment is wrong",
-               **{"try": "add 'copy 28 days back' to the table: also a whole "
-                         "number of weeks, but four times as far away. Where "
-                         "does it land relative to the day-before and last- "
-                         "week rows, and what does that say about how much of "
-                         "the naive forecast is the weekday and how much is "
-                         "the recency?"}),
+               **{"try": "add 'copy 28 days back' to the table: also a whole number "
+                      "of weeks, but four times as far away. Where does it land "
+                      "relative to the day-before and last-week rows, and what "
+                      "does that say about how much of the naive forecast is the "
+                      "weekday and how much is the recency?"}),
         code('''
 baselines = {
     "a constant (the mean)":  pd.Series(pool[:"2018-12"].mean(), index=target.index),

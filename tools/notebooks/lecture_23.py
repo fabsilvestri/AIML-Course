@@ -405,10 +405,10 @@ else.
             constraint="do it THREE ways, so nobody can blame the particular fix",
             check="assert each similarity matrix is square and 200 by 200 before reporting it. Transpose before reporting. `report` expects rows to be queries, and the matrices here are built image-major — a silent transpose measures image-to-text and calls it text-to-image.",
             **{"try": "delete the .T from one of the three report calls. The "
-                      "recalls change, because you are now measuring image- "
-                      "to-text and calling it text-to-image. On a square "
-                      "matrix a transpose is silent, which is why the "
-                      "constraint names it."}),
+                      "recalls change, because you are now measuring "
+                      "image-to-text and calling it text-to-image. On a square "
+                      "matrix a transpose is silent, which is why the constraint "
+                      "names it."}),
         code('''
 def unit(x):
     return x / np.linalg.norm(x, axis=1, keepdims=True)

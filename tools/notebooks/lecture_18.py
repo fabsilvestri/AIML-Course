@@ -405,11 +405,11 @@ print(f"pretrained body, random head, no training: {zero_shot:.1%}")
             output="the loss every 25 steps and the wall clock",
             constraint="`lr=2e-5`, about a hundred times smaller than the 1e-3 used for the from-scratch model — the body already encodes something and a large step destroys it in a few dozen steps",
             check="print the loss during training, not only at the end. A fine-tune going wrong is visible in the first twenty steps and takes minutes to confirm at the end.",
-            **{"try": "set lr=1e-3 — the from-scratch model's rate — and re- "
-                      "run. The loss rises within twenty steps and never "
-                      "recovers, and the assert in the comparison cell fires "
-                      "with the message that names the cause. A pretrained "
-                      "body is destroyed in tens of steps, not thousands."}),
+            **{"try": "set lr=1e-3 — the from-scratch model's rate — and re-run. "
+                      "The loss rises within twenty steps and never recovers, and "
+                      "the assert in the comparison cell fires with the message "
+                      "that names the cause. A pretrained body is destroyed in "
+                      "tens of steps, not thousands."}),
         code('''
 torch.manual_seed(RANDOM_STATE)
 opt   = torch.optim.AdamW(model.parameters(), lr=2e-5)   # ~100x smaller than 1e-3

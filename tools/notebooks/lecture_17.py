@@ -444,10 +444,10 @@ because most rows then have a loss near zero where both forms agree trivially.
             output="the non-finite rate and median relative error of the naive form against the combined one",
             constraint="sweep HOW WRONG THE ROW IS, not the scale of the logits — the naive form has to represent e^(−loss) as a float32, so the loss is the quantity the failure depends on",
             check="assert the stable form never fails, at either end of the sweep. Score against float64 rather than against each other. Two float32 computations agreeing tells you nothing about either.",
-            **{"try": "add gap = 200 to the sweep. The naive form is non- "
-                      "finite on every row and the combined one still is not. "
-                      "Then work out on paper what p(true class) is at a loss "
-                      "of 200, and why no float32 can hold it."}),
+            **{"try": "add gap = 200 to the sweep. The naive form is non-finite "
+                      "on every row and the combined one still is not. Then work "
+                      "out on paper what p(true class) is at a loss of 200, and "
+                      "why no float32 can hold it."}),
         code('''
 K, N = 10, 2_000
 idx = np.arange(N)

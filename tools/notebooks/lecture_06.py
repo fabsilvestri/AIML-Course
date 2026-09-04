@@ -127,9 +127,14 @@ root to leaf *is* the justification.
             check="`sorted(y.unique()) == [1..7]`. Assert the label domain, not "
                   "just the shape: it is what tells you the indexing convention "
                   "before anything is built on it",
-            **{"try": "index `COVER_NAMES[k]` instead of `COVER_NAMES[k - 1]` "
-                      "somewhere below. Nothing raises — you get the wrong "
-                      "species name, off by one, for every row"}),
+            **{"try": "index `COVER_NAMES[k]` instead of `COVER_NAMES[k - 1]` in "
+                      "the count loop below. It raises IndexError — but only "
+                      "because class 7 exists and runs off the end of a "
+                      "seven-element list. Now make the same change where only "
+                      "the majority class is indexed: nothing raises at all, and "
+                      "you quietly get 'Ponderosa Pine' where 'Lodgepole Pine' "
+                      "was meant. Which of the two sites would you rather the bug "
+                      "had landed in?"}),
         COVER_LOADER,
 
         md("""

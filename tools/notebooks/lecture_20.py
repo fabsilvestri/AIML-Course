@@ -69,12 +69,11 @@ def build() -> list:
             output="versions, seed, device",
             constraint="cap the thread counts before torch is imported — they are read at import time and after that they do nothing",
             check="print the model versions. A retrieval number without the encoder version is not reproducible, and these checkpoints are updated.",
-            **{"try": "the check asks for the model versions and this cell "
-                      "does not print them. Add the bi-encoder and cross- "
-                      "encoder checkpoint names and their revision hashes "
-                      "once they are loaded, and decide whether a "
-                      "specification whose check is not implemented is a "
-                      "specification at all."}),
+            **{"try": "the check asks for the model versions and this cell does "
+                      "not print them. Add the bi-encoder and cross-encoder "
+                      "checkpoint names and their revision hashes once they are "
+                      "loaded, and decide whether a specification whose check is "
+                      "not implemented is a specification at all."}),
         code('''
 import os
 os.environ.setdefault("OMP_NUM_THREADS", "4")
@@ -102,11 +101,11 @@ torch.manual_seed(RANDOM_STATE)
             output="corpus, claims and test qrels",
             constraint="read the ids as strings, exactly as last week — an id read as an integer silently merges documents whose ids differ by a leading zero",
             check="assert the corpus size and the number of test claims match Lecture 19's. If either differs, every comparison below is against a different experiment.",
-            **{"try": "delete the cached parquet files and re-download. If "
-                      "the corpus-size assert fires, BEIR has been re- "
-                      "released and Lecture 19's numbers are no longer the "
-                      "baseline this notebook subtracts from. What would you "
-                      "do next, and what would you publish?"}),
+            **{"try": "delete the cached parquet files and re-download. If the "
+                      "corpus-size assert fires, BEIR has been re-released and "
+                      "Lecture 19's numbers are no longer the baseline this "
+                      "notebook subtracts from. What would you do next, and what "
+                      "would you publish?"}),
         code('''
 HF    = "https://huggingface.co/datasets/BeIR/"
 CACHE = Path("datasets/scifact")
@@ -487,12 +486,11 @@ the document's representation does not exist until the query arrives.
             output="the number of transformer passes a full cross-encoder scan needs",
             constraint="state it before running anything — the argument for the pipeline is arithmetic, and it should be made before the measurement rather than after",
             check="compare it against the one pass a bi-encoder needs. The ratio is the reason production systems have two stages.",
-            **{"try": "redo the three lines for a corpus of 10 million "
-                      "abstracts and a thousand queries a second. The bi- "
-                      "encoder line is still one pass per query and the "
-                      "cross-encoder line has become impossible. The two- "
-                      "stage pipeline is not an optimisation; it is the only "
-                      "shape that fits."}),
+            **{"try": "redo the three lines for a corpus of 10 million abstracts "
+                      "and a thousand queries a second. The bi-encoder line is "
+                      "still one pass per query and the cross-encoder line has "
+                      "become impossible. The two-stage pipeline is not an "
+                      "optimisation; it is the only shape that fits."}),
         code('''
 print(f"full cross-encoder scan   {N * len(qids):,} transformer passes")
 print(f"re-rank BM25's top 100    {100 * len(qids):,}")
