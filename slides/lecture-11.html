@@ -795,8 +795,12 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
   0.1414 &mdash; against Glorot's
   0.1000 and the default's
   0.0577.</p>
-  <p class="lead fix">Then
-  $\rho = \sqrt{n\cdot(2/n)\cdot\tfrac12} = 1$, exactly.</p>
+  <p class="lead fix">Then $\rho = \sqrt{n_{\text{out}}\cdot
+  \tfrac{2}{n_{\text{in}}}\cdot\tfrac12} = \sqrt{n_{\text{out}}/n_{\text{in}}}$
+  &mdash; which is 1 exactly when the fans are equal.</p>
+  <p class="smaller muted">He fixes the <em>forward</em> condition, so it uses the
+  fan-in. The backward one coincides only on a square layer; off square, Glorot's
+  compromise is still the honest choice.</p>
 </section>
 
 <!-- 53 -->
@@ -817,11 +821,12 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
 <section data-menu-title="It compounds">
   <h2>And then it compounds</h2>
   <div class="eqn-box">
-    $$\frac{\lVert g_1 \rVert}{\lVert g_{L} \rVert} \;=\; \rho^{\,L-1}$$
+    $$\frac{\lVert g_1 \rVert}{\lVert g_{L} \rVert} \;=\; \rho^{\,L-1}
+    \qquad \text{$L$ layers, $L-1$ steps between them}$$
   </div>
   <p class="lead">There is no safe value of $\rho$ except one.</p>
   <table>
-    <tr><th class="num">$\rho$</th><th class="num">over 19 layers</th><th>what you see</th><th>where</th></tr>
+    <tr><th class="num">$\rho$</th><th class="num">over 19 steps</th><th>what you see</th><th>where</th></tr>
     <tr><td class="num fail">0.144</td><td class="num fail">$10^{-16}$</td><td class="fail">the loss does not move</td><td class="fail">the previous lecture</td></tr>
     <tr><td class="num">0.707</td><td class="num">$10^{-3}$</td><td>trains, slowly, badly</td><td>in forty minutes</td></tr>
     <tr><td class="num hit">1.000</td><td class="num hit">1</td><td class="fix">every layer learns</td><td class="fix">the target</td></tr>
@@ -875,7 +880,8 @@ nn.init.xavier_uniform_(w)     # U(-r, r),  r = sqrt(6/(fan_in + fan_out))
         <strong>same condition only when the fans are equal</strong></li>
     <li>Glorot takes the harmonic mean of the two; He doubles it because ReLU
         discards half the variance</li>
-    <li>The per-layer factor compounds as $\rho^{L}$, so only
+    <li>The per-layer factor is applied once per layer, so over $L$ layers
+        it compounds as $\rho^{L}$ &mdash; and only
         $\rho = 1$ survives depth</li>
   </ol>
   <p class="small muted">Point 4 is the one that makes deep networks a separate
@@ -1379,8 +1385,8 @@ layers += [nn.Linear(prev, width), nn.BatchNorm1d(width),
     <li>Derived why: a layer's output variance depends on fan-in and weight
         variance, and preserving the forward signal and the backward gradient
         impose <em>conflicting</em> requirements</li>
-    <li>Saw Glorot's compromise between them, and He's adjustment for ReLU,
-        which halves the variance</li>
+    <li>Saw Glorot's compromise between them, and He's adjustment &mdash;
+        doubling $\operatorname{Var}(w)$ because ReLU discards half of it</li>
     <li>Understood that the error compounds geometrically, so twenty layers
         multiply a per-layer factor twenty times</li>
     <li>Applied seven repairs &mdash; initialisation, activation, normalisation,
