@@ -1128,7 +1128,7 @@ plt.legend(); plt.tight_layout(); plt.show()
 '''),
 
         md("""
-## 12b · The requirement the metric cannot see
+## 16 · The requirement the metric cannot see
 
 The brief said *"within the hour"*, which makes inference cost a stated
 requirement — and accuracy says nothing about it. So time it: raw strings
@@ -1191,7 +1191,7 @@ to bind in the next lecture, where the model is 25 times larger.
 """),
 
         md("""
-## 16 · Where we are
+## 17 · Where we are
 
 Write your **best accuracy** on the same sheet of paper, next to what you
 predicted. Bring it to the next lecture — we open by comparing them.

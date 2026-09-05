@@ -181,6 +181,40 @@ def check_every_cell_has_a_box(nb, fails):
                          f"(§4.1)")
 
 
+def check_section_numbering(nb, fails) -> None:
+    """Sections run 1, 2, 3 ... with no repeats and no jumps backwards.
+
+    Round 3 found three notebooks that did not: lecture 17 ran 15 -> 12b -> 16,
+    lecture 14 had two section 3s, and lecture 2 had two section 9s because a
+    cell added in round 2 was numbered 8b and inserted after section 9. A
+    student following "run the cells in order" reads the heading, not the cell
+    index, so a heading that goes backwards is a navigation defect in the one
+    artefact they actually execute.
+    """
+    import re as _re
+    secs = []
+    for c in nb["cells"]:
+        if c["cell_type"] != "markdown":
+            continue
+        src = "".join(c["source"])
+        secs += [m.group(1) for m in _re.finditer(r"^##\s+(\d+[a-z]?)\s*·",
+                                                  src, _re.M)]
+    if len(set(secs)) != len(secs):
+        dupes = sorted({s for s in secs if secs.count(s) > 1})
+        fails.append(f"section number(s) used twice: {dupes}  ({secs})")
+    # A lettered section belongs immediately after its base: 8b sits between 8
+    # and 9. Ordering only the plain digits would have let lecture 17's
+    # "15 -> 12b -> 16" pass, which is the defect this check exists for.
+    def rank(sec: str) -> float:
+        base = int(_re.match(r"\d+", sec).group())
+        suffix = sec[len(str(base)):]
+        return base + (ord(suffix) - ord("a") + 1) / 100 if suffix else base
+
+    ranks = [rank(x) for x in secs]
+    if ranks != sorted(ranks):
+        fails.append(f"section numbers do not ascend: {secs}")
+
+
 def check_every_box_has_a_try(nb, fails):
     """§4.1a — every prompt box names one modification and its consequence.
 
@@ -297,6 +331,7 @@ def main() -> int:
         check_annotation_budget(nb, fails)
         check_every_cell_has_a_box(nb, fails)
         check_every_box_has_a_try(nb, fails)
+        check_section_numbering(nb, fails)
         check_clock_markers(nb, fails)
 
         notes: list[str] = []

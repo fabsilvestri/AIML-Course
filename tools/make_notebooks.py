@@ -1175,7 +1175,7 @@ the money is not. Which of those two sentences you put in the report is the
 whole of the absolute-versus-relative question, and the brief already answered
 it.
 
-## 8b · What did the leak actually cost?
+## 10 · What did the leak actually cost?
 
 The rule is procedural because the cost is not knowable from the code. That
 does not mean it is unmeasurable *afterwards* — and a single split gives one
@@ -1261,7 +1261,7 @@ nothing, the cost elsewhere is unbounded, and the code cannot tell you which
 case you are in.
 """),
         md("""
-## 9 · Where we are
+## 11 · Where we are
 
 - Fitting a linear model is orthogonal projection, and you verified the
   orthogonality numerically rather than taking it on trust.

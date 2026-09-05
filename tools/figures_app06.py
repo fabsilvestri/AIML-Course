@@ -145,7 +145,7 @@ def fig_class_balance(d):
     ax.set_xticklabels(CLASSES, rotation=30, ha="right")
     ax.set_ylabel("training images")
     ax.set_ylim(0, counts.max() * 1.18)
-    ax.set_title("Fashion MNIST is perfectly balanced — unlike Lecture 3's detector")
+    ax.set_title("Fashion MNIST is perfectly balanced — unlike the rare-event detector")
     fig.tight_layout()
     save(fig, "l11-class-balance")
 

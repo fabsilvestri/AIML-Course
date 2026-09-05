@@ -282,6 +282,22 @@ def check_figure_lecture_refs() -> list[str]:
         n = int(deck.stem.split("-")[1])
         for m in re.finditer(r'src="[^"]*assets/figures/([^"]+\.svg)"', deck.read_text()):
             used.setdefault(m.group(1), n)
+    # Coverage, reported rather than implied. matplotlib renders its labels as
+    # paths, so 160 of the 199 figures contain no readable text at all -- this
+    # check can say nothing about them, and silence must not read as approval.
+    # The generators are the place those labels can be read, so they are
+    # scanned too: three stale lecture numbers were sitting in set_title() and
+    # legend calls, rendered into plots on deck 11 and deck 17 where students
+    # could see them and no grep could.
+    unreadable = 0
+    for gen in sorted((ROOT / "tools").glob("figures_*.py")):
+        for m in re.finditer(r"(?:set_title|set_xlabel|set_ylabel|annotate|"
+                             r"ax\.text|label)\s*\(\s*[\"'][^\"']*?"
+                             r"Lectures?\s+(\d+)", gen.read_text()):
+            out.append(f"tools/{gen.name}: a plot label names Lecture "
+                       f"{m.group(1)} — matplotlib renders it as paths, so it "
+                       f"is visible to students and invisible to every grep. "
+                       f"Say it in the deck's prose instead, or name no lecture.")
     for name, deck_n in sorted(used.items()):
         path = ROOT / "assets" / "figures" / name
         if not path.exists():

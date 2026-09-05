@@ -1131,7 +1131,7 @@ def fig_alone(l14):
     ax.set_xlabel("test accuracy, %")
     ax.set_xlim(0, max(acc) * 1.25)
     ax.grid(axis="y", visible=False)
-    ax.set_title("Each repair applied alone to the Lecture 13 network")
+    ax.set_title("Each repair applied alone to the twenty-layer network")
     fig.tight_layout()
     save(fig, "l14-alone")
 
@@ -1140,7 +1140,7 @@ def fig_grad_fixed(l14, l13):
     fig, ax = plt.subplots(figsize=(11.0, 3.4))
     x = np.arange(1, len(l13["grad64"]) + 1)
     ax.semilogy(x, l13["grad64"], color=ACCENT, lw=2.5, marker="o", ms=4,
-                label="Lecture 13's network")
+                label="the network this lecture opened on")
     ax.semilogy(x, l14["grads_fixed"], color=SUCCESS, lw=2.5, marker="s", ms=4,
                 label="He, ReLU, batch normalisation")
     plain_log(ax, "y", decades(list(l13["grad64"]) + list(l14["grads_fixed"]), 4),
@@ -1150,7 +1150,7 @@ def fig_grad_fixed(l14, l13):
     ax.set_xlabel("layer  (1 = nearest the input)")
     ax.set_ylabel("‖∂L/∂W‖")
     ax.legend(loc="lower right")
-    ax.set_title("The figure Lecture 13 ended on, repaired (log scale)")
+    ax.set_title("The gradient profile this lecture opened on, repaired (log scale)")
     fig.tight_layout()
     save(fig, "l14-grad-fixed")
 

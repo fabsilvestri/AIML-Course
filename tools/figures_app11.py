@@ -1157,7 +1157,7 @@ def fig_clusters(cl):
                      xytext=(best + 1.4, cl["silhouette"][best] - 0.0015),
                      color=SUCCESS, fontsize=SMALL)
     axes[0].set_xlabel("clusters, k"); axes[0].set_ylabel("silhouette")
-    axes[0].set_title("choose k as in Lecture 9")
+    axes[0].set_title("choose k by silhouette, not by eye")
 
     sizes = [g["size"] for g in cl["groups"]]
     # bigram terms get long; a y-label wider than the axes shrinks the whole

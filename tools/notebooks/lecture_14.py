@@ -324,7 +324,7 @@ print(f"perfect                     MAE 0.00")
 '''),
 
         md("""
-## 3 · The derivation, part 1 — intersection over union
+## 4 · The derivation, part 1 — intersection over union
 
 Last time you were asked for a number that says how right a box is. It has to
 
@@ -523,7 +523,7 @@ except AssertionError:
 
         # ------------------------------------------------ vanishing gradient
         md("""
-## 4 · The derivation, part 2 — the gradient that is not there
+## 5 · The derivation, part 2 — the gradient that is not there
 
 IoU does three jobs: matching, suppression, and serving as a loss. Only the
 third needs a derivative, and that is the one that breaks.
@@ -674,7 +674,7 @@ the evaluation, which we *can* measure.
 
         # ------------------------------------------------ AP
         md("""
-## 5 · The derivation, part 3 — average precision
+## 6 · The derivation, part 3 — average precision
 
 ⏱ **a few minutes on CPU**: the same detector as last lecture, over the same
 128 images.
@@ -933,7 +933,7 @@ plt.tight_layout(); plt.show()
 
         # ------------------------------------------------ mAP
         md("""
-## 6 · The derivation, part 4 — mAP, a mean of a mean
+## 7 · The derivation, part 4 — mAP, a mean of a mean
 
 ⏱ **about 60 seconds**: 73 classes × 10 IoU thresholds.
 """),
@@ -1041,7 +1041,7 @@ print("One number in the middle stands for both.")
 
         # ------------------------------------------------ second failure
         md("""
-## 7 · The detector
+## 8 · The detector
 
 Nothing is trained here. These are the weights torchvision ships, trained on
 COCO's training split by someone else, and this lecture is about evaluating
@@ -1169,7 +1169,7 @@ print(f"the truth:            {n_true.mean():.2f} objects per image")
 '''),
 
         md("""
-## 8 · The threshold is a knob, and nobody chose it
+## 9 · The threshold is a knob, and nobody chose it
 
 Sweep it and watch the answer to the stakeholder's question move by a factor of
 ten.
@@ -1204,7 +1204,7 @@ print("then report on, which is choosing a hyperparameter on the test set.")
 '''),
 
         md("""
-## 9 · Look at the pictures, not only at the number
+## 10 · Look at the pictures, not only at the number
 
 Three images with their predicted boxes. Labels are drawn only for confident
 detections, because a crowded image stacks fourteen captions on top of each
@@ -1281,7 +1281,7 @@ print("\\nA count of objects scores both of them perfect.")
 '''),
 
         md("""
-## 10 · Per-image averaging
+## 11 · Per-image averaging
 
 An assistant asked to *"report mAP over the dataset"* will sometimes compute AP
 for each image and average those. It runs, and it is worth a great deal of free
@@ -1334,7 +1334,7 @@ other.
 
         # ------------------------------------------------ NMS
         md("""
-## 11 · Non-maximum suppression
+## 12 · Non-maximum suppression
 
 The detector you ran had already thrown away nine tenths of its own output
 before you saw it, using IoU, at a threshold you did not set.
@@ -1410,7 +1410,7 @@ print("Too high and every object keeps its duplicates. It is another knob.")
 
         # ------------------------------------------------ segmentation
         md("""
-## 12 · Per-pixel prediction
+## 13 · Per-pixel prediction
 
 A box was always an approximation: a bicycle's box is mostly not bicycle. Ask
 instead for a label on every pixel.
@@ -1528,7 +1528,7 @@ print("lecture is measured against the annotator's decision.")
 '''),
 
         md("""
-## 13 · Where we are
+## 14 · Where we are
 
 - A label is not an answer when the question is *where* and *how many*.
 - IoU is exactly zero for every pair of disjoint boxes, so as a loss it gives
