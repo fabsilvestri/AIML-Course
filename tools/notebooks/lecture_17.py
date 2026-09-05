@@ -625,8 +625,10 @@ test_flat = [w for s in test_x for w in word_tokens(s)]
 oov = sum(1 for w in test_flat if w not in w2i)
 distinct_test = set(test_flat)
 oov_types = sum(1 for w in distinct_test if w not in w2i)
+print(f"full vocabulary:            {len(w2i):,} words")
 print(f"unseen test tokens:         {oov / len(test_flat):.1%}")
 print(f"unseen DISTINCT test words: {oov_types / len(distinct_test):.1%}")
+print("  <- that last number is the floor: no larger word vocabulary reaches it")
 '''),
         md("""
 The token rate looks survivable. The rate over *distinct* words never does — and

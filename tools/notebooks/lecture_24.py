@@ -396,8 +396,8 @@ sim_missing[:, blanked] = -np.inf
 
 r_full, r_missing = ranks_of_truth(sim_full), ranks_of_truth(sim_missing)
 print(f"R@1 on the 60 blanked entries — described: "
-      f"{(r_full[blanked] <= 1).mean():.1%},  deleted: "
-      f"{(r_missing[blanked] <= 1).mean():.1%}")
+      f"{(r_full[blanked] <= 1).mean():.2%},  deleted: "
+      f"{(r_missing[blanked] <= 1).mean():.2%}")
 '''),
 
         prompt(

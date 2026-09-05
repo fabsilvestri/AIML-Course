@@ -281,7 +281,7 @@ def train_scratch(d, *, epochs=EPOCHS, lr=LR, seed=SEED, mean=None, std=None,
             "state": {k: v.detach().cpu() for k, v in net.state_dict().items()}}
 
 
-# ------------------------------------------------------------- thread 8 · (1)
+# ------------------------------------------------------------- Lecture 12 · (1)
 
 def dense_vs_conv() -> dict:
     """Weights in a dense layer against weights in the real first conv layer.
@@ -308,7 +308,7 @@ def dense_vs_conv() -> dict:
             "ratio_3x3": dense / (c_out * c_in * 3 * 3)}
 
 
-# ------------------------------------------------------------- thread 8 · (2)
+# ------------------------------------------------------------- Lecture 12 · (2)
 
 def equivariance(state, d, shift=16) -> dict:
     """Measure equivariance and invariance on the trained first layer.
@@ -363,7 +363,7 @@ def equivariance(state, d, shift=16) -> dict:
             "resolution_loss": (IMG * IMG) / ((IMG // 16) ** 2)}
 
 
-# ------------------------------------------------------------- thread 8 · (3)
+# ------------------------------------------------------------- Lecture 12 · (3)
 
 def memory_budget(batches=(1, 8, 16, 32, 64, 128)) -> dict:
     """Where the memory actually goes: parameters against activations.
@@ -1372,7 +1372,7 @@ def diagram_memory():
              'kept because the backward pass evaluates each Jacobian at the '
              'value</text>')
     b.append('<text class="t-sub" x="360" y="316" text-anchor="middle">'
-             'the forward pass reached &#8212; thread 6, in bytes</text>')
+             'the forward pass reached &#8212; Lecture 10, in bytes</text>')
     b.append('<text class="t" x="360" y="350" text-anchor="middle" '
              'fill="#c0392b">&#215; batch size</text>')
     b.append('<line x1="700" y1="295" x2="756" y2="295" class="flow" '

@@ -81,7 +81,16 @@ NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
 # was removed on 2026-09-03 because a clean run showed the list declaring three
 # and using two. An exemption nobody needs is a standing permission with no
 # justification attached, which is the thing this list exists to prevent.
+# A unit after the digits means the number measures the machine, not the model.
+UNIT = re.compile(r"\s*(?:GB|MB|KB|TB|GiB|MiB|kB)\b")
+
 SCALE_ONLY: dict[str, str] = {
+    "l21_oov":
+        "L17's deck quotes the OOV curve measured on the full IMDb training "
+        "half (79,003 distinct words, 42.8% of test types unseen at the top of "
+        "the curve). The notebook subsamples so it finishes on a CPU, so its "
+        "vocabulary is smaller. The shape of the curve, which is the claim, is "
+        "the same; figures_app11.py computes the plotted values at full scale.",
     "l22_errors_scratch":
         "L18 deck scores all 25,000 test reviews; the notebook scores 3,000 so "
         "it finishes on a CPU. It prints its own error counts at its own scale.",
@@ -254,8 +263,23 @@ def stated_facts(deck: Path, own) -> list[tuple[int, float, str, str]]:
                 continue
             if DURATION.match(run[nm.end(): nm.end() + 12].strip()):
                 continue                          # AUTHORING 3.2a
+            # A price is not a measurement this course computed -- "$12,500" is
+            # a stripe in the label histogram, not a figures.json quantity that
+            # happens to share its digits. Same for a number carrying a unit:
+            # "15.4 GB" of memory is not BM25's precision@5.
+            if raw and nm.start() and run[nm.start() - 1] in "$£€":
+                continue
+            if UNIT.match(run[nm.end(): nm.end() + 8]):
+                continue
             if significant(raw) < 4:
-                continue                          # too round to be a quotation
+                # Too round to be a quotation. Three digits was tried in
+                # round 3 and reverted: it doubles coverage (944 -> 1893) but
+                # matches on value alone, so "$12,500", "15.4 GB" and a 0.157
+                # that is Lecture 14's mAP gap all collide with unrelated keys.
+                # The currency and unit rules above remove three of those
+                # classes; the rest would need per-case exemptions, and an
+                # exemption list is where the next defect hides.
+                continue
             if 1900 <= v <= 2100 and float(v).is_integer():
                 continue                          # a year
             key = fact_for(v, own)
@@ -375,6 +399,15 @@ def main() -> int:
             total += 1
             continue
         stated = stated_facts(deck, own)
+        if not stated:
+            # The other half of the same failure: a namespace that matches keys,
+            # a deck that states none of them, and a check that reports ok for
+            # comparing nothing. An empty selection must fail, not pass.
+            print(f"{RED}FAIL{OFF}  lecture {n:02d} — {len(own)} figures "
+                  f"available in {NAMESPACES[n]} and the deck quotes none of "
+                  f"them precisely enough to check, so nothing was checked.")
+            total += 1
+            continue
         seen, uniq, excused, excused_cross = set(), [], set(), set()
         for line, v, key, ctx in stated:
             if matches(v, printed) or v in seen:

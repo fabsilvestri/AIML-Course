@@ -748,7 +748,10 @@ CUT_SEL, CUT_END = "2018-07-01", "2019-01-01"
 # needs its own baseline for the same reason.
 _lad = _mask & (target.index >= CUT_END)
 NAIVE_LADDER = float((target[_lad] - _naive[_lad]).abs().mean())
-print(f"copy last week, ladder rows only  MAE {NAIVE_LADDER:>10,.0f}")
+NAIVE_LADDER_MAPE = float((100 * (target[_lad] - _naive[_lad]).abs()
+                           / target[_lad].abs()).mean())
+print(f"copy last week, ladder rows only  MAE {NAIVE_LADDER:>10,.0f}"
+      f"   MAPE {NAIVE_LADDER_MAPE:5.1f}%")
 
 def select_and_fit(kind, X, y, dates):
     """Choose the recipe inside the training period, then refit on all of it.
