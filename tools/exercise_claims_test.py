@@ -158,6 +158,66 @@ except ImportError as exc:                    # pragma: no cover
 # L23 Q4 -- one relevant item ranked uniformly among n
 eq("L23 Q4  random recall@10 of 200", 10 / 200, 0.05, 0)
 
+# ---------------------------------------------------------------- conclusions
+# A solution can be well-formed, in scope, traceable to a figure on its deck --
+# and still teach the opposite of the lecture. Lecture 6 Q4 did, for months: it
+# told students that if the accuracy does not move, only the explanation is
+# unstable, while Lecture 6 measures the accuracy stable to 0.25 points with
+# 9.1% of predictions changing and concludes "a stable metric is not evidence
+# of a stable model".
+#
+# There is no general check for this. A rule like "an answer about a measured
+# result must cite the measurement" was tried and abandoned: 101 of the 120
+# answers cite no figure, because most of these questions are conceptual by
+# design, so the rule would have been noise rather than a check.
+#
+# What CAN be pinned is the conclusion itself. Each entry below is a solution
+# that was found reversed, vague or contradicted by its own deck, and repaired.
+# The pin fails if the repair is ever undone. Append, never rewrite.
+CONCLUSIONS = [
+    (6, 4, ["9.1", "0.25", "stable model"], ["predictions can be stable"],
+     "L6 measures a stable metric beside unstable predictions"),
+    (19, 3, ["0.1261", "0.1809"], ["idf mattered most"],
+     "the ablation never prices saturation alone"),
+    (11, 1, [r"\rho^{L-1}"], [r"multiply by $\rho^L$"],
+     "deck 11 evaluates 19 steps for 20 layers"),
+    (24, 5, ["Split before anything is fitted", "None of them is mathematics"],
+     ["preprocessing inside the cross-validated object"],
+     "the five rules are deck 24's, not a plausible substitute"),
+    (4, 2, ["FamilySize"], [],
+     "five of the six dependencies are the encoder's, the sixth is engineered"),
+    (18, 3, [r"2\times10^{-5}"], ["tens of steps"],
+     "the timescale was in the notebook only; the rate is on the deck"),
+    (18, 1, ["d_k"], ["grows with"],
+     "the deck derives Var(s) = d_k exactly"),
+    (20, 3, ["changes the task"], [],
+     "deck 20's revision slide once said the batch is only a memory limit"),
+    (17, 5, ["Subword"], [],
+     "a larger word vocabulary cannot reach the floor"),
+]
+
+
+def check_conclusions() -> None:
+    import sys as _s
+    _s.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent))
+    from make_exercises import EXERCISES
+    for lec, q, must, must_not, why in CONCLUSIONS:
+        it = EXERCISES[lec][q - 1]
+        text = it["a"] + " " + " ".join(it["why"])
+        missing = [m for m in must if m not in text]
+        present = [m for m in must_not if m in text]
+        ok = not missing and not present
+        print(f"{'ok  ' if ok else 'FAIL'}  L{lec:02d} Q{q} conclusion: {why}")
+        if missing:
+            fails.append(f"L{lec:02d} Q{q} lost: {missing}")
+            print(f"        lost from the answer: {missing}")
+        if present:
+            fails.append(f"L{lec:02d} Q{q} regressed: {present}")
+            print(f"        reverted phrasing is back: {present}")
+
+
+check_conclusions()
+
 print()
 if fails:
     print(f"{len(fails)} claim(s) failed: {', '.join(fails)}")

@@ -196,6 +196,48 @@ def check(path: Path) -> list[str]:
     return out
 
 
+def check_hardware_claim() -> list[str]:
+    """The course runs on CPU. Nothing may tell a student otherwise.
+
+    Lecture 1 told students that Parts II-VI need a GPU runtime. Lecture 10
+    measures the accelerator running this course's network at 0.84x -- slower
+    than the CPU -- and says every notebook is sized for Colab's free tier. Deck
+    10 then instructed "Runtime -> Change runtime type -> T4 GPU. …if it says
+    cpu, stop and fix that now", two slides after its own crossover table. Three
+    artefacts, two answers, and the one a student acts on was the wrong one.
+
+    So the claim is settled and mechanical: no artefact may instruct a change of
+    runtime, and an assertion that a GPU is needed may appear only inside
+    quotation marks, where the course is quoting the advice in order to argue
+    with it.
+    """
+    out: list[str] = []
+    targets = ([ROOT / "index.html", ROOT / "LECTURES.md", ROOT / "README.md"]
+               + sorted((ROOT / "slides").glob("lecture-*.html")))
+    instruct = re.compile(r"Change runtime type|Runtime\s*&rarr;|select a GPU|"
+                          r"switch to a (?:T4|GPU)", re.I)
+    assert_gpu = re.compile(r"needs? a GPU|need a GPU runtime|requires? a GPU|"
+                            r"GPU (?:is )?required", re.I)
+    for path in targets:
+        raw = path.read_text(encoding="utf-8")
+        rel = path.relative_to(ROOT)
+        for m in instruct.finditer(raw):
+            line = raw[:m.start()].count("\n") + 1
+            out.append(f"{rel}:{line}: tells a student to change the runtime — "
+                       f"every notebook is sized for the free CPU tier, and "
+                       f"Lecture 10 measures the accelerator as slower here")
+        for m in assert_gpu.finditer(raw):
+            # allowed only when quoted, i.e. reported in order to be argued with
+            window = raw[max(0, m.start() - 220):m.start()]
+            if "&ldquo;" in window and "&rdquo;" not in window.split("&ldquo;")[-1]:
+                continue
+            line = raw[:m.start()].count("\n") + 1
+            out.append(f"{rel}:{line}: asserts a GPU is needed ({m.group()!r}) "
+                       f"outside a quotation — the course is CPU-only and "
+                       f"measures why")
+    return out
+
+
 def check_site_index() -> list[str]:
     """Every lecture must appear on the site, and its state must be honest.
 
@@ -293,6 +335,7 @@ def main() -> int:
         if page.exists():
             problems += check(page)
     problems += check_site_index()
+    problems += check_hardware_claim()
     problems += check_type_scale()
 
     if problems:

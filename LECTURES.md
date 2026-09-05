@@ -41,7 +41,7 @@ notebook:
   works through the notebook has also seen how to ask an assistant for each
   piece of it;
 - states the wall-clock cost of any cell that takes more than about 20 seconds,
-  and whether it needs a GPU;
+  measured on the free CPU tier every notebook is sized for;
 - contains nothing that is wrong on purpose.
 
 Notebooks are for self-study. The last five minutes of the lecture tour the
