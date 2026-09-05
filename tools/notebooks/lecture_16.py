@@ -291,11 +291,12 @@ y = torch.stack([t for _, t in dataset])
 # neighbours in the training set.
 cut = int(len(X) * 0.8)
 
-# Lecture 15's two reference numbers, rebuilt rather than inherited: the naive
-# forecast every model has to beat, the target we committed to before fitting
-# anything, and the linear model measured under the honest forward split. A
-# notebook that only runs because a previous one is still in memory is not
-# reproducible, and these three decide whether anything below is an improvement.
+# Lecture 15's reference numbers, recomputed here rather than inherited from a
+# kernel that may not still be running: the naive forecast every model has to
+# beat, the target committed to before anything was fitted, and the linear
+# model under the honest forward split. A notebook that only runs because a
+# previous one is still in memory is not reproducible, and these decide whether
+# anything below is an improvement.
 from sklearn.linear_model import LinearRegression
 
 _naive = pool.shift(7)[WINDOW:]
@@ -310,7 +311,19 @@ _test = _mask.copy()
 _test.iloc[:cut] = False
 NAIVE_ALL  = float((target[_mask] - _naive[_mask]).abs().mean())
 NAIVE_MAE  = float((target[_test] - _naive[_test]).abs().mean())
-TARGET_MAE = NAIVE_MAE * (1 - 0.10)          # the 10% we committed to
+
+# The commitment does NOT move. Lecture 15 fixed it at 10% better than the
+# naive forecast, and printed the number precisely so it could not be quietly
+# revised afterwards. It was computed from the pool-wide baseline, so it is
+# 0.9 * NAIVE_ALL -- and we inherit that number rather than recomputing it.
+#
+# Recomputing it here would be worse than a rounding change. The forward rows
+# are harder, so the row-matched baseline is larger, so 10% of it is a LAXER
+# bar: 60,503 instead of 49,859, and models that miss the commitment would
+# appear to clear it. A correction that moves the bar in your own favour is
+# exactly the one to distrust.
+COMMITTED_MAE = NAIVE_ALL * (1 - 0.10)       # 49,859 -- Lecture 15's, unchanged
+BAR_ON_TEST   = NAIVE_MAE * (1 - 0.10)       # what the same rule asks on these rows
 
 _values = pool.values / 1e6
 _Xl = np.stack([_values[i:i + WINDOW] for i in range(len(_values) - WINDOW)])
@@ -321,7 +334,8 @@ honest = 1e6 * float(np.abs(
 print(f"train {cut}, test {len(X) - cut}, split by time")
 print(f"naive, test rows only   MAE {NAIVE_MAE:>10,.0f}")
 print(f"naive, all 1,191 days   MAE {NAIVE_ALL:>10,.0f}  <- not comparable")
-print(f"target                  MAE {TARGET_MAE:>10,.0f}")
+print(f"committed target        MAE {COMMITTED_MAE:>10,.0f}   Lecture 15's, fixed")
+print(f"  the same 10% here     MAE {BAR_ON_TEST:>10,.0f}   laxer, because these rows are harder")
 print(f"linear, forward split   MAE {honest:>10,.0f}")
 
 assert X.shape == (len(pool) - WINDOW, WINDOW, 1), X.shape
@@ -442,18 +456,19 @@ print(f"{'model':32s}{'MAE':>12s}{'vs naive':>12s}")
 for name, score in rows:
     print(f"{name:32s}{score:>12,.0f}{(NAIVE_MAE - score) / NAIVE_MAE:>11.1%}")
 print()
-print(f"target                 {TARGET_MAE:>12,.0f}")
+print(f"committed target       {COMMITTED_MAE:>12,.0f}   (Lecture 15, fixed before fitting)")
 '''),
     ]
     cells += [
         md("""
-### Which of those four is "the" number?
+### Which of these is "the" number?
 
-The lecture quotes the **single forward hold-out**, because it is the protocol
+This lecture quotes the **single forward hold-out**, because it is the protocol
 that matches how the model would actually be used: fit once on everything up to
-a date, forecast forward from there. The purged five-fold is stricter still, and
-its margin is smaller again — mostly because its first fold trains on a couple of
-hundred days and is scored anyway.
+a date, forecast forward from there. Lecture 15 measured three others on the
+same series — a random five-fold, a forward five-fold, and a forward five-fold
+with a purge — and it is worth going back to that table before accepting this
+one.
 
 The useful discipline is not picking the smallest number. It is **saying which
 protocol produced the one you quote**, so that a reader can reproduce it and a
@@ -799,7 +814,7 @@ print(f"\\n{'copy last week':28s}{NAIVE_LADDER:>10,.0f}")
             input="the univariate windows, five shuffled folds",
             output="the RNN's MAE under the protocol Lecture 15 showed was wrong",
             constraint="the same architecture and the same recipe as the ladder's row — only the splitter changes, or the comparison is not about the splitter",
-            check="compare it with the ladder's forward-split row. The gap is the protocol, and it is larger than every architectural difference in the table above.",
+            check="compare it with the ladder's forward-split row. The raw gap is the protocol PLUS the rows -- the two protocols score different days, and the forward ones are harder. Put each number beside its own naive baseline: the skill ratio is what isolates the protocol, and it is still larger than every architectural difference in the table above.",
             **{"try": "run the same five folds with KFold(5, shuffle=False). "
                       "It is still not a forward split — fold 1 trains on the "
                       "future of fold 5 — but it does keep neighbouring "
@@ -815,10 +830,24 @@ for tr_i, te_i in KFold(5, shuffle=True, random_state=RANDOM_STATE).split(Xu):
     folds.append(mae_1e6(predict_torch(m, Xu[te_i])[:, 0], yu[te_i, 0]))
 RNN_RANDOM_CV = float(np.mean(folds))
 
+# The two protocols score DIFFERENT rows, so the raw difference mixes the
+# protocol with how hard those rows are. Each number needs its own baseline,
+# and the skill ratio -- model over naive on the same rows -- is what isolates
+# the protocol. This is Lecture 15's own warning applied to our own comparison.
+naive_random = float(np.mean([
+    mae_1e6(Xu[te_i][:, -7, 0], yu[te_i, 0])
+    for _, te_i in KFold(5, shuffle=True, random_state=RANDOM_STATE).split(Xu)]))
+
 forward = [r for r in rows if r[0] == "Simple RNN, 32 units"][0][1]
-print(f"simple RNN, random 5-fold   MAE {RNN_RANDOM_CV:>10,.0f}")
-print(f"simple RNN, forward split   MAE {forward:>10,.0f}")
-print(f"the protocol is worth        {forward - RNN_RANDOM_CV:>10,.0f}")
+print(f"{'':28s}{'MAE':>10s}{'naive':>10s}{'skill':>8s}")
+print(f"{'random 5-fold':28s}{RNN_RANDOM_CV:>10,.0f}{naive_random:>10,.0f}"
+      f"{RNN_RANDOM_CV / naive_random:>8.3f}")
+print(f"{'forward split':28s}{forward:>10,.0f}{NAIVE_LADDER:>10,.0f}"
+      f"{forward / NAIVE_LADDER:>8.3f}")
+print()
+print(f"raw difference  {forward - RNN_RANDOM_CV:>10,.0f}  <- protocol AND rows")
+print(f"skill worsens by{forward / NAIVE_LADDER - RNN_RANDOM_CV / naive_random:>10.3f}"
+      f"  <- the protocol alone")
 '''),
 
         md("""

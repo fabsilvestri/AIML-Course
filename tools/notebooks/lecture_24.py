@@ -51,8 +51,9 @@ Runs on CPU. Nothing here needs an accelerator.
 (cached), plus two more checkpoints: a captioner (about 1 GB) and a small
 instruction-tuned language model (about 1 GB). It does **not** download COCO.
 
-**Expected wall clock on a Colab GPU runtime:** five to eight minutes end to
-end.
+**Expected wall clock on Colab's free CPU tier:** five to eight minutes end to
+end, most of it downloads. That is the tier every notebook in this course is
+sized for.
 """
 
 

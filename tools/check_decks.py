@@ -219,9 +219,11 @@ def check_hardware_claim() -> list[str]:
                + sorted((ROOT / "slides").glob("lecture-*.html"))
                + sorted((ROOT / "tools" / "notebooks").glob("lecture_*.py"))
                + sorted((ROOT / "notebooks").glob("lecture-*.ipynb"))
-               + sorted((ROOT / "assets" / "figures").glob("*.svg")))
+               + sorted((ROOT / "assets" / "figures").glob("*.svg"))
+               + [ROOT / "AUTHORING.md", ROOT / "tools" / "make_notebooks.py"])
     instruct = re.compile(r"Change runtime type|Runtime\s*&rarr;|select a GPU|"
-                          r"switch to a (?:T4|GPU)", re.I)
+                          r"switch to a (?:T4|GPU)|"
+                          r"on a (?:Colab )?GPU runtime|GPU runtime:", re.I)
     # Round 2 found this class alive on deck 10 after round 1 repaired the two
     # slides around it: "from this lecture to the end of the course everything
     # runs on a GPU" matched none of the first patterns. Match the claim, not

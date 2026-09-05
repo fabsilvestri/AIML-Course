@@ -113,7 +113,8 @@ temporal correlation, popularity bias. They are taught, not sprung.
 ### 3.4 The notebook slide
 
 The last slide of every deck: what the notebook contains, what to run first,
-what needs a GPU, what to change and see what happens. Links to the Colab badge.
+what to change and see what happens. Links to the Colab badge. Every notebook
+runs on Colab's free CPU tier; none of them needs an accelerator.
 
 ---
 
@@ -217,7 +218,7 @@ If `X_train` is a DataFrame in cell 10 it is a DataFrame in cell 40.
 ### 4.5 State the cost.
 
 Any cell over ~20 seconds carries a ⏱ marker and a wall-clock estimate in the
-markdown above it, and says whether it needs a GPU.
+markdown above it, measured on the free CPU tier every notebook is sized for.
 
 ### 4.6 It runs cold.
 

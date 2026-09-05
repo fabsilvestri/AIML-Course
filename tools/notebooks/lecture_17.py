@@ -1071,9 +1071,10 @@ tuned, curve_tuned, _ = train(
 ## 15 · The test set. Once.
 
 This is the first time a *neural* model is scored on the test half. The two
-anchors it is compared against — the majority-class rate in section 3 and the
-tf-idf baseline in section 4 — were scored there once each, and nothing was
-selected from either.
+anchors it is compared against are both from section 4: the majority-class rate,
+and the tf-idf baseline — which was scored there twice, on single words and then
+on word pairs, and it is the stronger of the two that appears in the table below.
+Nothing was selected using those rows; they were measured and reported.
 
 ⏱ **about a minute** — encoding 25,000 reviews twice and two forward passes.
 """),

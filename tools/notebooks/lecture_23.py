@@ -50,8 +50,10 @@ individual images (about 30 MB), then three model checkpoints (about 1 GB in
 total, cached after the first run). It does **not** download COCO, which is
 about 20 GB.
 
-**Expected wall clock on a Colab GPU runtime:** three to five minutes end to
-end, most of it the first model download.
+**Expected wall clock on Colab's free CPU tier:** three to five minutes end to
+end, most of it the first model download. That is the tier every notebook in
+this course is sized for; an accelerator would shorten the compute, which is
+the smaller half.
 """
 
 

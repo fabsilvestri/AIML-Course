@@ -1137,15 +1137,18 @@ print(f"the test set, once: "
         md("""
 ## 7 · The test set. Once
 
-179 passengers. Nothing has been *selected* using them, which is the rule that
-matters — but they have been read: section 2 evaluated 200 bootstrap draws at six
-degrees on these rows, and section 6 read them seventeen times on purpose to show
-that reading is enough. Both were measurements, neither was a choice. Five
+179 passengers, and they have been read a great deal: 200 bootstrap draws at six
+degrees in section 2, seventeen models in section 6 on purpose, and five more
+below. What has *not* happened is any setting being chosen on them and then
+kept — section 6's `best_C` is computed in order to be thrown away, and the five
+candidates below arrive with their hyperparameters already fixed by
+cross-validation. Naming the best of five reported measurements is a report; add
+a sixth candidate to improve the winner and it becomes a tuning loop. Five
 candidates, every one of whose hyperparameters was fixed before this cell ran.
 """),
         prompt(
             label="the test set, once",
-            input="179 untouched passengers and five candidates with fixed "
+            input="179 test passengers and five candidates with fixed "
                   "hyperparameters",
             output="log loss, Brier and accuracy for each",
             constraint="every hyperparameter must have been fixed BEFORE this "

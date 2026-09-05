@@ -902,7 +902,7 @@ prompt(
        input="the naive baseline and the four protocols' MAEs",
        output="the margin over the baseline that each protocol reports",
        constraint="quote the margin, not the MAE — the margin is what the shuffle was inflating",
-       check="state what share of the claimed margin was protocol rather than model. The margin should shrink monotonically as the protocol gets stricter. If  it does not, either a protocol is mis-implemented or the baseline is being  measured over a different set of days than the models.",
+       check="state what share of the claimed margin was protocol rather than model. Do NOT expect the margins to shrink monotonically as the protocol tightens: the 80% forward hold-out scores the hardest rows in the pool, where copy-last-week degrades faster than the fitted model, so its ratio margin is the largest in the table while its MAE is among the worst. A margin is a ratio of two numbers that both move with the rows.",
        **{"try": "add a fifth row: forward 5-fold with gap = 2 * WINDOW. Does "
                  "the margin keep shrinking? Where it stops shrinking is "
                  "where the purge has begun removing training data rather "

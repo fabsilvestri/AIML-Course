@@ -1184,7 +1184,7 @@ subtraction of two noisy numbers, which is not a measurement. Twenty do.
         prompt(
             label="⏱ 2 min — price the leak",
             input="the numeric housing columns and the target",
-            output="for three models: the seed-42 difference, the mean absolute "
+            output="for three models: the seed-42 difference, the mean "
                    "difference over twenty seeds, and its standard deviation",
             constraint="the leaky arm fits the preprocessing on everything and "
                        "then splits; the correct arm splits first. Nothing else "
