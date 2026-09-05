@@ -81,9 +81,6 @@ NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
 # was removed on 2026-09-03 because a clean run showed the list declaring three
 # and using two. An exemption nobody needs is a standing permission with no
 # justification attached, which is the thing this list exists to prevent.
-# A unit after the digits means the number measures the machine, not the model.
-UNIT = re.compile(r"\s*(?:GB|MB|KB|TB|GiB|MiB|kB)\b")
-
 SCALE_ONLY: dict[str, str] = {
     "l21_oov":
         "L17's deck quotes the OOV curve measured on the full IMDb training "
@@ -263,14 +260,6 @@ def stated_facts(deck: Path, own) -> list[tuple[int, float, str, str]]:
                 continue
             if DURATION.match(run[nm.end(): nm.end() + 12].strip()):
                 continue                          # AUTHORING 3.2a
-            # A price is not a measurement this course computed -- "$12,500" is
-            # a stripe in the label histogram, not a figures.json quantity that
-            # happens to share its digits. Same for a number carrying a unit:
-            # "15.4 GB" of memory is not BM25's precision@5.
-            if raw and nm.start() and run[nm.start() - 1] in "$£€":
-                continue
-            if UNIT.match(run[nm.end(): nm.end() + 8]):
-                continue
             if significant(raw) < 4:
                 # Too round to be a quotation. Three digits was tried in
                 # round 3 and reverted: it doubles coverage (944 -> 1893) but

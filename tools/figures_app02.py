@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Application 2 — rare-event detection on MNIST. Figures and numbers for
+Rare-event detection on MNIST (Lecture 3). Figures and numbers for
 Lectures 3 and 4.
 
     python3 tools/figures_app02.py
@@ -53,7 +53,7 @@ N_FOLDS = 3
 DIGIT = 5
 
 # One shift on the sorting line is exactly the test set: 10,000 scanned digits.
-# Every per-shift count on a Lecture 4 slide is therefore a literal count, not
+# Every per-shift count on a Lecture 3 slide is therefore a literal count, not
 # a rate multiplied by an invented volume.
 DESK_CAPACITY = 1_000        # items the verification desk can re-check, per shift
 RECALL_TARGET = 0.90         # the audit contract's stated floor
@@ -242,7 +242,7 @@ def margin_scale_shift(Xtr, y5, scores, threshold):
 def at_precision(prec, rec, thr, target, n_pos, min_support=None):
     """The lowest threshold whose precision reaches `target`, with its support.
 
-    The precision-recall curve is not monotone — Lecture 4 spends twenty
+    The precision-recall curve is not monotone — Lecture 3 spends twenty
     minutes establishing that — so the first index at which precision touches
     `target` can be one lucky step held up by a handful of flagged instances,
     with the next threshold falling straight back below it.
@@ -641,7 +641,7 @@ def main():
         print(f"    {k:7s} {cv[k]['mean']:.5f}  folds "
               f"{[round(f, 5) for f in cv[k]['folds']]}")
 
-    # ---- Lecture 4 -------------------------------------------------------
+    # ---- Lecture 3 -------------------------------------------------------
     from sklearn.metrics import (average_precision_score, confusion_matrix,
                                  f1_score, precision_recall_curve,
                                  precision_score, recall_score, roc_auc_score,
@@ -841,7 +841,7 @@ def main():
             print("  " + p_)
         raise SystemExit(1)
 
-    print("\nLecture 4 — does the chosen threshold survive the refit?")
+    print("\nLecture 3 — does the chosen threshold survive the refit?")
     facts["margin_scale_shift"] = cached(
         "l04_margin_scale_shift",
         lambda: margin_scale_shift(Xtr, y5, scores,

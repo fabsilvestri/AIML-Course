@@ -164,6 +164,16 @@ def check(path: Path) -> list[str]:
             out.append(f"{rel}:{line}: names a weekday ({m.group()}) — "
                        f"use 'in the next lecture' / 'in two lectures'")
 
+    # 2b. An entity with a stray backslash renders literally: "&middot\;" is
+    #     a dot, a backslash and a semicolon on the slide. Seventeen shipped on
+    #     deck 16 and nothing saw them -- a broken entity is still valid HTML.
+    #     This must read the RAW source: text_runs decodes entities, so by the
+    #     time a run is built the name is gone and only the backslash is left,
+    #     indistinguishable from the LaTeX "\;" that is legitimate inside $...$.
+    for m in BROKEN_ENTITY.finditer(src):
+        out.append(f"{rel}:{src[:m.start()].count(chr(10)) + 1}: entity with a "
+                   f"stray backslash ({m.group()!r}) — renders literally")
+
     # 3. leftover placeholders
     for m in PLACEHOLDERS.finditer(src):
         out.append(f"{rel}:{src[:m.start()].count(chr(10)) + 1}: unsubstituted "
@@ -200,6 +210,9 @@ def check(path: Path) -> list[str]:
             out.append(f"{rel}: {n} slides — below the 70-slide minimum")
 
     return out
+
+
+BROKEN_ENTITY = re.compile(r"&[a-zA-Z]{2,8}\\;")
 
 
 def check_hardware_claim() -> list[str]:
@@ -304,7 +317,15 @@ def check_figure_lecture_refs() -> list[str]:
             continue
         raw = path.read_text(encoding="utf-8")
         body = raw[raw.rindex("</style>") + 8:] if "</style>" in raw else raw
-        text = " ".join(re.sub(r"<[^>]+>", " ", body).split())
+        # matplotlib writes every label into an XML COMMENT beside the glyph
+        # paths that draw it. Stripping tags deletes those comments whole -- so
+        # the first version of this check read the empty string for all 160
+        # plot figures and passed them in silence. Harvest the comments first,
+        # then strip.
+        comments = " ".join(m.group(1) for m in
+                            re.finditer(r"<!--(.*?)-->", body, re.S))
+        text = " ".join((comments + " " +
+                         re.sub(r"<[^>]+>", " ", body)).split())
         for m in re.finditer(r"Lectures?\s*(\d+)(?:\s*(?:&#8211;|-|\u2013)\s*(\d+))?", text):
             for g in m.groups():
                 if g and int(g) > deck_n:

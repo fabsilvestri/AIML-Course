@@ -720,7 +720,7 @@ def fig_pr_sawtooth(precision, recall, ap, cls_name, n_gt, path):
     ax.set_xlabel("detections accepted, in score order")
     ax.set_ylabel("precision")
     ax.set_title(f"steps {lo + 1}–{hi}: {down} down, {up} up — "
-                 f"Lecture 4's sawtooth")
+                 f"precision is not monotone")
     ax.legend(loc="lower left")
     fig.tight_layout()
     return save(fig, path)

@@ -610,7 +610,7 @@ def run_l14(d) -> dict:
 
     print("    the ablation ladder")
     ladder = [
-        ("Lecture 13, unchanged", dict(act="sigmoid", init="torch")),
+        ("unchanged", dict(act="sigmoid", init="torch")),
         ("+ Glorot initialisation", dict(act="sigmoid", init="glorot")),
         ("+ ReLU and He initialisation", dict(act="relu", init="he")),
         ("+ batch normalisation", dict(act="relu", init="he", norm="batch")),
@@ -1010,7 +1010,7 @@ def fig_curves(l14, l13):
     fig, ax = plt.subplots(figsize=(11.0, 3.4))
     ep = range(1, len(l13["deep"]["loss"]) + 1)
     ax.plot(ep, l13["deep"]["loss"], color=ACCENT, lw=2.5, marker="o", ms=4,
-            label="Lecture 13's network")
+            label="the network this lecture opened on")
     ax.plot(ep, l14["fixed"]["loss"], color=SUCCESS, lw=2.5, marker="s", ms=4,
             label="after every repair")
     ax.axhline(math.log(10), color=MUTED, ls=":", lw=1.6)
