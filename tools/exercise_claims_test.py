@@ -194,8 +194,11 @@ CONCLUSIONS = [
      "deck 20's revision slide once said the batch is only a memory limit"),
     (17, 5, ["Subword"], [],
      "a larger word vocabulary cannot reach the floor"),
-    (9, 5, ["fourth of five", "55,000"], ["transfers to this dataset"],
-     "deck 9 shows the sweep failing to transfer to its own dataset at full size"),
+    # The pin said "fourth of five" and froze a wrong rank in place for two
+    # rounds -- exactly the risk these pins carry. Sorted, deck 9's five
+    # accuracies are 86.20, 86.16, 84.80, 84.66, 84.24: (300, 100) is third.
+    (9, 5, ["third of five", "55,000"], ["fourth of five", "the small ones"],
+     "deck 9's sweep ranks (300, 100) third, and prefers the shallow not the small"),
     (18, 4, ["null result", "0.30", "2.53"], ["The 400-document corpus."],
      "deck 18 measures the vectoriser leak as a null result and refutes the "
      "vocabulary mechanism"),

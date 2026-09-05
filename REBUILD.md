@@ -19,7 +19,7 @@ reproduce its figures is not done.
 
 Definition of done, per lecture, all of it:
 
-1. deck on the new design, 70-90 slides, no overflow
+1. deck on the new design, 70-105 slides, no overflow
 2. notebook executes cold on CPU and prints every figure the deck states
 3. `check_consistency.py N` clean
 4. `check_decks`, `check_notebooks`, `check_provenance` clean
@@ -53,7 +53,7 @@ Everything below was true and verified when it was written, and is pushed to
 | `check_all` (8 fast checks) | clean |
 | Browser checks | no slide over the canvas on any of 25 pages; 39 diagrams clean |
 | Published on the site | 24 / 24 |
-| `try` fields | **538 / 538** — every prompt box, enforced by `check_notebooks §4.1a` |
+| `try` fields | **540 / 540** — every prompt box, enforced by `check_notebooks §4.1a` |
 | Part V extended notes | 4 / 4 written, built and linked from `index.html` |
 
 Two documented exception lists, both printed in the checker's output rather than

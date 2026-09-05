@@ -440,9 +440,9 @@ ex(9, "An architecture sweep finds the best hidden-layer size on this dataset. "
       "State what that result does and does not transfer to.", 4,
    "Very little. It holds for this task at the training-set size you swept at, "
    "and not even for the same dataset at full size: the architecture the sweep "
-   "ranked fourth of five is the one that wins on all 55,000 images.",
+   "ranked third of five is the one that wins on all 55,000 images.",
    ["A deeper network needs more data to pay for its extra parameters, so a "
-    "sweep run on a fifth of the data systematically prefers the small ones "
+    "sweep run on a fifth of the data systematically prefers the shallow ones "
     "&mdash; and never finds out",
     "It is a measurement of one sweep at one size, not a rule. Reporting it as "
     "a general recommendation is the error"])
