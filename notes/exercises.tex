@@ -299,7 +299,7 @@ The best-of-grid score is optimistic: it is a minimum over the same folds used t
 Both are strictly concave with a maximum at the uniform distribution and zero at a pure node; they differ only where two splits are nearly tied.
 \begin{itemize}[leftmargin=*,nosep]
   \item Any impurity with those properties ranks most candidate splits identically
-  \item Entropy weighs rare classes slightly more, so it can prefer a split that isolates a small class
+  \item They can part only on a pair of candidate splits whose children are incomparable in that ordering and whose weighted impurities differ by less than 0.055 --- a close call deep in the tree, never at the root
 \end{itemize}
 \end{solution}
 \question{A decision tree is described as `nonparametric'. Explain what that means here, and what it implies about the need for hyperparameters.}{4}
@@ -318,7 +318,7 @@ The decision path counts the nodes visited, including the leaf, and the leaf app
   \item Without the subtraction the count exceeds the tree's own depth, which is what the assert catches
 \end{itemize}
 \end{solution}
-\question{Refitting a tree on two halves of the same data gives visibly different trees. Does this make the model unreliable? Answer, with a reason.}{5}
+\question{Twenty trees are refit on 90\% subsamples of one training set, so any two of them share about 80\% of their rows --- and they still give visibly different trees. Does this make the model unreliable? Answer, with a reason.}{5}
 \begin{solution}[title={Solution}]
 Yes, in the way that matters. The accuracy is stable to 0.25 points while 9.1\% of individual predictions change --- a stable metric is not evidence of a stable model.
 \begin{itemize}[leftmargin=*,nosep]
@@ -466,10 +466,10 @@ XOR is not linearly separable; one hidden layer fixes it.
 \end{solution}
 \question{An architecture sweep finds the best hidden-layer size on this dataset. State what that result does and does not transfer to.}{4}
 \begin{solution}[title={Solution}]
-It transfers to this dataset and task; it does not transfer to another dataset.
+Very little. It holds for this task at the training-set size you swept at, and not even for the same dataset at full size: the architecture the sweep ranked fourth of five is the one that wins on all 55,000 images.
 \begin{itemize}[leftmargin=*,nosep]
-  \item The best capacity depends on the amount and difficulty of the data
-  \item Reporting it as a general recommendation is the error --- it is a measurement, not a rule
+  \item A deeper network needs more data to pay for its extra parameters, so a sweep run on a fifth of the data systematically prefers the small ones --- and never finds out
+  \item It is a measurement of one sweep at one size, not a rule. Reporting it as a general recommendation is the error
 \end{itemize}
 \end{solution}
 
@@ -726,7 +726,7 @@ $\rho(7)$ is high, so the lag-7 difference is close to white noise --- and copyi
 \end{solution}
 \question{State why MAPE is the wrong metric for transit ridership, using a specific day as the example.}{4}
 \begin{solution}[title={Solution}]
-It divides by the truth, so an error on Christmas --- a tenth of normal ridership --- counts ten times an equal error on an ordinary weekday.
+It divides by the truth, and holiday ridership is a fraction of a working day's, so the same absolute miss on Christmas counts several times what it counts on an ordinary weekday.
 \begin{itemize}[leftmargin=*,nosep]
   \item The metric would spend capacity on the days nobody staffs for
   \item MAE in boardings is in the units the operations team already uses
@@ -867,7 +867,7 @@ A mask applied to the attention scores before the softmax, setting future positi
 The loss rises and does not recover --- steps that size destroy what was pretrained. The lecture fine-tunes at $2\times10^{-5}$.
 \begin{itemize}[leftmargin=*,nosep]
   \item A pretrained block already encodes something; a step tuned for random initialisation is far too large for it
-  \item About a hundred times smaller than the from-scratch rate, which is the ratio the deck states
+  \item Fifty times smaller than the $10^{-3}$ that trained the model from scratch --- a step tuned for random initialisation is far too large for a block that already encodes something
 \end{itemize}
 \end{solution}
 \question{Two corpora, of 400 and 25,000 documents, each have a vectoriser fitted before the split. State which suffers more, and why.}{4}

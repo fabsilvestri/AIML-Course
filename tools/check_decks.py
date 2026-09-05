@@ -216,8 +216,17 @@ def check_hardware_claim() -> list[str]:
                + sorted((ROOT / "slides").glob("lecture-*.html")))
     instruct = re.compile(r"Change runtime type|Runtime\s*&rarr;|select a GPU|"
                           r"switch to a (?:T4|GPU)", re.I)
+    # Round 2 found this class alive on deck 10 after round 1 repaired the two
+    # slides around it: "from this lecture to the end of the course everything
+    # runs on a GPU" matched none of the first patterns. Match the claim, not
+    # one phrasing of it.
     assert_gpu = re.compile(r"needs? a GPU|need a GPU runtime|requires? a GPU|"
-                            r"GPU (?:is )?required", re.I)
+                            r"GPU (?:is )?required|"
+                            r"(?:everything|every notebook|all of it) runs? on "
+                            r"(?:a |the )?GPU|"
+                            r"runs? on (?:a |the )?GPU from|"
+                            r"on (?:a |the )?GPU (?:from|for) (?:here|this)",
+                            re.I)
     for path in targets:
         raw = path.read_text(encoding="utf-8")
         rel = path.relative_to(ROOT)

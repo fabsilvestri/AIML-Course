@@ -278,8 +278,9 @@ ex(6, "Gini and entropy give nearly the same trees on CoverType. State the "
    "Both are strictly concave with a maximum at the uniform distribution and "
    "zero at a pure node; they differ only where two splits are nearly tied.",
    ["Any impurity with those properties ranks most candidate splits identically",
-    "Entropy weighs rare classes slightly more, so it can prefer a split that "
-    "isolates a small class"])
+    "They can part only on a pair of candidate splits whose children are "
+    "incomparable in that ordering and whose weighted impurities differ by "
+    "less than 0.055 &mdash; a close call deep in the tree, never at the root"])
 ex(6, "A decision tree is described as &lsquo;nonparametric&rsquo;. Explain "
       "what that means here, and what it implies about the need for "
       "hyperparameters.", 4,
@@ -296,8 +297,10 @@ ex(6, "The brief allows at most eight conditions per decision. You measure the "
    ["A path of depth $d$ visits $d+1$ nodes",
     "Without the subtraction the count exceeds the tree&rsquo;s own depth, "
     "which is what the assert catches"])
-ex(6, "Refitting a tree on two halves of the same data gives visibly different "
-      "trees. Does this make the model unreliable? Answer, with a reason.", 5,
+ex(6, "Twenty trees are refit on 90% subsamples of one training set, so any "
+      "two of them share about 80% of their rows &mdash; and they still give "
+      "visibly different trees. Does this make the model unreliable? Answer, "
+      "with a reason.", 5,
    "Yes, in the way that matters. The accuracy is stable to 0.25 points while "
    "9.1% of individual predictions change &mdash; a stable metric is not "
    "evidence of a stable model.",
@@ -428,11 +431,14 @@ ex(9, "Fashion-MNIST is exactly balanced across ten classes. State the trivial "
     "Lecture 3's objection to accuracy was imbalance, and it does not apply"])
 ex(9, "An architecture sweep finds the best hidden-layer size on this dataset. "
       "State what that result does and does not transfer to.", 4,
-   "It transfers to this dataset and task; it does not transfer to another "
-   "dataset.",
-   ["The best capacity depends on the amount and difficulty of the data",
-    "Reporting it as a general recommendation is the error &mdash; it is a "
-    "measurement, not a rule"])
+   "Very little. It holds for this task at the training-set size you swept at, "
+   "and not even for the same dataset at full size: the architecture the sweep "
+   "ranked fourth of five is the one that wins on all 55,000 images.",
+   ["A deeper network needs more data to pay for its extra parameters, so a "
+    "sweep run on a fifth of the data systematically prefers the small ones "
+    "&mdash; and never finds out",
+    "It is a measurement of one sweep at one size, not a rule. Reporting it as "
+    "a general recommendation is the error"])
 
 # ------------------------------------------------------------------ L10
 ex(10, "Reverse-mode automatic differentiation costs one sweep for all "
@@ -634,8 +640,9 @@ ex(15, "Explain why the seasonal-naive forecast is hard to beat on daily "
     "What remains after removing it is close to unpredictable"])
 ex(15, "State why MAPE is the wrong metric for transit ridership, using a "
        "specific day as the example.", 4,
-   "It divides by the truth, so an error on Christmas &mdash; a tenth of "
-   "normal ridership &mdash; counts ten times an equal error on an ordinary weekday.",
+   "It divides by the truth, and holiday ridership is a fraction of a working "
+   "day&rsquo;s, so the same absolute miss on Christmas counts several times "
+   "what it counts on an ordinary weekday.",
    ["The metric would spend capacity on the days nobody staffs for",
     "MAE in boardings is in the units the operations team already uses"])
 ex(15, "A cross-validated forecast uses <code>KFold(shuffle=True)</code> and "
@@ -774,8 +781,9 @@ ex(18, "A pretrained body is fine-tuned at $10^{-3}$, the rate that worked for "
    r"was pretrained. The lecture fine-tunes at $2\times10^{-5}$.",
    ["A pretrained block already encodes something; a step tuned for random "
     "initialisation is far too large for it",
-    r"About a hundred times smaller than the from-scratch rate, which is the "
-    r"ratio the deck states"])
+    r"Fifty times smaller than the $10^{-3}$ that trained the model from "
+    r"scratch &mdash; a step tuned for random initialisation is far too large "
+    r"for a block that already encodes something"])
 ex(18, "Two corpora, of 400 and 25,000 documents, each have a vectoriser fitted "
        "before the split. State which suffers more, and why.", 4,
    "The 400-document corpus.",

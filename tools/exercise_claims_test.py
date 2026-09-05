@@ -194,6 +194,8 @@ CONCLUSIONS = [
      "deck 20's revision slide once said the batch is only a memory limit"),
     (17, 5, ["Subword"], [],
      "a larger word vocabulary cannot reach the floor"),
+    (9, 5, ["fourth of five", "55,000"], ["transfers to this dataset"],
+     "deck 9 shows the sweep failing to transfer to its own dataset at full size"),
 ]
 
 

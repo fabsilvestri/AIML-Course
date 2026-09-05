@@ -435,7 +435,7 @@
   <div class="panel">
     <span class="panel-title">Where you will meet the bill</span>
     Lecture 12 computes the RAM of a convolutional network and finds that the
-    activations, not the parameters, are what exhausts the GPU. This is why.
+    activations, not the parameters, are what exhausts the device. This is why.
   </div>
 </section>
 
@@ -958,9 +958,11 @@ print(f"test accuracy {acc:.4f}")
 <!-- 62 -->
 <section data-menu-title="Seeds on a GPU">
   <h2>&ldquo;Running it twice&rdquo; needs one caveat</h2>
-  <p class="small muted">Not examinable. It is here because the previous slide
-  just told you to run it twice, and from this lecture to the end of the course
-  everything runs on a GPU.</p>
+  <p class="small muted">Not examinable, and it does not apply to any notebook
+  in this course &mdash; they all run on a CPU, where a fixed seed does give the
+  same number twice. It is here because the previous slide told you to run it
+  twice, and the moment you reproduce one of these measurements on an
+  accelerator that stops being true.</p>
   <p><strong>A fixed seed does not make a GPU run bit-reproducible.</strong>
   cuDNN picks convolution algorithms by benchmarking them, and reductions that
   accumulate with atomics add their terms in whatever order the blocks finish.
@@ -975,10 +977,11 @@ torch.backends.cudnn.deterministic = True   # and benchmark = False
   <p class="fix">So calibrate what counts as evidence: without those flags, a
   difference in the <strong>third decimal</strong> means nothing. The two bugs
   on the previous slide cost 76.7 and 0.51 points &mdash; both far outside it.</p>
-  <aside class="notes">Said here rather than in Lecture 2 because everything up
-  to now has been on a CPU, where a fixed seed really does give the same number
-  twice. Students trained on that for eleven lectures otherwise read GPU jitter
-  as a bug and go looking for it.</aside>
+  <aside class="notes">Said here rather than in Lecture 2 because this is the
+  first lecture where a student might reach for an accelerator at all. Nine
+  lectures of CPU work have taught them that a fixed seed gives the same number
+  twice; without this slide they would read GPU jitter as a bug and go looking
+  for it.</aside>
 </section>
 
 <!-- 63 -->
@@ -1401,10 +1404,10 @@ assert accuracy(model, X_test, y_test) == accuracy(fresh, X_test, y_test)
   <div class="cols">
     <div>
       <p class="smaller"><strong>5.</strong> An architecture sweep finds the best hidden-layer size on this dataset. State what that result does and does&hellip;</p>
-      <p class="lead"><span class="fix">It transfers to this dataset and task; it does not transfer to another dataset.</span></p>
+      <p class="lead"><span class="fix">Very little. It holds for this task at the training-set size you swept at, and not even for the same dataset at full size: the architecture the sweep ranked fourth of five is the one that wins on all 55,000 images.</span></p>
       <ul class="tight smaller">
-        <li>The best capacity depends on the amount and difficulty of the data</li>
-        <li>Reporting it as a general recommendation is the error &mdash; it is a measurement, not a rule</li>
+        <li>A deeper network needs more data to pay for its extra parameters, so a sweep run on a fifth of the data systematically prefers the small ones &mdash; and never finds out</li>
+        <li>It is a measurement of one sweep at one size, not a rule. Reporting it as a general recommendation is the error</li>
       </ul>
     </div>
   </div>
