@@ -196,6 +196,13 @@ CONCLUSIONS = [
      "a larger word vocabulary cannot reach the floor"),
     (9, 5, ["fourth of five", "55,000"], ["transfers to this dataset"],
      "deck 9 shows the sweep failing to transfer to its own dataset at full size"),
+    (18, 4, ["null result", "0.30", "2.53"], ["The 400-document corpus."],
+     "deck 18 measures the vectoriser leak as a null result and refutes the "
+     "vocabulary mechanism"),
+    (17, 5, ["42.8"], ["forty per cent"],
+     "the OOV floor is stated on deck 17; 41% there is the hapax share"),
+    (6, 4, ["90%"], ["two halves of the same data"],
+     "deck 6 refits on 90% subsamples, not on halves"),
 ]
 
 
@@ -205,7 +212,11 @@ def check_conclusions() -> None:
     from make_exercises import EXERCISES
     for lec, q, must, must_not, why in CONCLUSIONS:
         it = EXERCISES[lec][q - 1]
-        text = it["a"] + " " + " ".join(it["why"])
+        # The question counts too. L06 Q4's defect was entirely in its premise:
+        # the answer was rewritten to match deck 6 while the question went on
+        # describing an experiment the deck never runs, so an answer-only pin
+        # would have called it fixed.
+        text = it["q"] + " " + it["a"] + " " + " ".join(it["why"])
         missing = [m for m in must if m not in text]
         present = [m for m in must_not if m in text]
         ok = not missing and not present

@@ -736,14 +736,15 @@ ex(17, "A model summarises a padded batch at <code>out[:, -1, :]</code>. State "
    ["That position is real content only for the longest reviews",
     "An output-shape test cannot see this; an invariance test can"])
 ex(17, "Enlarging a word vocabulary drives the share of unseen distinct test "
-       "words down, but the curve flattens above 40% and never reaches zero. "
-       "Explain why a larger vocabulary is not the fix, and name what is.", 4,
+       "words down, but even the full 79,003-word vocabulary leaves 42.8% of "
+       "them unseen. Explain why a larger vocabulary is not the fix, and name "
+       "what is.", 4,
    "A word vocabulary is closed and language is not. Subword tokenisation.",
    ["Two words in five are seen exactly once, so more capacity buys mostly "
     "those &mdash; and the next review can still contain a word nobody has "
     "written yet",
     "Starting from characters covers every string by construction, so the "
-    "floor is zero rather than forty per cent"])
+    "floor is zero rather than 42.8%"])
 
 # ------------------------------------------------------------------ L18
 ex(18, r"Scaled dot-product attention divides by $\sqrt{d_k}$. State what the "
@@ -784,13 +785,23 @@ ex(18, "A pretrained body is fine-tuned at $10^{-3}$, the rate that worked for "
     r"Fifty times smaller than the $10^{-3}$ that trained the model from "
     r"scratch &mdash; a step tuned for random initialisation is far too large "
     r"for a block that already encodes something"])
-ex(18, "Two corpora, of 400 and 25,000 documents, each have a vectoriser fitted "
-       "before the split. State which suffers more, and why.", 4,
-   "The 400-document corpus.",
-   ["The inverse document frequencies are an average, and removing a quarter of "
-    "25,000 draws barely moves them",
-    "At 400 the leaky vocabulary has columns that exist because a test document "
-    "used them"])
+# Reworded 2026-09-05: the original answered "the 400-document corpus suffers
+# more", and its second bullet blamed the leaky vocabulary. Deck 18 measures
+# that gap at 0.30 points against a 2.53% seed spread, calls it a null result,
+# and then refutes the vocabulary mechanism outright -- a term occurring only
+# in test documents has an all-zero training column and gets coefficient zero.
+# The question now asks what the deck actually establishes.
+ex(18, "A vectoriser is fitted before the split on a 400-document corpus. The "
+       "leaky vocabulary is measurably larger &mdash; 60,000 columns against "
+       "54,074. State what that buys the model, and why.", 4,
+   "Nothing measurable: 0.30 points against a seed spread of 2.53%, with the "
+   "leak ahead on 10 of 20 seeds. A null result.",
+   ["A term occurring only in test documents has an all-zero column in the "
+    "training rows, so logistic regression gives it coefficient exactly zero "
+    "&mdash; there is no gradient to move it",
+    "What actually leaks is the inverse document frequencies, and an idf is an "
+    "average over the corpus: the leak changes the scale of features the model "
+    "already had, and a regularised linear model is nearly indifferent to that"])
 ex(18, "A corpus contains duplicate documents across the train/test split. State "
        "why no pipeline fixes it, and name the splitter that does.", 4,
    "Nothing was fitted wrongly &mdash; the rows were separated wrongly. Use a "

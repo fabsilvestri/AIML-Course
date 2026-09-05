@@ -832,12 +832,12 @@ Padding. Encode the same review with two different amounts of padding and requir
   \item An output-shape test cannot see this; an invariance test can
 \end{itemize}
 \end{solution}
-\question{Enlarging a word vocabulary drives the share of unseen distinct test words down, but the curve flattens above 40\% and never reaches zero. Explain why a larger vocabulary is not the fix, and name what is.}{4}
+\question{Enlarging a word vocabulary drives the share of unseen distinct test words down, but even the full 79,003-word vocabulary leaves 42.8\% of them unseen. Explain why a larger vocabulary is not the fix, and name what is.}{4}
 \begin{solution}[title={Solution}]
 A word vocabulary is closed and language is not. Subword tokenisation.
 \begin{itemize}[leftmargin=*,nosep]
   \item Two words in five are seen exactly once, so more capacity buys mostly those --- and the next review can still contain a word nobody has written yet
-  \item Starting from characters covers every string by construction, so the floor is zero rather than forty per cent
+  \item Starting from characters covers every string by construction, so the floor is zero rather than 42.8\%
 \end{itemize}
 \end{solution}
 
@@ -870,12 +870,12 @@ The loss rises and does not recover --- steps that size destroy what was pretrai
   \item Fifty times smaller than the $10^{-3}$ that trained the model from scratch --- a step tuned for random initialisation is far too large for a block that already encodes something
 \end{itemize}
 \end{solution}
-\question{Two corpora, of 400 and 25,000 documents, each have a vectoriser fitted before the split. State which suffers more, and why.}{4}
+\question{A vectoriser is fitted before the split on a 400-document corpus. The leaky vocabulary is measurably larger --- 60,000 columns against 54,074. State what that buys the model, and why.}{4}
 \begin{solution}[title={Solution}]
-The 400-document corpus.
+Nothing measurable: 0.30 points against a seed spread of 2.53\%, with the leak ahead on 10 of 20 seeds. A null result.
 \begin{itemize}[leftmargin=*,nosep]
-  \item The inverse document frequencies are an average, and removing a quarter of 25,000 draws barely moves them
-  \item At 400 the leaky vocabulary has columns that exist because a test document used them
+  \item A term occurring only in test documents has an all-zero column in the training rows, so logistic regression gives it coefficient exactly zero --- there is no gradient to move it
+  \item What actually leaks is the inverse document frequencies, and an idf is an average over the corpus: the leak changes the scale of features the model already had, and a regularised linear model is nearly indifferent to that
 \end{itemize}
 \end{solution}
 \question{A corpus contains duplicate documents across the train/test split. State why no pipeline fixes it, and name the splitter that does.}{4}
