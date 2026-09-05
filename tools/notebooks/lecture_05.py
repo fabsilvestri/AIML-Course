@@ -1137,7 +1137,10 @@ print(f"the test set, once: "
         md("""
 ## 7 · The test set. Once
 
-179 passengers, untouched since the split at the top of this notebook. Five
+179 passengers. Nothing has been *selected* using them, which is the rule that
+matters — but they have been read: section 2 evaluated 200 bootstrap draws at six
+degrees on these rows, and section 6 read them seventeen times on purpose to show
+that reading is enough. Both were measurements, neither was a choice. Five
 candidates, every one of whose hyperparameters was fixed before this cell ran.
 """),
         prompt(

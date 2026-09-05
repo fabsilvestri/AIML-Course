@@ -1070,8 +1070,10 @@ tuned, curve_tuned, _ = train(
         md("""
 ## 15 · The test set. Once.
 
-Everything above used the fit and validation splits only. This is the first and
-last time the test half is scored.
+This is the first time a *neural* model is scored on the test half. The two
+anchors it is compared against — the majority-class rate in section 3 and the
+tf-idf baseline in section 4 — were scored there once each, and nothing was
+selected from either.
 
 ⏱ **about a minute** — encoding 25,000 reviews twice and two forward passes.
 """),

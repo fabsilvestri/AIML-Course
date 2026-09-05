@@ -3,7 +3,7 @@
 Course materials for **Applications of Machine Learning**, third year of the BSc
 in Mathematics of Artificial Intelligence, Sapienza Università di Roma.
 
-48 academic hours · 24 lectures of 90 minutes · 12 applications.
+48 academic hours · 24 lectures of 90 minutes · 13 datasets.
 Taught in Italian; all materials are in English.
 
 **Site:** <https://fabsilvestri.github.io/AIML-Course/>
@@ -115,7 +115,7 @@ In a deck: `M` menu · `S` speaker notes · `C` chalkboard · `F` full screen ·
 
 - Slides never name a weekday. Lectures refer to one another by number or
   relatively, so the material is independent of the timetable.
-- A deck runs 70–90 slides, counted against the 90-minute clock.
+- A deck runs 70–105 slides, counted against the 90-minute clock.
 - Every notebook is linked from the deck that uses it.
 - Every code cell in a notebook is preceded by the specification that would
   produce it.

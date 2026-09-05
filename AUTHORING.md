@@ -41,7 +41,7 @@ the method.
 | 5 | the notebook | `.notebook-slide` |
 
 **The clock is a constraint, not a decoration.** Count slides against it before
-adding any. A deck runs 70–90 slides at this pace; below 60 the lecture will end
+adding any. A deck runs 70–105 slides at this pace; below 60 the lecture will end
 early, above 100 it will not finish.
 
 Every deck opens with a title slide and a *where we are* slide placing the

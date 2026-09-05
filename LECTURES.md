@@ -178,7 +178,7 @@ error. Semi-supervised learning by label propagation.
 ---
 
 # Part II — Neural networks
-*Lectures 9–11 · Chapters 9–11 · GPU from Lecture 10*
+*Lectures 9–11 · Chapters 9–11 · CPU*
 
 ## Lecture 9 — Neural networks, from the perceptron up
 **Ch 9 · Fashion-MNIST**
@@ -226,7 +226,7 @@ learning-rate schedules. Regularisation: ℓ₂, dropout, and max-norm.
 ---
 
 # Part III — Computer vision
-*Lectures 12–14 · Chapter 12 · GPU*
+*Lectures 12–14 · Chapter 12 · CPU*
 
 ## Lecture 12 — Convolutional networks
 **Ch 12 · Flowers102**
@@ -267,7 +267,7 @@ tracking, briefly.
 ---
 
 # Part IV — Sequences and language
-*Lectures 15–18 · Chapters 13–15 · GPU*
+*Lectures 15–18 · Chapters 13–15 · CPU*
 
 ## Lecture 15 — Time series
 **Ch 13 · Chicago transit ridership**
@@ -368,7 +368,7 @@ the SVD cannot simply be taken. Alternating least squares and SGD. Bias terms,
 and why they carry more of the signal than anyone expects. BPR and pairwise
 ranking losses for implicit feedback.
 
-## Lecture 22 — Recommender systems: neural and evaluated honestly
+## Lecture 22 — Recommender systems: neural, and evaluated honestly
 **Lecture notes · MovieLens**
 
 Two-tower models — the same architecture as Lecture 20's bi-encoder, with users
@@ -383,7 +383,7 @@ cold-start problem, and why an offline gain need not survive contact with users.
 ---
 
 # Part VI — Multimodal models, and closing the course
-*Lectures 23–24 · Chapters 15–16 · GPU*
+*Lectures 23–24 · Chapters 15–16 · CPU*
 
 ## Lecture 23 — Vision transformers and multimodal retrieval
 **Ch 15–16 · COCO**

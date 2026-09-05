@@ -7,7 +7,7 @@ applies, unrolled through time rather than down layers, and Lecture 15 owns the
 stationarity mathematics.
 
 Old lecture 19's recurrent half with old lecture 20's improvements. Every model
-is scored on the SAME rolling-origin protocol Lecture 15 fixed, so the ladder is
+is scored on the single forward hold-out Lecture 15 named, so the ladder is
 a comparison rather than a collection.
 
 Runs on CPU; the series is short and the networks are small.
@@ -947,7 +947,7 @@ which is why every row here changed exactly one thing.
   or explode.
 - A gate is a path along which the gradient is *added to* rather than
   multiplied. Everything else about LSTM and GRU is arrangement.
-- Every model here was scored on Lecture 15's rolling origin, so the rows can
+- Every model here was scored on the one forward hold-out of Lecture 15, so the rows can
   be read against one another.
 
 **Before the next lecture:** run this notebook, then lengthen the window from

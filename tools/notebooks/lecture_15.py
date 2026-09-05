@@ -767,7 +767,7 @@ HONEST_SPLIT = 1e6 * float(np.abs(fit.predict(X[~tr]) - y[~tr]).mean())
 HONEST_NAIVE = 1e6 * float(np.abs(X[~tr, -7] - y[~tr]).mean())
 
 print(f"train {tr.sum():,} days, test {(~tr).sum():,} days")
-print(f"linear, forecasting forward   MAE {HONEST_SPLIT:>10,.0f}")
+print(f"linear, forward from 2019-01-01  MAE {HONEST_SPLIT:>10,.0f}")
 print(f"copy last week, same rows     MAE {HONEST_NAIVE:>10,.0f}")
 print(f"skill (model / naive)             {HONEST_SPLIT / HONEST_NAIVE:>10.2f}")
 print(f"\\nrandom split, same model      MAE {RANDOM_CV:>10,.0f}")
@@ -930,7 +930,7 @@ holdout = 1e6 * np.abs(
 protocols = [
     ("random 5-fold",          folds_random.mean(),
      naive_on_folds(KFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE))),
-    ("one forward hold-out",   holdout,
+    ("one forward hold-out, at 80%",   holdout,
      1e6 * float(np.abs(X[cut:, -7] - y[cut:]).mean())),
     ("forward 5-fold",         folds_time.mean(),
      naive_on_folds(TimeSeriesSplit(n_splits=5))),
