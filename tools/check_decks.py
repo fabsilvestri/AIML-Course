@@ -153,6 +153,12 @@ def check(path: Path) -> list[str]:
             out.append(f"{rel}:{line}: bare % inside maths — KaTeX treats it "
                        f"as a comment and drops the rest of the formula, "
                        f"closing delimiter included. Write \\%: {bad}")
+        # 1d. a doubled percent sign renders literally. 25 of them shipped on
+        #     deck 9 -- "10%%" on a slide the room reads -- and no check saw it.
+        if "%%" in run:
+            out.append(f"{rel}:{line}: doubled percent sign renders as two "
+                       f"characters on the slide: "
+                       f"{' '.join(run.split())[:70]}")
         # 2. weekdays
         if (m := WEEKDAYS.search(run)):
             out.append(f"{rel}:{line}: names a weekday ({m.group()}) — "

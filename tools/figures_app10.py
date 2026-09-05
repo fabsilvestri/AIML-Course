@@ -640,6 +640,10 @@ def linear_scores(df) -> dict:
     _lad = dates >= "2019-01-01"
     out["ladder_n_test"] = int(_lad.sum())
     out["ladder_naive"] = mae(X[_lad, -7], y[_lad])
+    # ...and its MAPE, for the same reason the MAE needed one: a percentage
+    # quoted against a baseline measured over different days is the same
+    # defect wearing a percent sign.
+    out["ladder_naive_mape"] = mape(X[_lad, -7], y[_lad])
     return out
 
 
