@@ -598,6 +598,48 @@ def linear_scores(df) -> dict:
     out["matched_random_skill"] = out["matched_random"] / out["matched_random_naive"]
     out["skill_gap"] = out["rolling_skill"] - out["matched_random_skill"]
     out["skill_gap_pct"] = 100 * out["skill_gap"] / out["matched_random_skill"]
+
+    # 6 · the four-protocol table, each protocol scored against a baseline
+    #     measured on ITS OWN test rows. The four protocols score four
+    #     different sets of days, so one shared denominator would compare four
+    #     models against four different periods -- the exact mistake this
+    #     lecture exists to teach against.
+    def naive_on_folds(splitter) -> float:
+        return float(np.mean([mae(X[te, -7], y[te])
+                              for _, te in splitter.split(X)]))
+
+    cut = int(len(X) * 0.8)
+    m_ho = LinearRegression().fit(X[:cut], y[:cut])
+    gap_folds = -cross_val_score(LinearRegression(), X, y,
+                                 cv=TimeSeriesSplit(K, gap=WINDOW),
+                                 scoring="neg_mean_absolute_error") * 1e6
+    rows = [
+        ("random 5-fold", float(folds.mean()),
+         naive_on_folds(KFold(K, shuffle=True, random_state=SEED))),
+        ("one forward hold-out", mae(m_ho.predict(X[cut:]), y[cut:]),
+         mae(X[cut:, -7], y[cut:])),
+        ("forward 5-fold", out["timeseries_cv"],
+         naive_on_folds(TimeSeriesSplit(K))),
+        ("forward 5-fold + purge", float(gap_folds.mean()),
+         naive_on_folds(TimeSeriesSplit(K, gap=WINDOW))),
+    ]
+    out["protocols"] = [{"name": n, "mae": s, "naive": v,
+                         "margin_pct": 100.0 * (v - s) / v} for n, s, v in rows]
+    out["protocol_naive_all"] = mae(X[:, -7], y)
+    _claimed = out["protocols"][0]["margin_pct"]
+    _real = out["protocols"][-1]["margin_pct"]
+    out["protocol_share_pct"] = 100.0 * (_claimed - _real) / _claimed
+
+    # 7 · Lecture 16 scores its models on the forward test slice, and its
+    #     six-model ladder on the rows from 2019-01-01. Two more row sets, two
+    #     more baselines, for the same reason.
+    out["rnn_cut"] = int(cut)
+    out["rnn_n_test"] = int(len(X) - cut)
+    out["rnn_test_naive"] = mae(X[cut:, -7], y[cut:])
+    out["rnn_test_target"] = out["rnn_test_naive"] * 0.9
+    _lad = dates >= "2019-01-01"
+    out["ladder_n_test"] = int(_lad.sum())
+    out["ladder_naive"] = mae(X[_lad, -7], y[_lad])
     return out
 
 
@@ -838,10 +880,14 @@ def torch_models(df) -> dict:
     return out
 
 
-def fig_ladder(tm, base):
-    rows = [("Copy last week", base["naive_7"], AXIS)]
+def fig_ladder(tm, naive):
+    # `naive` must be copy-last-week on the SAME rows the ladder scores -- the
+    # 151 days from CUT_END -- not the pool-wide figure. Every bar in this
+    # chart is a forecast on those days, and a baseline bar measured over all
+    # 1,191 would be the one thing here that is not comparable with the rest.
+    rows = [("Copy last week", naive, AXIS)]
     rows += [(r["label"], r["test_mae"],
-              SUCCESS if r["test_mae"] < base["naive_7"] else ACCENT)
+              SUCCESS if r["test_mae"] < naive else ACCENT)
              for r in tm["ladder"]]
     fig, ax = plt.subplots(figsize=(10.6, 4.2))
     names = [r[0] for r in rows]
@@ -1089,7 +1135,7 @@ def main():
     fig_protocols(facts["linear"])
     fig_margin(facts["margins"])
     fig_folds(facts["linear"])
-    fig_ladder(facts["torch"], facts["baselines"])
+    fig_ladder(facts["torch"], facts["linear"]["ladder_naive"])
     fig_horizon(facts["torch"], facts["baselines"])
     fig_committed(facts)
 

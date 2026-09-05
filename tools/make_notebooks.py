@@ -1173,6 +1173,92 @@ the money is not. Which of those two sentences you put in the report is the
 whole of the absolute-versus-relative question, and the brief already answered
 it.
 
+## 8b · What did the leak actually cost?
+
+The rule is procedural because the cost is not knowable from the code. That
+does not mean it is unmeasurable *afterwards* — and a single split gives one
+subtraction of two noisy numbers, which is not a measurement. Twenty do.
+"""),
+        prompt(
+            label="⏱ 2 min — price the leak",
+            input="the numeric housing columns and the target",
+            output="for three models: the seed-42 difference, the mean absolute "
+                   "difference over twenty seeds, and its standard deviation",
+            constraint="the leaky arm fits the preprocessing on everything and "
+                       "then splits; the correct arm splits first. Nothing else "
+                       "differs between the two — same model, same seed, same "
+                       "rows — or the difference is not the leak",
+            check="report the spread beside the difference. A difference "
+                  "smaller than the spread is not a difference, and this is "
+                  "the course's own fourth rule applied to our own result",
+            **{"try": "drop the twenty-seed loop and report the seed-42 column "
+                      "alone. That is the number four later lectures used to "
+                      "quote, and it is about fifty times the honest one."}),
+        code("""
+from sklearn.decomposition import PCA
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import root_mean_squared_error
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+# The full 20,640-row frame, not the training split: the question is what the
+# leak costs on this dataset, and both arms below do their own splitting.
+Xn = housing_full.select_dtypes(include=[np.number]).drop(columns=["median_house_value"])
+yn = housing_full["median_house_value"].values
+scale = lambda: make_pipeline(SimpleImputer(strategy="median"), StandardScaler())
+
+
+def leaky_and_correct(make_prep, make_model, seed):
+    Xall = make_prep().fit_transform(Xn)          # LEAKY: fitted on everything
+    a_tr, a_te, ya_tr, ya_te = train_test_split(Xall, yn, test_size=0.2,
+                                                random_state=seed)
+    leaky = root_mean_squared_error(ya_te,
+                                    make_model().fit(a_tr, ya_tr).predict(a_te))
+    b_tr, b_te, yb_tr, yb_te = train_test_split(Xn, yn, test_size=0.2,
+                                                random_state=seed)
+    pp = make_prep()                              # CORRECT: fitted on train only
+    correct = root_mean_squared_error(
+        yb_te, make_model().fit(pp.fit_transform(b_tr), yb_tr).predict(pp.transform(b_te)))
+    return leaky, correct
+
+
+cases = {
+    "linear regression":   (scale, LinearRegression),
+    "random forest":       (scale, lambda: RandomForestRegressor(
+                                       n_estimators=50, random_state=42, n_jobs=-1)),
+    "PCA(4), then linear": (lambda: make_pipeline(SimpleImputer(strategy="median"),
+                                                  StandardScaler(),
+                                                  PCA(n_components=4)),
+                            LinearRegression),
+}
+seeds = [42] + list(range(1, 20))       # seed 42 first: it is the one on the slide
+
+print(f"{'model':22s}{'seed 42':>10s}{'mean diff':>12s}{'sd':>9s}{'signs':>9s}")
+for name, (make_prep, make_model) in cases.items():
+    leaky, correct = zip(*(leaky_and_correct(make_prep, make_model, s) for s in seeds))
+    d = np.array(leaky) - np.array(correct)
+    flips = "flip" if (d > 0).any() and (d < 0).any() else "same"
+    print(f"{name:22s}{abs(d[0]):>10,.2f}{abs(d.mean()):>12,.2f}"
+          f"{d.std(ddof=1):>9,.2f}{flips:>9s}")
+    if name.startswith("linear"):
+        spread = np.array(correct).std(ddof=1)
+
+print()
+print(f"split-to-split spread of the correct RMSE: {spread:,.0f}")
+"""),
+        md("""
+Read the columns against each other. The seed-42 draw is not the cost; the mean
+over twenty seeds is, and the sign flips between seeds. Against a split-to-split
+spread of about 1,391 on the same RMSE, every one of those differences is
+nothing — which is the fourth rule of this course applied to our own result.
+
+That is an argument *for* the procedural rule, not against it: the cost here is
+nothing, the cost elsewhere is unbounded, and the code cannot tell you which
+case you are in.
+"""),
+        md("""
 ## 9 · Where we are
 
 - Fitting a linear model is orthogonal projection, and you verified the
