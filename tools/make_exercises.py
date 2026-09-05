@@ -298,12 +298,14 @@ ex(6, "The brief allows at most eight conditions per decision. You measure the "
     "which is what the assert catches"])
 ex(6, "Refitting a tree on two halves of the same data gives visibly different "
       "trees. Does this make the model unreliable? Answer, with a reason.", 5,
-   "Not necessarily &mdash; the predictions can be stable while the structure "
-   "is not.",
-   ["Greedy splitting makes the choice of root sensitive to near-ties among "
-    "candidate thresholds",
-    "What matters is whether the accuracy moves; if it does not, the "
-    "<em>explanation</em> is unstable rather than the model"])
+   "Yes, in the way that matters. The accuracy is stable to 0.25 points while "
+   "9.1% of individual predictions change &mdash; a stable metric is not "
+   "evidence of a stable model.",
+   ["Accuracy averages over 12,000 patches, and an average hides substitutions: "
+    "a tree that loses one patch and gains another scores the same",
+    "The instability is deep in the tree, not at the root &mdash; the root "
+    "feature is Elevation in all twenty refits &mdash; so the single decision "
+    "you would be asked to explain is the part that does not reproduce"])
 ex(6, "Per-class recall shows one class far below the rest. Give two responses "
       "that do not involve changing the model, and say which you would try "
       "first.", 4,
