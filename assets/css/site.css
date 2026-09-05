@@ -86,6 +86,70 @@ body {
 a { color: var(--primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+/* --- Site navigation ----------------------------------------------------
+   A sticky bar so every section is one click away from anywhere on a page
+   that runs to about twelve screens. It is the page's only fixed chrome, so
+   it stays quiet: a hairline rule, the section names, and nothing else.
+
+   The current section is marked with aria-current="true" by site-nav.js and
+   styled from that attribute rather than from a class, so the accessible
+   state and the visible state cannot drift apart.                          */
+.site-nav {
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in srgb, var(--page) 92%, transparent);
+  backdrop-filter: saturate(140%) blur(8px);
+  border-bottom: 1px solid var(--rule-faint);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .site-nav { background: var(--page); }
+}
+.site-nav .wrap {
+  display: flex; align-items: center; gap: 1.1rem;
+  min-height: 2.9rem;
+  overflow-x: auto;                  /* narrow screens scroll, never wrap */
+  scrollbar-width: none;
+}
+.site-nav .wrap::-webkit-scrollbar { display: none; }
+
+.site-nav .brand {
+  font-weight: 700; color: var(--primary); white-space: nowrap;
+  letter-spacing: -0.01em; margin-right: 0.2rem;
+}
+.site-nav .brand:hover { text-decoration: none; }
+
+.site-nav a.nav-link {
+  color: var(--muted-strong); white-space: nowrap;
+  font-size: 0.86rem; padding: 0.75rem 0; position: relative;
+}
+.site-nav a.nav-link:hover { color: var(--ink); text-decoration: none; }
+.site-nav a.nav-link[aria-current="true"] { color: var(--primary); font-weight: 600; }
+.site-nav a.nav-link[aria-current="true"]::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+  height: 2px; background: var(--primary);
+}
+.site-nav .nav-pdf {
+  margin-left: auto; white-space: nowrap; font-size: 0.86rem;
+  color: var(--accent); font-weight: 600;
+}
+
+/* Anchored headings must clear the sticky bar, or a jump lands with the
+   heading hidden underneath it. */
+section[id] { scroll-margin-top: 3.4rem; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* Keyboard users get to the content without tabbing the whole bar. */
+.skip-link {
+  position: absolute; left: -9999px; top: 0;
+  background: var(--primary); color: #fff; padding: 0.6rem 1rem; z-index: 100;
+}
+.skip-link:focus { left: 0; }
+
+@media (max-width: 40rem) {
+  .site-nav .brand { display: none; }
+  .site-nav .nav-pdf { margin-left: 1rem; }
+}
+
 /* --- Header ------------------------------------------------------------- */
 
 header.hero {
