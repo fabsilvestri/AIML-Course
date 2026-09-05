@@ -644,6 +644,10 @@ def linear_scores(df) -> dict:
     # quoted against a baseline measured over different days is the same
     # defect wearing a percent sign.
     out["ladder_naive_mape"] = mape(X[_lad, -7], y[_lad])
+    # The mean level of the days the ladder scores. A miss expressed as a share
+    # of "a typical day" needs THIS mean, not the pool's: the two differ by
+    # 45,000 riders and the deck has been wrong about it twice.
+    out["ladder_mean_level"] = float(1e6 * y[_lad].mean())
     return out
 
 
