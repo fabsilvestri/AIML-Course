@@ -75,9 +75,10 @@ RANDOM_STATE = 42
 torch.manual_seed(RANDOM_STATE)
 np.random.seed(RANDOM_STATE)
 
-# Not examinable, but from here to the end of the course it decides whether a
-# cell takes one minute or twenty. CUDA on Colab and most Linux boxes; MPS on
-# Apple Silicon; CPU everywhere else.
+# Not examinable. PyTorch will use an accelerator if one is present -- CUDA on
+# Colab and most Linux boxes, MPS on Apple Silicon -- and fall back to the CPU
+# everywhere else. Nothing in this course needs the accelerator; Lecture 10
+# measures where the crossover actually falls, and it is above this scale.
 if torch.cuda.is_available():
     device = "cuda"
 elif torch.backends.mps.is_available():

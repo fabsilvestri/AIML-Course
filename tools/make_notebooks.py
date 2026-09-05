@@ -73,8 +73,10 @@ Every code cell is preceded by the **specification that would produce it** —
 input, output, constraint, check. Read the box, work out what the check should
 say, *then* run the cell. That order is the whole point of the box.
 
-Run the cells in order. Anything that takes more than a few seconds says so,
-and anything that needs a GPU says that too. Nothing here is wrong on purpose.
+Run the cells in order. Anything that takes more than a few seconds says so.
+Every notebook in this course is sized for a free CPU runtime — if an
+accelerator is present the code will use it, and none of them needs one.
+Nothing here is wrong on purpose.
 """)]
 
 

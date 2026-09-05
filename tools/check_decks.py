@@ -212,8 +212,14 @@ def check_hardware_claim() -> list[str]:
     with it.
     """
     out: list[str] = []
+    # Notebooks and figures were blind spots: round 2 found the claim alive in
+    # the standing notebook header (which reaches all 24) and in an SVG, neither
+    # of which a grep of slides/ reads.
     targets = ([ROOT / "index.html", ROOT / "LECTURES.md", ROOT / "README.md"]
-               + sorted((ROOT / "slides").glob("lecture-*.html")))
+               + sorted((ROOT / "slides").glob("lecture-*.html"))
+               + sorted((ROOT / "tools" / "notebooks").glob("lecture_*.py"))
+               + sorted((ROOT / "notebooks").glob("lecture-*.ipynb"))
+               + sorted((ROOT / "assets" / "figures").glob("*.svg")))
     instruct = re.compile(r"Change runtime type|Runtime\s*&rarr;|select a GPU|"
                           r"switch to a (?:T4|GPU)", re.I)
     # Round 2 found this class alive on deck 10 after round 1 repaired the two
