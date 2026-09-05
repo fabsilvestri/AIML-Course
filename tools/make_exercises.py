@@ -312,11 +312,18 @@ ex(6, "Twenty trees are refit on 90% subsamples of one training set, so any "
 ex(6, "Per-class recall shows one class far below the rest. Give two responses "
       "that do not involve changing the model, and say which you would try "
       "first.", 4,
-   "Re-weight the classes, or change what is reported. Report first.",
-   ["A single headline accuracy hides the class, so reporting per-class recall "
-    "is free and immediate",
-    "Class weighting trades other classes&rsquo; recall for it, which is a "
-    "decision the client should make"])
+# Reworded 2026-09-05: the question asks for responses that do not change the
+# model, and the old answer's first item was class reweighting -- which deck 6
+# calls "a different model answering a different question". Both responses now
+# meet the constraint the question sets.
+   "Report per-class recall beside the headline, and take the question back to "
+   "the client. Report first.",
+   ["A single accuracy averages the class away; per-class recall costs nothing "
+    "and makes the failure visible, which is the only response available "
+    "before anyone has decided anything",
+    "Whether that class is worth other classes&rsquo; recall is the agency&rsquo;s "
+    "decision, not a machine learning one &mdash; and reweighting, the obvious "
+    "next step, is a different model answering a different question"])
 
 
 
