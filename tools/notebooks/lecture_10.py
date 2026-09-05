@@ -180,7 +180,7 @@ print("\\nagree to machine precision")
 Note where the arithmetic went. `x` is used **twice** — once by the product and
 once by the sine — so its derivative is a *sum* over the two paths:
 
-$$41.4557 - 5.7505 = 35.7053$$
+$$41.4558 - 5.7506 = 35.7052$$
 
 That summation over outgoing edges is the entire bookkeeping of reverse-mode
 autodiff. There is nothing else in it.
