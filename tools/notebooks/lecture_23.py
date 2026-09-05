@@ -392,11 +392,11 @@ except ValueError as exc:
 
 So nobody can blame the fix:
 
-1. a random Gaussian projection 768 → 384 (Johnson–Lindenstrauss, thread 5);
+1. a random Gaussian projection 768 → 384 (Johnson–Lindenstrauss, Lecture 8);
 2. keep the first 384 coordinates of the image vector;
 3. zero-pad the text vector to 768.
 
-Thread 5 promised that a random projection nearly preserves the geometry *of the
+Lecture 8 promised that a random projection nearly preserves the geometry *of the
 image space*. It promised nothing about aligning that geometry with anything
 else.
 """),
@@ -627,7 +627,7 @@ is measurable and is on the exam.
 
 ## 10 · The derivation, part three — the temperature
 
-Thread 11 gave us the machinery. Row *i* of the similarity matrix is a *B*-class
+Lecture 17 gave us the machinery. Row *i* of the similarity matrix is a *B*-class
 problem whose correct answer is column *i*:
 
 `L = -mean_i log( exp(S_ii / tau) / sum_j exp(S_ij / tau) )`
@@ -639,7 +639,7 @@ Everything is familiar except `tau`. Set it to 1 and watch.
             input="the similarity matrix at six temperatures",
             output="the loss, p(correct), p(hardest wrong) and top-1 at each",
             constraint="print log B beside the table — a contrastive loss is measured against a batch-dependent ceiling and is meaningless without it",
-            check="from thread 11, ∂L/∂S_ij = (p_ij − 1[j=i])/τ, so a small τ concentrates the push on the few hardest negatives. That is what the temperature is for.",
+            check="from Lecture 17, ∂L/∂S_ij = (p_ij − 1[j=i])/τ, so a small τ concentrates the push on the few hardest negatives. That is what the temperature is for.",
             **{"try": "add tau = 100 to the table. The loss climbs towards "
                       "log 200 and the top-1 column still does not move. Say "
                       "in one sentence why no temperature whatever can change "
@@ -680,7 +680,7 @@ Two things to read off that table.
   `log B`.
 * **The top-1 column does not move.** `tau` cannot change which column is
   largest, so it cannot change the accuracy of a fixed model. What it changes is
-  where the gradient goes: from thread 11, `dL/dS_ij = (p_ij - 1[j=i]) / tau`, so
+  where the gradient goes: from Lecture 17, `dL/dS_ij = (p_ij - 1[j=i]) / tau`, so
   a small `tau` concentrates the push on the few hardest negatives.
 
 The temperature is not a hyperparameter anybody tunes by hand. The model stores

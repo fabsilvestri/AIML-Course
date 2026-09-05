@@ -697,7 +697,7 @@ computing *the same sized thing*: a `3 × 128 × 128` input and a
 `32 × 128 × 128` output.
 """),
         prompt(
-            label="thread 8 — the parameter count",
+            label="Lecture 12 — the parameter count",
             input="a 3×128×128 input and a 32×128×128 output",
             output="the weight count for a dense layer and for a convolution computing the same sized thing",
             constraint="fix the input AND output shapes so the comparison is between two ways of computing the SAME object",

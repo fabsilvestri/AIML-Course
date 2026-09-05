@@ -79,7 +79,7 @@ PARTS = [
      "Lectures 12–14 · Chapter 12 · runs on CPU"),
     (15, 18, "Part IV — Sequences and language",
      "Lectures 15–18 · Chapters 13–15 · runs on CPU"),
-    (19, 22, "Part V — Search and recommendation",
+    (19, 22, "Part V — Information retrieval and recommender systems",
      "Lectures 19–22 · Lecture notes · examinable"),
     (23, 24, "Part VI — Multimodal models, and closing the course",
      "Lectures 23–24 · Chapters 15–16 · runs on CPU"),

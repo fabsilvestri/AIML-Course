@@ -1029,7 +1029,7 @@ someone else's pretraining can be poured into.
                       "worth anything?"}),
         code('''
 # The same vocabulary already has a trained embedding table. It is 768 wide and
-# our architecture is 128 wide, so project with PCA — thread 5, from Lecture 10.
+# our architecture is 128 wide, so project with PCA — Lecture 8, from Lecture 10.
 from sklearn.decomposition import PCA
 from transformers import AutoModel
 

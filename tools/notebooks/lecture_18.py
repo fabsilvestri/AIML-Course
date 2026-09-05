@@ -1,7 +1,7 @@
 """
 Lecture 22 — Reusing what someone else learned.
 
-Thread 11: cross-entropy, softmax and logits. Then fine-tuning a pretrained
+Lecture 17: cross-entropy, softmax and logits. Then fine-tuning a pretrained
 transformer, sentence embeddings for search, clustering for recurring
 complaints, and the tokeniser leak.
 

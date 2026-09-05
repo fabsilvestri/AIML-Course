@@ -1,7 +1,7 @@
 """
 Lecture 24 — Closing the loop, and closing the course.
 
-Fix. Chapters 15–16. Thread 12: the contrastive objective and its temperature.
+Fix. Chapters 15–16. Lecture 23: the contrastive objective and its temperature.
 
 Exports build() -> list[nbformat cell]. Self-contained: it rebuilds the 200-entry
 catalogue and re-encodes it rather than assuming Lecture 23's kernel is alive. A

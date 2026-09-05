@@ -1,5 +1,5 @@
 """
-Lecture 13 — Transfer learning. Thread 8 measured, then the transfer
+Lecture 13 — Transfer learning. Lecture 12 measured, then the transfer
 learning repair.
 
 Exports build() -> list[nbformat cell]. Self-contained: it reloads and

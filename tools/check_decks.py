@@ -255,6 +255,44 @@ def check_hardware_claim() -> list[str]:
     return out
 
 
+def check_figure_lecture_refs() -> list[str]:
+    """A lecture number inside an SVG is a cross-reference nothing else reads.
+
+    Two defects reached the course this way and survived a full review round:
+    d-course-arc.svg, the diagram Lecture 24 closes on, carried the whole
+    abandoned Build/Break-Fix pairing; and d-detector-out.svg sent students to
+    Lectures 15-16 for the CNN backbone, which is 12-13, and to Lecture 18 for
+    suppression, which is its own deck. Neither a grep of slides/ nor any
+    checker looks inside a figure.
+
+    The rule this enforces is narrow and mechanical: a figure may not point
+    FORWARD past the deck that includes it. It cannot check whether a backward
+    reference is right -- that needs a human -- but a forward one is either a
+    spoiler or, far more often, a stale number from the renumbering.
+    """
+    out: list[str] = []
+    used: dict[str, int] = {}
+    for deck in sorted((ROOT / "slides").glob("lecture-*.html")):
+        n = int(deck.stem.split("-")[1])
+        for m in re.finditer(r'src="[^"]*assets/figures/([^"]+\.svg)"', deck.read_text()):
+            used.setdefault(m.group(1), n)
+    for name, deck_n in sorted(used.items()):
+        path = ROOT / "assets" / "figures" / name
+        if not path.exists():
+            continue
+        raw = path.read_text(encoding="utf-8")
+        body = raw[raw.rindex("</style>") + 8:] if "</style>" in raw else raw
+        text = " ".join(re.sub(r"<[^>]+>", " ", body).split())
+        for m in re.finditer(r"Lectures?\s*(\d+)(?:\s*(?:&#8211;|-|\u2013)\s*(\d+))?", text):
+            for g in m.groups():
+                if g and int(g) > deck_n:
+                    out.append(f"assets/figures/{name}: names {m.group()} but is "
+                               f"shown on deck {deck_n} — a figure may not point "
+                               f"forward, and stale numbers from the renumbering "
+                               f"look exactly like this")
+    return out
+
+
 def check_site_index() -> list[str]:
     """Every lecture must appear on the site, and its state must be honest.
 
@@ -353,6 +391,7 @@ def main() -> int:
             problems += check(page)
     problems += check_site_index()
     problems += check_hardware_claim()
+    problems += check_figure_lecture_refs()
     problems += check_type_scale()
 
     if problems:
