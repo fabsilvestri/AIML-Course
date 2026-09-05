@@ -4,8 +4,9 @@ Resumable progress log for the redesign. **If you are picking this up cold —
 a new session, a restarted machine — read this file first, then `LECTURES.md`
 (the plan) and `AUTHORING.md` (how to build one lecture).**
 
-Last updated: 2026-09-03 (try fields complete on all 538 boxes; Part V
-extended notes written and published) · Term starts: ~2026-09-22
+Last updated: 2026-09-05 (three rounds of colleague review; ~190 defects
+found and repaired, and eight new checks so the classes cannot return) ·
+Term starts: ~2026-09-22
 
 ---
 
@@ -45,11 +46,11 @@ Everything below was true and verified when it was written, and is pushed to
 
 | | |
 |---|---|
-| Decks | 24 / 24 on the new design, 70+ slides each |
-| Notebooks | 24 / 24, 538 code cells, every one behind a specification box |
+| Decks | 24 / 24 on the new design, 70–105 slides each |
+| Notebooks | 24 / 24, 540 code cells, every one behind a specification box, sections numbered uniquely and in order |
 | Runs on CPU | all 24, cold, from a clean kernel |
-| `check_consistency` | **24 / 24 clean** — **932** deck figures verified against notebook output. The old count of 826 was over 22 lectures: 21 and 22 were reporting green while checking nothing, which is fixed and recorded under *Carried-over debts* |
-| `check_all` (5 fast checks) | clean |
+| `check_consistency` | **24 / 24 clean** — **859** deck figures verified against notebook output. The count has moved twice for the same reason and both are worth knowing: 826 was over 22 lectures (21 and 22 reported green while checking nothing), and the later 932 included lecture 24, which was *also* reporting green while comparing zero figures — every number it quotes is rounder than the four-significant-digit bar. Fixed in round 3 by having notebook 24 print R@1 to two decimals; the guard now fails when a deck states none of its own figures, not only when a namespace matches no key |
+| `check_all` (8 fast checks) | clean |
 | Browser checks | no slide over the canvas on any of 25 pages; 39 diagrams clean |
 | Published on the site | 24 / 24 |
 | `try` fields | **538 / 538** — every prompt box, enforced by `check_notebooks §4.1a` |
@@ -121,6 +122,48 @@ notebook takes about ten minutes to execute cold; the other three are quick.
 On the site they appear in two places: a third button on each of the four
 Part V lecture cards (`btn-notes`, emitted by `make_site.py` for any lecture
 whose chapter field is empty), and a table in *Textbook and scope*.
+
+## The three review rounds — 2026-09-04 to 05
+
+Five colleagues read the whole course three times: mathematics, code, teaching,
+cross-artefact consistency, and assessment. Roughly 190 defects were found and
+repaired. Read the reports under the session scratchpad if they survive; what
+follows is what a future session actually needs.
+
+**The counts fell but the kind changed, and that is the real result.** Round 1
+found original defects. Round 2 found mostly round 1's repair residue. Round 3
+found almost nothing in the course prose and almost everything in round 2's
+repairs and in the checks themselves. A repair is a change, and a change is a
+defect until something verifies it.
+
+**Four classes were invisible to every check that existed, and each now has one:**
+
+* *A repair applied to generated output and not its generator.* The Part V
+  heading was fixed in `index.html` while `make_site.py` still wrote the old
+  one; `figures_app08.py` still emitted `thread 6` into an SVG that had been
+  cleaned by hand. Always fix the generator, then regenerate.
+* *Text inside a figure.* The closing course-arc diagram carried the whole
+  abandoned Build/Break-Fix pairing, and two more diagrams sent students to
+  pre-renumbering lectures. `check_decks` now rejects a figure that names a
+  lecture later than the deck showing it.
+* *Text rendered as paths.* matplotlib draws its labels as glyph outlines, so
+  160 of the 199 figures contain no readable text at all — three stale lecture
+  numbers sat in `set_title()` calls, visible to students and invisible to
+  every grep. No plot label may name a lecture now.
+* *A check that passes by examining nothing.* Twice: a namespace matching no
+  key, and a deck stating none of its own figures. Both guarded, both verified
+  by planting the defect.
+
+**Every guard is probe-tested.** Each was confirmed to reject the exact defect
+it was written for by planting it and watching the check fail. Two guards
+shipped in a state where they passed their own defect — the section-numbering
+check ordered only the digits, so `15 -> 12b -> 16` slipped through, and the
+hardware check matched "needs a GPU" but not "everything runs on a GPU". Write
+the probe before trusting the guard.
+
+**Do not use `git checkout --` to undo a probe** on a file with uncommitted
+work. It cost three files of edits in this session. Save and restore the bytes
+in the probe itself.
 
 ## Where the two 2026-09-03 jobs stand
 
