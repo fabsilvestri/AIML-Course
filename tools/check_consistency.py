@@ -308,7 +308,15 @@ def matches(v: float, printed: set[float]) -> bool:
                 continue
             if abs(w - p) <= max(abs(p), abs(w)) * 5e-4:
                 return True
-            for dp in (0, 1, 2, 3, 4):
+            # dp starts at 2, not 0. Rounding to zero decimals collapses every
+            # accuracy in [0.5, 1.5) onto 1.0, so a slide figure of 55.55,
+            # 123.4 or 99.99 "matched" a notebook that printed nothing but
+            # accuracies around 0.83 -- verified by probe. One decimal is
+            # nearly as coarse (0.88 and 0.94 both round to 0.9). Two decimals
+            # still covers every real presentation difference in this course:
+            # "90.39%" against 0.9039, "0.171" against 0.170746, "12.0%"
+            # against 0.12026.
+            for dp in (2, 3, 4, 5):
                 if round(p, dp) == round(w, dp) and round(p, dp) != 0:
                     return True
     return False
@@ -344,6 +352,14 @@ def printed_numbers(nb: Path) -> set[float]:
                 text.append("".join(o.get("text", "")))
             elif o.get("output_type") == "execute_result":
                 text.append("".join(o.get("data", {}).get("text/plain", "")))
+        # A passing assert establishes a figure at least as firmly as a print
+        # does: `assert len(X_train) == 16512` in a notebook that ran to
+        # completion IS the notebook reproducing 16,512. Requiring a print
+        # instead was rejecting real evidence -- deck 2's split size among
+        # them -- so assert lines count too.
+        for line in "".join(c["source"]).splitlines():
+            if line.lstrip().startswith("assert "):
+                text.append(line)
     return numbers("\n".join(text))
 
 

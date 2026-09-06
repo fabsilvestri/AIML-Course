@@ -123,6 +123,67 @@ On the site they appear in two places: a third button on each of the four
 Part V lecture cards (`btn-notes`, emitted by `make_site.py` for any lecture
 whose chapter field is empty), and a table in *Textbook and scope*.
 
+## OPEN DEBT — 31 slide figures no notebook reproduces
+
+`check_consistency` was over-reporting. Its `matches()` allowed a rounding
+match at **zero decimal places**, which collapses every accuracy in [0.5, 1.5)
+onto 1.0 — so a slide figure of 55.55, 123.4 or 99.99 "matched" a notebook that
+printed nothing but accuracies around 0.83. Verified by probe, and fixed in
+round 5: the rounding ladder now starts at two decimals, which still covers
+every real presentation difference in this course ("90.39%" against 0.9039,
+"0.171" against 0.170746) and admits none of those.
+
+Tightening it uncovered **31 figures a deck states that its own notebook does
+not produce**, hidden for the whole rebuild. A passing `assert` now counts as
+evidence alongside a print — `assert len(X_train) == 16512` IS the notebook
+reproducing 16,512 — which cleared one of the 32.
+
+Each of the remaining 31 needs a judgement that cannot be automated: is the
+deck's figure right and the notebook merely silent about it; does the notebook
+run at a reduced scale (in which case it belongs in `SCALE_ONLY` **with its
+reason**, as `l21_oov` and the two Lecture 18 entries already do); or is the
+deck wrong? Decks 10, 11 and 18 subsample deliberately so their notebooks
+finish on a CPU; decks 14, 19 and 22 do not, so their entries are more likely
+to be real.
+
+| Where | Figure | figures.json key |
+|---|---|---|
+| `lecture-02.html:1250` | 1017 | `/target_choice_folds/rmse_penalty` |
+| `lecture-03.html:351` | 88.76 | `/app02/never_fires_accuracy_by_digit/1` |
+| `lecture-03.html:768` | 6.9733 | `/app02/accuracy_identity/recall_term` |
+| `lecture-03.html:1214` | 10.13 | `/app02/gaps/forest_minus_sgd_recall_pp` |
+| `lecture-07.html:49` | 17.88 | `/app04_free_path_mean` |
+| `lecture-09.html:752` | 88.94 | `/l11_sk/val_acc[10]` |
+| `lecture-09.html:753` | 88.02 | `/l11_sk/test_acc` |
+| `lecture-09.html:835` | 84.66 | `/l11_sweep/arch[0]/val_acc` |
+| `lecture-09.html:838` | 84.8 | `/l11_sweep/arch[3]/val_acc` |
+| `lecture-10.html:265` | 13.8186 | `/l12_autodiff/dL_dw` |
+| `lecture-10.html:469` | 88.02 | `/l12_bench/Scikit-Learn` |
+| `lecture-10.html:482` | 88.84 | `/l12_bench/PyTorch` |
+| `lecture-10.html:483` | 89.24 | `/l12_bench/PyTorch` |
+| `lecture-10.html:855` | 0.2574 | `/l12_zero_grad/with_final_loss` |
+| `lecture-10.html:855` | 87.94 | `/l12_zero_grad/with_val_acc` |
+| `lecture-10.html:856` | 2.2933 | `/l12_zero_grad/without_final_loss` |
+| `lecture-10.html:856` | 11.2 | `/l12_zero_grad/without_val_acc` |
+| `lecture-10.html:1030` | 89.622 | `/l12_batch_mean/mean_of_batches` |
+| `lecture-10.html:1154` | 1041 | `/l12_checkpoint_kb` |
+| `lecture-11.html:1081` | 11.3 | `/l14_timing/batch/all[1]` |
+| `lecture-14.html:1000` | 1206 | `/l17_at_50/total` |
+| `lecture-18.html:476` | 2352 | `/l22_finetune/errors` |
+| `lecture-18.html:801` | 90.28 | `/l22_finetune/val_curve[0]` |
+| `lecture-18.html:801` | 90.22 | `/l22_leak/full/honest_mean` |
+| `lecture-18.html:802` | 75.9 | `/l22_leak/small/leaky_mean` |
+| `lecture-18.html:802` | 75.6 | `/l22_leak/small/honest_mean` |
+| `lecture-18.html:919` | 90 | `/l22_stability/rows[7]/gap` |
+| `lecture-19.html:851` | 0.375 | `/l19_worked/ap_terms[2]/prec` |
+| `lecture-19.html:910` | 3.1699 | `/l19_worked/dcg_terms[2]/discount` |
+| `lecture-22.html:609` | 0.5612 | `/rec22_protocols/random` |
+| `lecture-24.html:159` | 61.67 | `/l24_captions/filled_on_blanked` |
+
+**Do not make this green by loosening `matches()` again.** The loose version is
+what hid these. Either fix the deck, make the notebook print the figure, or add
+a `SCALE_ONLY` entry with the reason it cannot.
+
 ## The three review rounds — 2026-09-04 to 05
 
 Five colleagues read the whole course three times: mathematics, code, teaching,
