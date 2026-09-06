@@ -324,11 +324,16 @@ def eval_full(score, R, hold):
     return float(np.mean(hr)), float(np.mean(nd))
 
 def eval_sampled(score, R, hold, n_neg=100, seed=SEED):
-    g = np.random.default_rng(seed)
+    # Seed per (user, item), not once per run. One stream drawn in loop order
+    # makes each user's negatives depend on where that row sits in `hold`, so
+    # the score becomes a function of row order -- this notebook iterates in
+    # user order and the figure script in timestamp order, and the two
+    # disagreed in the third decimal for exactly that reason.
     hr, nd = [], []
     for uu, gold in zip(hold["u"].values, hold["i"].values):
         s = score(uu)
         seen = R[uu] > 0
+        g = np.random.default_rng([seed, int(uu), int(gold)])
         pool = g.choice(n_i, size=n_neg * 3, replace=False)
         negs = [c for c in pool if not seen[c] and c != gold][:n_neg]
         cand = np.array([gold] + negs)

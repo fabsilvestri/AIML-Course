@@ -348,11 +348,12 @@ def main() -> int:
             # Seed per (user, item) rather than once per run. With a single
             # stream the negatives each user gets depend on WHERE that user
             # falls in the held-out frame, so the metric is a function of row
-            # order: this notebook iterates in user order and figures_recsys
-            # in timestamp order, and the random split's four sampled figures
+            # order: the notebook iterates in user order and this script in
+            # timestamp order, and the random split's four sampled figures
             # disagreed in the third decimal because of it -- HR@10 0.8085
             # against 0.8114, quoted as far as an exam question in the notes.
-            # Reproduced in isolation at 0.67 points on the same rows.
+            # Reproduced in isolation at 0.67 points on the same rows. The
+            # published figure is now 0.8102 and does not depend on the order.
             #
             # Sorting both callers identically would also have worked, and
             # would have left the metric silently order-sensitive for the next

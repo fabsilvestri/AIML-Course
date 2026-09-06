@@ -960,7 +960,7 @@ ex(22, "A recommender is scored by RMSE on held-out ratings. State why that is "
    "operates on the complement.",
    ["It weights every prediction equally when only ten items are shown",
     "A constant offset ruins RMSE and changes no ranking at all"])
-ex(22, "The same model scores HR@10 of 0.0926 and 0.8085 on the same data. Name "
+ex(22, "The same model scores HR@10 of 0.0926 and 0.8102 on the same data. Name "
        "the two decisions that differ, and which moves the number more.", 5,
    "Random against temporal split, and sampled-100 against the full catalogue. "
    "Sampling moves it far more.",

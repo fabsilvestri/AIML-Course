@@ -123,7 +123,7 @@ On the site they appear in two places: a third button on each of the four
 Part V lecture cards (`btn-notes`, emitted by `make_site.py` for any lecture
 whose chapter field is empty), and a table in *Textbook and scope*.
 
-## OPEN DEBT — 50 slide figures no notebook reproduces
+## OPEN DEBT — 47 slide figures no notebook reproduces
 
 `check_consistency` was over-reporting for the whole rebuild, in two ways, both
 found in round 5 and both fixed.
@@ -143,9 +143,15 @@ at exactly that precision.
 A passing `assert` also counts as evidence now, alongside a print: `assert
 len(X_train) == 16512` IS the notebook reproducing 16,512.
 
-Together these uncovered **50 figures a deck states that its own
+Together these uncovered **51 figures a deck states that its own
 notebook does not reproduce at the precision claimed**, hidden until now.
-By lecture: L02 (1), L03 (5), L07 (1), L09 (4), L10 (10), L11 (12), L12 (1), L14 (1), L18 (6), L19 (4), L22 (4), L24 (1).
+Lecture 22's four were the order-dependent sampler and are now closed, leaving
+**47**. By lecture: L02 (1), L03 (5), L07 (1), L09 (4), L10 (10), L11 (13),
+L12 (1), L14 (1), L18 (6), L19 (4), L24 (1).
+
+(An earlier revision of this section said 50 with L11 at 12. That was a
+miscount of L11, not a figure that has since regressed: `check_consistency 11
+--execute` reports 13 on a fresh run.)
 
 Each needs a judgement that cannot be automated: is the deck's figure right and
 the notebook merely silent; does the notebook run at a reduced scale (then it
@@ -201,10 +207,6 @@ their entries are likelier to be real defects.
 | `lecture-19.html:909` | 1.585 | `/l19_worked/dcg_terms[1]/discount` |
 | `lecture-19.html:910` | 3.1699 | `/l19_worked/dcg_terms[2]/discount` |
 | `lecture-19.html:910` | 0.3155 | `/l19_worked/dcg_terms[2]/term` |
-| `lecture-22.html:592` | 0.8085 | `/rec22_protocols/random` |
-| `lecture-22.html:593` | 0.6201 | `/rec22_protocols/random` |
-| `lecture-22.html:609` | 0.5612 | `/rec22_protocols/random` |
-| `lecture-22.html:610` | 0.3696 | `/rec22_protocols/random` |
 | `lecture-24.html:159` | 61.67 | `/l24_captions/filled_on_blanked` |
 
 **Do not make this green by loosening `matches()`.** The loose version is what
