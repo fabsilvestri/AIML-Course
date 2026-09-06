@@ -805,6 +805,17 @@ print(f"{'ROC AUC':28s}{roc_auc_score(y_train_5, y_scores):>10.4f}"
       f"{roc_auc_score(y_train_5, f_scores):>10.4f}")
 print(f"{'average precision':28s}{average_precision_score(y_train_5, y_scores):>10.4f}"
       f"{average_precision_score(y_train_5, f_scores):>10.4f}")
+# The deck states four more metrics for the forest -- accuracy, precision,
+# recall and F1 -- and this cell printed none of them, so its headline
+# "recall 77.18% to 87.31%, 10.13 points" rested on a number nothing here
+# produced. The SGD column beside it was reproduced exactly, which is what made
+# the gap easy to miss.
+f_pred = f_scores >= 0.5
+for _name, _fn in (("accuracy", accuracy_score), ("precision", precision_score),
+                   ("recall", recall_score), ("F1", f1_score)):
+    print(f"{_name:28s}{_fn(y_train_5, y_pred):>10.4f}"
+          f"{_fn(y_train_5, f_pred):>10.4f}")
+
 sgd_at90    = recalls[(precisions >= 0.90).argmax()]
 forest_at90 = f_rec[(f_prec >= 0.90).argmax()]
 print(f"{'recall at 90% precision':28s}{sgd_at90:>10.4f}{forest_at90:>10.4f}")

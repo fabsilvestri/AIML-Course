@@ -345,11 +345,23 @@ def main() -> int:
             return float(np.mean(hr)), float(np.mean(nd))
 
         def eval_sampled(scorer, n_neg=100, seed=SEED):
-            g = np.random.default_rng(seed)
+            # Seed per (user, item) rather than once per run. With a single
+            # stream the negatives each user gets depend on WHERE that user
+            # falls in the held-out frame, so the metric is a function of row
+            # order: this notebook iterates in user order and figures_recsys
+            # in timestamp order, and the random split's four sampled figures
+            # disagreed in the third decimal because of it -- HR@10 0.8085
+            # against 0.8114, quoted as far as an exam question in the notes.
+            # Reproduced in isolation at 0.67 points on the same rows.
+            #
+            # Sorting both callers identically would also have worked, and
+            # would have left the metric silently order-sensitive for the next
+            # caller. This makes each user's draw a function of the user alone.
             hr, nd = [], []
             for uu, ii in zip(test["u"].values, test["i"].values):
                 s = scorer(uu)
                 seen = Rb[uu] > 0
+                g = np.random.default_rng([seed, int(uu), int(ii)])
                 cand = g.choice(n_i, size=n_neg * 3, replace=False)
                 cand = [c for c in cand if not seen[c] and c != ii][:n_neg]
                 pool = np.array([ii] + cand)

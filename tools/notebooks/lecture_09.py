@@ -405,7 +405,7 @@ exactly what it feels like — and exactly why the next lecture automates it.
             input="one hidden layer of 30, 100, 300; then two layers; then three",
             output="validation accuracy, parameter count and seconds for each",
             constraint="report the PARAMETER COUNT beside the accuracy — a third layer that buys nothing while costing parameters is a different finding from one that buys nothing while costing nothing",
-            check="depth buys less than you expected. One hidden layer to two is worth a point or so; a third is worth roughly nothing here.",
+            check="depth buys less than you expected — read the sign, not just the size. On this subset a second hidden layer COSTS about a quarter of a point and a third costs more, so the table argues against depth rather than for a little of it.",
             **{"try": "add a much wider single layer, `(1000,)`. More parameters than the two-layer stacks and worse — depth is buying something width cannot."}),
         code('''
 SMALL = 6_000
@@ -444,10 +444,21 @@ print(f"worst: {min(r[1] for r in lr_rows):.4f} — "
         md("""
 Two readings, and the second is the one to write down.
 
-1. Depth buys less than you expected. Going from one hidden layer to two is
-   worth a point or so; a third layer is worth roughly nothing here.
-2. **The learning rate matters more than the architecture.** One badly chosen
-   scalar loses more accuracy than any of these structural choices gains.
+1. Depth does not pay here. One hidden layer to two costs about a quarter of
+   a point (0.8394 to 0.8368), and a third costs more again — the sign is
+   negative, not merely small.
+2. **On this grid the learning rate matters more than the architecture.** The
+   five architectures span about 1.3 points; the five learning rates span
+   about 2.9. One badly chosen scalar loses more than any of these structural
+   choices gains.
+
+**Scale.** This notebook sweeps 6,000 images for 8 epochs so it finishes on a
+CPU; the deck sweeps 10,000 for 12. That is enough to move the winner — the
+deck's best learning rate is 0.0003 and this run's is 0.003 — and enough to
+change point 2, because on the deck's larger grid the two spans are about
+equal and neither knob dominates. Which is itself the lesson: a sweep is a
+measurement of one grid at one scale, and it does not transfer, including to
+the same course's other run of it.
 """),
 
         md("""
