@@ -53,6 +53,32 @@ LECTURES = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 2
 BOLD, RED, GREEN, YELLOW, OFF = cc.BOLD, cc.RED, cc.GREEN, cc.YELLOW, cc.OFF
 
 
+def prose_keeping_maths(tex: str) -> str:
+    """prose(), except that inline and display maths survive.
+
+    prose() blanks maths deliberately: exponents, dimensions and \rho^{19} are
+    structure, not claims, and the figure pass would drown in them. But a
+    MEASURED quantity written inside dollar signs is a claim, and it was
+    invisible to both passes -- I wrote "$1.81\times$" in lecture 11 as my own
+    arithmetic and neither check could see it. Measured across all
+    twenty-four sets of notes, 110 values sit inside maths this way.
+
+    The deck comparison can afford them: it only asks whether the number
+    appears on the lecture's own slides, so an exponent or a dimension is
+    matched trivially and a mistyped measurement is not.
+    """
+    def blank(m):
+        return "\n" * m.group(0).count("\n")
+
+    tex = tex.replace("{,}", ",").replace("\\,", "")
+    tex = re.sub(r"\\begin\{verbatim\}.*?\\end\{verbatim\}", blank, tex, flags=re.S)
+    tex = re.sub(r"\\documentclass\[[^\]]*\]", " ", tex)
+    tex = re.sub(r"p\{[\d.]+\\textwidth\}", " ", tex)
+    tex = re.sub(r"\\begin\{tabular\}\{[^}]*\}", " ", tex)
+    tex = re.sub(r"[a-z]+=[\d.]+(pt|mm|cm|em)?", " ", tex)
+    return tex
+
+
 def prose(tex: str) -> str:
     """The parts of a .tex a student reads as a claim.
 
@@ -83,14 +109,28 @@ def prose(tex: str) -> str:
     return tex
 
 
+def _degroup(text: str) -> str:
+    """Turn grouped thousands into plain digits, and nothing else.
+
+    Both sides need this and they used to do it differently: the notes side
+    stripped every comma, which glued "1,1,0,1,0" into 1101001000, and the deck
+    side did not handle LaTeX's {,} at all, so a slide writing 1{,}056 inside
+    KaTeX offered "056" to match against. The pattern takes a whole grouped
+    number or nothing.
+    """
+    text = text.replace("{,}", ",")
+    return re.sub(r"\d{1,3}(?:,\d{3})+",
+                  lambda m: m.group(0).replace(",", ""), text)
+
+
 def deck_numbers(n: int) -> list[float]:
     """Every number the lecture's deck states, as floats."""
     src = (ROOT / "slides" / f"lecture-{n:02d}.html").read_text(encoding="utf-8")
     body = src.split('<div class="slides">', 1)[-1]
     body = re.sub(r"<aside class=\"notes\">.*?</aside>", " ", body, flags=re.S)
-    text = html.unescape(re.sub(r"<[^>]+>", " ", body))
+    text = _degroup(html.unescape(re.sub(r"<[^>]+>", " ", body)))
     out = []
-    for tok in re.findall(r"\d+\.\d+|\d{2,}", text.replace(",", "")):
+    for tok in re.findall(r"\d+\.\d+|\d{2,}", text):
         try:
             out.append(float(tok))
         except ValueError:
@@ -120,14 +160,21 @@ def untranscribed(tex_path: Path, n: int, anchored: set[str] | None = None
     anchored = anchored or set()
     bad: list[tuple[int, str, str]] = []
     considered = 0
-    for line_no, line in enumerate(prose(tex_path.read_text(encoding="utf-8"))
-                                   .splitlines(), start=1):
-        flat = line.replace("{,}", "").replace(",", "")
+    src = prose_keeping_maths(tex_path.read_text(encoding="utf-8"))
+    for line_no, line in enumerate(src.splitlines(), start=1):
+        # A comma is only a thousands separator between a digit and exactly
+        # three more. Stripping every comma glued the exercise ranking
+        # "1,1,0,1,0,0,1,0,0,0" into the ten-digit number 1101001000 and
+        # lecture 15's toy series into 012345 -- both reported as figures the
+        # deck does not state, which is true and meaningless.
+        flat = _degroup(line)
         for raw in re.findall(r"\d+\.\d+|\d{2,}", flat):
             if len(raw.replace(".", "").lstrip("0")) < 3:
                 continue                       # too short to be a quotation
             if re.fullmatch(rf"{n}\.\d+", raw):
                 continue                       # "Exercise 19.2" is a label
+            if re.fullmatch(r"(19|20)\d\d", raw):
+                continue                       # a year, not a measurement
             dec = len(raw.split(".")[1]) if "." in raw else 0
             want = float(raw)
             considered += 1
