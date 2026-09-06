@@ -48,7 +48,7 @@ import check_consistency as cc                                  # noqa: E402
 
 ROOT = cc.ROOT
 NOTES = ROOT / "notes"
-LECTURES = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23)
+LECTURES = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24)
 
 BOLD, RED, GREEN, YELLOW, OFF = cc.BOLD, cc.RED, cc.GREEN, cc.YELLOW, cc.OFF
 
@@ -98,7 +98,8 @@ def deck_numbers(n: int) -> list[float]:
     return out
 
 
-def untranscribed(tex_path: Path, n: int) -> list[tuple[int, str, str]]:
+def untranscribed(tex_path: Path, n: int, anchored: set[str] | None = None
+                  ) -> tuple[list[tuple[int, str, str]], int]:
     """Numbers in the notes that this lecture's deck does not state.
 
     stated() only considers a number when it is a value in figures.json AND
@@ -112,7 +113,13 @@ def untranscribed(tex_path: Path, n: int) -> list[tuple[int, str, str]]:
     slide of its own lecture was typed, not measured.
     """
     deck = deck_numbers(n)
+    # A number that already matched a figures.json value AND was found in the
+    # notebook is verified by the stronger of the two anchors; requiring it to
+    # ALSO appear on the deck would reject a measured figure for the sole
+    # reason that no slide happened to quote it.
+    anchored = anchored or set()
     bad: list[tuple[int, str, str]] = []
+    considered = 0
     for line_no, line in enumerate(prose(tex_path.read_text(encoding="utf-8"))
                                    .splitlines(), start=1):
         flat = line.replace("{,}", "").replace(",", "")
@@ -123,10 +130,13 @@ def untranscribed(tex_path: Path, n: int) -> list[tuple[int, str, str]]:
                 continue                       # "Exercise 19.2" is a label
             dec = len(raw.split(".")[1]) if "." in raw else 0
             want = float(raw)
+            considered += 1
+            if raw in anchored:
+                continue
             if any(round(d, dec) == want for d in deck):
                 continue
             bad.append((line_no, raw, " ".join(line.split())[:76]))
-    return bad
+    return bad, considered
 
 
 def stated(tex_path: Path, own) -> list[tuple[int, float, str, str, int]]:
@@ -200,14 +210,16 @@ def main() -> int:
 
         printed = cc.printed_numbers(run)
         hits = stated(tex, own)
-        if not hits:
+        _, n_deck_checked = untranscribed(tex, n)
+        if not hits and not n_deck_checked:
             # The same failure check_consistency guards against: figures are
             # available, the notes quote none of them precisely enough to
             # check, and the check reports ok for having compared nothing.
             # An empty selection must fail, not pass.
             print(f"{RED}FAIL{OFF}  lecture {n:02d} — {len(own)} figures "
-                  f"available in {cc.NAMESPACES[n]} and the notes quote none "
-                  f"of them precisely enough to check, so nothing was checked.")
+                  f"available in {cc.NAMESPACES[n]} and the notes quote none of "
+                  f"them, and no number in them appears on deck {n:02d} either. "
+                  f"Nothing was checked by either pass.")
             bad += 1
             continue
         def excused(h) -> bool:
@@ -243,7 +255,9 @@ def main() -> int:
                 print(f"            …{ctx}…")
             if len(wrong) > 10:
                 print(f"        … and {len(wrong) - 10} more")
-        loose = untranscribed(tex, n)
+        ok_raw = {f"{h[1]:g}" for h in hits if h not in wrong}
+        ok_raw |= {f"{h[1]:.{h[4]}f}" for h in hits if h not in wrong}
+        loose, _ = untranscribed(tex, n, ok_raw)
         if loose:
             bad += len(loose)
             print(f"{RED}FAIL{OFF}  lecture {n:02d} — {len(loose)} number(s) in "
@@ -255,8 +269,9 @@ def main() -> int:
                 print(f"        … and {len(loose) - 8} more")
         elif not wrong:
             print(f"{GREEN}ok{OFF}    lecture {n:02d} — "
-                  f"{len(hits)} stated figures, every one printed by its notebook"
-                  f"; every number also appears on the deck")
+                  f"{len(hits)} stated figures, every one printed by its "
+                  f"notebook; {n_deck_checked} numbers also checked against "
+                  f"deck {n:02d}")
             if a.verbose:
                 for line, v, key, _, _dec in hits:
                     print(f"        {v:g}  {key}  (line {line})")

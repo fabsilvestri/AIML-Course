@@ -123,7 +123,7 @@ On the site they appear in two places: a third button on each of the four
 Part V lecture cards (`btn-notes`, emitted by `make_site.py` for any lecture
 whose chapter field is empty), and a table in *Textbook and scope*.
 
-## OPEN DEBT — 26 slide figures no notebook reproduces
+## OPEN DEBT — 27 slide figures no notebook reproduces
 
 `check_consistency` was over-reporting for the whole rebuild, in two ways, both
 found in round 5 and both fixed.

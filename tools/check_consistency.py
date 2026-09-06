@@ -226,7 +226,18 @@ NAMESPACES: dict[int, tuple[str, ...]] = {
     # is risk with no benefit to a student.
     21: ("rec21",),                 # MovieLens, factorisation — figures_recsys.py
     22: ("rec22",),                 # MovieLens, ranking and protocols
-    23: ("l23",),                   # old 23, COCO multimodal
+    # Lecture 23 owns l24_ as well, and the reason is the renumbering. Its own
+    # experiments -- the concentration measurement, the two towers' geometry,
+    # the temperature and batch-size sweeps -- were generated under the l24_
+    # prefix, so mapping 23 to "l23" alone left its whole mathematics block
+    # anchored to nothing: deck 23 states 5.151 and 0.0439, both of which live
+    # under l24_, and NEITHER lecture was checking them. 23 could not see them
+    # and 24's deck does not quote them. Note the entry must be the bare "l24":
+    # facts() reduces a root to (l\d\d|app\d\d|rec\d\d) before comparing,
+    # so "l24_temperature" would match nothing at all -- which is how I wrote it
+    # the first time, and it looked like it worked because the check stayed
+    # green.
+    23: ("l23", "l24"),
     24: ("l24",),                   # old 24, RAG and closing
 }
 
