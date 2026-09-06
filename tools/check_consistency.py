@@ -82,6 +82,20 @@ NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
 # and using two. An exemption nobody needs is a standing permission with no
 # justification attached, which is the thing this list exists to prevent.
 SCALE_ONLY: dict[str, str] = {
+    "l11_sk":
+        "L9's headline network is fitted on all 55,000 training images for 20 "
+        "epochs, which is 125 s of CPU. The notebook sets SUB = 12,000 so the "
+        "whole thing finishes in the hour, and prints its own validation and "
+        "test accuracy at that scale. Same architecture, same optimiser, same "
+        "seed; fewer rows, so a lower number -- and the deck names its scale "
+        "on the slide.",
+    "l11_sweep":
+        "The same subsampling, one step further down. L9's architecture and "
+        "learning-rate sweeps are run on 10,000 images for 12 epochs; the "
+        "notebook runs them on SMALL = 6,000 for 8, and reaches a different "
+        "conclusion about which knob matters -- which the lecture uses as its "
+        "point rather than hiding. Both scales are stated wherever either "
+        "sweep is quoted.",
     "l21_oov":
         "L17's deck quotes the OOV curve measured on the full IMDb training "
         "half (79,003 distinct words, 42.8% of test types unseen at the top of "
