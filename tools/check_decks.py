@@ -175,6 +175,19 @@ def check(path: Path) -> list[str]:
         out.append(f"{rel}:{src[:m.start()].count(chr(10)) + 1}: entity with a "
                    f"stray backslash ({m.group()!r}) — renders literally")
 
+    # ...and a bare backslash-semicolon in prose, which the rule above misses
+    # because it requires a named entity in front of the backslash. Sixteen of
+    # these survived that repair on deck 16 alone, rendering as a literal
+    # backslash on the slide and in the PDF. A "\;" inside $...$ is legitimate
+    # LaTeX spacing, so maths spans are blanked before looking.
+    prose = MATH_SPAN.sub(lambda m: " " * len(m.group()), src)
+    for i in range(len(prose) - 1):
+        if prose[i] == chr(92) and prose[i + 1] == ";":
+            ctx = " ".join(prose[max(0, i - 40):i + 6].split())
+            out.append(f"{rel}:{prose[:i].count(chr(10)) + 1}: stray backslash "
+                       f"before a semicolon in prose — renders literally: "
+                       f"…{ctx}")
+
     # 3. leftover placeholders
     for m in PLACEHOLDERS.finditer(src):
         out.append(f"{rel}:{src[:m.start()].count(chr(10)) + 1}: unsubstituted "
