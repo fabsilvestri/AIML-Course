@@ -275,6 +275,14 @@ print(f"anchor accuracy {anchor.mean():.5f}")
 
 # it is an identity, not an estimate: accuracy = 1 - base rate, exactly
 assert np.isclose(anchor.mean(), 1 - base_rate, atol=1e-4)
+
+# and it is a property of the digit, not of the method: every one-against-nine
+# detector carved out of this corpus has its own anchor, and the deck quotes
+# digit 1's. Print them all -- the spread is the point.
+print()
+print("the anchor, per digit (1 - that digit's base rate):")
+for _d in range(10):
+    print(f"  digit {_d}   {100 * (1 - (y_train == _d).mean()):.2f}%")
 '''),
         md("""
 **90.96%, with no model, no fit and no features.** So 90.96% is *zero* in the
@@ -815,6 +823,11 @@ for _name, _fn in (("accuracy", accuracy_score), ("precision", precision_score),
                    ("recall", recall_score), ("F1", f1_score)):
     print(f"{_name:28s}{_fn(y_train_5, y_pred):>10.4f}"
           f"{_fn(y_train_5, f_pred):>10.4f}")
+
+# the comparison the brief is actually about, stated as the deck states it
+print()
+print(f"accuracy  {100 * (accuracy_score(y_train_5, f_pred) - accuracy_score(y_train_5, y_pred)):+.2f} points")
+print(f"recall    {100 * (recall_score(y_train_5, f_pred) - recall_score(y_train_5, y_pred)):+.2f} points")
 
 sgd_at90    = recalls[(precisions >= 0.90).argmax()]
 forest_at90 = f_rec[(f_prec >= 0.90).argmax()]

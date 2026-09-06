@@ -1,0 +1,677 @@
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+
+\begin{document}
+\notestitlefor{3}{I}{Classification and its metrics}{MNIST, detecting one digit}{Chapter 3}
+
+\section{The task, and a first detector}
+
+Two lectures on a regression problem ended with a number and an interval around
+it. Today the problem is classification, the metric is not RMSE, and the
+baseline matters more than it did in either of the previous two lectures.
+
+\subsection{The brief}
+
+A national postal operator sorts handwritten postcodes automatically: a camera
+photographs each digit, a classifier reads it, the envelope goes down a chute.
+Their audit team has found that one glyph is misread far more often than the
+others. They want every scanned digit that is a \textbf{5} pulled off the line
+and sent to a human verification desk.
+
+Note what that is not. It is not ``read the digit''. It is \emph{detect one
+digit} --- yes or no, one class against the other nine.
+
+\begin{center}
+\small
+\begin{tabular}{lp{0.55\textwidth}}
+\toprule
+\textbf{Question} & \textbf{Answer} \\
+\midrule
+Supervision & supervised --- every image carries a label \\
+Task        & binary classification: 5 or not-5 \\
+Learning    & batch; the corpus is fixed and fits in memory \\
+Assumption  & next year's handwriting looks like this corpus \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The fourth is the one that will age. Handwriting drifts, cameras are replaced,
+and a model trained on one decade's post is not automatically valid on the
+next.
+
+\subsection{What makes this a rare-event problem}
+
+The ten digits appear in roughly equal numbers. The \emph{task} does not:
+\[ \text{one class against nine} \;\Longrightarrow\;
+   \text{about one positive in ten}. \]
+
+\begin{keybox}[title={This is not a fact about MNIST}]
+Every binary detector carved out of a multiclass problem inherits this. Detect
+one product fault out of forty; one disease out of a hundred; one fraudulent
+transaction in ten thousand. The arithmetic is identical and only the ratio
+changes.
+
+Nothing about MNIST is imbalanced. Our \emph{question} is.
+\end{keybox}
+
+\subsection{The data, and the first default nobody asked for}
+
+MNIST: 70{,}000 images of handwritten digits, each $28\times28$ pixels
+flattened to 784 features, each feature one pixel's intensity from 0 (white) to
+255 (black). The split is standard --- the first 60{,}000 rows train, the last
+10{,}000 test --- and using it is what makes any published MNIST number
+comparable to ours.
+
+The labels arrive as one-character \emph{strings}: \code{'5'}, not \code{5}.
+
+\begin{failbox}[title={What forgetting the cast costs}]
+\code{y == 5} is then \code{False} for every image, with no error and no
+warning, because a string is never equal to an integer. You would build a
+detector for a class with no members and score 100\% accuracy on it.
+
+The repair is one line and one assertion:
+\code{y = y.astype(np.uint8)}, then
+\code{assert y\_train\_5.sum() == 5421}. If the cast was skipped, the assertion
+fails at $0 = 5421$ instead of silently training on nothing.
+\end{failbox}
+
+\subsection{Metric before model}
+
+Choose what you are optimising before you have anything to optimise ---
+otherwise the metric gets chosen after the result, which is how you end up
+reporting whichever number happens to look best. And name who chose it: if the
+metric arrived by default, from a library or a habit or an assistant, then
+nobody chose it.
+
+The obvious metric is \term{accuracy}, the fraction of instances the classifier
+gets right. It is between 0 and 1, bigger is better, it needs no threshold and
+no scaling, and every stakeholder understands it without being taught.
+
+An \code{SGDClassifier} behind a \code{StandardScaler}, three-fold
+cross-validated, scores \textbf{96.90\%} --- folds of 96.83\%, 96.84\% and
+97.04\%, agreeing to about two tenths of a point.
+
+\subsection{Before you commit: what does nothing score?}
+
+The cheapest possible detector looks at nothing and answers ``not a 5'' every
+time. It is right 54{,}579 times out of 60{,}000: \textbf{90.96\%} accuracy,
+with no model, no fit and no features.
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Detector} & \textbf{Cross-validated accuracy} \\
+\midrule
+Never fires --- the anchor      & 90.96\% \\
+SGD on raw pixels               & 95.03\% \\
+SGD in a pipeline with scaling  & 96.90\% \\
+Perfect                         & 100\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Our detector is 5.94 percentage points above doing nothing and 3.10 points
+below perfect; of the mistakes the anchor makes we have removed 65.7\%. Those
+are the same measurement stated two ways, and you should say which one you
+mean.
+
+Read the anchor in two steps. First \emph{what it is}: with no positive
+prediction, accuracy is exactly the negative class's base rate, an identity
+about the data with no model in it. Only then \emph{what it means}: that
+accuracy is available for free, so 90.96\% is zero in the units that matter.
+The anchor differs for every task --- 88.76\% for digit 1, because the corpus
+holds more 1s than any other digit.
+
+\section{Derivation: imbalance, and the non-monotonicity of precision}
+
+One question, for the whole lecture: doing nothing scores 90.96\% and we score
+96.90\%. \emph{What, exactly, did those 5.94 points buy?} The number is
+correctly cross-validated, there is no leakage in it, and the three folds agree
+to two tenths of a point. Everything about how it was measured is right, which
+is what makes the question worth twenty minutes.
+
+\subsection{Notation}
+
+$m$ instances, each with a true label $y^{(i)} \in \{0,1\}$; $P$ positives, $N$
+negatives, $P + N = m$; $p = P/m$ the \term{base rate}. A scoring function $s$
+and a threshold $t$, predicting positive when $s(x) \ge t$, with counts
+$\mathrm{TP}(t)$, $\mathrm{FP}(t)$, $\mathrm{FN}(t)$, $\mathrm{TN}(t)$.
+
+Everything below is arithmetic on those four counts. There is no probability
+theory in this derivation and none is needed.
+
+\subsection{Claim 1 --- accuracy is a weighted average of two rates}
+
+\[ \text{accuracy}(t) \;=\;
+   \frac{\mathrm{TP}(t) + \mathrm{TN}(t)}{m}. \]
+
+Two of the four counts in the numerator, all four in the denominator --- and
+note that the two mistakes enter with \emph{equal weight}. A missed 5 and a
+wrongly flagged 3 cost the same, as far as this formula is concerned. Nobody in
+the postal operator believes that.
+
+\begin{derivbox}[title={The decomposition}]
+Split the four counts by true class, writing
+$\text{recall} = \mathrm{TP}/P$ and $\text{specificity} = \mathrm{TN}/N$:
+\[
+\begin{aligned}
+  \text{accuracy}
+  &= \frac{\mathrm{TP} + \mathrm{TN}}{m}
+   = \frac{P}{m}\cdot\frac{\mathrm{TP}}{P}
+   + \frac{N}{m}\cdot\frac{\mathrm{TN}}{N} \\[4pt]
+  &= p\,\text{recall} + (1-p)\,\text{specificity}.
+\end{aligned}
+\]
+The classifier that never fires is the special case $\text{recall} = 0$,
+$\text{specificity} = 1$, giving
+\[ \text{accuracy}(h_0) \;=\; \frac{0 + N}{m} \;=\; 1 - p. \]
+\end{derivbox}
+
+An identity, not an estimate: no model, no data, no variance. On our task
+$p = 0.09035$, so $\text{accuracy}(h_0) = 0.90965$. That is the 90.96\% we
+measured, and it could have been written down without running anything.
+
+\begin{failbox}[title={Corollary --- accuracy is unbounded above by uselessness}]
+\[ \lim_{p \to 0^{+}} \text{accuracy}(h_0) \;=\; 1. \]
+For any target accuracy $a < 1$ you care to name, there is a detection problem
+rare enough that the empty model beats it.
+
+So ``99.2\% accurate'' is not a statement about a classifier. It is a statement
+about a classifier \emph{and} a base rate, and quoting it without the second is
+quoting half a measurement.
+\end{failbox}
+
+\subsubsection{The identity, on our own detector}
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+\toprule
+\textbf{Term} & \textbf{Value} & \textbf{Contribution} \\
+\midrule
+$(1-p)\cdot\text{specificity}$ & $0.90965 \times 0.98860$ & 0.89928 \\
+$p\cdot\text{recall}$          & $0.09035 \times 0.77181$ & 0.06973 \\
+accuracy                       & ---                      & 0.96902 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+92.8\% of our headline number is the first row --- being right about the digits
+that are \emph{not} 5s. Everything the detector does about the class we were
+hired to find is the 0.0697 on the second row.
+
+Stated as a derivative:
+\[ \frac{\partial\,\text{accuracy}}{\partial\,\text{recall}} = p,
+   \qquad
+   \frac{\partial\,\text{accuracy}}{\partial\,\text{specificity}} = 1-p. \]
+Accuracy responds to the class you care about in proportion to \emph{how little
+of it there is}. You can lose a third of the 5s and pay under three points of
+accuracy for it --- and if accuracy is what you optimise, that trade looks
+attractive.
+
+\subsection{Claim 2 --- recall is monotone in the threshold and precision is not}
+
+Every scoring classifier is really a family of classifiers, one per threshold:
+$\hat y_t(x) = \mathbf{1}[s(x) \ge t]$. Raising $t$ makes it more reluctant to
+fire. Nothing about the model changes --- only where we cut.
+
+The flagged set $\{x : s(x) \ge t\}$ shrinks as $t$ rises, and it shrinks by
+losing instances, never by gaining any. So for $t' \ge t$, both
+$\mathrm{TP}(t') \le \mathrm{TP}(t)$ and $\mathrm{FP}(t') \le \mathrm{FP}(t)$.
+
+\[ \text{recall}(t) = \frac{\mathrm{TP}(t)}{\mathrm{TP}(t) + \mathrm{FN}(t)}
+   = \frac{\mathrm{TP}(t)}{P}. \]
+
+The denominator does not depend on $t$ at all: $\mathrm{TP} + \mathrm{FN}$
+counts every positive in the data, whatever we predict about it. So recall is a
+non-increasing quantity divided by a constant, and recall is non-increasing.
+There are no exceptions and no conditions.
+
+Precision has no such guarantee:
+\[ \text{precision}(t) =
+   \frac{\mathrm{TP}(t)}{\mathrm{TP}(t) + \mathrm{FP}(t)}, \]
+where numerator and denominator both move, in the same direction. A ratio of
+two decreasing quantities can do anything at all. The denominator is the size
+of the set \emph{we chose to flag}: not a property of the data, a property of
+our decision.
+
+\begin{derivbox}[title={The one-step lemma}]
+Raise $t$ just enough to drop the lowest-scoring flagged instance. Write
+$T = \mathrm{TP}$, $F = \mathrm{FP}$, $n = T + F$ before the step, and let
+$y \in \{0,1\}$ be the true label of the instance dropped.
+\[ \text{precision before} = \frac{T}{n}, \qquad
+   \text{precision after}  = \frac{T - y}{n - 1}. \]
+Cross-multiplying, the step increases precision exactly when
+$n(T-y) > T(n-1)$, that is when
+\[ y \;<\; \frac{T}{n} \;=\; \text{precision before}. \]
+\end{derivbox}
+
+Since $y$ is 0 or 1, the lemma resolves into two cases:
+
+\begin{center}
+\small
+\begin{tabular}{llp{0.42\textwidth}}
+\toprule
+\textbf{Instance dropped} & \textbf{$y$} & \textbf{Effect on precision} \\
+\midrule
+a false positive & 0 & rises --- always, since precision $> 0$ \\
+a true positive  & 1 & falls --- unless precision was already 1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{keybox}[title={The whole result in one sentence}]
+Raising the threshold past a positive lowers precision; raising it past a
+negative raises precision. The non-monotonicity is not an anomaly --- it is the
+generic case. Recall meanwhile falls by $1/P$ in the first case and by nothing
+in the second, so both metrics are decided by the same single fact: what the
+dropped instance was.
+\end{keybox}
+
+\subsubsection{Counted on sixty thousand instances}
+
+Sort every training instance by its out-of-fold score and walk the threshold
+down the list one instance at a time --- 59{,}999 steps.
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{As the threshold rises, one step at a time} & \textbf{Steps} \\
+\midrule
+the instance dropped is not a 5 --- precision rises & 54{,}579 \\
+the instance dropped is a 5 --- precision falls     &  5{,}417 \\
+\ldots or stays at 1, because it was already 1      &      3 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+54{,}579 is the number of non-5s in the training set, and $5{,}417 + 3 =
+5{,}420$ is the number of 5s less the one at the very top of the ranking, which
+has no step above it. Every step is accounted for by the lemma. This is not a
+tendency; it is an exact classification of all 59{,}999 steps.
+
+What is guaranteed, then: recall is non-increasing, always; the flagged count
+is non-increasing, always; and precision has no monotone envelope you can rely
+on, only a local rule. That is worth remembering because \emph{average
+precision} is defined using the maximum precision at or above each recall
+level, and that maximum exists for exactly one reason --- to replace a
+non-monotone quantity by a monotone one.
+
+\section{What 96.90\% was hiding}
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Detector} & \textbf{Accuracy} & \textbf{Recall} \\
+\midrule
+Never fires & 90.96\% & 0\% \\
+Ours        & 96.90\% & 77.18\% \\
+Difference  & 5.94 points & 77.18 points \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The identity says where the 5.94 points came from. Recall earns $p \times
+77.18\% = 6.97$ points; specificity fell from a perfect 100\% to 98.86\%, which
+costs $(1-p) \times 1.14\% = 1.04$ points. The three numbers on the page are
+each rounded to two decimals, which is why they do not quite close: exactly,
+$6.9733 - 1.0370 = 5.9363$ against a measured difference of $5.9370$.
+
+\subsection{The confusion matrix}
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+& \textbf{Predicted not-5} & \textbf{Predicted 5} \\
+\midrule
+Actually not-5 & 53{,}957 & 622 \\
+Actually 5     & 1{,}237  & 4{,}184 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Rows are the actual class, columns the predicted class; the diagonal is what
+went right. Both mistakes are visible \emph{separately}, and they are not the
+same size or the same kind. Accuracy added them together and divided by
+60{,}000.
+
+\begin{center}
+\small
+\begin{tabular}{lrp{0.42\textwidth}}
+\toprule
+\textbf{Metric} & \textbf{Value} & \textbf{Reads as} \\
+\midrule
+Precision & 87.06\% & of the digits we flag, 87\% really are 5s \\
+Recall    & 77.18\% & of the 5s that exist, we find 77\% \\
+Accuracy  & 96.90\% & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+1{,}237 fives went past unflagged: 22.8\% of every 5 in the training set. Both
+of those numbers were computable an hour ago. Nothing new was fitted; we asked
+the same predictions a different question.
+
+\begin{failbox}[title={Two sentences, both true}]
+``The detector is 96.9\% accurate.'' True. Signed off. Deployed.
+
+``The detector misses 22.8\% of the 5s --- on the test shift, about 204
+envelopes.'' Also true. Same model, same data, same predictions.
+
+Only one of them is a report the audit team can act on, and it is not the one
+the default metric produces.
+\end{failbox}
+
+Accuracy was not \emph{wrong}. It correctly answered a question --- what
+fraction of all decisions were right? --- that nobody in this brief had asked.
+It weights the class we care about by $p = 0.09$, adds two errors the client
+prices completely differently, and has a floor of 90.96\% that no model can go
+below by being cautious. And we chose it deliberately, before we had anything
+to optimise. Choosing early is necessary and not sufficient: only the class
+counts would have said it was the wrong metric.
+
+\section{Precision, recall, and the curves}
+
+\subsection{Ask for both numbers, and know what $F_1$ costs}
+
+\[ \text{precision} = \frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FP}},
+   \qquad
+   \text{recall} = \frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FN}}. \]
+Recall is also called \term{sensitivity} or the \term{true positive rate};
+three names, one quantity, and the third returns on the ROC curve.
+
+When one number is unavoidable, $F_1$ is the harmonic mean:
+\[ F_1 = \frac{2}{\frac{1}{\text{precision}} + \frac{1}{\text{recall}}}
+       = 2\cdot\frac{\text{precision}\cdot\text{recall}}
+                    {\text{precision}+\text{recall}}. \]
+Ours is 81.82\%, below both numbers it combines. That is not an accident:
+
+\begin{center}
+\small
+\begin{tabular}{rrrr}
+\toprule
+\textbf{Precision} & \textbf{Recall} & \textbf{Arithmetic mean} &
+\textbf{$F_1$} \\
+\midrule
+0.90 & 0.90 & 0.900 & 0.900 \\
+0.99 & 0.81 & 0.900 & 0.891 \\
+1.00 & 0.02 & 0.510 & 0.039 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The harmonic mean is dominated by the smaller of the two. A classifier that
+flags three digits a year and is right every time has an arithmetic mean above
+one half and an $F_1$ near zero.
+
+\begin{keybox}[title={But that is a choice, not a virtue}]
+$F_1$ rewards classifiers with \emph{similar} precision and recall. Our brief
+does not ask for similar precision and recall. It asks for the 5s to be found,
+within a fixed desk capacity.
+
+A filter for children's videos wants high precision and low recall: rejecting a
+good video is annoying, letting a bad one through is not. A shoplifter detector
+wants high recall and accepts false alarms: a guard checking one costs a
+minute, a missed thief costs the stock. Ours is the second shape, with a cap.
+\end{keybox}
+
+\subsection{Where the dial is}
+
+Every scoring classifier computes a number and compares it to a threshold.
+\code{predict()} hides the number and hard-codes the threshold at zero. There
+is no \code{set\_threshold()} method, and there should not be: you compute the
+scores with \code{decision\_function} and compare them yourself.
+
+Choosing 90\% precision on cross-validated training scores gives threshold
+20.09, at precision 0.9001 and recall 0.7333 --- ninety per cent precision
+costs 3.86 points of recall, from 77.18\% down to 73.33\%.
+
+\begin{failbox}[title={Why the crossing needs a support test}]
+We have just spent twenty minutes proving the precision curve is not monotone.
+So ``the first index reaching 90\%'' could be a single lucky step, held up by a
+handful of flagged digits, that the very next threshold falls back below.
+
+Requiring the crossing to rest on at least 500 flagged digits turns it into a
+claim you can defend --- and here it passes unchanged, at threshold 20.09 on
+4{,}416 digits across 4{,}411 thresholds.
+
+Aiming higher is nearly free-looking and very expensive. At 99\% precision our
+recall falls to 2.12\%: a detector that finds one 5 in fifty. And it fails the
+support test --- 99\% precision is reached on only 116 flagged digits, across a
+plateau 21 thresholds wide. Which is why 2.12\% is quoted as an illustration of
+what high precision costs and never proposed as an operating point. The right
+response to a target you cannot meet with support is to \emph{say so}, not to
+lower the support test until it passes.
+\end{failbox}
+
+A threshold is a hyperparameter, so it is chosen on cross-validated training
+scores, never on the test set --- the same error as choosing $\alpha$ that way,
+with the same optimistic bias.
+
+\subsection{ROC, and when not to use it}
+
+Same sweep, different axes:
+\[ \mathrm{TPR} = \frac{\mathrm{TP}}{P} = \text{recall},
+   \qquad
+   \mathrm{FPR} = \frac{\mathrm{FP}}{N} = 1 - \text{specificity}. \]
+Ours scores ROC AUC $0.9724$, against $0.5$ for a coin and $1.0$ for a perfect
+classifier.
+
+Note that \emph{both} denominators are fixed by the data. That is precisely why
+the ROC curve behaves so much better than the PR curve --- and why that is a
+warning rather than a recommendation.
+
+ROC AUC is the probability that a randomly chosen positive is scored above a
+randomly chosen negative. It is a statement about the ranking and nothing else:
+it does not depend on the threshold, because there is no threshold in it, and
+it does not depend on the base rate, because both axes are normalised within a
+class. So it cannot tell you whether the classifier is \emph{usable}. Only how
+well it ranks.
+
+\subsubsection{Measure that, rather than taking it on trust}
+
+Take our scores unchanged and thin the positive class. The model, the ranking
+and the scores are identical; only the class balance moves.
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Base rate} & \textbf{Positives} & \textbf{ROC AUC} &
+\textbf{Average precision} \\
+\midrule
+9.04\% --- as measured & 5{,}421 & 0.9724 & 0.8784 \\
+2.00\%                 & 1{,}114 & 0.9699 & 0.7203 \\
+1.00\%                 &    551 & 0.9709 & 0.5800 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+ROC AUC moves by 0.0015. Average precision falls by 0.298. Three
+indistinguishable ROC curves and three obviously different PR curves, from one
+set of scores: \emph{the ROC curve cannot see the problem you have}.
+
+Hence the rule: prefer the precision/recall curve whenever the positive class
+is rare, or whenever you care more about false positives than false negatives.
+The reason is arithmetic --- FPR divides false positives by $N$, which is huge
+when positives are rare, so a large number of false alarms produces a small,
+comfortable-looking FPR, while precision divides the same false positives by
+the flagged count, which is small.
+
+\subsection{And now a better classifier}
+
+A forest has no \code{decision\_function}. It has \code{predict\_proba}, whose
+positive-class column plays exactly the role of the score, and every curve
+above works unchanged.
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Metric} & \textbf{SGD} & \textbf{Random forest} \\
+\midrule
+Accuracy   & 96.90\% & 98.77\% \\
+Precision  & 87.06\% & 98.93\% \\
+Recall     & 77.18\% & 87.31\% \\
+$F_1$      & 81.82\% & 92.76\% \\
+ROC AUC    & 0.9724  & 0.9984 \\
+Average precision & 0.8784 & 0.9883 \\
+Recall available at 90\% precision & 73.33\% & 97.51\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{keybox}[title={Which metric noticed?}]
+Accuracy improves by 1.87 points, which reads as polish. Recall improves by
+10.13 points --- the thing we care about. Recall at 90\% precision improves by
+24.18 points, and those are two completely different systems.
+
+Three descriptions of one comparison. Which one you report decides whether
+anyone approves the change. Report the one that matches the brief, and say why
+you chose it. \emph{That sentence is the deliverable.}
+\end{keybox}
+
+\section{Choosing an operating point}
+
+What the client asked for, in our vocabulary: catch at least 90\% of the 5s on
+a shift, and flag no more than 1{,}000 items out of 10{,}000 scanned. Two
+constraints, one dial --- and the honest answer may be that no threshold
+satisfies both.
+
+The forest at threshold 0.44 was chosen on cross-validated training scores,
+where it gives 90.39\% recall at 98.33\% precision. Measured once on the test
+shift:
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Random forest at threshold 0.44} & \textbf{Recall} &
+\textbf{Precision} & \textbf{Flagged} \\
+\midrule
+Cross-validated, on the training set & 90.39\% & 98.33\% & --- \\
+Test shift, measured once            & 89.91\% & 98.89\% & 811 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Half a point below target. Is that a failure, a bad fold, or noise? It is
+noise: the target was hit on a different sample, and a threshold chosen at
+exactly 90\% will land either side of it about half the time.
+
+\begin{failbox}[title={Report it, do not tune it away}]
+Re-tuning to make the test number reach 90\% is fitting the test set --- the
+temptation Lecture 2 told you to refuse, arriving exactly where it was
+predicted to.
+\end{failbox}
+
+Whichever threshold you propose, you must be able to answer four questions:
+which constraint did you satisfy and which did you sacrifice; what does one
+extra point of recall cost in items sent to the desk; on what data was the
+threshold chosen, and had you seen the test shift when you chose it; and what
+happens if the base rate changes next quarter.
+
+\begin{keybox}[title={The general rule}]
+Never optimise one metric of a pair --- precision and recall, bias and
+variance, latency and accuracy, memory and throughput. Ask for one and you will
+get it, at the price of the other, and the price will not be in the reply. The
+counter-measure is not cleverness; it is stating the second quantity as a
+constraint in the same sentence as the first.
+\end{keybox}
+
+\section{Beyond binary}
+
+Everything above was one class against the rest. Three more shapes reuse the
+same confusion matrix.
+
+\begin{center}
+\small
+\begin{tabular}{llp{0.34\textwidth}}
+\toprule
+\textbf{Shape} & \textbf{Output per instance} & \textbf{Example} \\
+\midrule
+Binary       & one label from two            & is it a 5? \\
+Multiclass   & one label from many           & which digit is it? \\
+Multilabel   & several labels at once        & is it large? is it odd? \\
+Multioutput  & several labels, each multiclass & the denoised image, pixel by
+                                                pixel \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Multiclass is built from binary parts. \term{One-versus-rest} trains ten
+detectors like ours and takes the highest score. \term{One-versus-one} trains
+one detector per pair --- $10\times9/2 = 45$ fits, each on a much smaller
+training set --- and takes the most-won duel. Scikit-learn picks one for you
+automatically and does not mention which: another default nobody asked for, and
+it matters, because for algorithms that scale badly with training-set size
+forty-five small fits beat ten large ones.
+
+For multilabel targets, metrics are computed per label and averaged, and the
+averaging argument is a third default that changes the number without changing
+the model: \code{average="macro"} weights every label equally,
+\code{average="weighted"} weights by support, and on imbalanced labels the two
+can disagree substantially. Name the metric, and name the average.
+
+\section{The notebook}
+
+\begin{trybox}[title={What to change}]
+Run it once, then re-run the base-rate experiment with the positive class
+thinned to 0.5\% instead of 1\%. ROC AUC will barely move again; watch what
+average precision does. Two lines, and it is the whole argument for preferring
+the PR curve on rare events --- measured by you rather than asserted here.
+\end{trybox}
+
+\section{Exercises}
+
+\begin{enumerate}[leftmargin=1.6em,itemsep=4pt]
+  \item A colleague reports 99.2\% accuracy on a rare defect, correctly
+        cross-validated. State one further quantity you would need, and why.
+        \hfill \scope{[4]}
+  \item A ranking classifier is evaluated on 10 instances, of which 4 are
+        positive. Sorted by score, highest first, the true labels are
+        $1,1,0,1,0,0,1,0,0,0$. Compute precision and recall when the top 4 are
+        flagged and when the top 5 are flagged; then state, using the one-step
+        lemma, whether precision rises or falls when the threshold is raised
+        from ``top 5'' to ``top 4'', and why. \hfill \scope{[3]}
+  \item Explain why $F_1$ would be the wrong summary for the postal operator's
+        brief, and name the pair of numbers you would report instead.
+        \hfill \scope{[4]}
+  \item A model's ROC AUC is unchanged when the positive class is thinned from
+        9\% to 1\%, while its average precision falls by 0.30. Explain both
+        observations in terms of the denominators of the two curves' axes.
+        \hfill \scope{[5]}
+  \item You are asked for a threshold achieving 99\% precision. The first
+        crossing rests on 116 flagged instances across a plateau 21 thresholds
+        wide. State what you would report, and why lowering the support test
+        until the target passes is not an option. \hfill \scope{[4]}
+\end{enumerate}
+
+\section*{Summary}
+\addcontentsline{toc}{section}{Summary}
+
+Accuracy decomposes as $p\,\text{recall} + (1-p)\,\text{specificity}$, so a
+classifier that never fires scores exactly $1-p$ and
+$\partial\,\text{accuracy}/\partial\,\text{recall} = p$. On this task that
+anchor is 90.96\%, our detector scored 96.90\%, and 92.8\% of the headline was
+being right about digits that are not 5s.
+
+Recall is non-increasing in the threshold because its denominator is $P$, which
+the threshold cannot touch. Precision's denominator is the flagged count, which
+the threshold chooses, so one step raises precision exactly when the dropped
+instance is a negative --- counted on our own ranking as 54{,}579 rises,
+5{,}417 falls and 3 flat, every one of 59{,}999 steps accounted for.
+
+Asking the same predictions a different question gave precision 87.06\% and
+recall 77.18\%: 1{,}237 fives past the desk, 22.8\% of them. ROC AUC moved by
+0.0015 as the base rate fell from 9\% to 1\% while average precision fell by
+0.298, which is why the PR curve is the one to read on a rare event. And the
+forest improved accuracy by 1.87 points, recall by 10.13, and recall at 90\%
+precision by 24.18 --- three descriptions of one comparison, of which only the
+last matches the brief.
+
+\end{document}

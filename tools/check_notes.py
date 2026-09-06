@@ -47,7 +47,7 @@ import check_consistency as cc                                  # noqa: E402
 
 ROOT = cc.ROOT
 NOTES = ROOT / "notes"
-LECTURES = (1, 2, 19, 20, 21, 22)
+LECTURES = (1, 2, 3, 19, 20, 21, 22)
 
 BOLD, RED, GREEN, YELLOW, OFF = cc.BOLD, cc.RED, cc.GREEN, cc.YELLOW, cc.OFF
 
@@ -82,10 +82,18 @@ def prose(tex: str) -> str:
     return tex
 
 
-def stated(tex_path: Path, own) -> list[tuple[int, float, str, str]]:
-    """Which of this lecture's figures.json values the notes state, and where."""
+def stated(tex_path: Path, own) -> list[tuple[int, float, str, str, int]]:
+    """Which of this lecture's figures.json values the notes state, and where.
+
+    The decimal count travels with each hit. check_consistency learned in round
+    5 that a fixed precision is the wrong instrument -- a note that writes
+    "6.9733" is claiming four decimals of a printed 6.973289, and checking it at
+    two would accept a notebook printing 6.97 and nothing more. This check was
+    still passing everything through cc.matches() at the default, so it was the
+    laxer of the two on exactly the artefact students are examined from.
+    """
     src = prose(tex_path.read_text(encoding="utf-8"))
-    hits: list[tuple[int, float, str, str]] = []
+    hits: list[tuple[int, float, str, str, int]] = []
     for line_no, line in enumerate(src.splitlines(), start=1):
         if not line.strip():
             continue
@@ -103,7 +111,8 @@ def stated(tex_path: Path, own) -> list[tuple[int, float, str, str]]:
                 continue                              # a year
             key = cc.fact_for(v, own)
             if key:
-                hits.append((line_no, v, key, " ".join(line.split())[:88]))
+                dec = len(raw.split(".")[1]) if "." in raw else 0
+                hits.append((line_no, v, key, " ".join(line.split())[:88], dec))
     return hits
 
 
@@ -155,7 +164,7 @@ def main() -> int:
             bad += 1
             continue
         wrong = [h for h in hits
-                 if not cc.matches(h[1], printed)
+                 if not cc.matches(h[1], printed, h[4])
                  and h[2] not in cc.SCALE_ONLY
                  and f"l{n}:{h[2]}" not in cc.CROSS_LECTURE]
 
@@ -164,7 +173,7 @@ def main() -> int:
             print(f"{RED}FAIL{OFF}  lecture {n:02d} — "
                   f"{len(wrong)} of {len(hits)} stated figures are not printed "
                   f"by notebooks/lecture-{n:02d}.ipynb")
-            for line, v, key, ctx in wrong[:10]:
+            for line, v, key, ctx, _dec in wrong[:10]:
                 print(f"        notes/{tex.name}:{line}  {v:g}  ({key})")
                 print(f"            …{ctx}…")
             if len(wrong) > 10:
@@ -173,7 +182,7 @@ def main() -> int:
             print(f"{GREEN}ok{OFF}    lecture {n:02d} — "
                   f"{len(hits)} stated figures, every one printed by its notebook")
             if a.verbose:
-                for line, v, key, _ in hits:
+                for line, v, key, _, _dec in hits:
                     print(f"        {v:g}  {key}  (line {line})")
 
     print()
