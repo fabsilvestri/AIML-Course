@@ -47,7 +47,7 @@ import check_consistency as cc                                  # noqa: E402
 
 ROOT = cc.ROOT
 NOTES = ROOT / "notes"
-LECTURES = (1, 19, 20, 21, 22)
+LECTURES = (1, 2, 19, 20, 21, 22)
 
 BOLD, RED, GREEN, YELLOW, OFF = cc.BOLD, cc.RED, cc.GREEN, cc.YELLOW, cc.OFF
 
@@ -61,6 +61,13 @@ def prose(tex: str) -> str:
     """
     def blank(m):
         return "\n" * m.group(0).count("\n")
+
+    # LaTeX writes a thousands separator as {,} -- 48{,}180 -- so that the
+    # comma does not take sentence spacing. Left alone, cc.NUM sees "48" and
+    # "180" and every grouped integer in every set of notes is invisible to
+    # this check. Lecture 2's notes quote forty-odd of them and scored "0
+    # stated figures, every one printed": a pass with nothing behind it.
+    tex = tex.replace("{,}", ",").replace("\\,", "")
 
     tex = re.sub(r"\\begin\{verbatim\}.*?\\end\{verbatim\}", blank, tex, flags=re.S)
     tex = re.sub(r"\\\[.*?\\\]", blank, tex, flags=re.S)          # display maths
@@ -137,6 +144,16 @@ def main() -> int:
 
         printed = cc.printed_numbers(run)
         hits = stated(tex, own)
+        if not hits:
+            # The same failure check_consistency guards against: figures are
+            # available, the notes quote none of them precisely enough to
+            # check, and the check reports ok for having compared nothing.
+            # An empty selection must fail, not pass.
+            print(f"{RED}FAIL{OFF}  lecture {n:02d} — {len(own)} figures "
+                  f"available in {cc.NAMESPACES[n]} and the notes quote none "
+                  f"of them precisely enough to check, so nothing was checked.")
+            bad += 1
+            continue
         wrong = [h for h in hits
                  if not cc.matches(h[1], printed)
                  and h[2] not in cc.SCALE_ONLY
