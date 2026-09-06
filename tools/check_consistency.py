@@ -82,6 +82,19 @@ NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
 # and using two. An exemption nobody needs is a standing permission with no
 # justification attached, which is the thing this list exists to prevent.
 SCALE_ONLY: dict[str, str] = {
+    "l22_finetune":
+        "L18 fine-tunes on 20,000 reviews and scores all 25,000; the notebook "
+        "sets N_FT, N_SCORE = 2,000, 3,000 and says so in a comment, because a "
+        "67-million-parameter model has to finish on a free CPU. The claim is "
+        "the ordering against tf-idf and the GRU, and the share of errors "
+        "removed -- both of which survive the smaller run.",
+    "l22_leak":
+        "Both leak experiments run at the deck's own sizes -- 400 documents "
+        "over 20 seeds and 25,000 over 5 -- but on a different pool: the "
+        "notebook draws from a 5,000-review fit split where the deck draws "
+        "from 20,000, and runs the full-corpus arm at 3 seeds. So the 400 "
+        "documents are not the same 400. The finding is that the gap is "
+        "smaller than the seed spread, which is what both runs show.",
     "l12_bench":
         "L10's three-way benchmark -- Scikit-Learn on CPU, PyTorch on CPU, "
         "PyTorch on the accelerator -- is run at lecture 9's scale, 20 epochs "
