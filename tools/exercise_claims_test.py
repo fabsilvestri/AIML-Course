@@ -27,9 +27,12 @@ eq("L09 Q4  trivial baseline", 1 / 10, 0.10, 0)
 
 # L11 Q2 -- Glorot is the harmonic mean of 1/n_in and 1/n_out
 for a, b in ((100, 400), (64, 64), (7, 3000)):
-    eq(f"L11 Q2  harmonic mean {a},{b}",
-       2 / (1 / a + 1 / b) ** 1 * 0 + 2 / (a + b), 2 / (a + b), 0)
-    eq(f"L11 Q2  = harmonic({a},{b})",
+    # Glorot's 2/(n_in + n_out) IS the harmonic mean of 1/n_in and 1/n_out.
+    # There was a second assertion above this one whose left side reduced to
+    # 2/(a + b) -- the same expression as its right side -- so it passed for
+    # every a and b and printed a green line that could not go red. Deleted:
+    # this one is the real check and subsumes it.
+    eq(f"L11 Q2  Glorot == harmonic mean of the two, {a},{b}",
        2 * (1 / a) * (1 / b) / ((1 / a) + (1 / b)), 2 / (a + b), 1e-12)
 
 # L11 Q3 -- ReLU halves the second moment of a symmetric zero-mean variable.

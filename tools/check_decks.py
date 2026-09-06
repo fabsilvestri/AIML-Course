@@ -30,6 +30,7 @@ Checks
 from __future__ import annotations
 
 import html
+import ast
 import re
 import sys
 from pathlib import Path
@@ -302,15 +303,50 @@ def check_figure_lecture_refs() -> list[str]:
     # scanned too: three stale lecture numbers were sitting in set_title() and
     # legend calls, rendered into plots on deck 11 and deck 17 where students
     # could see them and no grep could.
-    unreadable = 0
+    # matplotlib renders its labels as glyph paths, so 160 of the 199 figures
+    # carry no readable text and this check can say nothing about them. Where
+    # those labels CAN be read is the generator, so the generators are scanned
+    # too -- three stale lecture numbers were sitting in plot titles, visible
+    # to students and invisible to every grep.
+    #
+    # Walk the AST rather than the source text. The first version matched
+    # `set_title(` followed immediately by a quote, which misses `label="..."`,
+    # `ax.text(x, y, s)` and every f-string -- 152 keyword labels and 113
+    # f-string labels in these generators, all invisible to it, and one of the
+    # three defects it was written for. An AST walk covers every call shape and
+    # cannot drift as the shapes change.
+    SETTERS = {"set_title", "set_xlabel", "set_ylabel", "annotate", "text",
+               "suptitle", "legend", "set_label"}
+    LECTURE = re.compile(r"Lectures?\s+(\d+)")
+
+    def strings_in(node):
+        """Every literal string reachable inside a call, f-strings included."""
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                yield sub.value
+
     for gen in sorted((ROOT / "tools").glob("figures_*.py")):
-        for m in re.finditer(r"(?:set_title|set_xlabel|set_ylabel|annotate|"
-                             r"ax\.text|label)\s*\(\s*[\"'][^\"']*?"
-                             r"Lectures?\s+(\d+)", gen.read_text()):
-            out.append(f"tools/{gen.name}: a plot label names Lecture "
-                       f"{m.group(1)} — matplotlib renders it as paths, so it "
-                       f"is visible to students and invisible to every grep. "
-                       f"Say it in the deck's prose instead, or name no lecture.")
+        try:
+            tree = ast.parse(gen.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            name = (fn.attr if isinstance(fn, ast.Attribute)
+                    else fn.id if isinstance(fn, ast.Name) else "")
+            kwds = {k.arg for k in node.keywords if k.arg}
+            if name not in SETTERS and not (kwds & {"label", "title"}):
+                continue
+            for text in strings_in(node):
+                m = LECTURE.search(text)
+                if m:
+                    out.append(f"tools/{gen.name}:{node.lineno}: a plot label "
+                               f"names Lecture {m.group(1)} — matplotlib "
+                               f"renders it as paths, so it is visible to "
+                               f"students and invisible to every grep. Say it "
+                               f"in the deck's prose instead.")
     for name, deck_n in sorted(used.items()):
         path = ROOT / "assets" / "figures" / name
         if not path.exists():
