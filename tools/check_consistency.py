@@ -273,7 +273,12 @@ def stated_facts(deck: Path, own) -> list[tuple[int, float, str, str]]:
                 continue                          # a year
             key = fact_for(v, own)
             if key:
-                hits.append((line, v, key, " ".join(run.split())[:88]))
+                # The slide's own string says how precisely it is quoting:
+                # "0.171" claims three decimals, "61.67%" claims two. Carry
+                # that, so matches() can require agreement AT THAT PRECISION
+                # rather than at some fixed floor.
+                dec = len(raw.split(".")[1]) if "." in raw else 0
+                hits.append((line, v, key, " ".join(run.split())[:88], dec))
     return hits
 
 
@@ -294,7 +299,7 @@ def fact_for(v: float, own) -> str | None:
     return None
 
 
-def matches(v: float, printed: set[float]) -> bool:
+def matches(v: float, printed: set[float], dec: int = 2) -> bool:
     """Did the notebook print this figure?
 
     Allows the two presentation differences that are choices rather than
@@ -308,16 +313,24 @@ def matches(v: float, printed: set[float]) -> bool:
                 continue
             if abs(w - p) <= max(abs(p), abs(w)) * 5e-4:
                 return True
-            # dp starts at 2, not 0. Rounding to zero decimals collapses every
-            # accuracy in [0.5, 1.5) onto 1.0, so a slide figure of 55.55,
-            # 123.4 or 99.99 "matched" a notebook that printed nothing but
-            # accuracies around 0.83 -- verified by probe. One decimal is
-            # nearly as coarse (0.88 and 0.94 both round to 0.9). Two decimals
-            # still covers every real presentation difference in this course:
-            # "90.39%" against 0.9039, "0.171" against 0.170746, "12.0%"
-            # against 0.12026.
-            for dp in (2, 3, 4, 5):
-                if round(p, dp) == round(w, dp) and round(p, dp) != 0:
+            # Round the PRINTED value to the precision the slide claims, and
+            # require it to equal the slide's figure. A slide that says "0.171"
+            # is claiming three decimals of a printed 0.170746, and that is
+            # exactly what this tests.
+            #
+            # A fixed floor cannot do this. It was 0 until round 5, which
+            # collapses every accuracy in [0.5, 1.5) onto 1.0 -- 55.55, 123.4
+            # and 99.99 all "matched" a notebook printing only accuracies near
+            # 0.83, verified by probe. Raising the floor to 2 fixed those and
+            # still let 38 through, because a floor is the wrong instrument:
+            # the right precision is a property of the quotation, not a
+            # constant.
+            dps = {dec} if dec else {0}
+            # A percentage written to n decimals is a fraction to n+2.
+            if scale != 1.0:
+                dps.add(dec + 2)
+            for dp in dps:
+                if dp and round(p, dp) == round(w, dp) and round(p, dp) != 0:
                     return True
     return False
 
@@ -414,8 +427,8 @@ def main() -> int:
             total += 1
             continue
         seen, uniq, excused, excused_cross = set(), [], set(), set()
-        for line, v, key, ctx in stated:
-            if matches(v, printed) or v in seen:
+        for line, v, key, ctx, dec in stated:
+            if matches(v, printed, dec) or v in seen:
                 continue
             path = key.lstrip("/")
             root = path.split("/")[0].split("[")[0]

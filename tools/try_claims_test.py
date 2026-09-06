@@ -520,4 +520,13 @@ check("L14", "predicting the median lowers the count MAE below the rounded mean"
 for lec, claim, ok, detail in R:
     print(f"{'PASS' if ok else 'FAIL':4}  {lec}  {claim}")
     print(f"        {detail}")
-print(f"\n{sum(1 for *_ , ok, d in [(r[0],r[1],r[2],r[3]) for r in R] if ok)}/{len(R)} verified")
+failed = [r for r in R if not r[2]]
+print(f"\n{len(R) - len(failed)}/{len(R)} verified")
+
+# Without this the process exits 0 on a failure and check_all.py prints
+# "ok  43/44 verified" followed by "all 8 checks clean" -- a check that
+# cannot fail the build is not a check. Verified by planting a false claim.
+if failed:
+    print(f"{len(failed)} claim(s) FAILED: "
+          + ", ".join(f"{r[0]} {r[1][:50]}" for r in failed))
+    raise SystemExit(1)
