@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-The Part V extended notes, checked against the notebooks that produce them.
+The extended lecture notes, checked against the notebooks that produce them.
 
-    python3 tools/check_notes.py            # lectures 19-22
+    python3 tools/check_notes.py            # every lecture that has notes
     python3 tools/check_notes.py 21         # one of them
     python3 tools/check_notes.py --execute  # ignore the cached runs
 
@@ -47,7 +47,7 @@ import check_consistency as cc                                  # noqa: E402
 
 ROOT = cc.ROOT
 NOTES = ROOT / "notes"
-LECTURES = (19, 20, 21, 22)
+LECTURES = (1, 19, 20, 21, 22)
 
 BOLD, RED, GREEN, YELLOW, OFF = cc.BOLD, cc.RED, cc.GREEN, cc.YELLOW, cc.OFF
 
@@ -161,10 +161,10 @@ def main() -> int:
 
     print()
     if bad:
-        print(f"{BOLD}{RED}{bad} figure(s) in the Part V notes that no notebook "
+        print(f"{BOLD}{RED}{bad} figure(s) in the lecture notes that no notebook "
               f"prints{OFF}")
         return 1
-    print(f"{BOLD}{GREEN}the Part V notes agree with their notebooks{OFF}")
+    print(f"{BOLD}{GREEN}the lecture notes agree with their notebooks{OFF}")
     return 0
 
 
