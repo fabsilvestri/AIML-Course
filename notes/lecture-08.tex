@@ -1,0 +1,690 @@
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+
+\begin{document}
+\notestitlefor{8}{I}{Dimensionality reduction and unsupervised learning}{Olivetti faces, 400 photographs}{Chapters 7--8}
+
+\section{The first lecture with no target column}
+
+Seven lectures, and every one was handed the answers: a price for every
+district, a digit for every image, a survivor flag for every passenger, a cover
+type for every plot. Today there is nothing. That changes what a metric can be,
+what a baseline is, and how you find out you were wrong.
+
+\begin{center}
+\small
+\begin{tabular}{p{0.42\textwidth}p{0.44\textwidth}}
+\toprule
+\textbf{Supervised} & \textbf{Unsupervised} \\
+\midrule
+You are given $(\mathbf{x}^{(i)}, y^{(i)})$ & you are given $\mathbf{x}^{(i)}$
+                                              only \\
+The metric compares prediction to truth & the metric compares the grouping to
+                                          itself \\
+The baseline is ``predict the majority'' & the baseline is ``group at
+                                           random'' \\
+You know when you are wrong & you find out when someone looks \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{keybox}[title={The consequence for the whole hour}]
+Every number computed today is a statement about \emph{geometry}, not about
+people. Whether the geometry is the people is a separate question, and it is
+answered by looking.
+\end{keybox}
+
+\subsection{The brief}
+
+``We have a photographic archive. We do not know how many distinct people are
+in it. Group the photographs by person, so that a human can name a group
+instead of naming every photograph.'' Nobody remembers who is in it, an
+annotator costs money per photograph, and we are funded for \emph{forty}
+labels. That is the ordinary situation outside a benchmark: data is cheap,
+labels are not.
+
+400 photographs of 40 people, ten each, $64\times64$ pixels flattened to
+$\mathbf{x}^{(i)} \in \mathbb{R}^{4096}$ with $x_j \in [0,1]$ --- 6.6 MB for
+the whole corpus. Ten times more dimensions than points.
+
+\begin{failbox}[title={The rule that keeps this honest}]
+Olivetti ships with the identity of every photograph; the archive we are
+pretending to hold does not. So $y$ is used in exactly two ways, both announced
+where they happen: as the \emph{forty labels we paid for}, and as an
+\emph{audit}, to find out what those forty could not have told us.
+
+Any other use of $y$ is the same error as scoring on the test set, wearing
+different clothes.
+\end{failbox}
+
+\subsection{Before anything is fitted: can this work at all?}
+
+$k$-means groups points close in Euclidean distance, so one measurement decides
+whether the hour is worth spending. It is an audit --- it uses the hidden
+labels.
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Euclidean distance, raw pixels} & \textbf{Pairs} & \textbf{Mean} &
+\textbf{Median} \\
+\midrule
+Same person      &  1{,}800 &  8.38 &  8.15 \\
+Different people & 78{,}000 & 12.41 & 12.15 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The gap is real and it is small: 6\% of same-person pairs sit further apart
+than the \emph{median} different-person pair.
+
+\begin{failbox}[title={A failure condition, stated in advance}]
+No method that groups by Euclidean distance in raw pixels will recover the
+forty people cleanly. Not because the method is bad --- because the
+representation puts a lamp and a nose on the same axis, with the same weight.
+
+Moving the light source changes hundreds of pixel values by a large amount.
+Changing the person changes a few dozen by a small one. Euclidean distance adds
+them all up equally.
+
+Measuring this costs one cell and tells you whether you are about to tune or
+about to hope.
+\end{failbox}
+
+It is also not free to work there. One model-selection sweep --- $k$-means at
+every $k$ from 2 to 60, ten restarts each, scored by silhouette --- costs 77
+seconds for 590 runs of Lloyd's algorithm at $O(\text{iterations}\cdot mkn)$
+and 2 more for 59 silhouette scores at $O(m^2 n)$. Both cost models are linear
+in $n$. Two of the three factors are properties of the problem; the third is a
+property of the \emph{representation}.
+
+\section{Derivation: PCA via the SVD}
+
+Two questions. Among all $d$-dimensional subspaces, which loses the least when
+you project onto it, and how much does it lose? And if all you need is that
+\emph{distances} survive, how small can $d$ be?
+
+Write $\mathbf{X} \in \mathbb{R}^{m\times n}$ with one photograph per row,
+$\tilde{\mathbf{X}} = \mathbf{X} - \mathbf{1}\bar{\mathbf{x}}^{\intercal}$ the
+centred data, $\mathbf{W} \in \mathbb{R}^{n\times d}$ with
+$\mathbf{W}^{\intercal}\mathbf{W} = \mathbf{I}_d$, and
+$\mathbf{P} = \mathbf{W}\mathbf{W}^{\intercal}$ the orthogonal projector.
+
+\begin{failbox}[title={Centre first, and say why}]
+Without centring, the direction of largest $\sum_i\lVert\mathbf{w}^{\intercal}
+\mathbf{x}^{(i)}\rVert^2$ is essentially $\bar{\mathbf{x}}$ itself, and the
+first component describes nothing but ``this is a photograph of a face''.
+
+Scikit-Learn's \code{PCA} centres for you. If you write the SVD by hand it does
+not, and the result is a plausible-looking first component and no error
+message. It is the commonest silent bug in a hand-rolled PCA.
+\end{failbox}
+
+\begin{derivbox}[title={Seven steps}]
+\textbf{1. The objective.} Project each centred face and measure how far it had
+to move:
+\[ E(\mathbf{W}) = \sum_i \bigl\lVert\tilde{\mathbf{x}}^{(i)}
+   - \mathbf{W}\mathbf{W}^{\intercal}\tilde{\mathbf{x}}^{(i)}\bigr\rVert_2^2
+   = \bigl\lVert\tilde{\mathbf{X}}
+   - \tilde{\mathbf{X}}\mathbf{W}\mathbf{W}^{\intercal}\bigr\rVert_F^2. \]
+
+\textbf{2. Pythagoras.} $\mathbf{P}$ is an orthogonal projector, so kept and
+lost are orthogonal, and since $\lVert\tilde{\mathbf{X}}\rVert_F^2$ does not
+depend on $\mathbf{W}$,
+\[ E(\mathbf{W}) = \lVert\tilde{\mathbf{X}}\rVert_F^2
+                 - \lVert\tilde{\mathbf{X}}\mathbf{W}\rVert_F^2. \]
+
+\textbf{3. As a trace.}
+$\lVert\tilde{\mathbf{X}}\mathbf{W}\rVert_F^2
+ = \operatorname{tr}(\mathbf{W}^{\intercal}\mathbf{C}\mathbf{W})$ with
+$\mathbf{C} = \tilde{\mathbf{X}}^{\intercal}\tilde{\mathbf{X}}$.
+
+\textbf{4. The SVD diagonalises it.} With
+$\tilde{\mathbf{X}} = \mathbf{U}\boldsymbol\Sigma\mathbf{V}^{\intercal}$,
+\[ \mathbf{C} = \mathbf{V}\boldsymbol\Sigma^2\mathbf{V}^{\intercal}, \]
+so the columns of $\mathbf{V}$ are the eigenvectors of $\mathbf{C}$ with
+eigenvalues $\sigma_j^2$. They are the principal components.
+
+\textbf{5. Rotate the unknown.} Write $\mathbf{W} = \mathbf{V}\mathbf{A}$ with
+$\mathbf{A}^{\intercal}\mathbf{A} = \mathbf{I}_d$; then
+$\operatorname{tr}(\mathbf{W}^{\intercal}\mathbf{C}\mathbf{W}) =
+ \sum_j \sigma_j^2 h_j$, where $h_j$ is the squared norm of row $j$ of
+$\mathbf{A}$, constrained to $0 \le h_j \le 1$ with $\sum_j h_j = d$.
+
+\textbf{6. A weighted sum with $d$ units to spend.} The $\sigma_j^2$ are
+sorted, so put a full unit on each of the $d$ largest and nothing on the rest:
+the maximum is $\sum_{j\le d}\sigma_j^2$, attained at $\mathbf{W} =
+\mathbf{V}_d$.
+
+\textbf{7. The error that is left.} Since
+$\lVert\tilde{\mathbf{X}}\rVert_F^2 = \operatorname{tr}(\mathbf{C})
+ = \sum_j\sigma_j^2$,
+\[ \min_{\mathbf{W}} E(\mathbf{W}) = \sum_{j > d}\sigma_j^{2}. \]
+\end{derivbox}
+
+That is Eckart--Young--Mirsky in the Frobenius norm. ``PCA minimises
+reconstruction error'' is a \emph{theorem}, not a slogan --- and it names the
+price in advance: the tail of the spectrum, readable before you choose $d$.
+
+Note also that step 2 says minimising error and maximising projected variance
+are \emph{the same problem}, not two related ones. And $\mathbf{C}$ is the
+matrix Lecture 2's normal equation had to invert, so step 4 says exactly when
+it cannot be: when some $\sigma_j = 0$.
+
+\begin{keybox}[title={A theorem you can check to machine precision}]
+\begin{verbatim}
+lhs = ((X_centred - Xd) ** 2).sum()   # the rank-d truncation's error
+rhs = (S[d:] ** 2).sum()              # the tail of the spectrum
+assert abs(lhs - rhs) / rhs < 1e-5
+\end{verbatim}
+Two sides computed by entirely different routes. When a theorem hands you an
+identity, \emph{assert the identity}: it is the cheapest possible test that
+your code is the theorem.
+\end{keybox}
+
+\subsection{Choosing $d$ without guessing}
+
+By step 7 the fraction of squared error removed by keeping $d$ components is
+exactly $\sum_{j\le d} r_j$, where $r_j = \sigma_j^2/\sum_i\sigma_i^2$. The
+explained variance ratio is not a heuristic; it is the theorem, normalised.
+
+The first component alone holds 23.8\%, ten hold 65.6\%, fifty hold 87.4\%.
+Cumulating to a target: 66 components reach 90\%, \textbf{123 reach 95\%}, 260
+reach 99\%. The rest of this lecture runs at 123 --- a factor of 33 fewer
+numbers per photograph.
+
+A principal component is a vector in $\mathbb{R}^{4096}$, so reshaping it to
+$64\times64$ makes it an image; on faces these are called \term{eigenfaces}.
+That is not a property of faces but of PCA: the components are directions in
+the input space, so whatever an input looks like, a component looks like too.
+And looking at the first few, they are \emph{lighting} --- exactly what the
+distance histogram predicted would dominate.
+
+\subsection{The second question: what if you only need distances?}
+
+PCA looks at the data and spends an SVD finding the best subspace. The
+alternative is to not look at the data at all: draw
+$\mathbf{R} \in \mathbb{R}^{n\times d}$ with independent Gaussian entries and
+set $\mathbf{Z} = \frac{1}{\sqrt d}\mathbf{X}\mathbf{R}$.
+
+\begin{derivbox}[title={The Johnson--Lindenstrauss lemma}]
+For any $0 < \varepsilon < 1$ and any set of $m$ points in $\mathbb{R}^n$,
+there is a linear map $f$ into $\mathbb{R}^d$ with
+\[ d \;\ge\; \frac{4\log m}{\varepsilon^{2}/2 - \varepsilon^{3}/3} \]
+such that for every pair $\mathbf{u},\mathbf{v}$,
+\[ (1-\varepsilon)\lVert\mathbf{u}-\mathbf{v}\rVert^2
+   \le \lVert f(\mathbf{u})-f(\mathbf{v})\rVert^2
+   \le (1+\varepsilon)\lVert\mathbf{u}-\mathbf{v}\rVert^2. \]
+The tolerance is on \emph{squared} distances. Quoting $\varepsilon$ against
+unsquared ones understates the distortion by about a factor of two.
+\end{derivbox}
+
+\begin{keybox}[title={Read the formula again. What is missing?}]
+In it: $m$, the number of points, logarithmically; and $\varepsilon$, the
+tolerance. \emph{Not} in it: $n$, the dimension you are starting from.
+
+400 points need the same target dimension whether they live in 4{,}096
+dimensions or in four million.
+\end{keybox}
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+$\varepsilon$ & \textbf{400 points} & \textbf{One million points} \\
+\midrule
+0.1 & 5{,}135 & 11{,}841 \\
+0.2 & 1{,}382 &  3{,}188 \\
+0.3 &   665 &  1{,}535 \\
+0.5 &   287 &    663 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two and a half thousand times as many points costs about twice the dimension.
+That is the $\log m$, and it is why the theorem is interesting at all.
+
+But be honest about the top-left cell: 5{,}135 dimensions to hold every
+pairwise distance among 400 faces to within 10\% is \emph{more than the 4{,}096
+we started with}. The bound is a worst case over all point sets --- it has to
+work for the nastiest configuration anyone can construct, and a photographic
+archive is not that. So it is sufficient, never necessary, and the reason to
+teach it is not the constant. Measured on our own distances at the bound's own
+$d = 1{,}382$, the worst of the 79{,}800 pairs is distorted by 0.17: inside the
+0.2 promised, and not by much.
+
+\section{Reducing the dimension}
+
+\begin{center}
+\small
+\begin{tabular}{llr r}
+\toprule
+\textbf{Method} & \textbf{What it does} & \textbf{Fit time, s} &
+\textbf{Held-out error} \\
+\midrule
+PCA, full SVD    & the complete SVD, then truncate & 0.074 & 0.00240 \\
+PCA, randomised  & approximates the top $d$        & 0.081 & 0.00241 \\
+Incremental PCA  & one batch at a time             & 0.142 & 0.00240 \\
+Random projection& never looks at the data         & 0.006 & 0.32093 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three PCA variants land on the same error at different prices. Random
+projection is essentially free and pays with a reconstruction error 133 times
+larger --- a random 123-dimensional subspace of $\mathbb{R}^{4096}$ keeps only
+about $123/4096 = 3.0\%$ of a generic vector's squared norm.
+
+\begin{keybox}[title={That is not a bug in random projection}]
+PCA minimises exactly this column by construction. Johnson--Lindenstrauss
+promises something else entirely --- that \emph{relative} distances survive.
+Neither theorem is about the other quantity.
+
+So the question is never which is better. It is whether you need the
+reconstruction or only the distances.
+\end{keybox}
+
+PCA is the wrong tool under three conditions. \emph{Variance is not signal}: if
+the largest variance is a nuisance --- a lamp --- PCA keeps the nuisance first.
+\emph{The structure is not linear}: a subspace is flat. \emph{The features are
+not commensurable}: PCA is not scale-free, so standardise first unless, as
+here, every feature is already the same kind of number. The first condition is
+the one on this data, and no amount of compression repairs it.
+
+\subsection{One procedural condition, because it is invisible}
+
+A reducer is an estimator: it is \emph{fitted}. Fit it before the split and the
+held-out faces have helped choose the subspace they are then judged in. The 280
+training faces span at most a 280-dimensional subspace of $\mathbb{R}^{4096}$,
+so adding 120 more points genuinely changes which directions survive.
+
+\begin{center}
+\small
+\begin{tabular}{lrrl}
+\toprule
+\textbf{$d = 123$, 20 stratified splits} & \textbf{Fitted on train} &
+\textbf{Fitted on everything} & \textbf{Leaky wins} \\
+\midrule
+Reconstruction error, held out & 0.00243 & 0.00096 & 20 of 20 \\
+Accuracy, held out             & 97.4\%  & 97.4\%  & 3 of 20 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{failbox}[title={The decision rule, and why it is still procedural}]
+The leak makes the reconstruction error look 61\% better and moves the accuracy
+by nothing measurable.
+
+Fitting an unsupervised step on everything costs you exactly when \emph{that
+step's own objective is the number you report}. Reconstruction error is that
+objective; downstream accuracy is not --- and you cannot tell which row you are
+in without doing the split. So put it in a \code{Pipeline}, which refits inside
+every fold and makes the leak structurally impossible rather than merely
+avoided.
+\end{failbox}
+
+\section{Clustering, and how to choose $k$}
+
+$k$-means makes four assumptions whether you asked or not: the partition is a
+Voronoi diagram, so every cluster is \emph{convex}; the only quantity is
+distance to a centre, so clusters are \emph{spherical and equal-sized}; every
+point belongs to exactly one cluster, so there is no ``none of these''; and
+\emph{$k$ is given}. Three of the four are false here.
+
+\begin{center}
+\small
+\begin{tabular}{llc}
+\toprule
+\textbf{Metric} & \textbf{Needs} & \textbf{Available here?} \\
+\midrule
+RMSE, accuracy, $F_1$, ROC AUC & a truth per instance & no \\
+Inertia   & nothing & yes \\
+Silhouette & nothing & yes \\
+Adjusted Rand index & labels --- a subset is enough & on the forty \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two of these can choose a model. One can be shown to a stakeholder. They are
+not the same one, and keeping those jobs apart is this course's standing rule
+applied where there is no test set at all.
+
+\subsection{Why inertia cannot choose $k$}
+
+\[ J(k) = \sum_i \bigl\lVert\mathbf{x}^{(i)}
+          - \boldsymbol\mu_{c(i)}\bigr\rVert_2^2 \]
+is what $k$-means minimises --- and it is non-increasing in $k$, with
+$J(m) = 0$ exactly. Refining a partition cannot increase the sum of squared
+distances to the assigned centre. \emph{There is no interior minimum to find,
+at any $k$, on any dataset}, so ``minimise inertia'' selects one cluster per
+photograph. The elbow rule exists to work around that, and on our curve the
+kneedle rule picks $k = 19$ where the archive has 40 --- with 46\% of the
+inertia at $k=2$ still present at $k=40$.
+
+\begin{keybox}[title={The elbow is not a criterion}]
+It is a picture of a criterion that does not exist, and no better heuristic
+repairs it, because the information is not in $J$.
+\end{keybox}
+
+The silhouette does have an interior maximum. For a point $i$, with $a$ its
+mean distance to its own cluster and $b$ to the nearest other,
+\[ s_i = \frac{b-a}{\max(a,b)} \in [-1,1], \]
+penalised both for splitting a group and for merging two. It costs $O(m^2n)$
+--- every pair, over every feature, and both factors matter.
+
+\subsection{Before reading any silhouette: what does nothing score?}
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Random assignment} & \textbf{Silhouette} & \textbf{ARI on the forty} \\
+\midrule
+$k = 10$ & $-0.0422 \pm 0.0045$ & $-0.0040 \pm 0.0205$ \\
+$k = 40$ & $-0.1288 \pm 0.0107$ & $-0.0089 \pm 0.0244$ \\
+$k = 60$ & $-0.1805 \pm 0.0124$ & $-0.0075 \pm 0.0261$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Both anchors sit at zero, and now you know the width of the noise around zero.
+A silhouette of 0.02 is not a discovery.
+
+The \term{adjusted Rand index} compares two groupings pair by pair and
+subtracts what chance would give, so random scores 0 in expectation at any $k$
+and perfect scores 1. We may compute it on the forty labelled photographs
+only --- 780 pairs, of which just 22 are the same person --- so treat it as a
+sanity check with a wide interval, never as a ranking.
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+& $k$ & \textbf{Silhouette} & \textbf{ARI on the forty} \\
+\midrule
+Random assignment      & 40 & $-0.1288$ & $-0.0089$ \\
+The silhouette's choice & 59 & 0.1707 & 0.3954 \\
+The true $k$ --- an audit & 40 & 0.1465 & 0.2978 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Well above the anchor, so the clustering is doing something. It chose 59 groups
+for 40 people, and the silhouette at the truth is \emph{lower} than at its own
+choice.
+
+\subsection{The mean hides the shape}
+
+A silhouette diagram draws one knife per cluster, width for size and length for
+quality. A knife entirely left of the mean marks a cluster worse than average;
+knives of very unequal width mean one group has swallowed several; a knife
+extending into negative $s_i$ marks points closer to another cluster than their
+own; and \emph{every knife short} means the clusters overlap and the geometry
+has no clean gaps. Ours is the last, at every $k$ we tried --- which is the
+diagnosis the mean of 0.1707 does not contain.
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{At $k = 40$, against the hidden identities} & \textbf{Value} \\
+\midrule
+Cleanest cluster: 10 photographs, purity & 1.00 \\
+Worst cluster: 24 photographs of 10 people, purity & 0.21 \\
+Mean purity across the forty clusters & 0.74 \\
+Clusters holding exactly one person & 16 \\
+Clusters with exactly ten members & 7 \\
+Cluster sizes, smallest to largest & 4 to 25 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Every true group has exactly ten members. The failure condition stated at the
+start of the lecture is now a measurement --- and the worst cluster is not a
+person at all, but a lighting condition: several different people lit and posed
+the same way.
+
+\subsection{The score that chose the model also reports it}
+
+\begin{failbox}[title={A bias that needs no labels to exist}]
+Sweep $k$, keep the best silhouette, print it, and the number that chose the
+model is the number that reports it. Measured: choose $k$ on a random half of
+the corpus and score the chosen model on the other half, twenty times.
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Silhouette, 20 random halves} & \textbf{Mean} & \textbf{sd} \\
+\midrule
+Reported --- chose and scored on the same half & 0.1777 & 0.0123 \\
+Held out --- had no vote & 0.0878 & 0.0154 \\
+Optimism & 0.0899 & 0.0229 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Half the reported score, and worse in 20 splits out of 20.
+\end{failbox}
+
+\section{Putting the two halves together}
+
+The clustering code is unchanged --- same grid, same seed, same
+\code{n\_init}. Only what $k$-means is looking at changed.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Dimensions} & \textbf{Sweep, s} & \textbf{Best $k$} &
+\textbf{Silhouette} & \textbf{ARI, all 400} \\
+\midrule
+4{,}096 --- raw pixels & 78 & 59 & 0.171 & 0.537 \\
+20  & 1.9 & 58 & 0.286 & 0.540 \\
+50  & 1.7 & 59 & 0.256 & 0.493 \\
+100 & 1.9 & 60 & 0.218 & 0.547 \\
+123 --- 95\% of the variance & 2.1 & 60 & 0.205 & 0.524 \\
+399 & 5.8 & 59 & 0.171 & 0.537 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The sweep is 37 times faster at 123 dimensions and the agreement with the true
+identities does not fall. The ARI column is there because a speed-up that
+quietly costs quality is not a speed-up. The seconds are a property of one
+machine at two threads; the \emph{shape} --- an order-of-magnitude saving at no
+cost in ARI --- is a property of the method.
+
+\begin{failbox}[title={Careful: the silhouette went up}]
+That is not evidence the clustering improved. The silhouette is computed in
+whatever space you hand it, and compressing the data changes every distance, so
+the criterion is \emph{not comparable across the rows of that table}.
+
+Which is exactly why the ARI column is there: it is measured against the
+identities and does not depend on the representation. Never compare two scores
+measured on different evaluation sets --- and a different representation is a
+different evaluation set.
+\end{failbox}
+
+\section{Beyond $k$-means}
+
+Compression fixed the clock. It did not fix the geometry.
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+\toprule
+& \textbf{DBSCAN} & \textbf{Gaussian mixture} \\
+\midrule
+Cluster shape & any connected dense region & an ellipsoid \\
+Number of clusters & found, not given & given \\
+Every point assigned? & no --- there is a noise label & softly, with a
+                                                       probability \\
+Main parameter & \code{eps}, a distance & \code{n\_components} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{keybox}[title={Reporting a method that did not work}]
+DBSCAN needs one density scale that separates clusters from gaps. Best over the
+whole grid: ARI 0.133 at \code{eps=6.0}, with 41 clusters and 97 of the 400
+faces called noise; it never finds more than 50 clusters and never 40.
+
+Forty groups of ten faces, all lit by the same rig, have no such scale --- the
+gap between two people is about the gap between two photographs of one person.
+This is a real result and it belongs in the report. A method that fails for a
+stateable reason is more informative than a method that was never tried.
+\end{keybox}
+
+A Gaussian mixture models the data as $k$ Gaussians fitted by
+expectation--maximisation, so clusters may be elongated and of different sizes,
+assignment is soft, and --- being a density model --- it also scores how likely
+a new point is.
+
+\begin{failbox}[title={Why this needed the first half of the lecture}]
+A full covariance in $n$ dimensions has $n(n+1)/2$ free parameters.
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Setting} & \textbf{Free parameters} \\
+\midrule
+One full covariance in 4{,}096 dimensions & 8{,}390{,}656 \\
+Forty of them & 335{,}626{,}240 \\
+Forty diagonal components in 123 dimensions --- the whole model & 9{,}880 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Estimated from 400 photographs. The first is not slow --- it is
+\emph{undefined}: every covariance estimate is singular. Arithmetic settles
+that in one line, where an afternoon of waiting does not.
+\end{failbox}
+
+BIC picks 5 components while the ARI peaks at 55. Both penalise complexity, but
+they answer a different question: BIC asks which model best explains this data
+\emph{as a density}, and we are asking which grouping matches the people. Those
+coincide only when the people really are Gaussian blobs, and here they are not.
+
+\subsection{Anomaly detection, two ways}
+
+Plant twelve corrupted images --- four rotated, four dimmed, four
+double-exposed --- and count how many each detector puts in its top twelve.
+Reconstruction error caught \textbf{12 of 12}; the mixture density caught 6.
+
+A rotated or double-exposed face is outside the subspace the eigenfaces span,
+so its reconstruction error is large: median 0.0017 against 0.0002 for a
+genuine face. The mixture density is estimated \emph{inside} that subspace, so
+a corruption projecting onto an ordinary-looking point is invisible to it. Use
+reconstruction error when the anomaly is a different \emph{kind} of object; use
+density when it is an ordinary object in an unusual \emph{place}.
+
+\section{Spending the forty labels}
+
+Where they are spent turns out to matter more than what is done with them. Same
+classifier, same held-out faces, twenty splits; the only thing that varies is
+which forty were labelled.
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Labels used} & \textbf{Held-out accuracy} & \textbf{sd over 20 splits} \\
+\midrule
+40 at random                        & 48.1\% & 3.8\% \\
+40, one per cluster                 & 60.5\% & 4.9\% \\
+Propagated to the whole cluster     & 55.7\% & 4.7\% \\
+Propagated to the closest 75\%      & 55.1\% & 4.8\% \\
+All 280 true labels --- the ceiling & 97.4\% & 1.6\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Twenty splits, because the differences between the middle three rows are of the
+same order as their spread. \emph{Propagation buys 280 labels from 40 and does
+worse than the 40 alone}, because a wrong propagated label is worse than no
+label. Report that; do not bury it.
+
+\subsection{The diagnosis was right, and the obvious repair still fails}
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Representation} & \textbf{Best $k$} & \textbf{Silhouette} &
+\textbf{ARI, all 400} \\
+\midrule
+PCA to 123 dimensions & 60 & 0.205 & 0.524 \\
+PCA 123, first 3 components discarded & 60 & 0.184 & 0.508 \\
+Unit-norm each image, then PCA 123 & 58 & 0.189 & 0.464 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Neither helps. The leading components carry pose and face shape as well as
+illumination, so removing them throws away signal with the nuisance. The remedy
+that works is a representation learned \emph{for the task} rather than for
+variance --- which is what Part VI builds, and why a pretrained encoder beats a
+hand-chosen projection.
+
+Note also what chose $k$ there: sweeping $k$ and keeping the best ARI would
+make both repairs look like gains, because ARI is computed from the labels this
+whole lecture is pretending not to have.
+
+\section{The notebook}
+
+\begin{trybox}[title={What to change}]
+Change \code{n\_components=0.95} to \code{0.99}, which takes $d$ from 123 to
+260. The sweep slows by roughly the ratio of the two and the ARI barely moves
+--- the whole trade-off in one edit.
+\end{trybox}
+
+\section{Exercises}
+
+\begin{enumerate}[leftmargin=1.6em,itemsep=4pt]
+  \item PCA is derived by maximising $\lVert XW\rVert_F^2$ subject to
+        $W^{\mathsf T}W = I$. State why the data must be centred first, and
+        what the first component becomes if it is not. \hfill \scope{[5]}
+  \item The Johnson--Lindenstrauss bound, evaluated for 400 images at
+        $\varepsilon = 0.1$, asks for more dimensions than the data has. What
+        do you conclude about the bound, and about the method?
+        \hfill \scope{[5]}
+  \item A pipeline fits PCA on the whole dataset and then splits. Name what
+        leaked, and say whether the leak grows or shrinks as the corpus grows.
+        \hfill \scope{[4]}
+  \item Inertia always falls as $k$ rises, so it cannot choose $k$. State what
+        the silhouette adds, and one situation where it also fails.
+        \hfill \scope{[5]}
+  \item You have 4{,}096-dimensional face vectors and are told two faces are
+        ``close''. Explain why that alone does not mean they are the same
+        person. \hfill \scope{[4]}
+\end{enumerate}
+
+\section*{Summary}
+\addcontentsline{toc}{section}{Summary}
+
+PCA is the SVD of the centred data: the principal subspace minimises squared
+reconstruction error exactly, and the error it leaves is
+$\sum_{j>d}\sigma_j^2$, readable before you choose $d$. Minimising that error
+and maximising the projected variance are the same problem by Pythagoras, and
+the explained variance ratio is that theorem normalised --- 123 components hold
+95\% of 4{,}096 pixels. Johnson--Lindenstrauss bounds the target dimension by
+the number of points and the tolerance, never by the dimension you started in,
+and it is a loose worst case, so measure the distortion you actually get.
+
+Inertia cannot choose $k$: it is monotone in $k$ and zero at $k = m$. The
+silhouette can, at $O(m^2n)$, must be read against a random anchor, and is
+optimistic by about half when it both chooses and reports. Compressing to 123
+dimensions made the sweep 37 times faster at no cost in ARI --- but the
+silhouette rose, and that number is not comparable across representations.
+
+The lecture opened by measuring that pixel distance is partly identity and
+partly lighting, and closed by confirming it: mean cluster purity 0.74, the
+worst cluster a lighting condition rather than a person, DBSCAN failing for a
+stateable reason, and two one-line repairs that both made things worse. And
+forty labels spent on cluster representatives were worth a quarter more
+accuracy than forty spent at random --- while propagating them to 280 was worse
+than not propagating at all.
+
+\end{document}
