@@ -48,7 +48,7 @@ import check_consistency as cc                                  # noqa: E402
 
 ROOT = cc.ROOT
 NOTES = ROOT / "notes"
-LECTURES = (1, 2, 3, 4, 5, 6, 19, 20, 21, 22)
+LECTURES = (1, 2, 3, 4, 5, 6, 7, 19, 20, 21, 22)
 
 BOLD, RED, GREEN, YELLOW, OFF = cc.BOLD, cc.RED, cc.GREEN, cc.YELLOW, cc.OFF
 
@@ -210,10 +210,28 @@ def main() -> int:
                   f"of them precisely enough to check, so nothing was checked.")
             bad += 1
             continue
+        def excused(h) -> bool:
+            """SCALE_ONLY and CROSS_LECTURE, addressed the way check_consistency
+            addresses them.
+
+            This built the lookup key as f"l{n}:{h[2]}" -- unpadded, and with
+            the leading slash figures.json keys carry. check_consistency uses
+            f"l{n:02d}:" against a path with the slash stripped, which is the
+            convention every entry in the dict is written in. So no
+            CROSS_LECTURE entry could ever match here, and the exemption has
+            been silently dead for as long as this check has existed. Notes
+            19-22 never needed one, which is why nothing said so.
+            """
+            path = h[2].lstrip("/")
+            root = path.split("/")[0].split("[")[0]
+            if root in cc.SCALE_ONLY:
+                return True
+            return any(c.startswith(f"l{n:02d}:")
+                       and path.startswith(c.split(":", 1)[1])
+                       for c in cc.CROSS_LECTURE)
+
         wrong = [h for h in hits
-                 if not cc.matches(h[1], printed, h[4])
-                 and h[2] not in cc.SCALE_ONLY
-                 and f"l{n}:{h[2]}" not in cc.CROSS_LECTURE]
+                 if not cc.matches(h[1], printed, h[4]) and not excused(h)]
 
         if wrong:
             bad += len(wrong)

@@ -1,0 +1,600 @@
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+
+\begin{document}
+\notestitlefor{7}{I}{Ensembles and random forests}{Forest CoverType}{Chapter 6}
+
+\section{The result we are carrying forward}
+
+Lecture 6 built a decision tree on this dataset and ended with a measurement
+rather than a score. Refit the same depth-8 tree, with the same hyperparameters
+and the same seed, on twenty different 90\% subsamples of the same training
+rows: test accuracy moves by a standard deviation of 0.25 points, and
+\emph{9.1\% of the individual predictions change}. Only 71.4\% of test patches
+get the same answer from all twenty.
+
+A stable metric, an unstable model. In the language of Lecture 5's
+decomposition this is \emph{variance}: sensitivity of the fitted function to
+the particular training sample. The whole of today follows from one question:
+what does averaging do to variance?
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Forest CoverType} & \textbf{Test accuracy} &
+\textbf{Conditions per justification} \\
+\midrule
+Always ``Lodgepole Pine'' & 48.8\% & 0 \\
+Depth-8 tree, minimum leaf 20 & 73.0\% & 7.97 \\
+Unconstrained tree & 82.6\% & 17.88 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Where many different models come from}
+
+CART is deterministic: same data, same tree. To get twenty different trees you
+must give them twenty different things to look at.
+
+\begin{center}
+\small
+\begin{tabular}{p{0.54\textwidth}l}
+\toprule
+\textbf{Source of difference} & \textbf{Name} \\
+\midrule
+Different training algorithms on the same data & a voting classifier \\
+The same algorithm on different random subsets of \emph{rows}, drawn with
+  replacement & bagging \\
+\ldots drawn without replacement & pasting \\
+\ldots plus random subsets of \emph{columns} at each split & random forest \\
+\ldots plus random \emph{thresholds} & extra-trees \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The list is in increasing order of how hard it works to make two members unlike
+each other. That ordering is not an accident.
+
+Why this lecture follows the one on trees: averaging attacks variance, and
+trees are the high-variance model we have just measured; a tree is cheap to
+fit, so two hundred are affordable; and an unconstrained tree has \emph{low
+bias} --- which matters, because averaging does nothing whatever to bias, so
+the members had better not have any to spare. That third point is why the
+ensembles here use unconstrained members. It looks reckless after a lecture
+spent limiting depth, and by the end of the next section it will look obvious.
+
+\section{Derivation: the variance of an average of correlated predictors}
+
+Forget trees for ten minutes. You have $n$ predictors of the same quantity,
+each with variance $\sigma^2$, and you average them:
+$\bar f = \frac{1}{n}\sum_t f_t$. What is $\operatorname{Var}(\bar f)$?
+
+The answer everyone gives first is $\sigma^2/n$. That step is valid only when
+the $f_t$ are \emph{uncorrelated} --- the variance of a sum is the sum of the
+variances \emph{plus twice the sum of the covariances}. Dropping the
+covariances is an assumption, and it is exactly the assumption that fails for
+an ensemble of trees grown on the same dataset.
+
+\subsection{Two, then $n$}
+
+With $\operatorname{Var}(f_1) = \operatorname{Var}(f_2) = \sigma^2$ and
+$\operatorname{Corr}(f_1,f_2) = \rho$:
+\[ \operatorname{Var}\Bigl(\tfrac{f_1+f_2}{2}\Bigr)
+   = \tfrac14\bigl[\sigma^2 + \sigma^2 + 2\rho\sigma^2\bigr]
+   = \frac{\sigma^2(1+\rho)}{2}. \]
+At $\rho = 0$ this is the familiar halving; at $\rho = 1$ it is $\sigma^2$,
+because the two predictors are the same predictor and averaging achieves
+nothing. The general case has both limits in it.
+
+\begin{derivbox}[title={$n$ identically distributed predictors, common pairwise $\rho$}]
+Assume each has variance $\sigma^2$ and
+$\operatorname{Cov}(f_s, f_t) = \rho\sigma^2$ for $s \ne t$. Then
+\[ \operatorname{Var}\Bigl(\sum_{t=1}^{n} f_t\Bigr)
+   = \sum_{s=1}^{n}\sum_{t=1}^{n}\operatorname{Cov}(f_s, f_t), \]
+a double sum of $n^2$ terms. Split them by whether $s = t$: $n$ diagonal terms
+each $\sigma^2$, and $n(n-1)$ off-diagonal terms each $\rho\sigma^2$. Divide by
+$n^2$:
+\[ \operatorname{Var}(\bar f)
+   = \frac{1}{n^2}\bigl[n\sigma^2 + n(n-1)\rho\sigma^2\bigr]
+   = \frac{\sigma^2}{n} + \frac{n-1}{n}\rho\sigma^2, \]
+and writing $\frac{n-1}{n} = 1 - \frac1n$ and gathering the $1/n$ terms,
+\[ \boxed{\;\operatorname{Var}(\bar f)
+   = \rho\sigma^2 + \frac{(1-\rho)\sigma^2}{n}\;} \]
+\end{derivbox}
+
+\emph{Identically distributed, not independent} --- that is the whole point.
+$n$ trees grown on bootstrap samples of one dataset have the same distribution
+and are certainly not independent: they were handed the same dataset.
+
+\subsection{Reading the two terms}
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+\toprule
+\textbf{Term} & \textbf{Depends on $n$?} & \textbf{What it is} \\
+\midrule
+$\rho\sigma^2$ & no & the part every predictor shares \\
+$(1-\rho)\sigma^2/n$ & yes, like $1/n$ & the part each predictor has to itself \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{keybox}[title={The sentence to remember}]
+Averaging destroys the independent component of the variance and leaves the
+correlated one completely untouched.
+
+And note what it does \emph{not} say. It says nothing about bias: an average of
+$n$ biased predictors is exactly as biased as one of them.
+\end{keybox}
+
+Three limits are worth memorising. At $\rho = 0$ the average has variance
+$\sigma^2/n$, the classical result. At $\rho = 1$ it has variance $\sigma^2$
+and averaging is a no-op. As $n \to \infty$ it tends to $\rho\sigma^2$, the
+floor --- and because the second term falls like $1/n$, that floor is reached
+quickly: going from 1 member to 10 removes 90\% of the independent part, while
+going from 100 to 1{,}000 removes 0.9\% more.
+
+So the way to improve an ensemble is \emph{not more members}. It is less
+correlated members. And --- the point that gets forgotten --- anything which
+lowers $\rho$ by making individual members worse is a trade, not a free lunch,
+because $\sigma^2$ appears in \emph{both} terms and can rise while $\rho$
+falls.
+
+\begin{keybox}[title={One formula, three algorithms}]
+Bagging randomises the rows. A random forest also randomises the columns.
+Extra-trees also randomises the thresholds. All three exist for one purpose: to
+lower $\rho$, because $\rho\sigma^2$ is the floor that $n$ cannot reach below.
+\end{keybox}
+
+\section{Building them, and measuring $\rho$}
+
+\term{Bagging} draws $m$ rows with replacement, fits a tree, and repeats.
+\term{Pasting} is the same without replacement, producing less diverse members.
+A \term{random forest} adds a random subset of features at every node --- the
+classification default \code{max\_features="sqrt"} gives
+$\lfloor\sqrt{54}\rfloor = 7$ of our 54 columns, drawn afresh at each node, so
+a tree with 200 nodes draws 200 different subsets. \term{Extra-trees} goes one
+step further: having chosen the candidate features, draw one threshold at
+random for each rather than searching for the best. Note that Scikit-Learn's
+extra-trees default is \code{bootstrap=False}, so the random thresholds
+\emph{replace} the bootstrap rather than joining it.
+
+\subsection{A validation set you get for nothing}
+
+Each bagged member never sees about 37\% of the rows --- its \term{out-of-bag}
+instances. A given row is missed by one draw with probability $1 - 1/m$, so by
+all $m$ draws with probability
+\[ \Bigl(1 - \frac{1}{m}\Bigr)^{m} \longrightarrow e^{-1} \approx 0.368, \]
+hence about 63\% distinct rows in and 37\% held out. Score each member on its
+own out-of-bag rows and you have a generalisation estimate with no validation
+split and no extra fit.
+
+Read it carefully, though. It is an average over members, each scored on a
+different 37\%, so it estimates the generalisation of one member's
+\emph{procedure}, not of the ensemble you ship. It is available only where
+members see bootstrap samples. And it does not replace the test set --- it
+replaces the validation set.
+
+\begin{keybox}[title={A leakage detector you get free}]
+If the out-of-bag score comes out much \emph{better} than the test score,
+something in the pipeline saw the out-of-bag rows anyway --- a scaler fitted
+outside the ensemble, or a feature built from the whole frame.
+\end{keybox}
+
+\subsection{Measuring $\rho$ needs something we do not have}
+
+$\rho$ is the correlation between two members over the randomness of the whole
+procedure, which includes \emph{which training set you were handed}. Two trees
+grown on one dataset are correlated through that dataset --- so a single
+training set cannot show it. Conditional on the data, the members are
+independent by construction and $\rho$ would measure as zero.
+
+CoverType has 581{,}012 rows, so we can cut 20 \emph{disjoint} training sets of
+20{,}000 rows each --- 400{,}000 rows, no row reused --- and still keep 12{,}000
+aside as a shared test set. At each test patch, decompose the variance of a
+single member across all 400 fitted trees:
+\[ \sigma^2 = \underbrace{\tau^2}_{\text{between training sets}}
+            + \underbrace{w^2}_{\text{within a training set}},
+   \qquad \rho = \frac{\tau^2}{\tau^2 + w^2}. \]
+$\tau^2$ is the part every member of a given ensemble inherits from its data,
+and it \emph{is} the floor $\rho\sigma^2$ --- not a coincidence, but the same
+quantity written twice.
+
+\begin{failbox}[title={One trap in that code, worth ten minutes of your life}]
+\begin{verbatim}
+>>> rnd.classes_                    # the ensemble's labels
+array([1, 2, 3, 4, 5, 6, 7])
+>>> rnd.estimators_[0].classes_     # one member's labels
+array([0., 1., 2., 3., 4., 5., 6.])
+\end{verbatim}
+Every ensemble re-encodes the labels as \emph{positions} before handing them to
+its members, so a member's \code{predict} returns positions, not cover types.
+Compare them with \code{y\_test} directly and every member scores about 8\% ---
+which looks like a terrible model rather than a bug.
+\end{failbox}
+
+\subsection{Does the formula actually hold?}
+
+\begin{center}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Ensemble} & $\sigma^2$ & $\rho$ &
+\textbf{Var of the average of 20} & \textbf{\ldots predicted} \\
+\midrule
+Bagging        & 0.1542 & 0.072 & 0.01814 & 0.01819 \\
+Random forest  & 0.1675 & 0.043 & 0.01508 & 0.01523 \\
+Extra-trees    & 0.1648 & 0.067 & 0.01859 & 0.01867 \\
+Extra-trees, \code{bootstrap=True} & 0.1735 & 0.043 & 0.01554 & 0.01570 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Measured and predicted agree in the third decimal place on all four. The
+derivation is a description of this dataset. Agreement this good is partly
+luck --- the formula assumes every pair has the same $\rho$, which is only
+approximately true --- so do not expect three decimals every time.
+
+\subsection{Does each variant lower $\rho$?}
+
+\begin{center}
+\small
+\begin{tabular}{lllr}
+\toprule
+\textbf{Ensemble} & \textbf{Rows} & \textbf{Columns / thresholds} & $\rho$ \\
+\midrule
+Bagging       & bootstrap & all 54, best threshold & 0.072 \\
+Extra-trees (default) & all & 7 of 54, random threshold & 0.067 \\
+Random forest & bootstrap & 7 of 54, best threshold & 0.043 \\
+Extra-trees, \code{bootstrap=True} & bootstrap & 7 of 54, random & 0.043 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Every variant is below bagging, so the claim survives. But read the last two
+rows: adding random thresholds on top of a random forest moves $\rho$ from
+0.043 to 0.043. \emph{The mechanisms are not additive.}
+
+Feature subsampling is doing the work, cutting $\rho$ by 40\%. Random
+thresholds are a \emph{substitute} for the bootstrap rather than an addition to
+it --- extra-trees without a bootstrap lands at 0.067, near bagging; with one,
+exactly where the forest is. And there is a floor to the floor: nothing we
+tried gets below 0.043, because all four ensembles ultimately saw the same
+20{,}000 rows.
+
+\begin{keybox}[title={The formula's real message}]
+$\rho$ is not a property of the algorithm. It is the share of the variance that
+comes from \emph{which data you were given}, and no amount of algorithmic
+randomness reaches it.
+\end{keybox}
+
+\begin{center}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Ensemble} & \textbf{One member} & \textbf{Average of 20} &
+\textbf{Removed} & \textbf{Floor $\rho\sigma^2$} \\
+\midrule
+Bagging       & 0.15453 & 0.01814 & 88.3\% & 0.01103 \\
+Random forest & 0.16734 & 0.01508 & 91.0\% & 0.00721 \\
+Extra-trees   & 0.16439 & 0.01859 & 88.7\% & 0.01098 \\
+Extra-trees, boot & 0.17248 & 0.01554 & 91.0\% & 0.00740 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Twenty members remove about nine tenths of a single member's variance. Two
+hundred would remove roughly one twentieth more, and then stop --- exactly what
+$(1-\rho)\sigma^2/n$ says.
+
+\section{And what did that do to the accuracy?}
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{200 members, 48{,}000 training patches} & \textbf{10 members} &
+\textbf{200 members} \\
+\midrule
+Bagging       & 87.7\% & 89.8\% \\
+Extra-trees   & 86.7\% & 88.9\% \\
+Random forest & 85.9\% & 88.4\% \\
+Extra-trees, \code{bootstrap=True} & 85.2\% & 88.0\% \\
+\midrule
+The legible depth-8 tree & --- & 73.0\% \\
+Always ``Lodgepole Pine'' & --- & 48.8\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Every ensemble beats the constrained tree by at least fifteen points and the
+unconstrained tree by at least five. The last 190 members buy about two.
+
+Now put the two tables beside each other:
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Ensemble} & $\rho$ & \textbf{One member's accuracy} &
+\textbf{Ensemble accuracy} \\
+\midrule
+Bagging       & 0.072 & 78.8\% & 89.8\% \\
+Extra-trees   & 0.067 & 77.8\% & 88.9\% \\
+Random forest & 0.043 & 73.6\% & 88.4\% \\
+Extra-trees, boot & 0.043 & 72.8\% & 88.0\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\emph{The ensemble with the highest $\rho$ is the most accurate.}
+
+\begin{failbox}[title={That is not a contradiction --- read the formula again}]
+The formula is about \emph{variance}. It says nothing about bias, and accuracy
+depends on both.
+
+Every mechanism that lowers $\rho$ does so by \emph{handicapping the members}.
+A tree allowed only 7 of 54 columns per node is a worse tree: 73.6\% against
+bagging's 78.8\%. And $\sigma^2$ appears in both terms, so lowering $\rho$
+while raising $\sigma^2$ can leave you worse off.
+
+On this dataset --- 54 columns of which perhaps a dozen carry most of the
+signal --- throwing away 47 at every node costs more than the decorrelation is
+worth. On a dataset with hundreds of weakly informative columns it is usually
+the other way round, which is why the default exists.
+\end{failbox}
+
+\begin{keybox}[title={What the derivation predicted, and what it declined to}]
+It predicted the shape of the accuracy curve, the variance of a 20-member
+average to three decimals on four different ensembles, and that more members
+would stop helping and roughly when. It did \emph{not} tell us which ensemble
+would be most accurate, and it never claimed to.
+
+A theory that predicts three things and declines to predict the fourth is not a
+weak theory. A theory that predicts all four without being asked is usually
+being misread.
+\end{keybox}
+
+\section{The bill}
+
+\begin{failbox}[title={An ensemble has no per-prediction justification}]
+The 200 trees hold \textbf{1{,}497{,}919 leaves} between them. The
+justification for one prediction is now 200 decision paths and a vote.
+
+The agency asked for a model whose every prediction comes with a human-readable
+justification. We have built one that is 15.4 points more accurate and cannot
+supply one. \emph{There is no technical fix.} The tools below recover
+something, and what they recover is genuinely less than what was lost. Saying
+so is part of the job.
+\end{failbox}
+
+\begin{center}
+\small
+\begin{tabular}{ll}
+\toprule
+\textbf{The agency asked for} & \textbf{An ensemble can offer} \\
+\midrule
+Why this parcel & nothing comparable \\
+Which measurements the decision rests on, overall & feature importance \\
+How confident the model is & the vote share, better calibrated than one leaf \\
+Reproducibility of the answer & much improved --- that was the whole repair \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three of four is not nothing. The one we cannot supply is the one the agency
+wrote down first.
+
+On the vote share: a single tree's \code{predict\_proba} returns the class
+proportions of one leaf, piecewise constant and often built on a handful of
+rows. An ensemble averages 200 such vectors from 200 different leaves, so the
+result varies smoothly and is better calibrated --- the one item on the
+agency's list that averaging improves rather than destroys. But better
+calibrated is not calibrated: a forest's vote share is systematically pulled
+towards the middle, because unanimity is rare.
+
+\subsection{Feature importance, and a control}
+
+\code{feature\_importances\_} sums, over every node that split on a feature,
+the weighted impurity reduction that split achieved --- the $\Delta I$ of
+Lecture 6, accumulated. It runs, it is fast, and the top of the list is
+entirely sensible: elevation first, then the distances. Nothing invites
+suspicion.
+
+\begin{keybox}[title={Before trusting any ranking}]
+Ask what it would look like on a variable you know carries no information. If
+you cannot answer, add one and find out.
+\end{keybox}
+
+Add a column of uniform random numbers and refit. It ranks \textbf{tenth of
+fifty-five} --- above 45 of the 54 real measurements, with an impurity
+importance of 0.0399 against 0.2277 for elevation. Put that list in front of
+the agency and you have asserted that a column of noise matters more than 45
+things the surveyors actually recorded.
+
+\begin{failbox}[title={Two structural biases, not an accident}]
+Impurity importance is measured on the \emph{training} data, and a split that
+reduces impurity on the rows that chose it will do so whether or not the
+feature is informative.
+
+And it favours \emph{high-cardinality} features: a continuous column offers
+thousands of candidate thresholds where a 0/1 soil-type column offers one, so
+more chances to find a lucky split means more accumulated $\Delta I$. Our decoy
+is continuous and 44 of the 54 real columns are binary.
+\end{failbox}
+
+The repair is to break the column and see what breaks: shuffle one column of
+the \emph{held-out} set, re-score, and report a spread over repeats.
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Measurement} & \code{random\_decoy} & \textbf{Elevation} \\
+\midrule
+Impurity importance (training data) & 0.0399 & 0.2277 \\
+Rank among the 55 columns, by impurity & 10th & 1st \\
+Permutation importance (held out) & $+0.00085 \pm 0.00195$ & far above it \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Permutation importance puts the decoy at less than half a standard deviation
+from zero --- the correct answer, which the impurity measure never had any way
+of reaching. And the forest with the decoy scores 87.6\% against 88.4\%
+without: adding a noise column costs a little accuracy and a lot of
+credibility.
+
+\begin{center}
+\small
+\begin{tabular}{lp{0.36\textwidth}}
+\toprule
+\textbf{Question} & \textbf{Can importance answer it?} \\
+\midrule
+Which measurements should the survey keep collecting? & yes --- this is what it
+                                                        is for \\
+Is the model using a variable it legally must not? & yes, as a screen \\
+Why was this parcel refused? & no \\
+Would removing this column hurt? & no --- remove it, refit, and measure \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Row three is the agency's actual question, and it is the row importance cannot
+fill. Do not present it as though it can.
+
+\section{Boosting, and what practitioners reach for}
+
+Everything so far trains members in parallel and averages them. \term{Boosting}
+trains them in \emph{sequence}, each correcting its predecessor. The members
+are not identically distributed and are certainly not exchangeable, so
+\emph{today's formula does not apply to boosting}. Bagging reduces variance;
+boosting reduces bias. Two consequences follow from the sequence: boosting
+cannot be parallelised across members, and it is much easier to overfit with.
+
+\term{AdaBoost} fits a weak learner --- typically a depth-1 stump ---
+increases the weight of the instances it got wrong, and repeats, predicting by
+a weighted vote. \term{Gradient boosting} keeps the sequence but changes the
+correction: each new learner is fitted to the \emph{residual errors} of the
+ensemble so far, with \code{learning\_rate} scaling each contribution.
+
+\begin{failbox}[title={The intuition that does not carry across}]
+Adding trees to a bagged ensemble can only help, because $(1-\rho)\sigma^2/n$
+falls monotonically. Adding trees to a \emph{boosted} ensemble eventually
+hurts. Carrying the first intuition into the second is one of the commonest
+mistakes with these models.
+\end{failbox}
+
+\code{HistGradientBoostingClassifier} bins each feature into at most 255
+buckets before growing anything, so a split search costs $O(\text{bins})$
+rather than $O(m)$. It is the algorithm LightGBM and XGBoost implement, handles
+missing values and categorical columns natively, and on tabular data is the
+usual first choice. On this dataset, at a budget that fits a lecture, it lands
+several points below the bagged forest --- usual is not always.
+
+\term{Stacking} trains a model to do the aggregation, with the base learners'
+predictions as the input features of a \emph{blender}. The blender must be
+trained on predictions the base learners made for instances they did not see;
+\code{StackingClassifier} does this with cross-validation internally, which is
+the only reason it is safe to use. Build it by hand and the blender sees
+in-sample predictions, learns to trust whichever base learner overfits
+hardest, and the ensemble comes out worse than its best member --- with no
+error and no warning.
+
+\begin{center}
+\small
+\begin{tabular}{p{0.42\textwidth}p{0.46\textwidth}}
+\toprule
+\textbf{Situation} & \textbf{Reach for} \\
+\midrule
+A high-variance base learner and time to spare & bagging or a random forest \\
+Many weakly informative columns & a random forest --- feature subsampling earns
+                                  its keep \\
+Training time is the binding constraint & extra-trees \\
+You want the strongest tabular model & histogram gradient boosting --- usually,
+                                       and measure it against a forest anyway \\
+You must justify individual predictions & none of them --- go back to one
+                                          tree \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The last row is what this pair of lectures exists to teach, and it is the row
+people skip.
+
+\section{Did the averaging fix what we diagnosed?}
+
+The diagnosis was \emph{instability}, not inaccuracy --- so test the thing that
+was diagnosed, not the thing that is easy to measure. On 20 disjoint training
+sets, a random forest's variance of one member's correctness is 0.16734 and of
+the average of 20 is 0.01508: 91.0\% of the variance removed, against a floor
+of 0.00721 it cannot reach below. Nine tenths of a single member's variance,
+gone --- and we knew before starting both that it would stop and roughly where.
+
+\begin{keybox}[title={The standing constraint, extended by two clauses}]
+Split before anything is fitted. All preprocessing inside a \code{Pipeline}
+passed to cross-validation. Nothing derived from the test set in the training
+path. Fixed seeds. Per-fold scores, not just the mean. \textbf{Any importance
+or explanation is computed on held-out data and reported with a control. Any
+per-instance claim is checked for stability under refitting.}
+
+Both new clauses come from a measurement in this lecture rather than from a
+principle: the decoy at rank 10 of 55, and 9.1\% of predictions moving while
+the accuracy did not.
+\end{keybox}
+
+\section{The notebook}
+
+\begin{trybox}[title={What to change}]
+Set \code{max\_features=None} on the random forest, which turns it back into
+bagging. Watch $\rho$ rise, each member get better, and the ensemble accuracy
+rise with it --- the trade of the whole lecture, in one keyword.
+\end{trybox}
+
+\section{Exercises}
+
+\begin{enumerate}[leftmargin=1.6em,itemsep=4pt]
+  \item For $n$ predictors each of variance $\sigma^2$ and pairwise correlation
+        $\rho$, the variance of their average is
+        $\rho\sigma^2 + \frac{1-\rho}{n}\sigma^2$. State the limit as
+        $n \to \infty$, and what it means for ensembles. \hfill \scope{[5]}
+  \item Extra-trees are usually faster to fit than a random forest and often no
+        less accurate. Give the mechanism, in terms of the formula above.
+        \hfill \scope{[4]}
+  \item You set \code{bootstrap=False} and \code{oob\_score=True}. State what
+        happens and why. \hfill \scope{[3]}
+  \item Impurity-based feature importance ranks a random decoy column above
+        several real ones. Explain how that can happen, and name the measure
+        you would use instead. \hfill \scope{[5]}
+  \item A forest improves accuracy over one tree by far less than the variance
+        reduction would suggest. Is this a contradiction? Answer with a reason.
+        \hfill \scope{[4]}
+\end{enumerate}
+
+\section*{Summary}
+\addcontentsline{toc}{section}{Summary}
+
+From the double sum of covariances,
+$\operatorname{Var}(\bar f) = \rho\sigma^2 + (1-\rho)\sigma^2/n$: averaging
+destroys the independent component of the variance and cannot touch the
+correlated one. Read as a policy, that says more members buy less and less, and
+the way to improve an ensemble is less correlated members.
+
+Measured on 20 disjoint training sets, the formula predicted the variance of a
+20-member average to three decimals on four different ensembles. $\rho$ fell
+from 0.072 to 0.043 --- and the mechanisms turned out not to be additive:
+random thresholds substitute for the bootstrap rather than adding to it, and
+nothing reached below 0.043 because all four ensembles saw the same 20{,}000
+rows. $\rho$ is not a property of the algorithm but of which data you were
+given.
+
+The lowest-$\rho$ ensemble was not the most accurate, because every mechanism
+that lowers $\rho$ also weakens the members and $\sigma^2$ sits in both terms.
+And the 15.4 points of accuracy cost 1{,}497{,}919 leaves and the
+per-prediction justification the previous lecture was built around. Impurity
+importance ranked a column of pure noise 10th of 55; a permutation measurement
+on held-out data put it half a standard deviation from zero, where it belongs.
+
+\end{document}

@@ -101,6 +101,12 @@ SCALE_ONLY: dict[str, str] = {
 # can be checked rather than taken on trust. Same contract as SCALE_ONLY: a
 # reason, or it does not belong in the list.
 CROSS_LECTURE: dict[str, str] = {
+    "l07:app04_free_path_mean":
+        "L7's notes open with L6's closing table -- the constant, the legible "
+        "tree and the unconstrained tree -- so that the fifteen points an "
+        "ensemble buys can be read against the justification it costs. The "
+        "mean path length of 17.88 is Lecture 6's measurement, reproduced by "
+        "Lecture 6's notebook.",
     "l15:app10/torch/rnn_random_cv":
         "L15 quotes the RNN under a random split to contrast two protocols on "
         "two models. The RNN is Lecture 16's; L15's notebook fits no network.",

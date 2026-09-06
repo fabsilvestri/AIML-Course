@@ -123,7 +123,7 @@ On the site they appear in two places: a third button on each of the four
 Part V lecture cards (`btn-notes`, emitted by `make_site.py` for any lecture
 whose chapter field is empty), and a table in *Textbook and scope*.
 
-## OPEN DEBT — 47 slide figures no notebook reproduces
+## OPEN DEBT — 44 slide figures no notebook reproduces
 
 `check_consistency` was over-reporting for the whole rebuild, in two ways, both
 found in round 5 and both fixed.
@@ -145,9 +145,14 @@ len(X_train) == 16512` IS the notebook reproducing 16,512.
 
 Together these uncovered **51 figures a deck states that its own
 notebook does not reproduce at the precision claimed**, hidden until now.
-Lecture 22's four were the order-dependent sampler and are now closed, leaving
-**47**. By lecture: L02 (1), L03 (5), L07 (1), L09 (4), L10 (10), L11 (13),
-L12 (1), L14 (1), L18 (6), L19 (4), L24 (1).
+Lecture 22's four were the order-dependent sampler and are now closed. Writing
+the lecture notes closed three more: two in lecture 3 -- the per-digit
+never-fires anchor and the SGD-to-forest gaps, quoted by the deck and computed
+by nothing -- and lecture 7's single entry, which was never a defect at all.
+Deck 7 opens with lecture 6's closing table, so its 17.88 is a cross-lecture
+quotation and now carries a CROSS_LECTURE reason instead of counting as debt.
+That leaves **44**: L02 (1), L03 (3), L09 (4), L10 (10), L11 (13), L12 (1),
+L14 (1), L18 (6), L19 (4), L24 (1).
 
 (An earlier revision of this section said 50 with L11 at 12. That was a
 miscount of L11, not a figure that has since regressed: `check_consistency 11
