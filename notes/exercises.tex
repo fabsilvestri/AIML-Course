@@ -206,7 +206,7 @@ True positives and false positives are zero; recall exposes it, at 0.0.
 \begin{solution}[title={Solution}]
 Unscaled features make the contours elongated, so the gradient points across the valley rather than along it.
 \begin{itemize}[leftmargin=*,nosep]
-  \item The curvature in each direction is proportional to that feature's scale, so a large-scale feature dominates the step
+  \item The Hessian is $X^{\mathsf T}X$, so the curvature along a feature goes as the \emph{square} of its scale --- multiply a column by ten and its curvature rises a hundredfold, which is how one column comes to dominate
   \item The learning rate must then suit the steepest direction, which makes it far too small for the shallow one
 \end{itemize}
 \end{solution}
@@ -350,10 +350,10 @@ It tends to $\rho\sigma^2$ --- correlation, not ensemble size, sets the floor.
 \end{solution}
 \question{Extra-trees are usually faster to fit than a random forest and often no less accurate. Give the mechanism, in terms of the formula above.}{4}
 \begin{solution}[title={Solution}]
-Random split thresholds lower $\rho$, which lowers the floor.
+Speed, not a lower floor. Not searching for the best threshold is what makes them fast; measured against the forest their $\rho$ is \emph{higher} (0.067 against 0.043), and they stay competitive because the two mechanisms are substitutes rather than additions.
 \begin{itemize}[leftmargin=*,nosep]
-  \item Choosing the threshold at random rather than optimally makes members disagree more
-  \item Each member is individually worse --- higher $\sigma^2$ --- and the product can still improve
+  \item Extra-trees without a bootstrap land at $\rho = 0.067$, near bagging; with one they land at 0.043, exactly where the forest is --- random thresholds substitute for the bootstrap rather than adding to it
+  \item Their individual members are \emph{better}, not worse --- 77.8\% against 73.6\% --- because a random threshold on every feature beats an optimal threshold on a subsample of them
 \end{itemize}
 \end{solution}
 \question{You set \code{bootstrap=False} and \code{oob\_score=True}. State what happens and why.}{3}
@@ -1127,7 +1127,7 @@ Structural --- an entry with no text is not in a text index at all.
 The features are not normalised, so the product is not a cosine. Assert every row has unit norm.
 \begin{itemize}[leftmargin=*,nosep]
   \item The entries carry both magnitudes, so the temperature divides a quantity with no fixed scale
-  \item Magnitude tracks length and token frequency, so long documents win by default
+  \item The norms vary by 1.32$\times$ across this catalogue for no semantic reason --- a vector's length is whatever the last linear layer happened to scale it to --- so an unnormalised score ranks partly by how loudly an encoder spoke
 \end{itemize}
 \end{solution}
 \question{An auto-caption is generated for catalogue entries that have no description. State what it recovers, and the failure mode nothing in the evaluation detects.}{5}

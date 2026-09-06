@@ -191,8 +191,9 @@ ex(4, "Gradient descent on the same data, with the features unscaled, takes "
       "terms of the shape of the cost surface.", 5,
    "Unscaled features make the contours elongated, so the gradient points "
    "across the valley rather than along it.",
-   ["The curvature in each direction is proportional to that feature&rsquo;s "
-    "scale, so a large-scale feature dominates the step",
+   [r"The Hessian is $X^{\mathsf T}X$, so the curvature along a feature goes as "
+    r"the <em>square</em> of its scale &mdash; multiply a column by ten and its "
+    r"curvature rises a hundredfold, which is how one column comes to dominate",
     "The learning rate must then suit the steepest direction, which makes it "
     "far too small for the shallow one"])
 ex(4, "Your logistic regression on one-hot encoded columns produces "
@@ -339,11 +340,21 @@ ex(7, r"For $n$ predictors each of variance $\sigma^2$ and pairwise correlation 
     "goes into <em>decorrelating</em> them"])
 ex(7, "Extra-trees are usually faster to fit than a random forest and often no "
       "less accurate. Give the mechanism, in terms of the formula above.", 4,
-   r"Random split thresholds lower $\rho$, which lowers the floor.",
-   ["Choosing the threshold at random rather than optimally makes members "
-    "disagree more",
-    r"Each member is individually worse &mdash; higher $\sigma^2$ &mdash; and the "
-    "product can still improve"])
+   # Corrected 2026-09-06: the old answer said random thresholds lower rho and
+   # make members individually worse. Deck 7 measures the opposite on all three
+   # counts against the forest -- rho 0.067 against 0.043, floor 0.01098
+   # against 0.00721, member accuracy 77.8% against 73.6% -- and puts that
+   # comparison on a slide in order to refute exactly this reasoning.
+   r"Speed, not a lower floor. Not searching for the best threshold is what "
+   r"makes them fast; measured against the forest their $\rho$ is "
+   r"<em>higher</em> (0.067 against 0.043), and they stay competitive because "
+   r"the two mechanisms are substitutes rather than additions.",
+   [r"Extra-trees without a bootstrap land at $\rho = 0.067$, near bagging; "
+    r"with one they land at 0.043, exactly where the forest is &mdash; random "
+    r"thresholds substitute for the bootstrap rather than adding to it",
+    "Their individual members are <em>better</em>, not worse &mdash; 77.8% "
+    "against 73.6% &mdash; because a random threshold on every feature beats "
+    "an optimal threshold on a subsample of them"])
 ex(7, "You set <code>bootstrap=False</code> and <code>oob_score=True</code>. "
       "State what happens and why.", 3,
    "It raises: with no bootstrap there are no out-of-bag rows.",
@@ -1017,8 +1028,10 @@ ex(24, "A contrastive loss is written as <code>img @ txt.T / tau</code> on the "
    "every row has unit norm.",
    ["The entries carry both magnitudes, so the temperature divides a quantity "
     "with no fixed scale",
-    "Magnitude tracks length and token frequency, so long documents win by "
-    "default"])
+    "The norms vary by 1.32&times; across this catalogue for no semantic "
+    "reason &mdash; a vector's length is whatever the last linear layer "
+    "happened to scale it to &mdash; so an unnormalised score ranks partly by "
+    "how loudly an encoder spoke"])
 ex(24, "An auto-caption is generated for catalogue entries that have no "
        "description. State what it recovers, and the failure mode nothing in the "
        "evaluation detects.", 5,

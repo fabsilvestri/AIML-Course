@@ -206,6 +206,9 @@ CONCLUSIONS = [
      "the OOV floor is stated on deck 17; 41% there is the hapax share"),
     (6, 4, ["90%"], ["two halves of the same data"],
      "deck 6 refits on 90% subsamples, not on halves"),
+    (7, 2, ["0.067", "0.043", "substitute"], ["Random split thresholds lower"],
+     "deck 7 measures extra-trees' rho HIGHER than the forest's, and puts that "
+     "comparison up in order to refute the lower-rho reasoning"),
 ]
 
 
