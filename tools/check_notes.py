@@ -38,6 +38,7 @@ student would quote actually appears.
 from __future__ import annotations
 
 import argparse
+import html
 import re
 import sys
 from pathlib import Path
@@ -47,7 +48,7 @@ import check_consistency as cc                                  # noqa: E402
 
 ROOT = cc.ROOT
 NOTES = ROOT / "notes"
-LECTURES = (1, 2, 3, 19, 20, 21, 22)
+LECTURES = (1, 2, 3, 4, 19, 20, 21, 22)
 
 BOLD, RED, GREEN, YELLOW, OFF = cc.BOLD, cc.RED, cc.GREEN, cc.YELLOW, cc.OFF
 
@@ -80,6 +81,52 @@ def prose(tex: str) -> str:
     tex = re.sub(r"[a-z]+=[\d.]+(pt|mm|cm|em)?", " ", tex)        # boxrule=0.4pt
     tex = re.sub(r"\\[a-zA-Z@]+", " ", tex)                       # command names
     return tex
+
+
+def deck_numbers(n: int) -> list[float]:
+    """Every number the lecture's deck states, as floats."""
+    src = (ROOT / "slides" / f"lecture-{n:02d}.html").read_text(encoding="utf-8")
+    body = src.split('<div class="slides">', 1)[-1]
+    body = re.sub(r"<aside class=\"notes\">.*?</aside>", " ", body, flags=re.S)
+    text = html.unescape(re.sub(r"<[^>]+>", " ", body))
+    out = []
+    for tok in re.findall(r"\d+\.\d+|\d{2,}", text.replace(",", "")):
+        try:
+            out.append(float(tok))
+        except ValueError:
+            pass
+    return out
+
+
+def untranscribed(tex_path: Path, n: int) -> list[tuple[int, str, str]]:
+    """Numbers in the notes that this lecture's deck does not state.
+
+    stated() only considers a number when it is a value in figures.json AND
+    carries four significant digits -- cc.significant() drops rounder ones as
+    too coarse to be a quotation. On a lecture whose figures are mostly quoted
+    to three (lecture 4: 0.496, 0.468, 83.6) that leaves nearly all of the
+    prose unexamined, and a mistyped digit there would reach the students.
+
+    The decks are already verified against the notebooks by check_consistency,
+    so they are a sound second anchor: a number in the notes that appears on no
+    slide of its own lecture was typed, not measured.
+    """
+    deck = deck_numbers(n)
+    bad: list[tuple[int, str, str]] = []
+    for line_no, line in enumerate(prose(tex_path.read_text(encoding="utf-8"))
+                                   .splitlines(), start=1):
+        flat = line.replace("{,}", "").replace(",", "")
+        for raw in re.findall(r"\d+\.\d+|\d{2,}", flat):
+            if len(raw.replace(".", "").lstrip("0")) < 3:
+                continue                       # too short to be a quotation
+            if re.fullmatch(rf"{n}\.\d+", raw):
+                continue                       # "Exercise 19.2" is a label
+            dec = len(raw.split(".")[1]) if "." in raw else 0
+            want = float(raw)
+            if any(round(d, dec) == want for d in deck):
+                continue
+            bad.append((line_no, raw, " ".join(line.split())[:76]))
+    return bad
 
 
 def stated(tex_path: Path, own) -> list[tuple[int, float, str, str, int]]:
@@ -178,9 +225,20 @@ def main() -> int:
                 print(f"            …{ctx}…")
             if len(wrong) > 10:
                 print(f"        … and {len(wrong) - 10} more")
-        else:
+        loose = untranscribed(tex, n)
+        if loose:
+            bad += len(loose)
+            print(f"{RED}FAIL{OFF}  lecture {n:02d} — {len(loose)} number(s) in "
+                  f"the notes that deck {n:02d} does not state")
+            for line, raw, ctx in loose[:8]:
+                print(f"        notes/{tex.name}:{line}  {raw}")
+                print(f"            …{ctx}…")
+            if len(loose) > 8:
+                print(f"        … and {len(loose) - 8} more")
+        elif not wrong:
             print(f"{GREEN}ok{OFF}    lecture {n:02d} — "
-                  f"{len(hits)} stated figures, every one printed by its notebook")
+                  f"{len(hits)} stated figures, every one printed by its notebook"
+                  f"; every number also appears on the deck")
             if a.verbose:
                 for line, v, key, _, _dec in hits:
                     print(f"        {v:g}  {key}  (line {line})")

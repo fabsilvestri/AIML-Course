@@ -1,0 +1,814 @@
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+
+\begin{document}
+\notestitlefor{4}{I}{Training models}{Titanic, 891 passengers}{Chapter 4}
+
+\section{Why a closed form is not enough}
+
+Lecture 2 derived $\hat{\boldsymbol\theta} =
+(\mathbf{X}^{\intercal}\mathbf{X})^{-1}\mathbf{X}^{\intercal}y$, valid exactly
+when $\mathbf{X}$ has full column rank. Lecture 3 measured a classifier
+properly. Both lectures called \code{.fit()} and moved on. Today we open it.
+
+\begin{center}
+\small
+\begin{tabular}{p{0.32\textwidth}p{0.56\textwidth}}
+\toprule
+\textbf{Situation} & \textbf{What the normal equation does} \\
+\midrule
+Many features    & inverts an $(n{+}1)\times(n{+}1)$ matrix --- cost grows like
+                   $n^{3}$ \\
+Many instances   & forms $\mathbf{X}^{\intercal}\mathbf{X}$, so every row must
+                   be seen at once \\
+Rank-deficient design & the inverse does not exist \\
+A cost that is not squared error & there is no closed form at all \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The last row is the one that matters. The classifier we build today minimises a
+cost whose stationary equations have no solution in elementary functions, so
+the answer has to be \emph{walked to}.
+
+\section{Derivation: gradient descent}
+
+You have a cost $J(\boldsymbol\theta)$ and no formula for its minimiser. The
+answer must supply three things: a direction to move in, a step size that does
+not overshoot, and a reason to believe the point you stop at is the minimum
+rather than merely a place where you stopped.
+
+Throughout: $m$ instances, $n$ features, $\mathbf{X}$ of shape
+$m \times (n{+}1)$ with a leading column of ones, $\eta > 0$ the
+\term{learning rate}, and
+\[ J(\boldsymbol\theta) = \mathrm{MSE}(\boldsymbol\theta)
+   = \frac{1}{m}\lVert \mathbf{X}\boldsymbol\theta - y\rVert_2^{\,2}. \]
+
+We derive on squared error because it is the one cost whose answer we already
+have in closed form --- which makes it the one cost where the method can be
+checked against a formula.
+
+\subsection{Which way is downhill}
+
+Move a small distance in a unit direction $\mathbf{u}$. To first order,
+\[ J(\boldsymbol\theta + \epsilon\mathbf{u}) - J(\boldsymbol\theta)
+   = \epsilon\,\nabla J(\boldsymbol\theta)\cdot\mathbf{u} + o(\epsilon). \]
+By Cauchy--Schwarz, $\lvert\nabla J\cdot\mathbf{u}\rvert \le \lVert\nabla
+J\rVert$ for every unit $\mathbf{u}$, with equality only when $\mathbf{u}$ is
+parallel to $\nabla J$. So
+\[ \mathbf{u}^{\ast} = -\frac{\nabla J(\boldsymbol\theta)}
+                             {\lVert\nabla J(\boldsymbol\theta)\rVert}. \]
+That is why the gradient and not some other vector: it is the \emph{unique}
+direction of steepest decrease, and the argument is three lines long.
+
+\subsection{The gradient, and the update}
+
+\begin{derivbox}[title={One partial derivative, then stack them}]
+\[
+\begin{aligned}
+\frac{\partial J}{\partial\theta_j}
+ &= \frac{1}{m}\sum_{i=1}^{m}
+    2\bigl(\boldsymbol\theta^{\intercal}\mathbf{x}^{(i)} - y^{(i)}\bigr)
+    \frac{\partial}{\partial\theta_j}
+    \bigl(\boldsymbol\theta^{\intercal}\mathbf{x}^{(i)}\bigr) \\[2pt]
+ &= \frac{2}{m}\sum_{i=1}^{m}
+    \bigl(\boldsymbol\theta^{\intercal}\mathbf{x}^{(i)} - y^{(i)}\bigr)
+    x_j^{(i)},
+\end{aligned}
+\]
+using $\partial(\boldsymbol\theta^{\intercal}\mathbf{x})/\partial\theta_j =
+x_j$, because $\sum_k \theta_k x_k$ contains $\theta_j$ exactly once. Read it
+as \emph{error $\times$ feature}, averaged over the instances. Stacking the
+partials,
+\[ \nabla J(\boldsymbol\theta) = \frac{2}{m}\,\mathbf{X}^{\intercal}
+   \bigl(\mathbf{X}\boldsymbol\theta - y\bigr), \]
+and the update is
+\[ \boldsymbol\theta^{(k+1)} = \boldsymbol\theta^{(k)}
+   - \eta\,\nabla J\bigl(\boldsymbol\theta^{(k)}\bigr). \]
+\end{derivbox}
+
+One matrix product over the whole training set, at cost $O(mn)$ per evaluation
+--- linear in the rows, where the normal equation was cubic in the columns. No
+matrix is ever inverted. It is called \term{batch} gradient descent because
+every step uses the whole training set.
+
+Note that $\eta$ has units: it converts a gradient into a displacement in
+parameter space. That is why its right value depends on how the features are
+scaled.
+
+\subsection{Where it stops, and whether that is the minimum}
+
+The iteration stops moving exactly when the step is zero:
+\[ \nabla J(\hat{\boldsymbol\theta}) = \mathbf{0}
+   \iff \mathbf{X}^{\intercal}\mathbf{X}\hat{\boldsymbol\theta}
+      = \mathbf{X}^{\intercal}y. \]
+
+\begin{keybox}[title={Descent does not solve a different problem}]
+That is the normal equation of Lecture 2. Descent solves the same system
+without ever forming $(\mathbf{X}^{\intercal}\mathbf{X})^{-1}$ --- which is why
+it survives the rank-deficient case the closed form cannot even state.
+\end{keybox}
+
+The Hessian is constant, $\nabla^2 J = \frac{2}{m}\mathbf{X}^{\intercal}
+\mathbf{X}$, and positive semi-definite everywhere. So $J$ is convex: no local
+minima, no plateaux other than the minimum itself, no saddle points. Descent
+cannot get stuck; it can only be slow.
+
+Hold on to the word \emph{convex}. The moment we leave linear models, in
+Lecture 9, every one of those guarantees goes.
+
+\subsection{How large may the step be}
+
+Write $H = \nabla^2 J$ and subtract the fixed point from the update:
+\[ \boldsymbol\theta^{(k+1)} - \hat{\boldsymbol\theta}
+   = \bigl(\mathbf{I} - \eta H\bigr)
+     \bigl(\boldsymbol\theta^{(k)} - \hat{\boldsymbol\theta}\bigr). \]
+In the eigenbasis of $H$ each coordinate of the error is multiplied by
+$(1 - \eta\lambda_i)$ every step, so every mode contracts if and only if
+\[ 0 < \eta < \frac{2}{\lambda_{\max}}. \]
+Because $J$ is quadratic this is exact, not a local approximation.
+
+\begin{center}
+\small
+\begin{tabular}{p{0.26\textwidth}p{0.24\textwidth}p{0.36\textwidth}}
+\toprule
+\textbf{Learning rate} & \textbf{Factor per step} & \textbf{What you see} \\
+\midrule
+$\eta \ll 2/\lambda_{\max}$ & just under 1 &
+  the cost falls slowly, and is still falling when you stop \\
+$\eta \approx 1/\lambda_{\max}$ & small &
+  the cost drops fast and flattens \\
+$\eta > 2/\lambda_{\max}$ & $\lvert 1-\eta\lambda_i\rvert > 1$ &
+  the cost rises, oscillates, and overflows to \code{nan} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{failbox}[title={Divergence is silent until it is loud}]
+A diverging fit does not raise. It returns weights full of \code{inf} and a
+model that predicts one value everywhere. Plot the cost against the step
+number; it is the only cheap way to see which of the three rows you are in.
+\end{failbox}
+
+\subsection{Why you must scale the features}
+
+The step count is governed by the slowest mode. With the best fixed $\eta$ the
+error contracts per step by
+\[ \frac{\kappa - 1}{\kappa + 1}, \qquad
+   \kappa = \frac{\lambda_{\max}}{\lambda_{\min}}
+   = \text{cond}\bigl(\mathbf{X}^{\intercal}\mathbf{X}\bigr). \]
+$\kappa = 1$ is a circular bowl and one step reaches the bottom; $\kappa = 100$
+is a long thin valley the path zig-zags across; and $\kappa$ large because one
+column is in thousands and another in units is a \emph{scaling accident},
+entirely avoidable.
+
+Standardising the columns is not cosmetic. It changes $\kappa$, and $\kappa$ is
+what sets the number of steps.
+
+\subsection{One instance at a time}
+
+Each batch step costs $O(mn)$, unaffordable for large $m$. Draw an index $i$
+uniformly at random and use only that row:
+\[ \mathbf{g}^{(i)}(\boldsymbol\theta)
+   = 2\bigl(\boldsymbol\theta^{\intercal}\mathbf{x}^{(i)} - y^{(i)}\bigr)
+     \mathbf{x}^{(i)},
+   \qquad
+   \mathbb{E}_i\bigl[\mathbf{g}^{(i)}\bigr] = \nabla J(\boldsymbol\theta). \]
+The one-instance gradient is an \emph{unbiased} estimate of the batch gradient,
+and that one line is what makes stochastic and mini-batch descent legitimate
+rather than merely cheap.
+
+\begin{failbox}[title={Unbiased is not the same as right}]
+The estimate's variance does not shrink as $\boldsymbol\theta$ approaches
+$\hat{\boldsymbol\theta}$: at the minimum the batch gradient is zero and the
+individual gradients are not. So the iterates bounce around the minimum
+forever, and the remedy is a learning schedule $\eta_k \to 0$.
+
+Averaging over $b$ rows is still unbiased, by the same one-line argument, and
+divides the variance by $b$.
+\end{failbox}
+
+\begin{center}
+\small
+\begin{tabular}{lllp{0.30\textwidth}}
+\toprule
+\textbf{Variant} & \textbf{Rows/step} & \textbf{Cost} & \textbf{Path} \\
+\midrule
+Batch      & $m$ & $O(mn)$ & smooth, straight to the minimum \\
+Mini-batch & $b$ & $O(bn)$ & slightly noisy, and vectorises on hardware \\
+Stochastic & 1   & $O(n)$  & very noisy, never settles without a schedule \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The bouncing is not only a cost. On a non-convex surface --- every network from
+Lecture 9 onwards --- it is what lets the iterate leave a bad local minimum.
+Here, on a convex bowl, it is pure nuisance.
+
+\begin{keybox}[title={What the derivation buys you}]
+That the gradient is error times feature, so a linear model fits without
+inverting anything; that convexity licenses trusting the answer from any
+starting point, and that this stops being true in Lecture 9; that a rising cost
+curve is a step-size fault rather than a bug; that scaling is part of the
+algorithm, not tidiness; and that mini-batches are principled.
+
+And one more: the derivation never used the fact that the cost was squared
+error until the partial derivative. Swap the cost, redo that one step, and
+everything else stands. That is exactly what we do next.
+\end{keybox}
+
+\section{Fitting by descent}
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+\toprule
+& \textbf{Normal equation / SVD} & \textbf{Gradient descent} \\
+\midrule
+Cost in $m$      & linear & linear, per step \\
+Cost in $n$      & $n^{2.4}$ to $n^{3}$ & linear \\
+Out-of-core      & no --- needs all rows & yes, with mini-batches \\
+Scaling required & no & yes \\
+Hyperparameters  & none & $\eta$, batch size, schedule, stopping rule \\
+Other costs      & squared error only & any differentiable cost \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Few features and data that fits in memory: use the closed form, it has no knobs
+to get wrong. Many features, streaming data, or any cost that is not squared
+error: descent.
+
+\subsection{Curvature without leaving linearity}
+
+A straight line cannot fit a curve, but
+$\hat y = \theta_0 + \theta_1 x + \theta_2 x^2$ is linear in
+$\boldsymbol\theta$ even though it is not linear in $x$. Everything derived
+above applies unchanged --- the gradient, the convexity, the convergence
+condition --- because all of them were statements about $\boldsymbol\theta$.
+
+\code{PolynomialFeatures(degree=d)} also generates every cross product, which
+is how a linear model represents an interaction such as ``third class and
+travelling alone''. The column count is $\binom{n+d}{d}$, so ``a bit more
+capacity'' is never a small change: degree 6 on four numeric columns gives the
+model 227 weights to determine from 712 passengers, about three rows per
+weight.
+
+\section{The worked example: a probability, not a label}
+
+A marine safety planning unit wants an evacuation-assistance model: for each
+passenger profile, how likely that person is to get off unaided --- and they
+need to explain the assignment afterwards.
+
+\begin{center}
+\small
+\begin{tabular}{lp{0.52\textwidth}}
+\toprule
+\textbf{What they asked for} & \textbf{What that forces} \\
+\midrule
+``how likely''    & a \emph{probability}, not a label \\
+the number is used to allocate & it must be \emph{calibrated} \\
+``explain the assignment'' & weights a human can read \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{keybox}[title={Why requirement 1 is not a formatting preference}]
+``This passenger survives'' is not checkable on its own. ``This passenger
+survives with probability 0.31'' is: take everyone the model puts near 0.31 and
+count.
+\end{keybox}
+
+\subsection{The data, and three kinds of hole}
+
+891 passengers, 12 columns. \code{PassengerId} is an index dressed as a
+feature: give it to a model and the model will find something in it.
+
+Three columns have holes, and they get three different answers.
+\code{Cabin} is missing for 687 passengers --- 77\%, which is not a column with
+gaps but a gap with a column --- so do not impute it: take the deck letter
+where there is one and give the rest their own level \code{U}, because the
+missingness \emph{is} the information. \code{Age} is missing for 177, imputed
+by median inside the pipeline so it is recomputed on every training fold.
+\code{Embarked} is missing for 2, imputed by the most frequent port; two rows
+out of 891 cannot matter, and you should still be able to say what you did.
+
+Note that \code{Deck = "U"} will largely mean third class, because the cabin
+number was recorded for passengers whose tickets carried one. So the column is
+partly a proxy for \code{Pclass}. Write that down.
+
+\subsection{The label, and a column that looks like free text}
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Outcome} & \textbf{Passengers} & \textbf{Share} \\
+\midrule
+Did not survive & 549 & 61.6\% \\
+Survived        & 342 & 38.4\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Mildly imbalanced --- nothing like the rare-event problem of Lecture 3.
+Accuracy will not be absurd here. It will be something more dangerous than
+absurd: plausible.
+
+Every name carries a \emph{title}, and the title carries sex, marital status
+and --- for \emph{Master} --- being a boy.
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Title} & \textbf{Passengers} & \textbf{Survived} \\
+\midrule
+Mrs                        & 126 & 79.4\% \\
+Miss                       & 185 & 70.3\% \\
+Master --- a boy           &  40 & 57.5\% \\
+Rare --- Dr, Rev, Col, \ldots &  23 & 34.8\% \\
+Mr                         & 517 & 15.7\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\emph{Master} is the only level that is not a re-encoding of \code{Sex}: those
+40 boys survived at nearly four times the rate of the men.
+
+Four engineered columns, each with a reason: \code{Title} (a boy is not a man),
+\code{FamilySize} (a group evacuates together, and slowly), \code{IsAlone}
+(nobody is waiting for you), \code{Deck} (distance to a boat, and a proxy for
+class). Note that \code{FamilySize = SibSp + Parch + 1} is an exact linear
+function of two columns we already have. Remember it --- we come back to it
+with a rank computation, not with an opinion.
+
+\subsection{Split first, and measure the anchor}
+
+Stratified on the \emph{label} this time, not on a predictor: with 179 test
+rows an unstratified draw can shift the base rate by several points, and every
+downstream number moves with it. That gives 712 training and 179 test
+passengers, at rates 0.3834 and 0.3855.
+
+With $p = 0.3834$, a model that has learned nothing except the base rate scores
+$1 - p = 0.617$ accuracy and a log loss of
+\[ -\bigl(p\log p + (1-p)\log(1-p)\bigr) = 0.666 \]
+--- the entropy of the label, in nats. Every number below has to be compared
+against it.
+
+\section{Logistic regression}
+
+\subsection{The model, and what the linear part predicts}
+
+\[ \hat p = \sigma\bigl(\boldsymbol\theta^{\intercal}\mathbf{x}\bigr),
+   \qquad \sigma(t) = \frac{1}{1 + e^{-t}}. \]
+$\boldsymbol\theta^{\intercal}\mathbf{x}$ is exactly the quantity least squares
+fitted; everything new is in $\sigma$ and in what we ask $\boldsymbol\theta$ to
+minimise. $\sigma$ is strictly increasing and maps $\mathbb{R}$ onto $(0,1)$,
+so it never returns exactly 0 or 1 --- which matters when the loss takes a
+logarithm of it.
+
+Inverting it:
+\[ t = \log\frac{\hat p}{1-\hat p}
+     = \boldsymbol\theta^{\intercal}\mathbf{x}. \]
+
+\begin{keybox}[title={The sentence most often got wrong in the examination}]
+The linear model does not predict the probability. It predicts the
+\emph{log-odds}, and the coefficients act on the \emph{odds}: add 1 to $x_j$
+and the odds are multiplied by $e^{\theta_j}$, wherever you started. The
+probability has no such rule.
+\end{keybox}
+
+\subsection{The loss, and why this one}
+
+\[ J(\boldsymbol\theta) = -\frac{1}{m}\sum_{i=1}^{m}
+   \Bigl[y^{(i)}\log\hat p^{(i)}
+        + \bigl(1-y^{(i)}\bigr)\log\bigl(1-\hat p^{(i)}\bigr)\Bigr]. \]
+
+Only the probability given to the true class enters each term, and it is
+unbounded above: claim 0.001 for a passenger who survived and that term is
+$-\log 0.001 \approx 6.9$.
+
+A scoring rule is \term{proper} if the expected score is optimised by reporting
+your true belief. Log loss is proper; so is the Brier score
+$\frac{1}{m}\sum(\hat p - y)^2$, which is bounded and easier to read, and we
+report it too.
+
+\begin{failbox}[title={Accuracy is not proper}]
+Under accuracy a model reporting 0.51 scores exactly the same as one reporting
+0.99. So accuracy gives a model no reason at all to tell the truth about its
+uncertainty, and optimising it destroys calibration.
+\end{failbox}
+
+\subsection{Its gradient, and the absence of a closed form}
+
+Redo the one step of the derivation that used the cost.
+$\sigma'(t) = \hat p(1-\hat p)$, and
+$\partial\ell/\partial\hat p = (\hat p - y)/\hat p(1-\hat p)$, so the two
+factors cancel exactly and
+\[ \frac{\partial J}{\partial\theta_j}
+   = \frac{1}{m}\sum_i \bigl(\hat p^{(i)} - y^{(i)}\bigr)x_j^{(i)}. \]
+Error times feature. The same shape as the gradient of the MSE.
+
+And yet setting it to zero gives $\mathbf{X}^{\intercal}(\sigma(\mathbf{X}
+\boldsymbol\theta) - y) = \mathbf{0}$, in which $\boldsymbol\theta$ appears
+inside a transcendental function; no rearrangement isolates it. But the Hessian
+is $\frac{1}{m}\mathbf{X}^{\intercal}\mathbf{S}\mathbf{X}$ with $\mathbf{S} =
+\operatorname{diag}(\hat p^{(i)}(1-\hat p^{(i)})) \succeq 0$, so the surface is
+a bowl and descent reaches the global minimum.
+
+This is the first model in the course with no formula for its own answer.
+Everything in the first half of today is what makes it fittable anyway.
+
+\subsection{The first numbers}
+
+Fitted with \code{C=1e6}, which turns Scikit-learn's default penalty
+\emph{off}, so today's coefficients are the data's rather than a compromise
+with a penalty. Turning it back on is the next lecture.
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Model} & \textbf{Log loss} & \textbf{Accuracy} \\
+\midrule
+Report the base rate to everyone & 0.666 & 61.7\% \\
+Logistic regression, 10-fold cross-validated & 0.496 & 81.5\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+About a quarter below the anchor on log loss and twenty points of accuracy
+above the majority class. And the per-fold spread of the log loss is 0.22 ---
+larger than every difference we are about to compare. Carry that number.
+
+\section{Three coefficients that cannot be right}
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Feature} & \textbf{Coefficient} & \textbf{Odds multiplier} \\
+\midrule
+\code{Deck\_T}      & $-5.678$ & $\times 0.003$ \\
+\code{Title\_Master}& $+3.484$ & $\times 32.596$ \\
+\code{Sex\_female}  & $+3.308$ & $\times 27.325$ \\
+\code{Sex\_male}    & $-2.833$ & $\times 0.059$ \\
+\code{Title\_Miss}  & $-2.806$ & $\times 0.060$ \\
+\code{Title\_Mrs}   & $-2.020$ & $\times 0.133$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\code{Title\_Miss} at $-2.81$, when 70.3\% of them survived against 38.4\%
+overall. \code{Title\_Mrs} at $-2.02$, the highest-surviving group in the data.
+And \code{Deck\_T} is the largest weight in the model, when there is exactly
+one passenger on deck T.
+
+These are not weak effects or noisy estimates. They have the wrong \emph{sign},
+and the model's predictions are nonetheless good. Before reaching for a story
+about confounding, ask the cheaper question: what is the shape of the design
+matrix?
+
+\subsection{Count the columns, then count the rank}
+
+\begin{center}
+\small
+\begin{verbatim}
+print("columns:", Z_b.shape[1])            # 29
+print("rank:   ", np.linalg.matrix_rank(Z_b))  # 23
+print("cond:   ", np.linalg.cond(Z_b))         # 2.6e+16
+\end{verbatim}
+\end{center}
+
+Six columns are linear combinations of the others. Five come from the encoder
+--- each one-hot block sums to 1 in every row, and the intercept column is also
+1 in every row, so five categorical columns give five exact dependencies. The
+sixth is ours: \code{FamilySize = SibSp + Parch + 1}, exactly, for every
+passenger, with maximum residual $0.0$. Not ``highly correlated'' --- an
+identity. Standardising does not help, because an affine map of a linear
+dependence is still a linear dependence.
+
+\begin{failbox}[title={What a rank-deficient design does to the fit}]
+If $\mathbf{X}\mathbf{v} = \mathbf{0}$ for some $\mathbf{v} \neq \mathbf{0}$,
+then $\mathbf{X}(\boldsymbol\theta + c\mathbf{v}) = \mathbf{X}
+\boldsymbol\theta$ for every $c$: along $\mathbf{v}$ the loss is flat.
+
+There is not one best $\boldsymbol\theta$ but a whole affine subspace of them.
+The solver returns one point of it and says nothing. Predictions are
+unaffected; \emph{every claim about a coefficient is void}.
+\end{failbox}
+
+Proved on our own matrix: add 2.5 to \code{Sex\_female} and to
+\code{Sex\_male}, subtract 2.5 from the intercept, and the largest change in
+any of the 712 logits is $1.8\times10^{-15}$. \code{Sex\_male} can be $-2.83$
+or $-0.33$, and both fits make the same prediction for every passenger.
+
+\begin{keybox}[title={The test, stated generally}]
+If a coefficient can be moved without changing any prediction, that coefficient
+is not a property of the data.
+\end{keybox}
+
+\subsection{The repair}
+
+Drop one level per categorical block and remove \code{FamilySize}:
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Design matrix} & \textbf{Columns} & \textbf{Rank} &
+\textbf{Condition number} \\
+\midrule
+As first written & 29 & 23 & $2.6\times10^{16}$ \\
+One level dropped, \code{FamilySize} removed & 23 & 23 & 83.6 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Fourteen orders of magnitude. \code{IsAlone} stays: it is an indicator, not a
+linear function of the counts.
+
+Each dropped level becomes the \term{reference}, folded into the intercept, and
+every remaining coefficient is read \emph{relative to it}. A coefficient quoted
+with no stated reference level cannot be read by anybody, including you in a
+month --- and this is the most common defect in the regression tables you will
+be asked to review.
+
+Use \code{min\_frequency} rather than \code{handle\_unknown="ignore"} here:
+with \code{drop="first"} an ignored unknown level is encoded all-zeros, which
+is the encoding of the reference level, so our one deck-T passenger would be
+scored as though they were on deck A whenever a fold holds them out.
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Encoding} & \textbf{Cross-validated log loss} \\
+\midrule
+All levels, \code{FamilySize} kept --- rank 23 of 29 & 0.496 \\
+One level dropped, \code{FamilySize} removed --- full rank & 0.468 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{keybox}[title={What that table does and does not license}]
+Not a large move, and not the point. The point is that the first row was
+produced by a fit that had no unique answer, and nothing said so. The fold
+spread of the repaired model is 0.13, and of the rank-deficient one 0.22 ---
+both far wider than this gap.
+
+Do not claim the second encoding is \emph{better} on this evidence. Claim it is
+\emph{defined}.
+\end{keybox}
+
+Now a coefficient can be read aloud. \code{Pclass\_3} $= -1.169$: holding every
+other recorded feature fixed, travelling third class multiplies the odds of
+survival by $e^{-1.169} = 0.31$, relative to first class. Every clause matters
+--- ``holding every other feature fixed'' is doing real work, the multiplier is
+on odds rather than probability, and it is always relative to the reference
+level. And unique is not the same as stable: \code{Sex} and \code{Title} still
+carry much of the same information, so how the effect splits between them moves
+with the sample. We only fixed uniqueness.
+
+\section{Capacity, and the two ways a fit fails}
+
+A linear term in \code{Age} cannot say ``children and the elderly were helped
+first'', because that is not a monotone statement about age. Add
+$\text{Age}^2$: the log-odds become quadratic in age, the boundary becomes a
+conic, and the model is still linear in $\boldsymbol\theta$.
+
+\begin{center}
+\small
+\begin{tabular}{rrrrr}
+\toprule
+\textbf{Degree} & \textbf{Columns} & \textbf{Training} &
+\textbf{Held-out} & \textbf{Held-out accuracy} \\
+\midrule
+1 &  22 & 0.395 & 0.468 & 81.5\% \\
+2 &  32 & 0.381 & 0.467 & 82.2\% \\
+3 &  52 & 0.355 & 0.538 & 79.6\% \\
+4 &  87 & 0.310 & 1.390 & 77.4\% \\
+5 & 143 & 0.286 & 1.922 & 76.0\% \\
+6 & 227 & 0.284 & 1.836 & 76.7\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Degrees 1 and 2 differ by 0.001 in held-out log loss, and the fold spread is
+over a hundred times that. Those two are a \emph{tie}; reporting degree 2 as
+the winner would be reporting noise.
+
+From degree 2 to degree 5 held-out accuracy falls by about six points while
+held-out log loss is multiplied by more than four. Accuracy only notices when a
+prediction crosses the cut-off; log loss notices a confident prediction
+becoming a confidently \emph{wrong} one. The failure is not that the model gets
+more passengers wrong --- it is that it becomes certain about the ones it gets
+wrong. The requirement was for probabilities, and the metric that matches the
+requirement is the metric that saw the damage.
+
+\subsection{A warning worth reading}
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrr}
+\toprule
+\textbf{Degree} & 1 & 2 & 3 & 4 & 5 & 6 \\
+\midrule
+Converged        & yes & yes & yes & no & no & no \\
+Iterations used  & 74 & 256 & 935 & 4000 & 4000 & 4000 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The reflex is to raise \code{max\_iter}. It cannot help, and understanding why
+is the point.
+
+\begin{failbox}[title={Under separation the minimiser does not exist}]
+With 87 columns and 712 rows the two classes eventually become linearly
+separable. If some $\boldsymbol\theta$ separates them perfectly, so that
+$\boldsymbol\theta^{\intercal}\mathbf{x}^{(i)}$ has the right sign for every
+$i$, then $J(c\,\boldsymbol\theta) \to 0$ as $c \to \infty$.
+
+The likelihood has no maximum: scaling the weights up always improves it, and
+they run away to infinity. The warning is not a numerical nuisance --- it is
+the solver reporting that the estimate you asked for \emph{does not exist}.
+\end{failbox}
+
+\section{Calibration, and the cut-off nobody chose}
+
+\begin{definition}[Calibration]
+$P(y = 1 \mid \hat p(\mathbf{x}) = q) = q$ for every $q \in (0,1)$.
+\end{definition}
+
+Take every passenger the model scored near $q$; the fraction who actually
+survived should be about $q$. This is a property of a \emph{set} of
+predictions, not of any one prediction --- which is exactly why it is so easy
+to ship a model that fails it.
+
+Check it out of fold, with \code{cross\_val\_predict} rather than
+\code{predict}, so every probability came from a fit that had never seen that
+passenger. A reliability diagram drawn on training predictions always looks
+excellent.
+
+Read the diagram by looking at the marker area first: a bin with six passengers
+has an observed rate that swings by a sixth on one person, so deviations in the
+middle bins are mostly sampling noise while deviations in the crowded end bins
+are not. Our expected calibration error, out of fold, is 0.050 --- and it is
+roughly calibrated because log loss is a proper scoring rule and we minimised
+it directly. The calibration is not a happy accident; it is what the objective
+was asking for.
+
+\begin{failbox}[title={A bare label hides a decision nobody made}]
+\code{.predict()} is \code{.predict\_proba() >= 0.5}. That cut-off is
+cost-optimal only when the two mistakes cost the same. Nothing in the code
+mentions 0.5, nothing errors, and the accuracy printed is true --- it just
+answers a question the stakeholder did not ask.
+\end{failbox}
+
+Measured rather than asserted, over twenty splits, choosing the cut-off on
+out-of-fold training predictions against a stated 10 : 1 cost ratio:
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Cut-off} & \textbf{Accuracy} & \textbf{Expected cost} \\
+\midrule
+0.50 --- the library default & 81.8\% & 169 \\
+0.86 --- chosen from the costs, per split & 74.1\% & 59 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The default costs 110 escort-units more per evacuation on average, and it is
+worse on 20 splits out of 20. \emph{Accuracy goes down when you do the right
+thing} --- so if accuracy is the headline, you will reject the better rule.
+
+For a calibrated model the cost-minimising cut-off is
+$t^{\ast} = c_{\text{FN}}/(c_{\text{FN}} + c_{\text{FP}})$, which is 0.909 at a
+10 : 1 ratio. Our measured optimum sits below it, and that gap is the
+calibration error expressed in a unit somebody cares about.
+
+So: fit and report on a proper scoring rule, both cross-validated; choose any
+cut-off on out-of-fold predictions against costs or a capacity somebody has
+stated; and report accuracy at that cut-off as a \emph{consequence}, never as
+the objective.
+
+\section{More than two classes}
+
+Softmax regression gives one parameter vector per class:
+\[ s_k(\mathbf{x}) = \boldsymbol\theta_k^{\intercal}\mathbf{x},
+   \qquad
+   \hat p_k = \frac{\exp(s_k(\mathbf{x}))}{\sum_{j=1}^{K}\exp(s_j(\mathbf{x}))}, \]
+so the output is a distribution over the $K$ classes by construction. It is
+multi\emph{class}, not multi\emph{label}: four objects in one photograph need
+$K$ separate binary classifiers, not this.
+
+Its cost is cross-entropy,
+\[ J(\boldsymbol\Theta) = -\frac{1}{m}\sum_{i=1}^{m}\sum_{k=1}^{K}
+   y_k^{(i)}\log\hat p_k^{(i)}, \]
+whose inner sum keeps exactly one term. At $K = 2$ this is the log loss, term
+for term: logistic regression is the two-class case of softmax, not a different
+model. And its gradient is
+\[ \nabla_{\boldsymbol\theta_k}J = \frac{1}{m}\sum_i
+   \bigl(\hat p_k^{(i)} - y_k^{(i)}\bigr)\mathbf{x}^{(i)} \]
+--- error times feature, for the third time today. That is not a coincidence;
+it is a property of this family of losses paired with these output functions,
+and it is why one optimiser fits all of them, including every network in the
+second half of this course.
+
+The boundary between classes $j$ and $k$ is where
+$(\boldsymbol\theta_k - \boldsymbol\theta_j)^{\intercal}\mathbf{x} = 0$: a
+hyperplane, so the decision regions are convex polyhedra. Which is also the
+limitation --- a class that is not linearly separable from the union of the
+others cannot be carved out, however many iterations you run.
+
+\section{What today's model is still missing}
+
+\begin{center}
+\small
+\begin{tabular}{p{0.36\textwidth}p{0.28\textwidth}p{0.24\textwidth}}
+\toprule
+\textbf{Left open} & \textbf{What it means} & \textbf{What fixes it} \\
+\midrule
+Rank 23 of 29 columns & the minimiser is not unique & a penalty makes it
+                                                      unique \\
+lbfgs will not converge at degree 4 & the minimiser does not exist & a penalty
+                                                      makes it exist \\
+Held-out log loss quadruples from degree 2 to 5 & capacity with no counterweight
+                                                & a penalty buys most of it
+                                                  back \\
+The degree was chosen by reading the held-out score & a choice with no
+                                                diagnosis behind it &
+                                                learning and validation
+                                                curves \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The first two are statements about the optimisation problem, not about the
+passengers. One idea repairs all four, and it is the next lecture.
+
+\section{The notebook}
+
+\begin{trybox}[title={What to change}]
+Gradient descent is implemented from the derivation in a dozen lines, checked
+against the normal equation to eight decimals, and run at three learning rates,
+one of which diverges.
+
+Raise \code{ETA\_DIVERGE} and watch where the cost first becomes \code{inf}.
+Then compute $2/\lambda_{\max}$ for that design matrix and check the two agree
+--- which turns the convergence condition from a claim on a page into a
+measurement you made.
+\end{trybox}
+
+\section{Exercises}
+
+\begin{enumerate}[leftmargin=1.6em,itemsep=4pt]
+  \item State the condition on $\eta$ for batch gradient descent on the MSE to
+        converge, and explain why the argument is exact rather than a local
+        approximation. \hfill \scope{[5]}
+  \item A design matrix has 29 columns and rank 23. A colleague reports that
+        one coefficient is $-2.83$ and concludes the feature is protective.
+        State what is wrong with the conclusion, and give a two-line
+        computation that would demonstrate it. \hfill \scope{[5]}
+  \item A logistic fit reports \code{ConvergenceWarning} at 4{,}000 iterations
+        on a degree-4 polynomial expansion of 712 rows. Explain why raising
+        \code{max\_iter} cannot help. \hfill \scope{[4]}
+  \item Held-out accuracy falls by six points between two models while held-out
+        log loss quadruples. Explain what has happened to the predictions, and
+        which metric you would report given a brief that asks for
+        probabilities. \hfill \scope{[4]}
+  \item A calibrated model is used with a 10 : 1 cost ratio between false
+        negatives and false positives. Give the cost-minimising cut-off and
+        explain why the default 0.5 produces a \emph{more accurate} and
+        \emph{more expensive} rule. \hfill \scope{[4]}
+\end{enumerate}
+
+\section*{Summary}
+\addcontentsline{toc}{section}{Summary}
+
+Descent moves along $-\nabla J$, which Cauchy--Schwarz identifies as the unique
+steepest direction. On the MSE that gradient is
+$\frac{2}{m}\mathbf{X}^{\intercal}(\mathbf{X}\boldsymbol\theta - y)$ and its
+zero is the normal equation, so descent solves Lecture 2's system without ever
+forming an inverse. The cost is convex, so any stationary point is global; the
+step converges if and only if $\eta < 2/\lambda_{\max}$; and the step count is
+set by the condition number, which is why scaling is part of the algorithm. One
+row gives an unbiased gradient, which is what makes mini-batches legitimate.
+
+Logistic regression predicts the log-odds linearly, minimises a proper scoring
+rule, and has no closed form --- but its cost is convex, so the machinery above
+fits it. Its fit failed in two distinct ways here: \emph{not unique}, because
+six of 29 columns were linear combinations of the others, proved by shifting
+two coefficients by 2.5 and moving no logit by more than $10^{-15}$; and
+\emph{non-existent} at degree 4, where separation sends the weights to
+infinity. Repairing the encoding took the condition number from
+$2.6\times10^{16}$ to 83.6.
+
+And a probability is checkable where a label is not. \code{.predict()} applies
+a cut-off of 0.5 that nobody chose; choosing it against a stated 10 : 1 cost
+ratio was worse on accuracy, better on cost, on 20 splits out of 20.
+
+\end{document}
