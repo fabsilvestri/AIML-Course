@@ -165,7 +165,14 @@ L = w ** 2
 print(f"forward:  x*y = {(x*y).item():.4f}   sin x = {torch.sin(x).item():.4f}")
 print(f"          w   = {w.item():.4f}       L = {L.item():.4f}")
 
+# the intermediate adjoints, which are the reverse sweep itself. retain_grad()
+# keeps grad on a non-leaf node; without it only x and y get one, and the table
+# in the notes would be uncheckable.
+w.retain_grad()
 L.backward()
+
+print(f"reverse:  dL/dw = {w.grad.item():.4f}   "
+      f"dL/du = dL/ds = {w.grad.item():.4f}")
 
 # by hand: dL/dx = 2w (y + cos x),  dL/dy = 2w * x
 hand_x = 2 * w.item() * (3 + np.cos(2))

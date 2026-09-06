@@ -82,6 +82,23 @@ NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
 # and using two. An exemption nobody needs is a standing permission with no
 # justification attached, which is the thing this list exists to prevent.
 SCALE_ONLY: dict[str, str] = {
+    "l12_bench":
+        "L10's three-way benchmark -- Scikit-Learn on CPU, PyTorch on CPU, "
+        "PyTorch on the accelerator -- is run at lecture 9's scale, 20 epochs "
+        "over the full fit set. The notebook sets SUB = 12,000 and EPOCHS = 10 "
+        "so it finishes on the free tier, and prints its own three accuracies "
+        "and three wall clocks. The claim is the RATIO between the rows, which "
+        "survives the change of scale; the absolute accuracies do not.",
+    "l12_zero_grad":
+        "The missing-zero_grad experiment is 12 epochs on 20,000 images in the "
+        "deck and 10 on 12,000 in the notebook. Both reproduce the finding -- a "
+        "working classifier against one near the 10% floor -- at their own "
+        "scale, and the deck names its scale beneath the table.",
+    "l12_batch_mean":
+        "The per-batch-mean aggregation error is computed on whatever model was "
+        "just trained, so it inherits l12_bench's scale. The size of the gap is "
+        "not the claim; that a plain mean over unequal batches is wrong, and by "
+        "an amount you cannot read off the number, is.",
     "l11_sk":
         "L9's headline network is fitted on all 55,000 training images for 20 "
         "epochs, which is 125 s of CPU. The notebook sets SUB = 12,000 so the "

@@ -123,7 +123,7 @@ On the site they appear in two places: a third button on each of the four
 Part V lecture cards (`btn-notes`, emitted by `make_site.py` for any lecture
 whose chapter field is empty), and a table in *Textbook and scope*.
 
-## OPEN DEBT — 40 slide figures no notebook reproduces
+## OPEN DEBT — 31 slide figures no notebook reproduces
 
 `check_consistency` was over-reporting for the whole rebuild, in two ways, both
 found in round 5 and both fixed.
@@ -157,7 +157,18 @@ for 20 epochs and sweeps 10,000 for 12; the notebook sets SUB = 12,000 and
 SMALL = 6,000 so it finishes on a free CPU, and prints its own numbers at its
 own scale. Both now carry a SCALE_ONLY reason.
 
-That leaves **40**: L02 (1), L03 (3), L10 (10), L11 (13), L12 (1), L14 (1),
+Lecture 10 went nine the same way, and the nine split three ways. Six are
+scale (the three-way framework benchmark, the missing-zero_grad experiment and
+the per-batch-mean gap all inherit the notebook's SUB = 12,000 / EPOCHS = 10
+against the deck's full-scale run). One was a genuine gap -- the reverse sweep
+printed its two endpoint derivatives and none of the intermediate adjoints, so
+the table in the deck could not be checked; the notebook now retains and prints
+them. And one was a mislabelled figure rather than a missing one: the deck
+called 1041 KB the size of the checkpoint FILE, where figures_app06 measures
+the tensors (numel * element_size). The file is larger, because state_dict is
+a zip. The deck now says which of the two the number is.
+
+That leaves **31**: L02 (1), L03 (3), L10 (1), L11 (13), L12 (1), L14 (1),
 L18 (6), L19 (4), L24 (1).
 
 (An earlier revision of this section said 50 with L11 at 12. That was a
