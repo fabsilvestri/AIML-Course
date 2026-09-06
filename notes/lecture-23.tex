@@ -1,0 +1,509 @@
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+
+\begin{document}
+\notestitlefor{23}{VI}{Vision transformers and multimodal retrieval}{COCO, 200 catalogue entries}{Chapters 15--16}
+
+\section{The first brief whose input and output differ in kind}
+
+Part V built retrieval over text and over user behaviour, and both reduced to
+the same object: two encoders and an inner product. Today the two towers take
+\emph{different modalities} --- one encodes images, the other text, and a
+photograph and its caption must land close together.
+
+A retailer's catalogue team: the entries are photographs. Product photos arrive
+with an identifier, a price and a picture; written descriptions are
+inconsistent, often absent, and never written by the person searching.
+\emph{Customers type sentences. The catalogue stores pixels.}
+
+Keyword search needs text on both sides, and so does the semantic search of the
+previous lecture --- it embeds a sentence and compares it to \emph{other
+sentences}. An entry with no description is not badly ranked by a text index.
+It is \emph{absent}.
+
+\subsection{The corpus, and the second corpus}
+
+200 catalogue entries, 32.6 MB, taken in image-id order from COCO's 2014
+validation set so that everyone's catalogue is the same catalogue, each with
+five independent human captions written by people who were not shown each
+other's.
+
+\begin{keybox}[title={Two different uses for five captions}]
+Caption 1 is the entry's \emph{description}, when it has one --- what a text
+index would see. Caption 2 is the \emph{customer's query}. Captions 3 to 5 are
+held back.
+
+Using two different people's sentences about the same picture makes this a
+paraphrase problem rather than a lookup. If we used the same sentence on both
+sides, a hash table would score 100\%.
+\end{keybox}
+
+The catalogue has no labels, so it cannot play the role of a known-answer test.
+A second corpus does: 2{,}000 CIFAR-10 test images and ten class names --- ten
+labels we actually have. CIFAR-10 is $32\times32$, which is a hard setting for
+any model trained on web photographs, and we will see the cost.
+
+\subsection{An image as a sequence}
+
+A transformer takes a sequence and an image is a grid, so cut it up: split into
+fixed patches, flatten each and project it linearly --- \emph{that projection
+is Lecture 17's embedding table with patches in place of tokens} --- add a
+positional encoding, because Lecture 18 established that attention has no
+notion of order and a grid has two, then run the standard blocks. A
+$224\times224$ image at $16\times16$ patches is $14\times14 = 196$ tokens, well
+within reach of the quadratic cost, which is exactly why that patch size and
+not a smaller one.
+
+\begin{keybox}[title={What a ViT gives up}]
+Lecture 12 derived what convolution assumes: locality, and translation
+equivariance from weight sharing. A vision transformer assumes \emph{neither}.
+Every patch can attend to every other from the first layer, and nothing tells
+it that adjacent patches are related.
+
+On small corpora a convolutional network wins, because its assumptions are true
+and free. On large ones the transformer wins, because it can learn whichever
+relations actually hold. The crossover is at a corpus size most people do not
+have --- which is why pretrained ViTs are used far more often than they are
+trained.
+\end{keybox}
+
+\section{A metric, and a baseline that needs no experiment}
+
+The system returns a ranked list, so what matters is where the right entry
+landed. Recall@$k$ is the share of queries whose answer is in the top $k$, and
+we read R@1, R@5 and R@10 --- R@1 being the number the product cares about,
+because it is the top of the page. Ties count \emph{against} us: a metric that
+flatters a degenerate score matrix is not a metric.
+
+Not accuracy, because there is no decision here, only an ordering --- and a
+threshold on similarity would import all of Lecture 3's problems plus a new
+one, that the scale of a cosine is not comparable between models. Recall@$k$ is
+rank-based, so it is invariant to any monotone transformation of the score.
+Mean reciprocal rank goes beside it, so that a system putting the answer at 2
+is distinguishable from one putting it at 180.
+
+\begin{derivbox}[title={The trivial baseline, computed rather than run}]
+One relevant entry among $n$, placed uniformly at random:
+\[ \Pr[r \le k] = \frac{k}{n}, \qquad
+   \mathbb{E}[r] = \frac{n+1}{2}, \qquad
+   \mathbb{E}\!\left[\tfrac{1}{r}\right] = \frac{H_n}{n}. \]
+No simulation, no seed, no error bar --- this one is arithmetic.
+\end{derivbox}
+
+At $n = 200$ that is R@1 of 0.5\%, R@5 of 2.5\%, R@10 of 5.0\%, an expected
+rank of 100.5 and an MRR of 0.029. These scale with the catalogue: on 5{,}000
+candidates R@1 would be 0.02\%. \emph{Quote the size or quote nothing.}
+
+\section{Two encoders, trained apart}
+
+Encode the images with a ViT trained on ImageNet labels --- no text anywhere in
+its training --- and the queries with the sentence encoder from the previous
+lecture. Then take the cosine.
+
+\begin{failbox}[title={It does not even typecheck}]
+The image vectors live in 768 dimensions and the sentence vectors in 384.
+There is no cosine between them, because there is no inner product between
+them.
+
+Reviewer question 3, asked by the interpreter instead of by you.
+\end{failbox}
+
+Make the dimensions agree three ways, so nobody can blame the fix: a random
+Gaussian projection (Lecture 8), keeping the first 384 coordinates, or
+zero-padding the text vectors. Lecture 8 told us a random projection preserves
+the image geometry to within a stated tolerance --- and it did, the pairwise
+cosines before and after correlating at 0.86. \emph{It said nothing at all
+about aligning that geometry with anything else.}
+
+A similarity is meaningless alone, so compute two numbers: the cosine between
+an image and its own caption, and between an image and somebody else's ---
+nearly forty thousand of the latter.
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Pairs} & \textbf{Mean cosine} & \textbf{sd} \\
+\midrule
+Image and its own caption & $+0.0060$ & 0.0499 \\
+Image and an unrelated caption & $+0.0034$ & 0.0514 \\
+\midrule
+Difference & $+0.0026$ & Cohen's $d = 0.052$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{System} & \textbf{R@1} & \textbf{R@5} & \textbf{R@10} &
+\textbf{Median rank} \\
+\midrule
+Random ranking (exact) & 0.5\% & 2.5\% & 5.0\% & 100 \\
+ViT + MiniLM, JL projection & 1.0\% & 4.0\% & 6.0\% & 104 \\
+ViT + MiniLM, truncated & 0.5\% & 2.0\% & 5.5\% & 80 \\
+ViT + MiniLM, zero-padded & 0.0\% & 2.5\% & 5.5\% & 80 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two of the 200 queries put the right image first. Shuffling is expected to get
+one. Two strong encoders, over a hundred million parameters between them, and
+that is the whole difference.
+
+\begin{keybox}[title={Say the result out loud}]
+A picture of a bus and the sentence ``a red bus on a city street'' are no
+closer than that picture and a sentence about a sandwich.
+
+\emph{Both encoders work perfectly.} The ViT separates images from one another;
+MiniLM separates sentences from one another. Neither was ever shown a single
+(image, sentence) pair, so neither has any reason to place them anywhere in
+particular relative to each other.
+\end{keybox}
+
+Why, precisely: an embedding space is defined only up to whatever the training
+objective constrained. ImageNet classification constrains images relative to
+images; sentence-similarity training constrains sentences relative to
+sentences; and \emph{nothing in either loss ever compared a vector from one to
+a vector from the other}. Apply any orthogonal map to the image space and every
+image--image cosine is unchanged, so the ViT's loss is unchanged --- while
+every image--text cosine changes. The loss cannot distinguish those worlds, so
+it did not pick one.
+
+\section{Derivation: the contrastive objective and its temperature}
+
+Two encoders trained apart gave 1.0\%. Two trained together give 72.5\%. What
+is the loss that did that? Four decisions: where the vectors live, what an
+unrelated pair should score, how a cosine becomes a logit, and how many wrong
+answers the loss compares against.
+
+A batch of $B$ pairs, each tower ending in a linear map into $\mathbb{R}^d$,
+gives a $B\times B$ matrix of cosines $S_{ij}$. $S_{ii}$ is a pair that belongs
+together; every off-diagonal entry is a pair that does not. \emph{The loss only
+ever sees this matrix.}
+
+\subsection{Why normalise}
+
+The unnormalised inner product factorises as
+$\lVert a\rVert\lVert b\rVert\cos\theta$, mixing two quantities: which
+direction the encoder chose, and how loudly it said it. Only the direction
+carries the semantics --- the length is whatever the last linear layer happened
+to scale to, and on our catalogue the longest image embedding is 1.32 times the
+shortest.
+
+Normalising costs one degree of freedom per vector and the ability to express
+confidence by shouting; it buys a bounded score, so that a single temperature
+is meaningful for every pair, and a geometry we can reason about. Confidence
+comes back through the temperature instead, as one number shared by the whole
+model rather than one per example.
+
+\subsection{What should an unrelated pair score?}
+
+The answer everybody gives first is $-1$. It is wrong, and the reason is
+geometry already measured in Lecture 8.
+
+For a given $\mathbf{u}$ there is exactly \emph{one} unit vector at cosine
+$-1$, namely $-\mathbf{u}$. A catalogue of 200 entries would need all 200
+non-matching captions to sit on that one point --- and then they would all be
+identical to each other. Wanting every unrelated pair at $-1$ is asking for a
+configuration that does not exist for more than two items.
+
+\begin{derivbox}[title={Concentration on the sphere}]
+Draw $\mathbf{u}, \mathbf{v}$ uniformly on $S^{d-1}$. Fix $\mathbf{u} = e_1$ by
+rotational symmetry and write $\mathbf{v} = \mathbf{z}/\lVert\mathbf{z}\rVert$
+with $\mathbf{z} \sim \mathcal{N}(0, I_d)$. Then
+$\mathbf{u}^{\top}\mathbf{v} = z_1/\lVert\mathbf{z}\rVert$ and
+\[ \mathbb{E}\!\left[\Bigl(\tfrac{z_1}{\lVert\mathbf{z}\rVert}\Bigr)^{2}\right]
+   = \mathbb{E}\!\left[\frac{z_1^2}{\sum_k z_k^2}\right] = \frac{1}{d} \]
+by symmetry --- the $d$ coordinates share the total equally. The expectation is
+zero by $\mathbf{v}\mapsto-\mathbf{v}$, so the standard deviation is exactly
+$1/\sqrt d$. No approximation anywhere.
+\end{derivbox}
+
+\emph{In high dimensions, two unrelated things are orthogonal, not opposite.}
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Random unit vectors in 512 dimensions, 20{,}000 pairs} &
+\textbf{Value} \\
+\midrule
+Mean cosine & $-0.00072$ \\
+Standard deviation, measured & 0.0439 \\
+Standard deviation, $1/\sqrt d$ & 0.0442 \\
+Most negative cosine observed & $-0.177$ \\
+Fraction with $|\cos| > 0.5$ & 0.0\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The most negative cosine in twenty thousand draws was $-0.18$. Nothing came
+anywhere near $-1$, and nothing ever will. \emph{That is why the loss targets
+zero.}
+
+A related consequence worth naming: images occupy one region of the sphere and
+captions another, with the two centroids 0.83 apart. The objective aligns pairs
+\emph{relatively} and never asks the two clouds to coincide --- the modality
+gap survives training.
+
+\subsection{From a cosine to a logit}
+
+Row $i$ of $S$ is a $B$-class problem whose correct answer is column $i$, so
+Lecture 17's machinery applies directly:
+\[ \mathcal{L} = -\frac{1}{B}\sum_i
+   \log\frac{\exp(S_{ii}/\tau)}{\sum_j \exp(S_{ij}/\tau)}. \]
+
+\begin{failbox}[title={Why $\tau = 1$ cannot work}]
+The logits are cosines, so the whole spread of a row is at most 2, and
+$\exp$ of a range of 2 is a ratio of at most $e^2 \approx 7.4$ across 200
+competitors. The softmax is nearly uniform whatever the model says.
+
+Measured on our 200 pairs at $\tau = 1$: loss 5.151, against 5.298 for a scorer
+that knows nothing, with mean probability 0.0058 on the correct entry.
+\end{failbox}
+
+Differentiating gives Lecture 17's result scaled:
+$\partial\mathcal{L}_i/\partial S_{ij} = \frac{1}{\tau}(p_{ij} - \mathbf{1}[j
+= i])$. So $\tau$ does not change which column is largest --- \emph{it cannot
+change the top-1 accuracy of a fixed model} --- it changes where the gradient
+goes. Small $\tau$ concentrates the weight on the few hardest negatives.
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+$\tau$ & \textbf{Loss} & \textbf{p(correct)} & \textbf{p(hardest wrong)} \\
+\midrule
+1 & 5.151 & 0.0058 & 0.0056 \\
+0.0100 (learned) & 0.835 & 0.667 & 0.208 \\
+0.002 & 2.647 & 0.724 & 0.252 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Colder is not simply better: as $\tau \to 0$ the softmax becomes a hard
+maximum, the gradient sees one negative per row, and any label noise in that
+one pair is amplified rather than averaged away.
+
+And $\tau$ is not a hyperparameter anybody tunes by hand --- the model stores
+$\log(1/\tau)$ and learns it, clamped from above. Read off the checkpoint, the
+learned scale is 100.00 to five significant figures. \emph{It is not near its
+clamp; it is on it}: the implementation caps $\log(1/\tau)$ at $\log 100$, and
+training pushed it there and held it.
+
+\subsection{Where the negatives come from}
+
+Nowhere --- that is the elegant part. The loss needs, for each image, a set of
+captions it should not match, and nobody labels those: they are simply the
+other members of the batch, free and correct with high probability on a large
+corpus.
+
+\begin{keybox}[title={The batch is the label set}]
+So the batch size is not a memory setting. It is \emph{the number of classes in
+the classification problem you are solving.}
+\end{keybox}
+
+\begin{center}
+\small
+\begin{tabular}{rrrr}
+\toprule
+\textbf{Batch size $B$} & \textbf{In-batch top-1} & \textbf{Chance, $1/B$} &
+\textbf{Loss} \\
+\midrule
+  2 & 99.2\% & 50.0\% & 0.016 \\
+ 16 & 95.8\% &  6.2\% & 0.116 \\
+ 64 & 87.4\% &  1.6\% & 0.389 \\
+200 & 72.5\% &  0.5\% & 0.835 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Same model, same embeddings, same temperature --- only the number of
+distractors changed. Accuracy falls with $B$ and chance falls faster, so the
+gap widens: that is the whole argument for a large batch.
+
+\begin{failbox}[title={Two consequences worth carrying away}]
+A contrastive loss value is \emph{not comparable across papers}, because it is
+measured against a batch-dependent ceiling of $\log B$. Our own sweep makes the
+point: the same model, embeddings and $\tau$ score 0.058 at $B = 8$ and 0.835
+at $B = 200$. Neither number means anything without its batch size.
+
+And batch size stops being an optimisation detail. Doubling it changes the
+\emph{task}, not just the gradient noise --- which is why these models are
+trained with batches in the tens of thousands.
+\end{failbox}
+
+Lecture 8 supplied the concentration result; Lecture 17 supplied the softmax
+and its gradient. \emph{The eighteen derivations were meant to be taken in
+order, and this is why.}
+
+\section{One space, two modalities}
+
+A jointly trained dual encoder --- a ViT-B/32 image tower, a twelve-layer text
+tower, and a shared 512-dimensional space on the unit sphere. The whole system
+is fourteen lines, and the only difference from the failed attempt is that the
+two sides now have the same shape, so the matrix product exists.
+
+\begin{failbox}[title={One line worth staring at}]
+\code{get\_image\_features} and \code{get\_text\_features} return vectors that
+are \emph{not} normalised. Skip the normalisation and the code still runs,
+still returns a matrix, and still produces a ranking --- a different one.
+\end{failbox}
+
+\subsection{The known-answer test first}
+
+The catalogue has no labels, so nothing there can tell us the model is loaded
+correctly, pointed at the right tensors, and preprocessing images the way it
+was trained to. So: 2{,}000 CIFAR-10 images, ten class names, embed ``a photo
+of a \{class\}'' for each, and assign each image to the nearest sentence.
+\emph{The classifier is ten sentences, and there is no fitted parameter
+anywhere.}
+
+90.5\% over 2{,}000 images against a 10.0\% chance level, from a model that has
+never seen CIFAR-10.
+
+\begin{keybox}[title={The sentence is a hyperparameter}]
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Prompt} & \textbf{Accuracy over 2{,}000 images} \\
+\midrule
+``dog'' & 88.2\% \\
+``a photo of a dog'' & 90.5\% \\
+``a low-resolution photo of a dog'' & 91.1\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+A spread of 2.9\% from changing the wording alone. \emph{A ``zero-shot'' number
+is a number for one particular sentence, and the sentence is a choice you
+made.}
+\end{keybox}
+
+\subsection{Back to the catalogue}
+
+Same 200 images, same 200 queries, same metric, same ties rule, same baseline
+--- only the encoders changed. In the joint space the matched and unrelated
+distributions come apart: the means differ by $+0.149$, which is 4.1 pooled
+standard deviations against the $+0.0026$ and $d = 0.052$ of the separate
+encoders.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{System} & \textbf{R@1} & \textbf{R@5} & \textbf{R@10} &
+\textbf{Median rank} & \textbf{MRR} \\
+\midrule
+Random ranking & 0.5\% & 2.5\% & 5.0\% & 100 & 0.029 \\
+ViT + MiniLM & 1.0\% & 4.0\% & 6.0\% & 104 & 0.038 \\
+Joint dual encoder & 72.5\% & 96.0\% & 99.5\% & 1 & 0.825 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Text to image, 200 candidates, ties against the model, one caption per entry as
+the query. \emph{Two of those three rows are the same row.}
+
+\subsection{Report the failure cases}
+
+72.5\% at rank 1 means 27.5\% of queries did not get the right entry first, and
+they fall into groups: queries describing a scene rather than an object, where
+several entries fit equally well and the ``wrong'' one is often a reasonable
+answer; fine distinctions the caption makes and the picture barely shows; and
+counts and spatial relations --- ``three'', ``behind'', ``to the left of''.
+
+\begin{keybox}[title={One relevant entry is a fiction}]
+Our metric assumes exactly one right answer per query because that is what the
+data gives us. For ``a man riding a horse'' on a real catalogue it is simply
+false, so the measured recall is a \emph{lower bound}.
+
+And customers do not type captions. They type ``something to sit on'', ``gear
+for bad weather''. The right output there is not one entry but a shortlist with
+reasons --- and we have no way to produce, or to score, a reason.
+\end{keybox}
+
+\subsection{Six ways to leak in a retrieval evaluation}
+
+The query text is also the indexed description, so you are measuring string
+equality. The query's own entry is scored against a shortlist built using the
+query. The prompt template was chosen by looking at the number it produced.
+Recall is reported without the candidate-set size. Ties are broken in the
+model's favour. Or normalisation is applied to one side only, so ``cosine'' is
+not a cosine.
+
+\begin{failbox}[title={The tie bug, which reports 100\%}]
+Ranking with a strict inequality counts only candidates that \emph{beat} the
+right answer, so anything tying with it is placed behind it for free.
+
+Feed that a similarity matrix of all zeros --- a model that has learned
+nothing, or a bug that zeroed the embeddings --- and every rank is 1. It
+reports R@1 = 100\%.
+\end{failbox}
+
+And the third leak above is Lecture 2's, with a sentence in place of a
+regularisation strength: three templates tried, the best on the test set
+reported. The spread across the three was 2.9\%, so the optimism is of that
+order, and the repair is the one you already know.
+
+\section{The notebook}
+
+\begin{trybox}[title={What to change}]
+Skip the normalisation before the inner product. Retrieval degrades, and the
+reason is in the derivation: without unit norm the score confounds direction
+with magnitude, and magnitude carries no meaning here.
+\end{trybox}
+
+\section{Exercises}
+
+\begin{enumerate}[leftmargin=1.6em,itemsep=4pt]
+  \item Two encoders are trained separately, one on images and one on text.
+        Explain why their cosine similarity carries no information about
+        matching, using a rotation argument. \hfill \scope{[5]}
+  \item In $d$ dimensions two independent random unit vectors have a cosine
+        with standard deviation $1/\sqrt d$. State what an unrelated pair looks
+        like at $d = 512$, and why $-1$ is the wrong intuition.
+        \hfill \scope{[5]}
+  \item A contrastive loss is computed at $\tau = 1$ on cosine scores. State
+        why it barely trains, and what $\tau$ changes and does not change.
+        \hfill \scope{[5]}
+  \item Recall@10 is reported over 200 candidates. State the exact random
+        baseline, and why it is computed rather than simulated.
+        \hfill \scope{[3]}
+  \item An entry with no written description scores zero on a text retrieval
+        route. State whether this is a ranking failure or a structural one, and
+        what follows. \hfill \scope{[4]}
+\end{enumerate}
+
+\section*{Summary}
+\addcontentsline{toc}{section}{Summary}
+
+An image becomes a sequence of patches, which gives up exactly what Lecture 12
+derived convolution assumes --- locality and translation equivariance --- and
+buys the ability to learn whichever relations actually hold, at a corpus size
+most people do not have.
+
+Two separately trained encoders produce spaces that are \emph{unrelated}: the
+matched and unmatched cosine distributions differ by 0.0026 at a Cohen's $d$ of
+0.052, and the retrieval is indistinguishable from shuffling. Not because
+either encoder is bad, but because no loss ever compared a vector from one with
+a vector from the other, and an orthogonal map on the image space leaves that
+loss unchanged while changing every image--text cosine.
+
+The contrastive objective fixes four things. Normalise, because only direction
+is semantic. Target zero rather than $-1$ for unrelated pairs, because on
+$S^{511}$ random directions have cosine spread $1/\sqrt d$ --- predicted
+0.0442, measured 0.0439, with the most negative of 20{,}000 draws at $-0.18$.
+Divide by a learned $\tau$, because cosines in $[-1,1]$ make a softmax nearly
+uniform; it cannot change a fixed model's ranking, only which negatives the
+gradient hears. And take the negatives from the batch, so $B$ sets both the
+difficulty and the chance level --- which makes a contrastive loss value
+meaningless without its batch size.
+
+Jointly trained, the same measurement gives R@1 of 72.5\% against 1.0\%, and
+zero-shot classification reaches 90.5\% on a corpus the model has never seen
+--- for one particular prompt, out of three that span 2.9\%.
+
+\end{document}
