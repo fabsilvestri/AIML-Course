@@ -48,7 +48,7 @@ import check_consistency as cc                                  # noqa: E402
 
 ROOT = cc.ROOT
 NOTES = ROOT / "notes"
-LECTURES = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 19, 20, 21, 22)
+LECTURES = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 19, 20, 21, 22)
 
 BOLD, RED, GREEN, YELLOW, OFF = cc.BOLD, cc.RED, cc.GREEN, cc.YELLOW, cc.OFF
 
