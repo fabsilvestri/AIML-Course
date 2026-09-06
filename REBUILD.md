@@ -226,6 +226,15 @@ the probe before trusting the guard.
 work. It cost three files of edits in this session. Save and restore the bytes
 in the probe itself.
 
+**`git add -A` is unsafe while another agent is probing the same tree.** A
+reviewer had `d-course-arc.svg` mutated for about thirty seconds while testing
+`check_diagrams`, and a `git add -A` landed inside that window: the closing
+diagram of the course went to `x="4000"` on a 1080-wide viewBox, invisible.
+The next commit swept the restoration back in, so it self-healed, but only by
+luck. When review agents are running, stage the paths you actually changed
+(`git add <paths>`), and check `git status --short` against your own edit list
+before committing.
+
 ## Where the two 2026-09-03 jobs stand
 
 ### Job 2 — exam-style exercises: **DONE 2026-09-04**
