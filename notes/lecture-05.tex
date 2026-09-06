@@ -1,0 +1,671 @@
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+
+\begin{document}
+\notestitlefor{5}{I}{Regularisation and the bias--variance trade-off}{Titanic, 891 passengers}{Chapter 4}
+
+\section{Two questions the sweep cannot answer}
+
+Lecture 4 fitted a logistic regression to 712 passengers and then added
+polynomial capacity, recording both curves at every degree.
+
+\begin{center}
+\small
+\begin{tabular}{rrrr}
+\toprule
+\textbf{Degree} & \textbf{Columns} & \textbf{Training log loss} &
+\textbf{Held-out log loss} \\
+\midrule
+1 &  22 & 0.395 & 0.468 \\
+2 &  32 & 0.381 & 0.467 \\
+3 &  52 & 0.355 & 0.538 \\
+5 & 143 & 0.286 & 1.922 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+One curve falls forever; the other turns and climbs. Two questions follow, and
+they are different questions. \emph{The held-out error is 0.468 and the
+training error is 0.395 --- where does the difference come from?} And
+\emph{0.468 against an anchor of 0.666 --- how far down could it ever go?}
+
+The two have different repairs, and the repairs point in opposite directions.
+Attack the wrong one and you spend an afternoon making the model worse.
+
+\section{Derivation: the bias--variance decomposition}
+
+\subsection{First, what is random}
+
+Not the passenger. Fix one passenger $x$ and ask about them repeatedly. What
+varies is the \emph{training set} $D$ --- you happened to draw these 712 rows
+--- and the \emph{label} $y$, because two people with identical recorded values
+did not both survive. Every expectation below is over those two sources and
+nothing else; the model is deterministic given $D$.
+
+\begin{center}
+\small
+\begin{tabular}{llc}
+\toprule
+\textbf{Symbol} & \textbf{Meaning} & \textbf{Observed?} \\
+\midrule
+$\hat p_D(x)$ & what your model predicts, having seen $D$ & yes \\
+$\bar p(x) = \mathbb{E}_D[\hat p_D(x)]$ & the average prediction over all
+                                          training sets & no --- estimated \\
+$p^{*}(x)$ & the true probability that this passenger survives & never \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$y \in \{0,1\}$ is what actually happened. It is never $p^{*}$, and that gap
+becomes the third term.
+
+\subsection{The decomposition}
+
+\begin{derivbox}[title={Add and subtract, twice}]
+Hold $y$ fixed and average over $D$ only:
+\[ \bigl(y - \hat p_D\bigr)^2 = \Bigl(
+   \underbrace{y - \bar p}_{\text{does not depend on } D}
+   + \underbrace{\bar p - \hat p_D}_{\text{mean } 0}\Bigr)^2. \]
+The cross term is $2(y - \bar p)\,\mathbb{E}_D[\bar p - \hat p_D] = 0$, because
+$\bar p$ is \emph{defined} as $\mathbb{E}_D[\hat p_D]$. So
+\[ \mathbb{E}_D\bigl[(y - \hat p_D)^2\bigr]
+   = (y - \bar p)^2
+   + \underbrace{\mathbb{E}_D\bigl[(\hat p_D - \bar p)^2\bigr]}_{\textbf{variance}}. \]
+Repeat the trick on $(y - \bar p)^2$, inserting $p^{*}$. Since
+$\mathbb{E}_y[y] = p^{*}$ the cross term vanishes again, and
+$\operatorname{Var}(y) = p^{*}(1-p^{*})$ because $y$ is Bernoulli:
+\[ \mathbb{E}_y\bigl[(y-\bar p)^2\bigr]
+   = \underbrace{(p^{*} - \bar p)^2}_{\textbf{squared bias}}
+   + \underbrace{p^{*}(1-p^{*})}_{\textbf{noise}}. \]
+\end{derivbox}
+
+\[ \mathbb{E}\bigl[(y - \hat p_D)^2\bigr]
+   = (p^{*} - \bar p)^2
+   + \mathbb{E}_D\bigl[(\hat p_D - \bar p)^2\bigr]
+   + p^{*}(1 - p^{*}). \]
+
+\begin{center}
+\small
+\begin{tabular}{lp{0.40\textwidth}l}
+\toprule
+\textbf{Term} & \textbf{Means} & \textbf{Cured by} \\
+\midrule
+squared bias & wrong on average --- the model family cannot reach the truth &
+               more capacity \\
+variance     & unstable --- a different sample gives a different answer &
+               less capacity, or more data \\
+noise        & the label is not a function of the recorded columns & nothing \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Generally the identity is $\mathbb{E}[(y-\hat f)^2] = \text{bias}^2 +
+\text{variance} + \operatorname{Var}(y \mid x)$; $p^{*}(1-p^{*})$ is that last
+term for a Bernoulli label, one instance of the identity rather than the
+identity itself.
+
+The first two repairs point in opposite directions. That is the whole
+difficulty, and it is why it is called a trade-off.
+
+\begin{failbox}[title={An honest caveat before we measure anything}]
+The identity is exact \emph{for squared error}. Our headline metric is log
+loss, and log loss does not split into three additive terms like this.
+
+So the decomposition is measured on the \emph{Brier score} --- the squared
+error of a probability, which Lecture 4 already reported alongside log loss.
+The shape of the answer transfers; the numbers are Brier numbers and are
+labelled as such. Saying ``bias--variance'' about a log-loss curve is common
+and slightly wrong. Doing it knowingly, and saying which metric you
+decomposed, is the difference.
+\end{failbox}
+
+\section{Measuring all three terms}
+
+\subsection{The term you cannot fix}
+
+$p^{*}$ is never observed --- but where several passengers share exactly the
+same recorded values, every model of those columns \emph{must} give them the
+same number. Whatever their outcomes do inside that cell is a floor.
+
+Grouping on sex, class, age band, family band and port gives 133 distinct
+cells, of which 102 hold at least two passengers, covering 858 people. Using
+$k(m-k)/(m(m-1))$, the unbiased estimator of $p(1-p)$ from $m$ Bernoulli draws,
+the floor is \textbf{0.121} Brier --- measured, not assumed.
+
+56 of the 102 shared cells are mixed: 657 passengers, 74\% of everyone on
+board, sit in a cell whose answer cannot be certain. The starkest is 62
+third-class men aged 26 to 40 travelling alone from Southampton, with every
+recorded value identical; 13 of them survived, and no model of these columns
+can separate them.
+
+It is an \emph{under}-estimate: two passengers in the same cell may still
+differ in ways the manifest never recorded. The real floor is at least this
+high.
+
+\subsection{The other two, by resampling}
+
+Draw 200 training sets of 400 rows each from the 712 we hold, fit the pipeline
+on each, and predict the same 179 test passengers. That is the expectation over
+$D$, done by brute force --- the only way to see a quantity defined over
+training sets you did not draw. Bias and noise cannot be separated without
+$p^{*}$, so they are reported as one column, and the floor above is what splits
+them.
+
+\begin{keybox}[title={Check the identity before believing the plot}]
+\begin{verbatim}
+>>> abs(total.mean() - variance.mean() - bias2_pn.mean())
+2.7755575615628914e-17
+\end{verbatim}
+Machine epsilon on a double. The three columns below are not a \emph{model} of
+the error --- they are the error, rearranged.
+
+Do this every time you implement a decomposition. If the residual is not at
+floating-point noise you have a bug, and the picture will still look plausible.
+\end{keybox}
+
+\begin{center}
+\small
+\begin{tabular}{rrrr}
+\toprule
+\textbf{Degree} & \textbf{bias$^2$ + noise} & \textbf{variance} &
+\textbf{total} \\
+\midrule
+1 & 0.130 & 0.006 & 0.136 \\
+2 & 0.134 & 0.011 & 0.146 \\
+3 & 0.138 & 0.029 & 0.167 \\
+4 & 0.163 & 0.059 & 0.222 \\
+5 & 0.181 & 0.068 & 0.248 \\
+6 & 0.182 & 0.071 & 0.253 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Read the first column: 0.130 at degree 1, against a measured noise floor of
+0.121. Almost all of it is noise, so the squared bias of a degree-1 logistic
+model on these features is under 0.01.
+
+\begin{keybox}[title={There was never much bias to buy back}]
+Every extra degree bought variance and nothing else --- the variance term is
+multiplied by twelve between degree 1 and degree 6 while everything else is
+nearly flat. That one sentence decides the rest of the lecture.
+\end{keybox}
+
+\subsection{Putting it back on the two curves}
+
+The training curve falls forever because it is measured on the rows that were
+fitted, so it sees no variance term at all. The held-out curve is the sum of
+all three terms, and from degree 3 the variance term dominates.
+
+\begin{keybox}[title={The identification, stated once}]
+The vertical gap between the two curves \emph{is} the variance term. At degree
+1 the gap is 0.073; at degree 5 it is 1.636. The gap grew by a factor of 22
+while nothing about the data changed.
+\end{keybox}
+
+There are only two shapes, and telling them apart takes ten seconds. Both
+curves plateau high and together: \emph{bias} --- the model is too rigid, and
+more data changes nothing. A gap still open at the last point: \emph{variance}
+--- more data would help, and you may not be able to get any. The repairs are
+opposites, and applying the left-hand repair to a right-hand curve is the most
+common wasted afternoon in applied machine learning.
+
+\subsection{Learning curves, and a knob we do not have}
+
+A learning curve puts \emph{rows} on the $x$-axis and answers a question the
+degree sweep cannot: would more data help?
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+& \textbf{Degree 1} & \textbf{Degree 5} \\
+\midrule
+Held-out log loss at 76 rows  & 2.853 & 9.889 \\
+Training log loss at 640 rows & 0.395 & 0.286 \\
+Held-out log loss at 640 rows & 0.474 & 1.911 \\
+Gap at 640 rows               & 0.078 & 1.625 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The degree-5 held-out curve falls from 9.9 to 1.9 as rows arrive and is still
+falling steeply at 640. Extrapolating, that model would need several times our
+dataset before becoming competitive.
+
+\begin{failbox}[title={There are 891 passengers on the Titanic}]
+There will never be more. Rows are not a knob we can turn, so the only repair
+left is to shrink the model.
+\end{failbox}
+
+A \emph{validation} curve puts one hyperparameter on the $x$-axis instead, and
+answers which setting is right and whether the optimum is interior. Read the
+ends first: a minimum sitting on the edge of the range means the range was too
+narrow, and the answer you read off it is an artefact of where you stopped
+looking.
+
+\section{Three faults at degree 5}
+
+Degree 5 scored 1.922 --- almost three times worse than \emph{saying nothing at
+all}. Not worse than the best model; worse than the anchor of 0.666, worse than
+a model that has learned only how many people died.
+
+How is that possible when held-out accuracy was 76.0\%? Because
+$-\log(0.01) \approx 4.6$: a single passenger given probability 0.01 who then
+survives contributes 4.6 to the average on its own. Accuracy records that
+passenger as one error and moves on. Log loss is unbounded above --- not a
+defect, but the metric saying that confident-and-wrong is a different failure
+from wrong.
+
+\subsection{Fault 1 --- variance}
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+& \textbf{Degree 1} & \textbf{Degree 5} \\
+\midrule
+Columns              & 22 & 143 \\
+Training rows        & 712 & 712 \\
+Rows per weight      & 32 & 5 \\
+Variance term, Brier & 0.006 & 0.068 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Five rows per weight. Move one passenger between folds and the fitted surface
+moves with them. This is the diagnosis the derivation was built to deliver ---
+and two more faults sit underneath it.
+
+\subsection{Fault 2 --- the minimiser does not exist}
+
+If some $\boldsymbol\theta$ separates the classes perfectly in the expanded
+space, then $\sigma(c\,\boldsymbol\theta^{\intercal}\mathbf{x})$ tends to the
+right label for every row as $c \to \infty$, so the training log loss falls
+monotonically towards zero as $\lVert\boldsymbol\theta\rVert \to \infty$. The
+infimum is never attained.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrr}
+\toprule
+\textbf{Degree} & 1 & 2 & 3 & 4 & 5 & 6 \\
+\midrule
+Converged & yes & yes & yes & no & no & no \\
+Largest $|\theta_j|$ & 4.87 & 5.43 & 6.32 & 18.70 & 11.07 & 3.98 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Fault 3 --- the minimiser is not unique}
+
+\code{FamilySize = SibSp + Parch + 1} exactly, on every row. Standardise the
+five numeric columns, form $\mathbf{X}^{\intercal}\mathbf{X}$ and look at its
+spectrum:
+
+\begin{center}
+\small
+\begin{verbatim}
+>>> np.linalg.eigvalsh(Z.T @ Z)
+array([1.81e-12, 4.29e+02, 5.43e+02, 7.90e+02, 1.80e+03])
+\end{verbatim}
+\end{center}
+
+The smallest eigenvalue is zero to the precision the arithmetic allows: four
+columns of information in five columns of data, condition number about
+$9\times10^{14}$. A double carries about $10^{16}$ of relative precision, so
+roughly one significant digit survives the solve.
+
+\section{One term repairs all three}
+
+\subsection{What adding $\alpha\mathbf{I}$ does to the spectrum}
+
+\begin{derivbox}[title={Three lines, and Lecture 2 is closed}]
+If $\mathbf{X}^{\intercal}\mathbf{X}\mathbf{v} = \lambda\mathbf{v}$ then
+\[ \bigl(\mathbf{X}^{\intercal}\mathbf{X} + \alpha\mathbf{I}\bigr)\mathbf{v}
+   = (\lambda + \alpha)\mathbf{v}: \]
+same eigenvectors, every eigenvalue moved up by exactly $\alpha$.
+$\mathbf{X}^{\intercal}\mathbf{X}$ is positive semi-definite, so $\lambda \ge
+0$, so $\lambda + \alpha \ge \alpha > 0$. No eigenvalue is zero, so the matrix
+is invertible \emph{for every} $\alpha > 0$.
+\end{derivbox}
+
+Lecture 2 derived $\hat{\boldsymbol\theta} = (\mathbf{X}^{\intercal}
+\mathbf{X})^{-1}\mathbf{X}^{\intercal}y$ and left open what to do when that
+inverse does not exist. Those three lines are the answer.
+
+It also bounds the conditioning:
+\[ \kappa\bigl(\mathbf{X}^{\intercal}\mathbf{X} + \alpha\mathbf{I}\bigr)
+   = \frac{\lambda_{\max} + \alpha}{\lambda_{\min} + \alpha}
+   \le \frac{\lambda_{\max} + \alpha}{\alpha}, \]
+and the bound on the right does not mention $\lambda_{\min}$ at all. Whatever
+the data do --- exact collinearity included --- the conditioning is controlled
+by a number you choose. At $\alpha = 1$ the condition number of our singular
+matrix falls from $9\times10^{14}$ to 1798. The dependence is not repaired; it
+is \emph{dominated}. And since $\kappa$ set the step count for gradient descent
+in Lecture 4, the penalty is not only a statistical device --- it is what makes
+the optimisation tractable.
+
+\subsection{The idea, and the three penalties}
+
+Stop asking for the best fit. Ask for the best fit \emph{among small models}:
+\[ J(\boldsymbol\theta) = \underbrace{L(\boldsymbol\theta)}_{\text{fit the data}}
+   + \underbrace{\alpha\,\Omega(\boldsymbol\theta)}_{\text{stay small}}. \]
+Setting $\alpha = 0$ recovers Lecture 4 exactly.
+
+\term{Ridge} uses $\Omega = \tfrac12\lVert\mathbf{w}\rVert_2^2$, where
+$\mathbf{w}$ is $\boldsymbol\theta$ without the bias --- the intercept is
+\emph{not} penalised, because shrinking it would pull every prediction towards
+zero rather than towards the mean. On the log loss the objective becomes
+\emph{coercive}: as $\lVert\mathbf{w}\rVert \to \infty$ the penalty tends to
+infinity while the log loss is bounded below by zero, so a minimiser exists,
+and strict convexity makes it unique. Faults 2 and 3 are both gone, and we have
+not looked at the data once.
+
+\term{Lasso} uses $\sum_j|\theta_j|$ instead, and the word \emph{selection} in
+its name is the point.
+
+\begin{derivbox}[title={Why $\ell_1$ produces exact zeros and $\ell_2$ does not}]
+Look at the gradient of the penalty near $\theta_j = 0$. For ridge,
+$\partial(\theta_j^2)/\partial\theta_j = 2\theta_j \to 0$: the push towards zero
+fades as you approach it, so you arrive only in the limit. For lasso,
+$\partial|\theta_j|/\partial\theta_j = \pm 1$: the push keeps its size right up
+to zero, so if the data pulls with less than $\alpha$ the weight reaches zero
+and stops.
+
+At $\theta_j = 0$ the absolute value is not differentiable; the subgradient is
+the whole interval $[-1,1]$, and any data pull inside that interval is held at
+exactly zero.
+\end{derivbox}
+
+\term{Elastic net} mixes the two with a ratio $r$, and is preferable to lasso
+when the features are correlated or outnumber the instances, because lasso
+behaves erratically there. One of those holds here: $\text{Age}$ and
+$\text{Age}^2$ are about as correlated as two columns get.
+
+\begin{failbox}[title={A penalty requires scaling --- not as a nicety}]
+The penalty $\sum\theta_j^2$ treats every weight identically. Rescale a column
+by $c$ and its fitted weight scales by $1/c$, so its contribution to the
+penalty scales by $1/c^2$.
+
+Changing the \emph{unit} of a column therefore changes which coefficients ridge
+decides to shrink, and nothing in the output says so. \code{StandardScaler} is
+already inside the pipeline; a penalty is the reason it is not optional.
+\end{failbox}
+
+And a trap in the API: \code{LogisticRegression} takes $C = 1/\alpha$, not
+$\alpha$. Small \code{C} is strong regularisation. The default is
+\code{C=1.0} with \code{penalty="l2"}, so scikit-learn's logistic regression is
+regularised unless you say otherwise --- Lecture 4 switched it off on purpose,
+and that choice is what left three faults to repair.
+
+\subsection{The sweep, on the model that failed}
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Penalty at degree 5} & \textbf{Best C} & \textbf{Log loss} &
+\textbf{Non-zero weights} \\
+\midrule
+none --- Lecture 4 & --- & 1.922 & 143 \\
+ridge & 0.01 & 0.706 & 143 \\
+elastic net, $r = 0.5$ & 0.0001 & 0.684 & 3 \\
+lasso & 0.00032 & 0.683 & 3 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Ridge alone removes 1.215 of log loss. Lasso removes 1.239 and throws away 140
+of the 143 columns while doing it. Both minima sit near the strong-penalty end
+of the range, so widen the grid before believing either --- and the lasso curve
+is nearly flat there, so ``the best \code{C}'' is a plateau, not a point.
+
+\subsection{And now the uncomfortable part}
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Model} & \textbf{Cross-validated log loss} \\
+\midrule
+Degree 5, lasso, tuned & 0.683 \\
+Degree 2, no penalty at all & 0.467 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The best regularised degree-5 model does not beat the plain degree-2 model we
+already had. Regularisation repaired an over-complex model; it did not turn it
+into a better one than the simple model --- because there was never much bias
+to buy back. The decomposition said so twenty minutes earlier, and this is what
+that sentence looks like in a table.
+
+\begin{keybox}[title={So what is a penalty actually for?}]
+It makes the problem \emph{well-posed}: a unique minimiser exists for every
+$\alpha > 0$, whatever the columns do. It makes capacity a \emph{continuous}
+dial, where degree is an integer. It is \emph{insurance} against not knowing
+the right capacity in advance, which is the usual case. And it \emph{selects}
+--- lasso's three surviving columns are a hypothesis about which features
+matter, generated by the fit.
+
+What it is not is a way to make an over-parameterised model beat a well-chosen
+one on a dataset this small.
+\end{keybox}
+
+\subsection{Early stopping}
+
+Fit iteratively and stop before the optimiser gets where it is going. Descent
+starts at $\boldsymbol\theta = \mathbf{0}$ --- the smallest possible model ---
+and each epoch moves the weights outward, so held-out error falls, reaches a
+minimum, and then rises. No penalty term and no extra term in the objective:
+just a stopping rule, whose knob is the epoch count.
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+& \textbf{Epoch 105} & \textbf{Epoch 500} \\
+\midrule
+Training log loss   & 2.458 & 2.219 \\
+Validation log loss & 2.371 & 3.645 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Epoch 105 is the best model this run ever holds, and running to 500 costs 1.274
+of log loss without ever announcing it. Read the table honestly, though: these
+are bad numbers in absolute terms. Plain SGD at a constant learning rate on 143
+correlated columns is a poor optimiser, and this shows the \emph{shape}, not a
+competitive model. The training curve is also noisy, so ``stop at the minimum''
+needs a patience rule in practice. And the stopping epoch is chosen by looking
+at held-out data, so it must be chosen on validation rows, never on the test
+set.
+
+\begin{center}
+\small
+\begin{tabular}{llc}
+\toprule
+\textbf{Repair} & \textbf{Keeps $\lVert\boldsymbol\theta\rVert$ small by} &
+\textbf{Zeros?} \\
+\midrule
+Ridge          & penalising $\sum\theta_j^2$ & no \\
+Lasso          & penalising $\sum|\theta_j|$ & yes \\
+Elastic net    & both, mixed by $r$ & yes \\
+Early stopping & starting at zero and not going far & no \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+All four reduce variance by shrinking the set of models the fit may reach. All
+four increase bias. Which is why all four need $\alpha$ --- or an epoch count
+--- chosen by cross-validation.
+
+\section{Choosing $\alpha$, and the test set once}
+
+\begin{failbox}[title={A hyperparameter chosen on the rows you then report}]
+Looping over 17 values of \code{C}, scoring each on the test set and keeping
+the best, produces a minimum over seventeen \emph{noisy} estimates --- and the
+minimum of noisy estimates is biased downward even when every estimate is
+individually unbiased.
+
+The code never writes to the test set. It reads it seventeen times, and reading
+is enough.
+\end{failbox}
+
+Measured over 20 splits, against the honest version that picks \code{C} by
+5-fold cross-validation inside the training part:
+
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Reported number} & \textbf{Log loss} & \textbf{Spread over 20 splits} \\
+\midrule
+Chosen on the test set, scored on the test set & 0.451 & 0.049 \\
+Chosen by cross-validation, scored on the test set & 0.470 & 0.045 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Optimism of 0.019 of log loss, about 4.1\%. On 13 splits of 20 the first number
+is the flattering one, and the two procedures picked the same \code{C} on 7
+splits of 20.
+
+Read that result in both directions. It is \emph{small} --- 0.019 against a
+split-to-split spread of 0.045, invisible on one split. And it is \emph{real
+and one-sided}: it never averages away, and it grows with the number of
+candidates you try. Seventeen candidates is a small search; search a thousand,
+which a randomised search does in an afternoon, and the same procedure hands
+you a number that is confidently wrong. The size of the error scales with how
+hard you looked.
+
+The procedure without the problem is \code{GridSearchCV}: same seventeen
+candidates, same runtime, \emph{two} numbers instead of one. Report both. The
+second is allowed to be worse than the first, and if it is much worse that is
+itself the finding.
+
+\subsection{The honest numbers}
+
+179 passengers, untouched since the split in Lecture 4. Five candidates, all of
+whose hyperparameters were fixed before this cell ran.
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Model} & \textbf{Log loss} & \textbf{Brier} & \textbf{Accuracy} \\
+\midrule
+Degree 5, no penalty --- where the sweep ended & 1.727 & 0.189 & 74.9\% \\
+Degree 5, ridge, tuned    & 0.804 & 0.173 & 77.1\% \\
+Degree 5, lasso, tuned    & 0.677 & 0.244 & 65.9\% \\
+Degree 1, scikit-learn defaults & 0.433 & 0.134 & 82.7\% \\
+Degree 2, no penalty --- the winner & 0.427 & 0.134 & 82.7\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The winner improves on the degree-5 model Lecture 4 finished with by 1.300 of
+log loss. And row four deserves as much attention: \code{LogisticRegression()}
+with every default left alone --- degree 1, \code{C=1.0}, \code{penalty="l2"}
+--- scores 0.433, statistically the same model as the winner.
+
+\begin{failbox}[title={The result nobody wanted}]
+Ninety minutes of ridge, lasso, elastic net and early stopping, and the best
+system on the test set is a two-line model anyone could have written before
+Lecture 4 started.
+
+Report it anyway. The alternative is choosing the interesting model over the
+better one.
+\end{failbox}
+
+Then what was any of it for? You now know \emph{why} degree 2 wins, and can say
+it in three terms rather than as a preference. You know the floor is 0.121
+Brier and that no model of these columns goes below it. You know the degree-5
+model was not merely worse but \emph{ill-posed}, and exactly which term repairs
+that. And you have four repairs, measured, for the next dataset --- where 143
+columns will arrive with a hundred times as many rows and the answer will be
+different.
+
+A negative result you can explain is a result. A positive result you cannot
+explain is a liability.
+
+\subsection{Is 0.427 good?}
+
+Cross-validated, the model beats the anchor by 0.199 of log loss and the
+majority class by 20.5 points of accuracy; both are real. Brier 0.134 against a
+measured floor of about 0.121 leaves roughly 0.013 of Brier score on the table,
+in total, for \emph{any} model of these columns. And there are 179 test
+passengers, so a difference of a point or two of accuracy is three or four
+people and is not a difference.
+
+That last sentence belongs in the report. A test set of 179 cannot support the
+comparisons people will want to make with it.
+
+\begin{keybox}[title={Regularisation checklist}]
+\begin{enumerate}[leftmargin=1.6em,itemsep=1pt]
+  \item Is the data scaled, inside the pipeline, before a penalty is applied?
+  \item Is the bias term excluded from the penalty?
+  \item Was $\alpha$ (or \code{C}) chosen on validation folds, never on the
+        test set?
+  \item If the search sat at the edge of the grid, was the grid widened?
+  \item Is the \emph{unregularised} model in the comparison table, so the
+        penalty has to earn its place?
+  \item Was the stopping epoch, if any, chosen on held-out rows?
+\end{enumerate}
+The fifth is the one people skip, and it is the one that would have saved an
+hour today.
+\end{keybox}
+
+\section{The notebook}
+
+\begin{trybox}[title={What to change}]
+In the penalty sweep, widen \code{np.logspace(-4, 4, 17)} to
+\code{(-8, 4, 25)}. Does the lasso minimum move? If it does, the number in
+\S6.3 was an artefact of where we stopped looking --- and you have just done
+checklist item four on the course's own result.
+\end{trybox}
+
+\section{Exercises}
+
+\begin{enumerate}[leftmargin=1.6em,itemsep=4pt]
+  \item Write the bias--variance decomposition of the expected squared error,
+        and name the one term no model can reduce. \hfill \scope{[4]}
+  \item A learning curve shows training and validation error both high and
+        close together, and flat as data is added. Diagnose it, and say whether
+        more data would help. \hfill \scope{[5]}
+  \item Ridge adds $\alpha I$ to $X^{\mathsf T}X$ before inverting. Give the
+        numerical consequence, in terms of the condition number.
+        \hfill \scope{[4]}
+  \item Why must features be scaled before ridge or lasso, when they need not
+        be for ordinary least squares? \hfill \scope{[4]}
+  \item You tune $\alpha$ over a grid using cross-validation, then report the
+        best cross-validated score as your estimate of future performance. Name
+        the error, and quantify its direction. \hfill \scope{[5]}
+\end{enumerate}
+
+\section*{Summary}
+\addcontentsline{toc}{section}{Summary}
+
+Expected squared error splits exactly into squared bias, variance and
+irreducible noise --- over the training set and the label, never over the test
+point. The gap between a training curve and a held-out curve \emph{is} the
+variance term; curves plateauing together mean bias instead. On this data the
+noise floor is measurable at 0.121 Brier, from passengers whose recorded values
+are identical, and the squared bias of a degree-1 model is under 0.01 --- so
+every extra degree bought variance and nothing else.
+
+Degree 5 failed three ways at once: high variance at five rows per weight, no
+minimiser under separation, and no unique minimiser under an exact collinearity
+whose smallest eigenvalue was $1.81\times10^{-12}$. Adding $\alpha\mathbf{A}$
+repairs the last two for every $\alpha > 0$, which is Lecture 2's open question
+answered in three lines, and bounds the condition number by a quantity you
+choose.
+
+Ridge shrinks, lasso selects, elastic net does both, early stopping does it by
+not arriving. None of them beat choosing the right capacity: the winner on the
+test set was degree 2 with no penalty at 0.427, against 0.683 for the best
+tuned degree-5 model. A penalty is a repair, not an upgrade. And a
+hyperparameter chosen on the test set cost 0.019 of log loss here, one-sided,
+growing with the size of the search.
+
+\end{document}
