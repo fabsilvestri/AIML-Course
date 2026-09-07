@@ -784,7 +784,11 @@ from pathlib import Path
 Path("checkpoints").mkdir(exist_ok=True)
 torch.save(net.state_dict(), "checkpoints/sorter.pt")
 size_kb = Path("checkpoints/sorter.pt").stat().st_size / 1024
-print(f"checkpoints/sorter.pt   {size_kb:,.0f} KB")
+tensor_kb = sum(v.numel() * v.element_size()
+                for v in net.state_dict().values()) / 1024
+print(f"checkpoints/sorter.pt   {size_kb:,.0f} KB on disk")
+print(f"the tensors alone       {tensor_kb:,.0f} KB")
+print(f"the difference is the zip container and the parameter names")
 
 # reload into a fresh network and check it is the same function
 fresh = make_net().to(device)

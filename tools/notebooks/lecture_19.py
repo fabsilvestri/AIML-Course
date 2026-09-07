@@ -523,6 +523,15 @@ assert abs(m["rr"]      - hand_rr)   < 1e-12
 assert abs(m["ap"]      - hand_ap)   < 1e-12
 assert abs(m["ndcg@10"] - hand_ndcg) < 1e-12
 
+# the per-term table the deck shows, so a student can check it line by line
+# rather than only checking the totals it sums to
+hits = [i + 1 for i, d in enumerate(toy_rank) if d in toy_rel]
+print(f"{'rank':>6}{'precision':>12}{'gain':>7}{'discount':>11}{'term':>10}")
+for j, r in enumerate(hits, start=1):
+    print(f"{r:>6}{j / r:>12.4f}{1:>7}"
+          f"{math.log2(r + 1):>11.4f}{1 / math.log2(r + 1):>10.4f}")
+print()
+
 print(f"RR       {m['rr']:.4f}")
 print(f"AP       {m['ap']:.4f}")
 print(f"DCG@10   {hand_dcg:.4f}")

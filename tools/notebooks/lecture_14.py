@@ -1166,6 +1166,7 @@ counts = np.array([count_objects(preds[im["id"]]) for im in images])
 print(f"at threshold {THRESH}: {counts.mean():.2f} objects per image, "
       f"MAE {count_mae(counts, n_true):.2f}")
 print(f"the truth:            {n_true.mean():.2f} objects per image")
+print(f"boxes kept in total:  {counts.sum():,} across {len(counts)} images")
 '''),
 
         md("""

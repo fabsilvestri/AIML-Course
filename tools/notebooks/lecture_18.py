@@ -769,7 +769,7 @@ whether the split keeps both copies of an entry on the same side.
 """),
         prompt(
             label="⏱ 1 min — rows split wrongly, against objects fitted wrongly",
-            input="1,500 unique reviews, a third of them submitted twice, six seeds",
+            input="1,500 unique reviews, a third of them submitted twice, ten seeds",
             output="the random-split and grouped-split accuracies, and how many test rows had a twin in training",
             constraint="everything else stays CORRECT — the vectoriser is fitted inside each split both times. The only difference is whether both copies of an entry land on the same side",
             check="assert no group straddles the grouped split. Report what fraction of test rows had a copy of themselves in training. That number explains the gap and it is the one to look for in a real corpus.",
@@ -788,7 +788,12 @@ def honest_score(X, y, tr, te):
     clf = LogisticRegression(max_iter=2000, C=4.0).fit(Ztr, y[tr])
     return (clf.predict(vec.transform([X[i] for i in te])) == y[te]).mean()
 
-N_UNIQUE, DUP_FRAC, SEEDS = 1_500, 0.3, 6
+N_UNIQUE, DUP_FRAC, SEEDS = 1_500, 0.3, 10   # the deck's ten, not six:
+# every other argument here already matches figures_app11.duplicate_leak
+# -- same corpus, same n_unique, same duplicate fraction, same two seed
+# streams -- so six seeds was the one difference between this cell and
+# the slide, and it moved the headline from 90.00% to 90.81%. Four more
+# tf-idf fits on 1,950 documents is a few seconds.
 naive, grouped, twins = [], [], []
 for s in range(SEEDS):
     r   = np.random.default_rng(RANDOM_STATE + 100 + s)
@@ -815,6 +820,11 @@ for s in range(SEEDS):
 naive, grouped = np.array(naive), np.array(grouped)
 print(f"random split  {naive.mean():.4f} (sd {naive.std():.4f})")
 print(f"grouped split {grouped.mean():.4f} (sd {grouped.std():.4f})")
+# and as percentages, which is how the slide table reads them
+print(f"  random over rows   {100 * naive.mean():.2f}%   "
+      f"spread {100 * naive.std():.2f}")
+print(f"  grouped by entry   {100 * grouped.mean():.2f}%   "
+      f"spread {100 * grouped.std():.2f}")
 print(f"the duplicate leak is worth {100 * (naive - grouped).mean():+.2f} points")
 print(f"{np.mean(twins):.0%} of test rows had a copy of themselves in training")
 '''),

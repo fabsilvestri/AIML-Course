@@ -524,6 +524,16 @@ for j in range(16):
 axes[0, 0].set_title("initialisation", loc="left", fontsize=9)
 axes[1, 0].set_title("after training", loc="left", fontsize=9)
 plt.tight_layout(); plt.show()
+
+# the picture says "it did not become anything"; these three numbers say it
+# without needing your eyes, and they are what the deck quotes
+before, after = init_filters.flatten(), net[0].weight.detach().cpu().flatten()
+print(f"cosine similarity, all {before.numel():,} weights   "
+      f"{F.cosine_similarity(before, after, dim=0):.4f}")
+print(f"mean |change| as a share of the mean weight   "
+      f"{(after - before).abs().mean() / before.abs().mean():.1%}")
+print(f"weights that changed sign                    "
+      f"{int(((before * after) < 0).sum()):,}")
 '''),
         md("""
 Colour blobs and oriented light–dark boundaries. Nobody specified any of this;

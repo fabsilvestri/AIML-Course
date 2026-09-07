@@ -96,6 +96,16 @@ def prose(tex: str) -> str:
     # stated figures, every one printed": a pass with nothing behind it.
     tex = tex.replace("{,}", ",").replace("\\,", "")
 
+    # A math span that is nothing but a signed number is a QUANTITY, not a
+    # formula. "$-0.020153$" in a correlation table is a measurement written
+    # in dollars for one reason: so the sign comes out as a minus rather than
+    # a hyphen. Blanking those hid three of lecture 1's eight correlations,
+    # four of lecture 4's coefficients and both of lecture 21's offsets from
+    # this pass while their unsigned neighbours in the same table were
+    # checked -- a check whose coverage depended on the sign of the number.
+    # Unwrap them first; everything else in dollars is still structure.
+    tex = re.sub(r"\$\s*[-+]?\s*(\d[\d.,]*)\s*\$", r" \1 ", tex)
+
     tex = re.sub(r"\\begin\{verbatim\}.*?\\end\{verbatim\}", blank, tex, flags=re.S)
     tex = re.sub(r"\\\[.*?\\\]", blank, tex, flags=re.S)          # display maths
     tex = re.sub(r"\$[^$]*\$", " ", tex)                          # inline maths
@@ -213,9 +223,12 @@ def stated(tex_path: Path, own) -> list[tuple[int, float, str, str, int]]:
                 continue                              # too round to be a quotation
             if 1900 <= v <= 2100 and float(v).is_integer():
                 continue                              # a year
-            key = cc.fact_for(v, own)
+            # The page's own decimals are its claim, and cc.fact_for now
+            # refuses to attribute a figure that only agrees at a coarser
+            # rounding. Same precision on both sides of this check.
+            dec = len(raw.split(".")[1]) if "." in raw else 0
+            key = cc.fact_for(v, own, dec)
             if key:
-                dec = len(raw.split(".")[1]) if "." in raw else 0
                 hits.append((line_no, v, key, " ".join(line.split())[:88], dec))
     return hits
 

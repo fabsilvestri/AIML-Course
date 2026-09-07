@@ -108,132 +108,148 @@ numbers in this repo instead of two. It anchors on `figures.json` — a number i
 the notes is considered only when it is quoting one of that lecture's
 measurements — then requires the notebook to have printed it. It strips
 `verbatim` blocks and mathematics first, for the same reason the deck check
-strips `<pre>`: neither is a claim about a measurement.
+strips `<pre>`: neither is a claim about a measurement — except a math span
+that is nothing but a signed number, which is a quantity and is unwrapped
+rather than blanked. Before that exception the check's coverage depended on the
+sign: `$-0.020153$` was invisible while the unsigned number beside it in the
+same table was checked.
 
 ```sh
-python3 tools/check_notes.py          # all four
+python3 tools/check_notes.py          # all 24
 python3 tools/check_notes.py 21       # one of them
 ```
 
-Verified 2026-09-03: **216 stated figures across the four sets of notes — 86,
-68, 43 and 19 — every one of them printed by its own notebook.** Lecture 20's
-notebook takes about ten minutes to execute cold; the other three are quick.
+Verified 2026-09-07: **770 stated figures across all 24 sets of notes, every
+one of them printed by its own notebook, and 2,321 further numbers checked
+against each lecture's own deck.** Lecture 20's notebook takes about ten
+minutes to execute cold and Lecture 11's about fifteen; most are quick.
 
-On the site they appear in two places: a third button on each of the four
-Part V lecture cards (`btn-notes`, emitted by `make_site.py` for any lecture
-whose chapter field is empty), and a table in *Textbook and scope*.
+On the site they appear as a third button on each lecture card (`btn-notes`,
+emitted by `make_site.py`), and in a table in *Textbook and scope*.
 
-## OPEN DEBT — 27 slide figures no notebook reproduces
+## CLOSED DEBT — every slide figure is now reproduced — 2026-09-07
 
-`check_consistency` was over-reporting for the whole rebuild, in two ways, both
-found in round 5 and both fixed.
+`check_consistency` and `check_notes` both run clean over all 24 lectures:
+**2,321 deck numbers and 770 stated figures across the notes, every one printed
+by its own notebook.** What follows is how the last 31 were closed, because
+three of them were defects in the checkers and one was a defect in the course's
+central claim.
 
-**1. The rounding floor.** `matches()` allowed a match at ZERO decimal places,
-and `round(x, 0)` collapses every accuracy in [0.5, 1.5) onto 1.0 — so slide
-figures of 55.55, 123.4 and 99.99 all "matched" a notebook printing nothing but
-accuracies around 0.83. Verified by probe.
+### The checkers were wrong in three ways
 
-**2. A floor is the wrong instrument.** Raising it to two decimals closed 32 of
-those and still let ~20 through. The right precision is a property of the
-quotation, not a constant: a slide that says "0.171" is claiming three decimals
-of a printed 0.170746, and "61.67%" is claiming two. `stated_facts` now carries
-the decimal count from the slide's own string and `matches()` tests agreement
-at exactly that precision.
+**1. `fact_for` attributed a slide's number to a figure that only agreed at a
+coarser rounding.** Lecture 11's rho table carries an illustrative row of
+`1.400`, and it was matched to the depth sweep's tenth training loss, 1.4485,
+by rounding to one decimal — inventing a debt against a notebook that was never
+asked to print an illustration. It now rounds no coarser than the slide itself
+wrote, and reaches six decimals rather than four. Net **+8 anchors, −3**, and
+the three lost were real: lecture 3's identity line wrote `1.0370` and `5.9370`
+where the measured values are 1.0367 and 5.9367. Padding a three-decimal
+rounding out to four digits had made the arithmetic on the page wrong in the
+fourth decimal.
 
-A passing `assert` also counts as evidence now, alongside a print: `assert
-len(X_train) == 16512` IS the notebook reproducing 16,512.
+**2. Wall clocks under leaves named `min` and `all` were invisible to the
+duration rule,** which reads key names. `l14_timing/batch` is 11.30 s and was
+checked for one reason: four significant digits where its two neighbours in the
+same table have three. New `MACHINE_TIME` list, keyed by path prefix so the
+overhead *ratios* built from those clocks stay checked.
 
-Together these uncovered **51 figures a deck states that its own
-notebook does not reproduce at the precision claimed**, hidden until now.
-Lecture 22's four were the order-dependent sampler and are now closed. Writing
-the lecture notes closed three more: two in lecture 3 -- the per-digit
-never-fires anchor and the SGD-to-forest gaps, quoted by the deck and computed
-by nothing -- and lecture 7's single entry, which was never a defect at all.
-Deck 7 opens with lecture 6's closing table, so its 17.88 is a cross-lecture
-quotation and now carries a CROSS_LECTURE reason instead of counting as debt.
-Lecture 9's four went the same way as lecture 7's: they were never
-unreproduced, only reproduced at a smaller scale. The deck fits 55,000 images
-for 20 epochs and sweeps 10,000 for 12; the notebook sets SUB = 12,000 and
-SMALL = 6,000 so it finishes on a free CPU, and prints its own numbers at its
-own scale. Both now carry a SCALE_ONLY reason.
+**3. `check_notes.prose()` blanked all inline maths,** so `$-0.020153$` was
+invisible while its unsigned neighbour in the same table was checked — the
+coverage of the check depended on the sign of the number. A math span that is
+nothing but a signed number is a quantity, not a formula, and is now unwrapped
+before the blanking. Coverage rose in five lectures (L01 23→28, L04 5→7, L21
+52→54) and every new anchor passed but one: lecture 1's notes quote the
+correlation table to six decimals while the notebook printed `.round(3)`. The
+slide shows the raw pandas transcript, so the notebook was the odd one out.
 
-Lecture 10 went nine the same way, and the nine split three ways. Six are
-scale (the three-way framework benchmark, the missing-zero_grad experiment and
-the per-batch-mean gap all inherit the notebook's SUB = 12,000 / EPOCHS = 10
-against the deck's full-scale run). One was a genuine gap -- the reverse sweep
-printed its two endpoint derivatives and none of the intermediate adjoints, so
-the table in the deck could not be checked; the notebook now retains and prints
-them. And one was a mislabelled figure rather than a missing one: the deck
-called 1041 KB the size of the checkpoint FILE, where figures_app06 measures
-the tensors (numel * element_size). The file is larger, because state_dict is
-a zip. The deck now says which of the two the number is.
+### Lecture 11: thirteen figures, one cause
 
-That leaves **31**: L02 (1), L03 (3), L10 (1), L11 (13), L12 (1), L14 (1),
-L18 (6), L19 (4), L24 (1).
+The notebook built each `nn.Linear` and initialised it in the same step;
+`figures_app07` builds the whole stack and initialises it in a second pass.
+`nn.Linear` draws its own weights as it is constructed, so the two orders
+interleave two streams of random numbers differently and every scheme except
+`init="torch"` — which draws nothing extra — comes out with different weights
+from the same seed. **That is why one row of four agreed.** Verified by
+building both ways and comparing tensors: identical for `torch`, different for
+`glorot` and `he`. He's sigma is now `sqrt(2)/sqrt(fan_in)` rather than
+`sqrt(2/fan_in)` — the same number in mathematics, one ulp apart in float64,
+and the deck's float64 profiles come from `kaiming_normal_`, which divides the
+gain by `sqrt(fan)`.
 
-(An earlier revision of this section said 50 with L11 at 12. That was a
-miscount of L11, not a figure that has since regressed: `check_consistency 11
---execute` reports 13 on a fresh run.)
+Two more in the same lecture. The forward probe was profiling the **trained**
+network against a deck table measured **at initialisation** — layers 1 to 10
+agreed only because training never moved them. And the ladder printed one seed
+where the deck's table is a mean over five; it now runs the five, and prints
+the one-seed winner beside the five-seed one, which is the lecture's own
+argument about what a single seed buys.
 
-Each needs a judgement that cannot be automated: is the deck's figure right and
-the notebook merely silent; does the notebook run at a reduced scale (then it
-belongs in `SCALE_ONLY` **with its reason**, as `l21_oov` and the two Lecture 18
-entries already do); or is the deck wrong? Decks 10, 11 and 18 subsample
-deliberately so their notebooks finish on a CPU; decks 14, 19 and 22 do not, so
-their entries are likelier to be real defects.
+### The generator for Lectures 23 and 24 could not run at all
 
-| Where | Figure | figures.json key |
-|---|---|---|
-| `lecture-02.html:1250` | 1017 | `/target_choice_folds/rmse_penalty` |
-| `lecture-03.html:351` | 88.76 | `/app02/never_fires_accuracy_by_digit/1` |
-| `lecture-03.html:768` | 6.9733 | `/app02/accuracy_identity/recall_term` |
-| `lecture-03.html:768` | 1.037 | `/app02/accuracy_identity/specificity_loss_pp` |
-| `lecture-03.html:768` | 5.937 | `/app02/gaps/accuracy_over_never_fires_pp` |
-| `lecture-03.html:1214` | 10.13 | `/app02/gaps/forest_minus_sgd_recall_pp` |
-| `lecture-07.html:49` | 17.88 | `/app04_free_path_mean` |
-| `lecture-09.html:752` | 88.94 | `/l11_sk/val_acc[10]` |
-| `lecture-09.html:753` | 88.02 | `/l11_sk/test_acc` |
-| `lecture-09.html:835` | 84.66 | `/l11_sweep/arch[0]/val_acc` |
-| `lecture-09.html:838` | 84.8 | `/l11_sweep/arch[3]/val_acc` |
-| `lecture-10.html:265` | 13.8186 | `/l12_autodiff/dL_dw` |
-| `lecture-10.html:469` | 88.02 | `/l12_bench/Scikit-Learn` |
-| `lecture-10.html:482` | 88.84 | `/l12_bench/PyTorch` |
-| `lecture-10.html:483` | 89.24 | `/l12_bench/PyTorch` |
-| `lecture-10.html:855` | 0.2574 | `/l12_zero_grad/with_final_loss` |
-| `lecture-10.html:855` | 87.94 | `/l12_zero_grad/with_val_acc` |
-| `lecture-10.html:856` | 2.2933 | `/l12_zero_grad/without_final_loss` |
-| `lecture-10.html:856` | 11.2 | `/l12_zero_grad/without_val_acc` |
-| `lecture-10.html:1030` | 89.622 | `/l12_batch_mean/mean_of_batches` |
-| `lecture-10.html:1154` | 1041 | `/l12_checkpoint_kb` |
-| `lecture-11.html:287` | 0.4995 | `/l13_acts/mean[0]` |
-| `lecture-11.html:291` | 0.4861 | `/l13_acts/mean[14]` |
-| `lecture-11.html:292` | 0.5114 | `/l13_acts/mean[19]` |
-| `lecture-11.html:459` | 0.1592 | `/l13_wchange[13]` |
-| `lecture-11.html:799` | 0.1414 | `/l14_he_sd` |
-| `lecture-11.html:839` | 1.4 | `/l13_shallow/loss[9]` |
-| `lecture-11.html:953` | 0.2531 | `/l14_per_layer/glorot_sigmoid/per_layer` |
-| `lecture-11.html:1081` | 11.3 | `/l14_timing/batch/all[1]` |
-| `lecture-11.html:1261` | 1.1373 | `/l14_ladder[2]/last_loss` |
-| `lecture-11.html:1262` | 1.5461 | `/l14_ladder[3]/last_loss` |
-| `lecture-11.html:1263` | 1.1064 | `/l14_ladder[4]/last_loss` |
-| `lecture-11.html:1264` | 1.2773 | `/l14_ladder[5]/last_loss` |
-| `lecture-12.html:1226` | 0.9694 | `/l15_filter_change/cosine` |
-| `lecture-14.html:1000` | 1206 | `/l17_at_50/total` |
-| `lecture-18.html:476` | 2352 | `/l22_finetune/errors` |
-| `lecture-18.html:801` | 90.28 | `/l22_finetune/val_curve[0]` |
-| `lecture-18.html:801` | 90.22 | `/l22_leak/full/honest_mean` |
-| `lecture-18.html:802` | 75.9 | `/l22_leak/small/leaky_mean` |
-| `lecture-18.html:802` | 75.6 | `/l22_leak/small/honest_mean` |
-| `lecture-18.html:919` | 90 | `/l22_stability/rows[7]/gap` |
-| `lecture-19.html:851` | 0.375 | `/l19_worked/ap_terms[2]/prec` |
-| `lecture-19.html:909` | 1.585 | `/l19_worked/dcg_terms[1]/discount` |
-| `lecture-19.html:910` | 3.1699 | `/l19_worked/dcg_terms[2]/discount` |
-| `lecture-19.html:910` | 0.3155 | `/l19_worked/dcg_terms[2]/term` |
-| `lecture-24.html:159` | 61.67 | `/l24_captions/filled_on_blanked` |
+The deepest one. `tools/figures_app12.py` calls `.cpu()` on the return of
+`get_image_features`, which under transformers 5.x is a
+`BaseModelOutputWithPooling` rather than a tensor. The notebooks have carried a
+`features()` helper for exactly this since 5.x landed; the generator never got
+one. It stayed invisible because `cached()` served a pickle from `/tmp`, so the
+CLIP code never executed — and when `/tmp` was cleared, the script that is
+supposed to reproduce two lectures' numbers could no longer run at all.
+**Every CLIP figure in `figures.json` was transformers 4.x output**, and the
+course's central claim was false for those two lectures.
+
+Repaired with the same helper, re-run, and the regenerated values match the
+notebooks: `filled_on_blanked` 0.616667 → **0.600000**, which is what the
+notebook had been printing all along. `clip_on_blanked` regenerates *identically*
+at 0.800000, and that is the confirmation — the image route never reads a
+description, so it never sits near a retrieval boundary that a 6e-6 cosine
+difference can tip. On the temperature sweep the same difference is amplified
+by 1/tau: 7e-6 at tau = 1, 3.1e-3 at tau = 0.002.
+
+147 values moved. The decks and notes quoted **16 of them** at a precision that
+was now wrong, and only three were caught by `check_provenance`, because
+three-significant-digit numbers like `72.5%` and `0.835` fall under its floor.
+All sixteen were found by diffing the regenerated `figures.json` against a
+backup and were checked in context one at a time; ten further matches were
+value coincidences and were correctly left alone (`72.5%` in the batch-sweep
+table is `l24_batch/accuracy[7]`, which did not move; `10.0%` is CIFAR chance;
+`0.029` is the random-ranking MRR). One claim changed meaning rather than
+digits: `filled/r1` moved 0.62 → 0.615, which is exactly the human-written
+index's 0.615, so "complete to within one query out of 200, which is noise" is
+now a tie, and both deck and notes say so.
+
+`figures_app12.py` also exits 0 again. Its `COURSE_CLOSE` list demanded twelve
+numbers still appear verbatim in Lecture 24 — numbers the rebuilt closing
+lecture stopped quoting, plus one whose owning lecture had dropped the key. A
+list that demands a slide still say something it stopped saying does not check
+the slide; it just fails. The thirteen Lecture 24 really does borrow all pass.
+
+### The rest
+
+Lecture 12's filter comparison is a genuine scale difference — 80 epochs in the
+deck against 30 in the notebook — and now carries a `SCALE_ONLY` reason with
+both columns written out. Lecture 18's duplicate leak differed only in seed
+count, six against the deck's ten, with corpus, `n_unique`, `dup_frac`, both
+seed streams and the scorer already identical; the notebook now runs ten.
+Lecture 19's four closed with a per-term table, and Lecture 23's tau sweep now
+measures the slide's pairing (image against its own indexed caption) alongside
+its own held-out-query pairing, because those were two different measurements
+reported as one.
 
 **Do not make this green by loosening `matches()`.** The loose version is what
 hid these for the whole rebuild. Fix the deck, make the notebook print the
-figure, or add a `SCALE_ONLY` entry with the reason it cannot.
+figure, or add a `SCALE_ONLY` / `MACHINE_TIME` entry with the reason it cannot.
+
+### One environment note, which cost two and a half hours
+
+`~/Documents` is synced to iCloud Drive, and 89,324 of the 108,566 files under
+`notebooks/datasets/` had been evicted to the cloud. A notebook blocked on a
+1.8 KB local file for 2h33m using 9 seconds of CPU; `brctl status` named the
+directory. On-demand fetch costs about **12 seconds a file**, so IMDb's 89,117
+files would have taken eleven days, and `brctl download` moved nothing in sixty
+seconds. IMDb was repaired by re-extracting from the `aclImdb_v1.tar.gz` still
+sitting next to it; the remaining 204 files were pulled with a 24-thread read in
+225 s. If a check ever appears to hang on a dataset again, this is the first
+thing to test — and moving `notebooks/datasets/` out of `~/Documents` and
+symlinking it back would end it permanently.
 
 ## The three review rounds — 2026-09-04 to 05
 

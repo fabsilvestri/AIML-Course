@@ -135,6 +135,23 @@ def device():
     return "mps" if torch.backends.mps.is_available() else "cpu"
 
 
+def features(out):
+    """The projected embedding, whichever transformers version is installed.
+
+    transformers 4.x returned the tensor from `get_image_features` /
+    `get_text_features`; 5.x returns an output object whose `pooler_output`
+    holds the same vector. Without this, every CLIP figure below dies with
+    `'BaseModelOutputWithPooling' object has no attribute 'cpu'` -- which is
+    exactly what this generator did, silently, for as long as its pickle cache
+    outlived the upgrade. The cache lives in /tmp; when /tmp was cleared, the
+    script that is supposed to reproduce Lectures 23 and 24's numbers stopped
+    being able to run at all, and nothing noticed because nothing re-ran it.
+    The notebooks carry the identical helper.
+    """
+    import torch
+    return out if torch.is_tensor(out) else out.pooler_output
+
+
 def load_catalogue() -> list[dict]:
     """200 COCO validation images with their five human captions each.
 
@@ -200,11 +217,11 @@ def clip_features(entries) -> dict:
     with torch.no_grad():
         for i in range(0, len(images), 32):
             b = proc(images=images[i:i + 32], return_tensors="pt").to(dev)
-            img.append(model.get_image_features(**b).cpu().numpy())
+            img.append(features(model.get_image_features(**b)).cpu().numpy())
         for i in range(0, len(texts), 64):
             b = proc(text=texts[i:i + 64], return_tensors="pt",
                      padding=True, truncation=True, max_length=77).to(dev)
-            txt.append(model.get_text_features(**b).cpu().numpy())
+            txt.append(features(model.get_text_features(**b)).cpu().numpy())
 
     return {"image": np.concatenate(img).astype(np.float64),
             "text": np.concatenate(txt).astype(np.float64),
@@ -375,7 +392,7 @@ def zero_shot_cifar() -> dict:
     with torch.no_grad():
         for i in range(0, len(images), 64):
             b = proc(images=images[i:i + 64], return_tensors="pt").to(dev)
-            feats.append(model.get_image_features(**b).cpu().numpy())
+            feats.append(features(model.get_image_features(**b)).cpu().numpy())
     F = l2(np.concatenate(feats).astype(np.float64))
 
     templates = {"bare": "{}",
@@ -387,7 +404,8 @@ def zero_shot_cifar() -> dict:
         prompts = [tpl.format(c) for c in classes]
         with torch.no_grad():
             b = proc(text=prompts, return_tensors="pt", padding=True).to(dev)
-            W = l2(model.get_text_features(**b).cpu().numpy().astype(np.float64))
+            W = l2(features(model.get_text_features(**b)).cpu().numpy()
+               .astype(np.float64))
         pred = (F @ W.T).argmax(1)
         out[name] = {
             "accuracy": float((pred == y).mean()),
@@ -685,7 +703,7 @@ def _clip_text(sentences):
         for i in range(0, len(sentences), 64):
             b = proc(text=sentences[i:i + 64], return_tensors="pt",
                      padding=True, truncation=True, max_length=77).to(dev)
-            out.append(model.get_text_features(**b).cpu().numpy())
+            out.append(features(model.get_text_features(**b)).cpu().numpy())
     return np.concatenate(out).astype(np.float64)
 
 
@@ -1196,19 +1214,19 @@ def fig_commitment(cl, base, sm):
 #
 # So: (dotted path into figures.json, the format the slide uses). Every one of
 # these must still appear verbatim in the deck.
+#
+# Twelve entries were removed on 2026-09-07. They were not stale numbers on a
+# slide -- they are numbers the closing lecture no longer quotes at all, from
+# a course-wide recap the rebuild replaced, and one (instability_disagree_mean)
+# whose owning lecture had dropped the key entirely. A list that demands a
+# slide still say something it stopped saying does not check the slide; it
+# just fails. The thirteen that remain are the ones Lecture 24 really does
+# borrow, and they all pass. If a future revision brings the recap back, put
+# its numbers back here with it.
 COURSE_CLOSE = [
-    ("baseline.mean_train_rmse",                           "{:,.0f}"),
-    ("best_cv_rmse",                                       "{:,.0f}"),
-    ("never_fires_accuracy_train",                         "{:.1%}"),
-    ("headline.accuracy",                                  "{:.1%}"),
-    ("headline.missed_fives_pct",                          "{:.1f}"),
-    ("l06_final.committed_degree5_unregularised.log_loss", "{:.2f}"),
     ("l06_final.best_unregularised_degree2.log_loss",      "{:.2f}"),
-    ("instability_disagree_mean",                          "{:.1%}"),
     ("l09_sweep_seconds",                                  "{:.0f}"),
     ("l10_speedup",                                        "{:.0f}"),
-    ("l12_sk_seconds",                                     "{:.0f}"),
-    ("l12_zero_grad.acc_cost_pts",                         "{:.0f}"),
     ("app10.margins.linear.random_mae",                    "{:,.0f}"),
     ("app10.margins.linear.honest_mae",                    "{:,.0f}"),
     ("app10.margins.linear.gap_pct",                       "{:.1f}"),
@@ -1219,9 +1237,6 @@ COURSE_CLOSE = [
     ("l18_map5095",                                        "{:.3f}"),
     ("l18_map_per_image",                                  "{:.3f}"),
     ("l18_map_gap",                                        "{:.3f}"),
-    ("l15_n_train",                                        "{:,.0f}"),
-    ("l16_comparison.scratch_acc",                         "{:.1%}"),
-    ("l16_comparison.ft_acc",                              "{:.1%}"),
 ]
 
 

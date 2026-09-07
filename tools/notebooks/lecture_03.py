@@ -616,6 +616,17 @@ rhs = base_rate * recall + (1 - base_rate) * spec
 print(f"\\np.recall + (1-p).specificity = {rhs:.5f}   vs accuracy {lhs:.5f}")
 assert np.isclose(lhs, rhs)
 
+# the three terms the deck quotes to four decimals, so the arithmetic on the
+# slide -- 6.9733 - 1.0370 = 5.9363 against a measured 5.9370 -- is checkable
+# rather than assertable
+print()
+print(f"recall term        p.recall            = "
+      f"{100 * base_rate * recall:.4f} points")
+print(f"specificity loss   (1-p).(1-spec)      = "
+      f"{100 * (1 - base_rate) * (1 - spec):.4f} points")
+print(f"accuracy over the never-fires anchor   = "
+      f"{100 * (lhs - (1 - base_rate)):.4f} points")
+
 print(f"\\nthe specificity term alone is {100 * (1 - base_rate) * spec / lhs:.1f}%"
       f" of the headline number")
 print(f"and {fn:,} fives — {100 * fn / (tp_ + fn):.1f}% of them — went past unflagged")

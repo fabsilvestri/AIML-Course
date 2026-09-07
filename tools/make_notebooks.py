@@ -541,7 +541,11 @@ use — and one we will make explicit as a feature in the next lecture.
         code('''
 corr = housing.select_dtypes(include=[np.number]).corr(numeric_only=True)
 print("linear (Pearson) correlation with the target:\\n")
-print(corr["median_house_value"].sort_values(ascending=False).round(3).to_string())
+# Unrounded, which is what pandas prints and what the slide's transcript and
+# the notes' table both quote. `.round(3)` read more tidily and made every
+# figure in that table impossible to check against this notebook, which is
+# the wrong trade for two digits.
+print(corr["median_house_value"].sort_values(ascending=False).to_string())
 '''),
         md("""
 `median_income` at about 0.69 is far and away the strongest single predictor,
@@ -1120,9 +1124,16 @@ def target_arm(on_log):
     ape = np.concatenate(apes)
     return np.mean(rmses), 100 * np.median(ape), 100 * np.mean(ape <= 0.30)
 
+arms = {}
 for on_log, label in ((False, "the price (what we did)"), (True, "log of the price")):
     rmse, med, within = target_arm(on_log)
+    arms[on_log] = (rmse, med, within)
     print(f"{label:26s} ${rmse:>8,.0f}   median {med:5.1f}%   within 30% {within:5.1f}%")
+
+# the trade itself, which is the sentence the slide makes: what regressing the
+# log costs in dollars and buys on the criterion the stakeholder stated
+print(f"\\nlog costs ${arms[True][0] - arms[False][0]:,.0f} in RMSE "
+      f"and buys {arms[True][2] - arms[False][2]:.1f} points within 30%")
 '''),
         md("""
 The brief asked for a **relative** criterion — within 30% of the price — and we

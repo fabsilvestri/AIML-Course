@@ -453,10 +453,12 @@ sim_clip = Q @ I.T
 r_clip = ranks_of_truth(sim_clip)
 
 print(f"R@1, measured on the same 60 entries:")
-print(f"  human description present   {(r_full[blanked] <= 1).mean():6.1%}")
-print(f"  description deleted         {(r_missing[blanked] <= 1).mean():6.1%}")
-print(f"  auto-caption                {(r_filled[blanked] <= 1).mean():6.1%}")
-print(f"  joint image route (unused)  {(r_clip[blanked] <= 1).mean():6.1%}")
+# two decimals, because 60 entries make each one worth 1.67 points and the
+# slide quotes the recovery to that precision
+print(f"  human description present   {(r_full[blanked] <= 1).mean():7.2%}")
+print(f"  description deleted         {(r_missing[blanked] <= 1).mean():7.2%}")
+print(f"  auto-caption                {(r_filled[blanked] <= 1).mean():7.2%}")
+print(f"  joint image route (unused)  {(r_clip[blanked] <= 1).mean():7.2%}")
 print(f"\\nover all {N_CATALOGUE} queries, text route R@1: "
       f"{(r_full <= 1).mean():.1%} -> {(r_missing <= 1).mean():.1%} "
       f"-> {(r_filled <= 1).mean():.1%}")

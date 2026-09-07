@@ -665,10 +665,28 @@ sim = I @ Q.T
 print(f"a scorer that knows nothing would sit at log {N_CATALOGUE} = "
       f"{np.log(N_CATALOGUE):.3f}\\n")
 print(f"{'tau':>8} {'loss':>8} {'p(correct)':>12} {'p(hardest wrong)':>18} {'top-1':>8}")
-for tau in [1.0, 0.3, 0.1, 0.03, 0.01, 0.003]:
+# the same twelve temperatures figures_recsys sweeps for the slide figure, so
+# every row of that plot is one you can reproduce here -- including tau = 0.002,
+# which is the row showing that colder is not simply better
+TAUS = [1.0, 0.5, 0.2, 0.1, 0.07, 0.05, 0.03, 0.02, 0.01, 0.007, 0.005, 0.002]
+for tau in TAUS:
     r = infonce(sim, tau)
     print(f"{tau:8.3f} {r['loss']:8.3f} {r['p_positive']:12.4f}"
           f" {r['p_hardest_neg']:18.4f} {r['accuracy']:8.1%}")
+
+# The slide's curve is the same sweep on a DIFFERENT pairing, and the
+# difference is worth a column rather than a footnote. Everywhere else in this
+# notebook the query is `captions[1]` and the index holds `captions[0]`,
+# because searching with the exact string you indexed is not retrieval. The
+# slide pairs each image with its own indexed caption, which is the pairing
+# the contrastive loss is actually trained on. Same shape, same minimum, a
+# different level -- and the level is the part a number on a slide commits to.
+D_clip = unit(clip_text(descriptions))
+sim_indexed = I @ D_clip.T
+print(f"\\nthe slide's pairing -- each image against its OWN indexed caption")
+print(f"{'tau':>8} {'loss':>8} {'held-out query':>16}")
+for tau, r in zip(TAUS, (infonce(sim_indexed, t) for t in TAUS)):
+    print(f"{tau:8.3f} {r['loss']:8.4f} {infonce(sim, tau)['loss']:16.4f}")
 '''),
 
         md("""

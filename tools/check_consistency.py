@@ -95,6 +95,16 @@ SCALE_ONLY: dict[str, str] = {
         "from 20,000, and runs the full-corpus arm at 3 seeds. So the 400 "
         "documents are not the same 400. The finding is that the gap is "
         "smaller than the seed spread, which is what both runs show.",
+    "l15_filter_change":
+        "L12's first-layer filters are compared before and after training, and "
+        "the deck's run is 80 epochs -- 253 seconds, which the slide states. "
+        "The notebook trains 30 so the lecture finishes in the hour, and "
+        "prints its own three numbers for the same three quantities: cosine "
+        "0.9896 against the deck's 0.9694, 13.7% mean change against 23.9%, "
+        "123 sign flips against 247. More training moves the weights further, "
+        "which is the only difference between the two columns. The claim -- "
+        "that the weights move a long way and no structure appears -- is what "
+        "both runs show.",
     "l12_bench":
         "L10's three-way benchmark -- Scikit-Learn on CPU, PyTorch on CPU, "
         "PyTorch on the accelerator -- is run at lecture 9's scale, 20 epochs "
@@ -167,6 +177,32 @@ CROSS_LECTURE: dict[str, str] = {
         "same slide, same lecture: the linear model's forward-split MAE.",
 }
 
+# Wall clocks whose key does not say so. A duration is a property of the machine
+# that measured it, not of the experiment, so a notebook on someone else's
+# laptop cannot reproduce one and should not be asked to. Most duration figures
+# are caught by name -- `seconds`, `ms` -- by the DURATION rule below. These are
+# seconds sitting under leaves called `min` and `all`, which no rule on names
+# can see. Keyed by path PREFIX rather than by root, so the ratios derived from
+# them -- batch_overhead, layer_overhead, which are claims about the experiment
+# and survive the change of machine -- stay checked. Same contract as the two
+# lists above: a reason, or it does not belong here.
+MACHINE_TIME: dict[str, str] = {
+    "l14_timing/none/":
+        "L11's normalisation table quotes the minimum of three timed epochs of "
+        "the un-normalised network. The slide beside it says these figures "
+        "were generated on a shared machine and that the minimum is the "
+        "closest reading to the true cost, which is an admission that the "
+        "number is about the machine.",
+    "l14_timing/batch/":
+        "the same table's batch-normalised row, 11.30 s. It is written with "
+        "four significant digits where its two neighbours happen to have "
+        "three, and that accident is the only reason one of the three wall "
+        "clocks was ever checked and the other two were not.",
+    "l14_timing/layer/":
+        "the same table's layer-normalised row, measured the same way in the "
+        "same loop.",
+}
+
 # Units that make a figure a duration rather than a result.
 DURATION = re.compile(
     r"\b(s|sec|secs|second|seconds|ms|min|mins|minute|minutes|h|hour|hours)\b"
@@ -216,7 +252,13 @@ NAMESPACES: dict[int, tuple[str, ...]] = {
     14: ("l17", "l18"),            # old 17 + 18, COCO detection
     15: ("app10",),                  # old 19 + 20, Chicago transit
     16: ("app10",),                  # old 20, recurrent networks
-    17: ("l21",),                   # old 21, IMDb
+    # Same renumbering artefact as lecture 23 below: lecture 17's own
+    # mathematics -- softmax shift invariance, the float32 stability sweep, the
+    # double-softmax cost -- was generated under the l22_ prefix, so mapping 17
+    # to "l21" alone left that whole block anchored to nothing. Deck 17 states
+    # 100.63987 and 100.69315; both live in l22_stability, which only lecture
+    # 18 could see, and deck 18 does not quote them.
+    17: ("l21", "l22"),
     18: ("l22",),                   # old 22, IMDb / transformers
     19: ("l19",),                   # SciFact, lexical retrieval — figures_ir.py
     20: ("l20",),                   # SciFact, dense retrieval — figures_dense.py
@@ -332,19 +374,23 @@ def stated_facts(deck: Path, own) -> list[tuple[int, float, str, str]]:
                 continue
             if 1900 <= v <= 2100 and float(v).is_integer():
                 continue                          # a year
-            key = fact_for(v, own)
+            # The slide's own string says how precisely it is quoting:
+            # "0.171" claims three decimals, "61.67%" claims two. Carry that,
+            # so fact_for() attributes and matches() compares AT THAT
+            # PRECISION rather than at some fixed floor.
+            dec = len(raw.split(".")[1]) if "." in raw else 0
+            key = fact_for(v, own, dec)
             if key:
-                # The slide's own string says how precisely it is quoting:
-                # "0.171" claims three decimals, "61.67%" claims two. Carry
-                # that, so matches() can require agreement AT THAT PRECISION
-                # rather than at some fixed floor.
-                dec = len(raw.split(".")[1]) if "." in raw else 0
                 hits.append((line, v, key, " ".join(run.split())[:88], dec))
     return hits
 
 
-def fact_for(v: float, own) -> str | None:
-    """The figures.json key this slide figure is quoting, if any."""
+def fact_for(v: float, own, dec: int) -> str | None:
+    """The figures.json key this slide figure is quoting, if any.
+
+    `dec` is how many decimals the SLIDE wrote, which is the precision the
+    slide is claiming; see the loop below.
+    """
     for key, f in own:
         if DURATION.search(key.replace("_", " ")):
             continue                              # a duration key: 3.2a
@@ -354,7 +400,14 @@ def fact_for(v: float, own) -> str | None:
                 continue
             if abs(v - w) <= abs(w) * 1e-9:
                 return key
-            for dp in (0, 1, 2, 3, 4):
+            # The slide's own decimals are its claim, so round no coarser
+            # than the slide wrote. Lecture 11's rho table carries an
+            # illustrative row of 1.400, and rounding a figure to ONE decimal
+            # was enough to attribute it to the depth sweep's tenth training
+            # loss, 1.4485 -- inventing a debt against a notebook that was
+            # never asked to print an illustration. A slide writing four
+            # decimals is not quoting a number that agrees at one.
+            for dp in range(dec, 7):
                 if round(w, dp) == v and round(w, dp) != 0:
                     return key
     return None
@@ -487,7 +540,8 @@ def main() -> int:
                   f"them precisely enough to check, so nothing was checked.")
             total += 1
             continue
-        seen, uniq, excused, excused_cross = set(), [], set(), set()
+        seen, uniq, excused = set(), [], set()
+        excused_cross, excused_time = set(), set()
         for line, v, key, ctx, dec in stated:
             if matches(v, printed, dec) or v in seen:
                 continue
@@ -501,6 +555,10 @@ def main() -> int:
                           and path.startswith(c.split(":", 1)[1])), None)
             if cross:
                 excused_cross.add(cross)
+                continue
+            clock = next((m for m in MACHINE_TIME if path.startswith(m)), None)
+            if clock:
+                excused_time.add(clock)
                 continue
             seen.add(v)
             uniq.append((line, v, key, ctx))
@@ -521,6 +579,8 @@ def main() -> int:
         for c in sorted(excused_cross):
             print(f"        {DIM}quoted from another lecture: "
                   f"{c.split(':', 1)[1]} — {CROSS_LECTURE[c]}{OFF}")
+        for m in sorted(excused_time):
+            print(f"        {DIM}wall clock: {m} — {MACHINE_TIME[m]}{OFF}")
         if a.verbose:
             print(f"        {DIM}{len(stated)} figures.json values stated on "
                   f"the deck; {len(printed)} numbers printed by the notebook{OFF}")

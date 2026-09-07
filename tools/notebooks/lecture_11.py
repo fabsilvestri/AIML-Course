@@ -538,7 +538,7 @@ Start with the forward pass.
 """),
         prompt(
             label="instrument the forward pass",
-            input="512 training images through the trained network",
+            input="the first BATCH training images through the network AT INITIALISATION",
             output="mean, sd over the whole tensor, sd down the batch, and a saturation fraction, per layer",
             constraint="report TWO standard deviations — over the whole tensor and down the BATCH — because they say opposite things and only one is about the signal",
             check="assert one row per hidden layer before reading anything off it. The saturated column is worse than useless here, and the notebook says so. It asks whether |h − 0.5| > 0.45 while the activations sit in a band of sd 0.071 — 6.3 standard deviations away, unreachable, and 0.000 at every depth reads as reassurance.",
@@ -549,10 +549,21 @@ Start with the forward pass.
                       "stops being a statement about the width of the band."}),
         code('''
 @torch.no_grad()
-def activation_stats(net, X, n=512):
-    """Mean, sd and saturated fraction of every hidden layer's output."""
+def activation_stats(net, X, n=BATCH):
+    """Mean, sd and saturated fraction of every hidden layer's output.
+
+    float64 and the first BATCH rows, which is what figures_app07 uses to
+    produce the numbers on the slides. In float32 the deepest layers' spread
+    lands near the edge of what the type can represent, and the point of the
+    probe is to watch it fall sixteen orders of magnitude -- so the dtype is
+    part of the measurement, not a detail.
+    """
+    # on the CPU, because MPS has no float64 and the whole point of the probe
+    # is to watch the spread fall past what float32 can represent
+    import copy
+    net = copy.deepcopy(net).cpu().double()
     net.eval()
-    h = X[:n]
+    h = X[:n].detach().cpu().double()
     rows = []
     for m in net:
         h = m(h)
@@ -572,7 +583,17 @@ def activation_stats(net, X, n=512):
     net.train()
     return rows
 
-stats = activation_stats(deep, Xf)
+# At INITIALISATION, on a freshly seeded copy -- not on `deep`. The diagnosis
+# this section is running is about the signal the network starts with, and the
+# gradient profile in the next section is measured the same way. Profiling the
+# TRAINED network instead reads 0.6748 at layer 15 where the deck reads 0.4861,
+# and the difference is not an error in either: it is the last five layers
+# having moved during training while the first fifteen did not, which is the
+# finding of the weight-change table further down. Two different measurements;
+# this cell is the one taken before the first step.
+torch.manual_seed(RANDOM_STATE)
+at_init = make_net(dtype=torch.float64)
+stats = activation_stats(at_init, Xf)
 assert len(stats) == DEPTH
 print(f"{'layer':>6}{'mean':>9}{'sd (all)':>11}{'sd (signal)':>14}"
       f"{'saturated':>11}")
@@ -790,11 +811,19 @@ before = make_net()
 w_before = [m.weight.detach().clone() for m in before if isinstance(m, nn.Linear)]
 after = [m.weight.detach().cpu() for m in deep if isinstance(m, nn.Linear)]
 
-for i in (0, 9, 19, 20):
+for i in (0, 9, 13, 19, 20):
     rel = float((after[i] - w_before[i]).norm() / w_before[i].norm())
     name = "head" if i == DEPTH else f"layer {i+1}"
     print(f"{name:>8s}: relative change in the weights over "
           f"{EPOCHS} epochs = {rel:.4f}")
+
+# Layer 14 is in that list because it is where the profile turns: everything
+# below it is still at its initial values to four decimals, everything above
+# it has moved. The boundary is worth a number rather than a glance.
+rels = [float((a - b).norm() / b.norm()) for a, b in zip(after, w_before)]
+moved = next(i for i, r in enumerate(rels) if r > 0.1)
+print(f"the first layer whose weights moved by more than 10%: "
+      f"layer {moved+1}, at {rels[moved]:.4f}")
 '''),
 
         md("""
@@ -1017,21 +1046,37 @@ def init_linear(m, scheme, act):
     if scheme == "glorot":
         std = math.sqrt(2.0 / (fan_in + fan_out))
     elif scheme == "he":
-        std = math.sqrt(2.0 / fan_in)
+        # sqrt(2)/sqrt(fan_in), not sqrt(2/fan_in). The same number in
+        # mathematics and not the same float64: torch.nn.init.kaiming_normal_
+        # divides the gain by sqrt(fan), and the deck's float64 measurements
+        # come from that function. One ulp, which matters here only because
+        # this notebook claims to reproduce those measurements exactly.
+        std = math.sqrt(2.0) / math.sqrt(fan_in)
     elif scheme == "normal1":
         std = 1.0                                 # the counter-example, deliberately
     else:
         raise ValueError(f"unknown init {scheme!r}")
     nn.init.normal_(m.weight, 0.0, std)
     nn.init.zeros_(m.bias)
+    return std
+
+# the three weight scales the derivation predicts, on a square hidden layer.
+# Pure arithmetic in the fan-in and fan-out -- no data, no fitting -- and the
+# deck quotes all three, so they should be visible rather than implied.
+_probe = nn.Linear(WIDTH, WIDTH)
+for _scheme in ("torch", "glorot", "he"):
+    if _scheme == "torch":
+        nn.init.kaiming_uniform_(_probe.weight, a=5 ** 0.5)
+        _sd = float(_probe.weight.std())
+    else:
+        _sd = init_linear(_probe, _scheme, "relu")
+    print(f"{_scheme:8s} sd(w) on a {WIDTH}->{WIDTH} layer   {_sd:.4f}")
 
 def make_net(depth=DEPTH, width=WIDTH, act="sigmoid", init="torch",
              norm=None, dropout=0.0, n_in=N_IN, n_out=N_OUT, dtype=None):
     layers, prev = [], n_in
     for _ in range(depth):
-        lin = nn.Linear(prev, width)
-        init_linear(lin, init, act)
-        layers.append(lin)
+        layers.append(nn.Linear(prev, width))
         if norm == "batch":
             layers.append(nn.BatchNorm1d(width))
         elif norm == "layer":
@@ -1040,11 +1085,25 @@ def make_net(depth=DEPTH, width=WIDTH, act="sigmoid", init="torch",
         if dropout:
             layers.append(nn.Dropout(dropout))
         prev = width
-    head = nn.Linear(prev, n_out)
-    init_linear(head, init, act)
-    layers.append(head)
+    layers.append(nn.Linear(prev, n_out))
     net = nn.Sequential(*layers)
-    return net if dtype is None else net.to(dtype)
+    if dtype is not None:
+        net = net.to(dtype)
+
+    # Build the whole stack FIRST, then re-initialise it in a second pass.
+    # That is not a style choice. `nn.Linear` draws its own weights as it is
+    # constructed, so initialising each layer the moment you build it
+    # interleaves two streams of random numbers -- twenty-one default draws
+    # and twenty-one of ours -- while doing it in two passes runs them one
+    # after the other. Same seed, same formula, completely different weights:
+    # `init="torch"` is unaffected because it draws nothing extra, and every
+    # other scheme in this notebook lands somewhere else. It cost this
+    # notebook two points on the ladder against the deck's table, and the
+    # only visible symptom was that one row of four agreed.
+    for m in net:
+        if isinstance(m, nn.Linear):
+            init_linear(m, init, act)
+    return net
 
 # the defaults must still be the network section 1 built
 check = make_net()
@@ -1153,6 +1212,17 @@ for k, v in schemes.items():
           f"{d[0]/d[DEPTH-1]:11.3e}")
     assert abs(rho - theory[k]) / theory[k] < 0.15, \
         f"{k}: prediction and measurement disagree by more than 15%"
+
+# The same four profiles reduced the way slide 62 reduces them: the per-layer
+# factor of the WEIGHT gradient, going down, and the end-to-end ratio it
+# compounds to over nineteen steps. Not the same quantity as rho above --
+# that one is the delta -- which is exactly why both are printed here.
+print()
+print(f"{'':18s} {'per layer':>10s} {'end to end':>12s}")
+for k in schemes:
+    a = profiles[k]
+    print(f"{k:18s} {1/geo(a[1:DEPTH] / a[0:DEPTH-1]):10.4f} "
+          f"{a[DEPTH-1]/a[0]:12.3e}")
 '''),
         prompt(
             label="four profiles on one log axis",
@@ -1360,13 +1430,20 @@ to forty cells and stops being explicable.
 Now stack them, in the order the diagnosis suggests: fix the signal first,
 then the optimisation, then the generalisation.
 
-⏱ **about 5 minutes.**
+**Five seeds a row.** This table is the deliverable of the lecture and it asks
+you to act on steps of a few points. A single seed cannot support a claim that
+size — the deck's own closing line is that the single-seed version of this
+table crowned the wrong winner — so every rung below is run five times and
+reported as a mean with its spread. That is the whole reason this cell is the
+slow one: about ten minutes of training, against two for a single pass.
+
+⏱ **about 15 minutes.**
 """),
         prompt(
-            label="⏱ 5 min — the ladder",
-            input="the same repairs, stacked in diagnostic order",
-            output="each rung's accuracy and its delta from the rung below",
-            constraint="stack in the order the DIAGNOSIS suggests — signal first, then optimisation, then generalisation",
+            label="⏱ 15 min — the ladder",
+            input="the same repairs, stacked in diagnostic order, five seeds a rung",
+            output="each rung's mean accuracy, its spread over the seeds, its delta from the rung below, and its final training loss",
+            constraint="FIVE seeds a rung, and report the sd beside the mean — a delta smaller than the spread is not a result, and this table exists to be acted on",
             check="assert the repaired network is at least three times chance, and record which rung was actually best. Capture the best row into a variable and use THAT downstream. Hard-coding the last rung's settings in the summary would report 33.4% where the argument requires 43.9% — the notebook committing the mistake the deck forbids.",
             **{"try": "reverse the ladder: start from the full stack and "
                       "remove one repair at a time. The two orderings "
@@ -1387,21 +1464,45 @@ ladder = [
                                          clip=1.0, schedule="onecycle",
                                          dropout=0.1)),
 ]
-rows, prev, curves = [], None, {}
+# One pass over the ladder is about two minutes, so five seeds costs ten and
+# buys the difference between a result and an anecdote. Keep the first seed's
+# accuracy in its own column: the gap between that column and the mean is the
+# error this table exists to prevent.
+LADDER_SEEDS = [RANDOM_STATE + k for k in range(5)]
+
+rows, sds, first, prev, curves = [], [], [], None, {}
+print(f"{'configuration':28s} {'seed 0':>8s} {'mean':>8s} {'sd':>6s} "
+      f"{'change':>7s} {'final loss':>11s}")
 for label, kw in ladder:
-    _, h = train(**kw)
-    delta = "" if prev is None else f"{100*(h['test_acc'] - prev):+5.1f}"
-    print(f"{label:28s} {100*h['test_acc']:6.2f}%  {delta:>6s}   "
-          f"{h['seconds']:.0f} s")
-    rows.append((label, h["test_acc"], kw))
-    curves[label] = h["loss"]
-    prev = h["test_acc"]
+    runs = [train(seed=sd, **kw)[1] for sd in LADDER_SEEDS]
+    accs = [h["test_acc"] for h in runs]
+    mean, sd = float(np.mean(accs)), float(np.std(accs, ddof=1))
+    loss = float(np.mean([h["loss"][-1] for h in runs]))
+    delta = "" if prev is None else f"{100*(mean - prev):+5.1f}"
+    print(f"{label:28s} {100*accs[0]:7.2f}% {100*mean:7.2f}% {100*sd:6.2f} "
+          f"{delta:>7s} {loss:11.4f}")
+    rows.append((label, mean, kw))
+    sds.append(100 * sd); first.append(accs[0])
+    curves[label] = runs[0]["loss"]
+    prev = mean
+
+print(f"\\ntypical seed-to-seed spread: {np.mean(sds):.2f} points")
 
 best = max(rows, key=lambda r: r[1])
 BEST_LABEL, BEST_ACC, BEST_KW = best     # the closing summary uses these
-print(f"\\nbest row: {best[0]} at {best[1]:.4f}")
+print(f"best row: {best[0]} at {best[1]:.4f}")
 print(f"last row: {rows[-1][0]} at {rows[-1][1]:.4f}")
 assert best[1] > 3 * rows[0][1], "the repaired network should not be at chance"
+
+# The point of the seed column, made as a number rather than as a warning.
+one = rows[max(range(len(rows)), key=lambda i: first[i])][0]
+print(f"\\nwinner on one seed:   {one}")
+print(f"winner on five seeds: {best[0]}")
+if one != best[0]:
+    print("Those disagree. Every ladder in this notebook up to here was run")
+    print("once; this is what that would have cost you on the one table the")
+    print("lecture asks you to act on.")
+
 if best is not rows[-1]:
     print("\\nThe last rung is NOT the best configuration. Report the best row,")
     print("and say which rungs you dropped and why. That is what the table is")
@@ -1420,7 +1521,8 @@ if best is not rows[-1]:
         code('''
 fig, ax = plt.subplots(1, 2, figsize=(13, 4))
 labels = [r[0] for r in rows]
-ax[0].barh(range(len(rows))[::-1], [100*r[1] for r in rows])
+ax[0].barh(range(len(rows))[::-1], [100*r[1] for r in rows],
+           xerr=sds, capsize=3)
 ax[0].set_yticks(range(len(rows))[::-1]); ax[0].set_yticklabels(labels, fontsize=8)
 ax[0].axvline(10, ls="--", color="grey"); ax[0].set_xlabel("test accuracy, %")
 for label in (labels[0], labels[2], labels[3], labels[-1]):
