@@ -575,6 +575,27 @@ body {
 /* --- Small utilities ---------------------------------------------------- */
 
 .muted     { color: var(--aiml-muted-strong); }
+
+/* `<aside class="note">` -- three of them, against 109 `<aside class="notes">`.
+   The plural is reveal's own: presenter cues, hidden from the slide and shown
+   in the speaker view. The singular matched no rule in any stylesheet, so its
+   text rendered as full-size body prose, indistinguishable from the argument
+   above it.
+
+   The obvious repair is to call the typo a typo and add the 's'. That is the
+   wrong repair: read the three and they are not presenter cues. They are
+   teaching -- "getting these the same way round is a common and silent error"
+   -- and the plural would have hidden them from the room. So the class gets
+   the style it never had, one step quieter than body text, and the content
+   stays where a student can read it. */
+.reveal aside.note {
+  display: block;
+  font-size: var(--t-sm);
+  color: var(--aiml-muted-strong);
+  border-left: 2px solid var(--aiml-rule-faint);
+  padding-left: 0.7em;
+  margin: var(--sp-2) 0 0;
+}
 .fail      { color: var(--aiml-accent);  font-weight: 700; }
 .fix       { color: var(--aiml-success); font-weight: 700; }
 .big-num   { font-size: var(--t-num); font-weight: 700; color: var(--aiml-primary);
@@ -612,6 +633,9 @@ body {
 /* meaning in colour ALONE — same weight, same size, same shape — across      */
 /* 500-odd instances. A mark costs nothing and works in any vision.           */
 .reveal .fail::before { content: "\2717\00a0"; }
+/* On a list item that cross IS the marker, so the native bullet has to go --
+   otherwise the row reads "• ✗ text". (0,2,1) beats `.reveal ul` at (0,1,1). */
+.reveal li.fail { list-style: none; }
 .reveal .fix::before  { content: "\2713\00a0"; }
 .reveal table td.miss::after { content: "\00a0\2717"; }
 .reveal table td.hit::after  { content: "\00a0\2713"; }
@@ -688,7 +712,16 @@ body {
    sequence in which each step earns its own line, with the reason for the step
    set beside it rather than under it — the reason is what is examinable, and a
    reason set as a footnote reads as optional. */
-.derivation {
+/* `.reveal .derivation`, not `.derivation`. reveal's white theme carries
+   `.reveal ol { list-style-type: decimal }` and this file carries
+   `.reveal ol { margin-left: 1.1em }` -- both (0,1,1), both of which beat a
+   bare `.derivation` at (0,1,0). The class therefore lost BOTH declarations
+   below: every derivation in the course rendered the theme's decimal marker
+   AND the counter badge -- "1. 1", "2. 2" -- and sat 1.1em further right than
+   the prose above it. Eighteen derivations, the centrepiece of the lectures
+   and 40% of the written paper, on seven decks. Specificity, not the
+   cascade. */
+.reveal .derivation {
   list-style: none;
   counter-reset: dstep;
   padding-left: 0;
