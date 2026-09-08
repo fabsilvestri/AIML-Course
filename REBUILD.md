@@ -124,8 +124,10 @@ one of them printed by its own notebook, and 2,321 further numbers checked
 against each lecture's own deck.** Lecture 20's notebook takes about ten
 minutes to execute cold and Lecture 11's about fifteen; most are quick.
 
-On the site they appear as a third button on each lecture card (`btn-notes`,
-emitted by `make_site.py`), and in a table in *Textbook and scope*.
+On the site they appear as a fourth button on every lecture card
+(`btn-notes`, emitted by `make_site.py` for any lecture whose notes PDF is on
+disk), and the four in *Textbook and scope* are listed separately because for
+Lectures 19-22 the notes are the primary source rather than a supplement.
 
 ## CLOSED DEBT — every slide figure is now reproduced — 2026-09-07
 

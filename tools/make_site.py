@@ -118,10 +118,14 @@ def lecture_list() -> str:
                         # Built by tools/make_deck_pdfs.py, one page per slide.
                         f'          <a class="btn btn-pdf" href="slides/pdf/lecture-{n:02d}.pdf">PDF</a>',
                         f'          <a class="btn btn-colab" href="{COLAB.format(n)}">Notebook</a>']
-                # The lecture-notes lectures -- those with no chapter -- carry a
-                # third link. For them the PDF is the primary source, not a
-                # supplement, so it sits beside the other two rather than below.
-                if not src:
+                # Written notes, for every lecture that has them. This was
+                # `if not src` -- only the four Part V lectures, for which the
+                # PDF is the primary source rather than a supplement. Notes now
+                # exist for all 24, so the link is driven by the file being on
+                # disk instead of by the chapter field: a lecture that gains or
+                # loses notes changes the site by existing, not by anyone
+                # remembering to edit this condition.
+                if (ROOT / f"notes/lecture-{n:02d}.pdf").is_file():
                     out.append(
                         f'          <a class="btn btn-notes" href="notes/lecture-{n:02d}.pdf">Notes (PDF)</a>')
                 out.append('        </div>')
