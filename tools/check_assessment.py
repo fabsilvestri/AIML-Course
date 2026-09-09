@@ -7,7 +7,7 @@ The rule as of 2026-09-04:
 
     written    marked out of 30, pass at 18, capped at 27 on its own
     oral       optional, three questions on any topic from the course
-    arithmetic the oral moves the written mark by at most +/-3, floor 18
+    arithmetic the oral moves the written mark up or down, with no stated bound
     binding    registered after the written mark is seen, and final
 
 It appears on the site, on deck 1, on deck 24, in the exercise book's preface,
@@ -19,10 +19,10 @@ Three things are checked.
 
 1. No sentence anywhere still states the old rule (50/50, both parts passed
    independently, an oral drawn from the published exercise bank).
-2. Every page that states the rule states all of it -- the cap, the swing, the
-   pass mark, and that the oral is optional. Half the rule is worse than none:
-   "the oral can lower your mark" without "27 is the cap" reads as a threat
-   with no upside.
+2. Every page that states the rule states all of it -- the cap, the pass mark,
+   and that the oral is optional. Half the rule is worse than none: "the oral
+   can lower your mark" without "27 is the cap" reads as a threat with no
+   upside.
 3. The size of the bank quoted in the prose is the size of the actual bank.
    Add a lecture and the number moves; this is the only check that would say so.
 """
@@ -55,6 +55,15 @@ STALE = [
     # files at once, which is exactly the drift this file exists to catch.
     (r"bank the oral draws from",              "the exercise bank as the oral's source"),
     (r"drawn in front of you",                 "the oral drawing from a bank"),
+    # 2026-09-09: the oral's effect on the mark is NOT bounded. "at most +/-3"
+    # and the floor that went with it ("cannot turn a pass into a fail") were
+    # stated on the site and on both decks, and PARTS below required the swing
+    # to be present -- so a page that told the truth would have failed the
+    # check for omitting it.
+    (r"at most (?:&plusmn;|±|\+/-)\s*3",        "the +/-3 swing"),
+    (r"by three in either direction",          "the +/-3 swing, in words"),
+    (r"18 is the floor",                       "the floor under the oral"),
+    (r"cannot turn a pass(?:ing written)? into a fail", "the floor under the oral"),
 ]
 
 # Each page that states the rule must state all four parts of it.
@@ -65,7 +74,6 @@ REQUIRED = {
 }
 PARTS = [
     (r"\b27\b",                     "the cap at 27"),
-    (r"(?:&plusmn;|±)\s*3",    "the +/-3 swing"),
     (r"\b18\b",                     "the pass mark of 18"),
     (r"\boptional\b",               "that the oral is optional"),
 ]
@@ -131,7 +139,7 @@ def main() -> int:
                   f"{', '.join(missing)}")
             fails += 1
         else:
-            print(f"{GREEN}ok{OFF}    {rel} — cap, swing, pass mark, optional")
+            print(f"{GREEN}ok{OFF}    {rel} — cap, pass mark, optional")
 
     # Presence is not agreement. These pull the actual numbers out of the
     # prose and require every page to say the same one -- the drift that
