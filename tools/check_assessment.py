@@ -6,7 +6,7 @@
 The rule as of 2026-09-04:
 
     written    marked out of 30, pass at 18, capped at 27 on its own
-    oral       optional, three questions drawn from the published bank
+    oral       optional, three questions on any topic from the course
     arithmetic the oral moves the written mark by at most +/-3, floor 18
     binding    registered after the written mark is seen, and final
 
@@ -18,7 +18,7 @@ student something different about their own grade.
 Three things are checked.
 
 1. No sentence anywhere still states the old rule (50/50, both parts passed
-   independently, an oral on any topic).
+   independently, an oral drawn from the published exercise bank).
 2. Every page that states the rule states all of it -- the cap, the swing, the
    pass mark, and that the oral is optional. Half the rule is worse than none:
    "the oral can lower your mark" without "27 is the cap" reads as a threat
@@ -45,10 +45,16 @@ STALE = [
     (r"half the final mark",                   "the paper as half the mark"),
     (r"strong written cannot rescue",          "the old compensation rule"),
     (r"cannot compensate for a failing oral",  "the old compensation rule"),
-    (r"any topic from the course",             "the unbounded oral"),
     (r"most-asked oral question",              "a frequency claim about the oral"),
     (r"at the oral I will put a cell",         "the promise of a universal oral"),
     (r"twenty to twenty-five minutes",         "the old oral length"),
+    # 2026-09-09: the oral was described course-wide as drawing three questions
+    # from the 120 published exercises. It does not; it can go to any topic the
+    # course covered. The reverse ban lived here -- "any topic from the course"
+    # was listed as STALE -- so the checker was enforcing the wrong rule in six
+    # files at once, which is exactly the drift this file exists to catch.
+    (r"bank the oral draws from",              "the exercise bank as the oral's source"),
+    (r"drawn in front of you",                 "the oral drawing from a bank"),
 ]
 
 # Each page that states the rule must state all four parts of it.
