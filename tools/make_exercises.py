@@ -95,7 +95,7 @@ ex(1, "In the working loop &mdash; specify, generate, read, test, verify "
       "assistant&rsquo;s.", 3,
    "Generate. If reading is also delegated, nothing checks that the code does "
    "what the specification asked for.",
-   ["The specification is the student's claim about what the code must do",
+   ["The specification is the student&rsquo;s claim about what the code must do",
     "Only a reader who holds that claim can notice the code meeting a "
     "different one"])
 
@@ -435,7 +435,7 @@ ex(9, "Give the parameter count of a dense layer from $m$ inputs to $n$ units, "
 ex(9, "A single TLU cannot represent XOR. State the property of XOR that "
       "prevents it, and the smallest change to the network that fixes it.", 4,
    "XOR is not linearly separable; one hidden layer fixes it.",
-   ["A TLU's decision boundary is a hyperplane, and no line separates the two "
+   ["A TLU&rsquo;s decision boundary is a hyperplane, and no line separates the two "
     "XOR classes",
     "A hidden layer can re-represent the inputs so that the classes become "
     "separable in the new coordinates"])
@@ -464,7 +464,7 @@ ex(10, "Reverse-mode automatic differentiation costs one sweep for all "
        "condition on the function&rsquo;s shape that makes reverse mode the "
        "right choice.", 4,
    "Many inputs, one output &mdash; which is exactly a loss.",
-   ["Forward mode's cost scales with the number of inputs, reverse mode's with "
+   ["Forward mode&rsquo;s cost scales with the number of inputs, reverse mode&rsquo;s with "
     "the number of outputs",
     "A neural network has millions of parameters and one scalar loss"])
 ex(10, "Explain why the loss must be a scalar for <code>.backward()</code> to "
@@ -596,7 +596,7 @@ ex(13, "An augmented validation loader is used to select the epoch to keep. "
        "it.", 5,
    "The score becomes a random variable and the chosen epoch changes. Evaluate "
    "twice and require identical answers.",
-   ["Augmentation makes the metric depend on the evaluator's seed",
+   ["Augmentation makes the metric depend on the evaluator&rsquo;s seed",
     "A deterministic function of fixed weights and fixed data does not wobble"])
 ex(13, "A frozen-backbone probe is both more accurate and faster than training "
        "from scratch on 1,020 images. Explain why both, and name the cost that "
@@ -666,7 +666,7 @@ ex(15, "State why MAPE is the wrong metric for transit ridership, using a "
 ex(15, "A cross-validated forecast uses <code>KFold(shuffle=True)</code> and "
        "reports a good score. Name the two conditions the split violates.", 5,
    "No training row may come after a test row, and none may be adjacent to one.",
-   ["Shuffling puts a point's own future in the training set",
+   ["Shuffling puts a point&rsquo;s own future in the training set",
     "Neighbouring days are nearly the same number, so an adjacent row nearly "
     "gives away the answer"])
 ex(15, "In March 2020 the series level falls by three quarters and the model "
@@ -676,7 +676,7 @@ ex(15, "In March 2020 the series level falls by three quarters and the model "
    "monitoring, with a written trigger.",
    ["No split protects against a regime change",
     "A model never re-measured after deployment is an assumption wearing a "
-    "number's clothes"])
+    "number&rsquo;s clothes"])
 
 
 
@@ -904,7 +904,7 @@ ex(20, "In-batch negatives are described as free. State precisely what is free "
     "scores cost almost nothing beside the encoder",
     "Doubling the batch doubles the negatives per query, which is a choice "
     "about the problem rather than about the hardware"])
-ex(20, "Hard negatives are mined from a first stage's top results. State the "
+ex(20, "Hard negatives are mined from a first stage&rsquo;s top results. State the "
        "trap, and why it is worse at training time than at evaluation time.", 5,
    "Many are relevant but unjudged, so training teaches the model that a correct "
    "answer is wrong.",
@@ -974,7 +974,7 @@ ex(22, "Explain why a sampled metric is not merely noisier than a full-catalogue
     "A uniform bias would at least preserve rankings; this one does not"])
 ex(22, "A sampled softmax draws negatives in proportion to popularity. State the "
        "correction, and what enters the model if it is skipped.", 4,
-   r"Subtract $\log q(j)$ from each sampled negative's score. Without it, "
+   r"Subtract $\log q(j)$ from each sampled negative&rsquo;s score. Without it, "
    "popularity bias enters the gradient.",
    ["The sample is not the catalogue, and the estimator is biased without "
     "reweighting",
@@ -1029,7 +1029,7 @@ ex(24, "A contrastive loss is written as <code>img @ txt.T / tau</code> on the "
    ["The entries carry both magnitudes, so the temperature divides a quantity "
     "with no fixed scale",
     "The norms vary by 1.32&times; across this catalogue for no semantic "
-    "reason &mdash; a vector's length is whatever the last linear layer "
+    "reason &mdash; a vector&rsquo;s length is whatever the last linear layer "
     "happened to scale it to &mdash; so an unnormalised score ranks partly by "
     "how loudly an encoder spoke"])
 ex(24, "An auto-caption is generated for catalogue entries that have no "
@@ -1045,7 +1045,7 @@ ex(24, "A retrieval-augmented system is measured by whether cited stock numbers 
    "It measures grounding, not helpfulness.",
    ["A cited entry can exist and still be a bad recommendation",
     "It is the cheap half, and saying which half was measured is the point"])
-ex(24, "In a retrieval-augmented pipeline the retriever's recall bounds the whole "
+ex(24, "In a retrieval-augmented pipeline the retriever&rsquo;s recall bounds the whole "
        "system. Explain why, and what that implies about where to invest.", 4,
    "If the right entry is not retrieved, no generation recovers it.",
    ["The generator can only work with what it is given",
@@ -1105,7 +1105,7 @@ def solution_slides(n, items, **kwargs):
 
     Three to a slide ran 706px on Lecture 2 against a footer at 674 -- the
     check_overflow warning that made this layout two-up. It is also the layout
-    the deck's own specimen answers already use, so the pages match.
+    the deck&rsquo;s own specimen answers already use, so the pages match.
     """
     out = []
     own = kwargs.get("own", False)
@@ -1157,10 +1157,10 @@ def short(q, limit=110):
 
 
 def build(n):
-    """Every exercise/solution slide lecture n's deck should carry.
+    """Every exercise/solution slide lecture n&rsquo;s deck should carry.
 
-    ORDER MATTERS, and it is the lecturer's: this lecture's NEW exercises come
-    first, and last lecture's solutions come after them, at the very end of the
+    ORDER MATTERS, and it is the lecturer&rsquo;s: this lecture&rsquo;s NEW exercises come
+    first, and last lecture&rsquo;s solutions come after them, at the very end of the
     deck. The solutions are not part of lecture n -- they are the answers to
     the set given out at the end of lecture n-1, parked where a student
     revising will find them. Putting them before the new exercises would read
