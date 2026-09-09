@@ -80,7 +80,7 @@ PARTS = [
     (15, 18, "Part IV — Sequences and language",
      "Lectures 15–18 · Chapters 13–15 · runs on CPU"),
     (19, 22, "Part V — Information retrieval and recommender systems",
-     "Lectures 19–22 · Lecture notes · examinable"),
+     "Lectures 19–22 · Outside the book · examinable"),
     (23, 24, "Part VI — Multimodal models, and closing the course",
      "Lectures 23–24 · Chapters 15–16 · runs on CPU"),
 ]
@@ -101,8 +101,15 @@ def lecture_list() -> str:
         for n, t, src, data, deriv, pub in LECTURES:
             if not lo <= n <= hi:
                 continue
+            # This chip answers "what is this lecture taught from", and sits
+            # where the other twenty show their chapter. It read "Lecture
+            # notes" until every lecture gained a Notes (PDF) button, at which
+            # point a badge on four cards saying "Lecture notes" claimed the
+            # opposite of what it meant -- that only those four had notes.
+            # What is special about 19-22 is the missing chapter, so that is
+            # what it names.
             chip = (f'<span class="badge badge-ch">{src}</span>' if src
-                    else '<span class="badge badge-math">Lecture notes</span>')
+                    else '<span class="badge badge-math">Outside the book</span>')
             out += ['      <li class="lecture">',
                     f'        <span class="n">{n:02d}</span>',
                     '        <div class="body">',
