@@ -28,6 +28,51 @@ Definition of done, per lecture, all of it:
 
 ## Where this stands
 
+### Session log — 2026-09-07 to 09
+
+Everything below is committed and pushed to `origin/main`. The head at the end
+of this session is `97cb7d7`.
+
+**Provenance debt is zero.** `check_consistency` and `check_notes` are clean on
+all 24: 2,321 deck numbers and 770 stated figures in the notes, every one
+printed by its own notebook. The closing of the last 31 is written up under
+CLOSED DEBT below, including the three checker defects it exposed.
+
+**`tools/figures_app12.py` had been unable to run since transformers 5.x** and
+was repaired; every CLIP figure in `figures.json` had been 4.x output. If a
+figure generator ever looks like it "works", check that its cache is not the
+only reason.
+
+**The assessment rule was wrong in two ways and is now right.** The oral does
+not draw from the 120 published exercises -- it can go to any topic -- and its
+effect on the mark is NOT bounded: no +/-3, and no floor. `check_assessment.py`
+was enforcing both errors and now bans them. State no bound anywhere.
+
+**Do not state how marks are split within an answer.** Five specimen answers
+did; all five now describe the answer instead of its price. Question mark
+values in the bank ([4], [5]) are fine -- those are weights, not schemes.
+
+**The failure-condition device is now course-wide**: 76 panels across the 24
+decks (three a lecture, six in L04, four in L16) and 93 of the notes' 109
+failboxes labelled. The 16 unlabelled boxes are rules, facts, accounting or
+examples, and were left deliberately -- see the commit for the list.
+
+**Notes are published for all 24 lectures** on every lecture card, and their
+boxes no longer split across a page break.
+
+**Open, and deliberately not done.** Seven duplicate `data-menu-title` entries
+in L11, L13, L17 and L18; 43 numeric table columns rendered left-aligned
+(consistent within every table, so a style choice). Both were reported and left
+for a decision.
+
+**The environment trap.** `notebooks/datasets/` sits under an iCloud-synced
+`~/Documents`, and 89,324 of its 108,566 files had been evicted to the cloud. A
+notebook blocked for 2h33m on a 1.8 KB local file using 9 seconds of CPU. On-
+demand fetch costs ~12 s per file. Detect with `st_blocks == 0 and st_size > 0`;
+confirm with `brctl status`. Repair extracted trees from the tarball beside
+them. Moving the directory out of `~/Documents` was offered and declined.
+
+
 **Done.** All 24 decks and all 24 notebooks are on the new design, all 24 are
 published on the site, and `check_consistency.py` is clean on every one of them.
 Lectures 19-22 — Part V, search and recommendation — were written from nothing,
