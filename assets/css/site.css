@@ -1,0 +1,772 @@
+/* ==========================================================================
+   Applicazioni Informatiche del Machine Learning — course site
+
+   The palette and the typeface are shared with the slide theme
+   (assets/css/custom.css). They are declared twice because the decks and the
+   site do not load each other's stylesheet — so a change to an --aiml-* token
+   MUST be mirrored here in the same commit. This file drifted once, and the
+   comment claiming otherwise is what made it hard to spot.
+   ========================================================================== */
+
+@font-face {
+  font-family: 'Source Sans 3';
+  src: url('../fonts/SourceSans3-VF.woff2') format('woff2-variations');
+  font-weight: 200 900; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Source Sans 3';
+  src: url('../fonts/SourceSans3-Italic-VF.woff2') format('woff2-variations');
+  font-weight: 200 900; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'Source Code Pro';
+  src: url('../fonts/SourceCodePro-VF.woff2') format('woff2-variations');
+  font-weight: 200 900; font-style: normal; font-display: swap;
+}
+
+html { font-size: 17px; }   /* the rem base, so 0.9rem is 0.9 of the
+                               body size and not of the browser's 16px */
+:root {
+  --primary:  #0b3d62;
+  --accent:   #c0392b;
+  --success:  #14663a;   /* mirrors --aiml-success: #1e8449 failed AA */
+  --math:     #6c3483;
+  --ink:      #16212b;
+  --muted:    #6b7280;   /* chrome only: footer, card subtitles */
+  --muted-strong: #4b5563; /* secondary text a reader must actually read */
+  --rule:     #b0bcc7;   /* mirrors --aiml-rule */
+  --rule-faint: #d5dbe1; /* table cell rules only — mirrors custom.css:34 */
+  --soft:     #f4f7f9;
+  --page:     #ffffff;
+  --card:     #ffffff;
+  --shadow:   0 1px 3px rgba(11, 61, 98, 0.07);
+
+  --sans: 'Source Sans 3', -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: 'Source Code Pro', ui-monospace, SFMono-Regular, Menlo, Consolas,
+          "Liberation Mono", monospace;
+
+  --maxw: 62rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary: #7fb5d8;
+    --accent:  #e8776a;
+    --success: #5cba85;
+    --math:    #bb92d0;
+    --ink:     #e6ecf1;
+    --muted:   #97a3b0;
+    --muted-strong: #b9c3ce;
+    --rule:    #3a4653;
+    --rule-faint: #26313c;
+    --soft:    #161e26;
+    --page:    #0d1319;
+    --card:    #121a21;
+    --shadow:  none;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--page);
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 1.5rem; }
+
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* --- Site navigation ----------------------------------------------------
+   A sticky bar so every section is one click away from anywhere on a page
+   that runs to about twelve screens. It is the page's only fixed chrome, so
+   it stays quiet: a hairline rule, the section names, and nothing else.
+
+   The current section is marked with aria-current="true" by site-nav.js and
+   styled from that attribute rather than from a class, so the accessible
+   state and the visible state cannot drift apart.                          */
+.site-nav {
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in srgb, var(--page) 92%, transparent);
+  backdrop-filter: saturate(140%) blur(8px);
+  border-bottom: 1px solid var(--rule-faint);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .site-nav { background: var(--page); }
+}
+.site-nav .wrap {
+  display: flex; align-items: center; gap: 1.1rem;
+  min-height: 2.9rem;
+  overflow-x: auto;                  /* narrow screens scroll, never wrap */
+  scrollbar-width: none;
+}
+.site-nav .wrap::-webkit-scrollbar { display: none; }
+
+.site-nav .brand {
+  font-weight: 700; color: var(--primary); white-space: nowrap;
+  letter-spacing: -0.01em; margin-right: 0.2rem;
+}
+.site-nav .brand:hover { text-decoration: none; }
+
+.site-nav a.nav-link {
+  color: var(--muted-strong); white-space: nowrap;
+  font-size: 0.86rem; padding: 0.75rem 0; position: relative;
+}
+.site-nav a.nav-link:hover { color: var(--ink); text-decoration: none; }
+.site-nav a.nav-link[aria-current="true"] { color: var(--primary); font-weight: 600; }
+.site-nav a.nav-link[aria-current="true"]::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+  height: 2px; background: var(--primary);
+}
+.site-nav .nav-pdf {
+  margin-left: auto; white-space: nowrap; font-size: 0.86rem;
+  color: var(--accent); font-weight: 600;
+}
+
+/* Anchored headings must clear the sticky bar, or a jump lands with the
+   heading hidden underneath it. */
+section[id] { scroll-margin-top: 3.4rem; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* Keyboard users get to the content without tabbing the whole bar. */
+.skip-link {
+  position: absolute; left: -9999px; top: 0;
+  background: var(--primary); color: #fff; padding: 0.6rem 1rem; z-index: 100;
+}
+.skip-link:focus { left: 0; }
+
+@media (max-width: 40rem) {
+  .site-nav .brand { display: none; }
+  .site-nav .nav-pdf { margin-left: 1rem; }
+}
+
+/* --- Header ------------------------------------------------------------- */
+
+header.hero {
+  background: linear-gradient(160deg, #0b3d62 0%, #08293f 100%);
+  color: #fff;
+  padding: 4rem 0 3.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+header.hero .kicker {
+  font-size: 0.72rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #8fbcda;
+  margin: 0 0 1rem;
+}
+header.hero h1 {
+  font-size: clamp(2rem, 5vw, 3.1rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.4rem;
+  color: #fff;
+}
+header.hero .it {
+  font-size: clamp(1rem, 2.2vw, 1.25rem);
+  color: #a9cbe3;
+  font-style: italic;
+  margin: 0 0 1.75rem;
+}
+header.hero .tagline {
+  font-size: 1.1rem;
+  color: #d6e6f1;
+  max-width: 40rem;
+  margin: 0 0 2rem;
+}
+header.hero .facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  padding-top: 1.5rem;
+}
+header.hero .facts div { margin-bottom: 0.5rem; }
+header.hero .facts dt {
+  font-size: 0.66rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #93b9d2;
+  margin-bottom: 0.15rem;
+}
+header.hero .facts dd { margin: 0; font-size: 0.95rem; color: #eaf3f9; }
+header.hero .facts a { color: #eaf3f9; text-decoration: underline;
+                       text-underline-offset: 2px; }
+header.hero .facts a:hover { color: #fff; }
+
+/* --- Sections ----------------------------------------------------------- */
+
+section { padding: 3.25rem 0; border-bottom: 1px solid var(--rule); }
+section:last-of-type { border-bottom: none; }
+
+h2 {
+  font-size: 1.6rem;
+  letter-spacing: -0.015em;
+  color: var(--primary);
+  margin: 0 0 0.35rem;
+}
+h2 + .lede {
+  color: var(--muted);
+  margin: 0 0 2rem;
+  max-width: 46rem;
+}
+h3 { font-size: 1.05rem; margin: 2rem 0 0.75rem; color: var(--ink); }
+
+.part-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  margin: 2.5rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--rule);
+}
+.part-head:first-of-type { margin-top: 0; }
+.part-head h3 { margin: 0; font-size: 1.2rem; color: var(--primary); }
+.part-head .part-meta { font-size: 0.82rem; color: var(--muted); }
+
+/* --- Badges ------------------------------------------------------------- */
+
+.badge {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.2em 0.6em;
+  border-radius: 3px;
+  white-space: nowrap;
+  vertical-align: 0.1em;
+}
+.badge-build { background: var(--primary); color: #fff; }
+.badge-fix   { background: var(--success); color: #fff; }
+.badge-math  { background: var(--math);    color: #fff; }
+.badge-ch    { background: var(--soft); color: var(--muted);
+               border: 1px solid var(--rule); font-weight: 600; }
+
+@media (prefers-color-scheme: dark) {
+  .badge-build { background: #17537f; color: #eaf3f9; }
+  .badge-fix   { background: #1d6b45; color: #eaf9f0; }
+  .badge-math  { background: #563068; color: #f4ecf9; }
+}
+
+/* --- Lecture list ------------------------------------------------------- */
+
+.app-head {
+  font-size: 0.72rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 1.6rem 0 0.15rem;
+}
+
+ol.lectures { list-style: none; margin: 0; padding: 0; counter-reset: none; }
+
+.lecture {
+  display: grid;
+  grid-template-columns: 3.1rem 1fr auto;
+  gap: 0 1rem;
+  align-items: start;
+  padding: 0.95rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+.lecture:last-child { border-bottom: none; }
+
+.lecture .n {
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  color: var(--muted);
+  padding-top: 0.15rem;
+  font-variant-numeric: tabular-nums;
+}
+.lecture .body { min-width: 0; }
+.lecture .t {
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 0.25rem;
+  font-size: 1.02rem;
+}
+.lecture .meta {
+  font-size: 0.83rem;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lecture .thread {
+  font-size: 0.83rem;
+  color: var(--math);
+  margin-top: 0.35rem;
+}
+.lecture .links {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  padding-top: 0.1rem;
+  white-space: nowrap;
+}
+
+.btn {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.36em 0.8em;
+  border-radius: 4px;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  background: transparent;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.btn:hover { background: var(--primary); color: #fff; text-decoration: none; }
+@media (prefers-color-scheme: dark) {
+  .btn:hover { color: #0d1319; }
+}
+/* The deck as a printed handout. Deliberately the quietest of the three: it
+   is the same content as Slides, so it should not compete with it. */
+.btn-pdf {
+  border-color: #8a97a3;
+  color: #4b5563;
+  background: #f4f7f9;
+}
+.btn-pdf:hover { background: #4b5563; color: #fff; border-color: #4b5563; }
+@media (prefers-color-scheme: dark) {
+  .btn-pdf { background: transparent; color: #aab6c2; border-color: #5b6875; }
+}
+.btn-colab {
+  border-color: #d99400;
+  color: #8a5e00;
+  background: #fdf3dc;
+}
+.btn-colab:hover { background: #f9ab00; color: #16212b; border-color: #d99400; }
+@media (prefers-color-scheme: dark) {
+  /* The deck as a printed handout. Deliberately the quietest of the three: it
+   is the same content as Slides, so it should not compete with it. */
+.btn-pdf {
+  border-color: #8a97a3;
+  color: #4b5563;
+  background: #f4f7f9;
+}
+.btn-pdf:hover { background: #4b5563; color: #fff; border-color: #4b5563; }
+@media (prefers-color-scheme: dark) {
+  .btn-pdf { background: transparent; color: #aab6c2; border-color: #5b6875; }
+}
+.btn-colab { background: transparent; color: #e0a94a; border-color: #8a6519; }
+}
+/* Part V only. Lectures 19-22 are taught from notes rather than from Geron,
+   so for those four the PDF is the primary source and not a supplement --
+   hence a filled button in the mathematical-thread purple, at the same weight
+   as Slides and Notebook rather than quieter than them. */
+.btn-notes {
+  border-color: #6c3483;
+  color: #4a2159;
+  background: #f6f0f9;
+}
+.btn-notes:hover { background: #6c3483; color: #fff; border-color: #6c3483; }
+@media (prefers-color-scheme: dark) {
+  .btn-notes { background: transparent; color: #c99ee0; border-color: #6c3483; }
+}
+/* A lecture whose deck is not yet on the new design. Not a button: nothing to
+   click, and a disabled-looking button invites the click anyway. */
+.btn-soon {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.36em 0.8em;
+  color: var(--muted);
+  border: 1px dashed var(--rule);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.pending {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+  padding: 0.36em 0;
+}
+
+/* When and where this lecture is. Deliberately louder than .meta and quieter
+   than the title: on a card with no buttons on it yet, the date is the thing
+   the reader came for. */
+.lecture .when {
+  font-size: 0.83rem;
+  color: var(--muted-strong);
+  margin: 0.3rem 0 0;
+  font-variant-numeric: tabular-nums;
+}
+.lecture .when time { font-weight: 600; }
+
+/* Where a published lecture's buttons will be, until its day. Not dashed like
+   "In preparation": nothing is missing here, it is simply not due yet, so the
+   chip says when instead of looking like an absence. */
+.btn-locked {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.36em 0.8em;
+  color: var(--muted);
+  background: var(--soft);
+  border: 1px solid var(--rule-faint);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* --- Cards / panels ----------------------------------------------------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1.1rem;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 1.1rem 1.25rem;
+  box-shadow: var(--shadow);
+}
+.card h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.card p { margin: 0; font-size: 0.93rem; }
+.card p + p { margin-top: 0.6rem; }
+
+.panel {
+  border-left: 4px solid var(--primary);
+  background: var(--soft);
+  padding: 0.9rem 1.15rem;
+  border-radius: 0 5px 5px 0;
+  margin: 1.5rem 0;
+  font-size: 0.95rem;
+}
+.panel strong { color: var(--primary); }
+.panel-accent { border-left-color: var(--accent); }
+
+/* --- Tables ------------------------------------------------------------- */
+
+.tablewrap { overflow-x: auto; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9rem;
+  margin: 1rem 0;
+}
+th {
+  text-align: left;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+  padding: 0.5rem 0.8rem;
+  white-space: nowrap;
+}
+@media (prefers-color-scheme: dark) {
+  th { background: #17415e; color: #eaf3f9; }
+}
+td { padding: 0.5rem 0.8rem; border-bottom: 1px solid var(--rule-faint); vertical-align: top; }
+tbody tr:nth-child(even) td { background: var(--soft); }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* --- Calendar ----------------------------------------------------------- */
+
+.facts-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 2.5rem;
+  margin: 0 0 1.4rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.facts-row div { margin: 0; }
+.facts-row dt {
+  font-size: 0.66rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.15rem;
+}
+.facts-row dd { margin: 0; font-size: 0.95rem; color: var(--ink); }
+
+/* Filled in by reveal-material.js, which is why it ships hidden: a heading
+   that says "Next" on a page whose script did not run is worse than no
+   heading. */
+.cal-next {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 0.6rem;
+}
+
+table.calendar { font-variant-numeric: tabular-nums; }
+table.calendar caption {
+  caption-side: top;
+  text-align: left;
+  font-size: 0.83rem;
+  color: var(--muted);
+  padding-bottom: 0.5rem;
+}
+/* The generic zebra counts the month bands as rows and so stripes the term by
+   accident. The bands already separate it. */
+table.calendar tbody tr:nth-child(even) td { background: transparent; }
+table.calendar .cal-month th {
+  font-size: 0.7rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+table.calendar .cal-when {
+  white-space: nowrap;
+  width: 7rem;
+  color: var(--muted-strong);
+  font-weight: 600;
+}
+table.calendar .cal-n {
+  width: 3rem;
+  font-family: var(--mono);
+  color: var(--muted);
+}
+/* A day inside the term that carries no lecture. Set back rather than struck
+   through: it is information about the term, not a deletion from it. */
+table.calendar .cal-off td {
+  color: var(--muted);
+  font-style: italic;
+  background: var(--soft);
+  font-weight: 400;
+}
+table.calendar tr.is-next td {
+  background: var(--soft);
+  font-weight: 600;
+}
+/* One bar down the left of the row, not one per cell: the inset shadow is on
+   the row's first cell only. */
+table.calendar tr.is-next td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* --- Ordered lists with emphasis ---------------------------------------- */
+
+ol.threads { padding-left: 1.4rem; margin: 0; }
+ol.threads li { margin-bottom: 0.4rem; }
+ol.threads .where { color: var(--muted); font-size: 0.86rem; }
+
+ul.plain { list-style: none; padding: 0; margin: 0; }
+ul.plain li {
+  padding-left: 1.3rem;
+  position: relative;
+  margin-bottom: 0.55rem;
+}
+ul.plain li::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0.62em;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  background: var(--soft);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.05em 0.32em;
+}
+
+/* --- Footer ------------------------------------------------------------- */
+
+footer {
+  background: var(--soft);
+  border-top: 1px solid var(--rule);
+  padding: 2.5rem 0;
+  font-size: 0.87rem;
+  color: var(--muted);
+}
+footer p { margin: 0 0 0.5rem; }
+footer .draft {
+  display: inline-block;
+  border: 1px dashed var(--accent);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 0.35em 0.75em;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+}
+
+/* --- Narrow screens ----------------------------------------------------- */
+
+@media (max-width: 40rem) {
+  body { font-size: 16px; }
+  .lecture {
+    grid-template-columns: 2.4rem 1fr;
+  }
+  .lecture .links {
+    grid-column: 2;
+    padding-top: 0.6rem;
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+  header.hero { padding: 2.75rem 0 2.25rem; }
+  header.hero .facts { gap: 0 1.75rem; }
+}
+
+/* --- Prerequisites: the self-check ------------------------------------- */
+
+ol.selfcheck {
+  counter-reset: sc;
+  list-style: none;
+  padding: 0;
+  margin: 1.25rem 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 0.9rem;
+}
+ol.selfcheck li {
+  counter-increment: sc;
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--primary);
+  border-radius: 0 6px 6px 0;
+  padding: 0.9rem 1.1rem 0.9rem 2.9rem;
+  box-shadow: var(--shadow);
+}
+ol.selfcheck li::before {
+  content: counter(sc);
+  position: absolute;
+  left: 0.95rem;
+  top: 0.85rem;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--primary);
+  opacity: 0.65;
+}
+ol.selfcheck .q { margin: 0; font-size: 0.95rem; }
+ol.selfcheck .where {
+  margin: 0.55rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-style: italic;
+}
+ol.selfcheck .katex { font-size: 1em; }
+
+h4.gap-head {
+  font-size: 0.75rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 1.9rem 0 0.2rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* Rows for things the course teaches rather than assumes. */
+td.taught { color: var(--muted); }
+td.taught strong { color: var(--success); }
+
+#prerequisites table td:first-child { min-width: 12rem; }
+#prerequisites table td.num { color: var(--primary); font-weight: 700; }
+
+/* --- Assessment: specimen questions ------------------------------------ */
+
+.specimen {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--math);
+  border-radius: 0 6px 6px 0;
+  padding: 1.1rem 1.35rem;
+  margin: 1.1rem 0;
+  box-shadow: var(--shadow);
+}
+.specimen h4 {
+  margin: 0 0 0.7rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--math);
+}
+.specimen ol { margin: 0.6rem 0 0; padding-left: 1.4rem; }
+.specimen ol li { margin-bottom: 0.4rem; }
+.specimen > p:first-of-type { margin-top: 0; }
+.specimen table { margin: 0.5rem 0; }
+
+pre {
+  background: #12212c;
+  color: #e6ecf1;
+  border-radius: 5px;
+  padding: 0.9rem 1.1rem;
+  overflow-x: auto;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  margin: 0.9rem 0;
+}
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+@media (prefers-color-scheme: dark) {
+  pre { background: #0a1016; border: 1px solid var(--rule); }
+}
+
+/* Two-column layout for the oral examination question banks. */
+.cols-oral {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 1.1rem;
+  margin-top: 1rem;
+}
+.cols-oral .card ul.plain li { font-size: 0.92rem; margin-bottom: 0.5rem; }
+.cols-oral .card ul.plain li::before { top: 0.55em; }
+
+th .th-sub {
+  display: block;
+  font-weight: 400;
+  font-size: 0.72em;
+  opacity: 0.75;
+  letter-spacing: 0.02em;
+}
+.panel .panel-title-inline {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+/* See assets/css/custom.css — protects prose currency from the maths renderer. */
+.usd { white-space: nowrap; }
+
+/* Measure. A plain paragraph ran the full 944px at a 1200px viewport, which
+   MEASURED is 102 characters a line; comfortable reading is 60-75. 42rem was
+   the first guess and is still 102 characters, because Source Sans 3 is a
+   narrow face and a rem estimate of "about 75" was wrong by a third — so this
+   number comes from counting characters against rendered lines instead.
+   33rem lands at about 76. */
+section > .wrap > p,
+section > .wrap > ul,
+section > .wrap > ol { max-width: 33rem; }
