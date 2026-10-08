@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 22 — Recommender systems: neural, and evaluated honestly</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Recommender systems:<br>neural, and evaluated honestly</h1>
+  <p class="subtitle">MovieLens 1M, four protocols, one model</p>
+  <p><span class="badge badge-lec">Lecture 22</span>
+     <span class="badge badge-notes">Lecture notes</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">The four-cell table is the lecture. Build to it slowly:
+  the students should have guessed what a protocol is worth before they see
+  it.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Last lecture predicted ratings, and did it well: RMSE 0.8602
+  from a rank-8 factorisation fitted on the observed ratings alone, against
+  1.1185 for the global mean &mdash; with the bias model and item&ndash;item
+  neighbourhoods in between. It ended on implicit feedback, where nobody ever
+  says no.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">But nobody deploys a rating predictor</span>
+    A system does not fill in a matrix. It picks <strong>ten items</strong> out
+    of a catalogue and puts them in front of a person. That is a
+    <em>ranking</em> problem over items the user has <em>not</em> interacted
+    with &mdash; and RMSE measures neither of those things.
+  </div>
+  <p class="small">So we change the question, keep the machinery, and discover
+  that the change is not cosmetic.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>From rating prediction to top-N, and what the metric becomes</li>
+    <li><strong>Two-tower models</strong> &mdash; Lecture&nbsp;20&rsquo;s
+        bi-encoder with users in place of queries, and what the towers buy:
+        the cold start</li>
+    <li><strong>Evaluation</strong> &mdash; the protocol as an experimental
+        variable, measured on one unchanged model</li>
+    <li>Popularity bias, and what an offline number is worth</li>
+  </ol>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-22.ipynb">Open Lecture 22 in Colab</a>
+  </p>
+  <p class="small muted">No derivation. Part&nbsp;V&rsquo;s mathematics was in
+  Lectures&nbsp;19 and 21; this one is measurement, which is the other half of
+  the course.</p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="The task, restated">
+  <h2>The task, restated</h2>
+  <table>
+    <tr><th></th><th>Lecture 21</th><th>Lecture 22</th></tr>
+    <tr><td>Question</td><td class="small">what would they rate it?</td><td class="small">what should we show?</td></tr>
+    <tr><td>Output</td><td class="small">a number per pair</td><td class="small">an ordered list of ten</td></tr>
+    <tr><td>Evaluated on</td><td class="small">ratings they gave</td><td class="small">items they had not yet touched</td></tr>
+    <tr><td>Metric</td><td class="small">RMSE</td><td class="small">HR@10, NDCG@10 &mdash; Lecture&nbsp;19&rsquo;s</td></tr>
+    <tr><td>Data</td><td class="small">explicit ratings</td><td class="small">implicit interactions</td></tr>
+  </table>
+  <p class="small">Row three is the one that changes everything. The evaluation
+  set is no longer a sample of what the user did &mdash; it is a claim about
+  what they <em>would</em> do, on items they never saw.</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="Precisely why RMSE fails here">
+  <h2>Precisely why RMSE fails here</h2>
+  <p class="small">Lecture&nbsp;21&rsquo;s RMSE of
+  0.8602 was computed on <em>held-out ratings</em>
+  &mdash; pairs where the user chose to watch the film and chose to rate it.</p>
+  <ul class="tight small">
+    <li>A recommender operates on the complement of that set: films the user has
+        <strong>not</strong> chosen</li>
+    <li>RMSE weights every prediction equally, and a recommender only shows ten
+        items &mdash; being accurate on the 3-star films costs nothing and buys
+        nothing</li>
+    <li>And it is a <em>pointwise</em> error, whereas showing ten items is a
+        decision about <em>order</em></li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">A concrete case</span>
+    A model that predicts every rating 0.3 stars too low has a poor RMSE and
+    <strong>a perfect ranking</strong>: a constant offset changes no order at
+    all. The two metrics can disagree completely.
+  </div>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="The data, binarised">
+  <h2>The data, binarised</h2>
+  <p class="small">To make MovieLens implicit, call a rating of 4 or 5 an
+  interaction and discard the rest:</p>
+  <table class="smaller">
+    <tr><td>Ratings</td><td class="num">1,000,209</td></tr>
+    <tr><td>Positive interactions</td><td class="num">575,281</td></tr>
+    <tr><td>As a fraction of ratings</td><td class="num">57.5%</td></tr>
+    <tr><td>Cells with no interaction</td><td class="num">97.4%</td></tr>
+  </table>
+  <p class="small fail">Note what the threshold did: a film a user rated 3 is
+  now indistinguishable from one they never saw. We have thrown away the only
+  genuine negatives in the dataset in order to simulate the situation of a real
+  system, which never had them.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 7 -->
+<section data-menu-title="HR@10, defined precisely">
+  <h2>HR@10, defined precisely</h2>
+  <p class="small">Precision matters here, because the whole lecture turns on
+  small differences in definition:</p>
+  <ol class="tight small">
+    <li>Hold out exactly <strong>one</strong> interaction per user; call its
+        item $g$</li>
+    <li>Score the candidate set for that user; remove every item they
+        interacted with in the <em>training</em> data</li>
+    <li>Take the top ten. $\text{HR} = 1$ if $g$ is among them, else 0</li>
+    <li>Average over users &mdash; macro, one vote each</li>
+  </ol>
+  <p class="small">With one held-out item, HR@10 <em>is</em> recall@10, and
+  NDCG@10 is $1/\log_2(\text{rank}+1)$ when hit. Both come straight from
+  Derivation&nbsp;19 with $|R| = 1$.</p>
+  <p class="small fail">Step&nbsp;2 is where the candidate set is defined, and
+  the candidate set is half of what this lecture measures.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="Why already-seen items must be excluded">
+  <h2>Why already-seen items must be excluded</h2>
+  <p class="small">A small implementation detail with a large effect, and a
+  good example of how a protocol leaks.</p>
+  <ul class="tight small">
+    <li>Leave them in and the popularity baseline recommends the blockbusters
+        every heavy user has already watched &mdash; scoring nothing, but
+        occupying the ten slots</li>
+    <li>Leave them in for the factorisation and it recommends what the user
+        already interacted with, because that is what it was trained to score
+        highly</li>
+    <li>Which of the two is hurt more depends on the model, so the choice is not
+        neutral between them</li>
+  </ul>
+  <p class="small">We exclude them everywhere, and say so. It is the only line
+  of the popularity baseline that varies by user, and without it the baseline
+  would not be a baseline.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="The baseline that must be in every table">
+  <h2>The baseline that must be in every table</h2>
+  <p class="lead small">Recommend the ten most popular items. To everybody.
+  Every time.</p>
+  <ul class="tight small">
+    <li>No personalisation. No model. No parameters</li>
+    <li>Minus the items this user has already interacted with, which is the only
+        thing in it that varies by user</li>
+  </ul>
+  <p class="small">It sounds like a straw man. It is not: a large
+  reproducibility study of eighteen published neural recommenders found most of
+  them matched or beaten by well-tuned classical baselines, and popularity alone
+  beats a substantial fraction, and by the end of this lecture you will see exactly how that
+  happens.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">Every number needs a baseline, and here most of all</span>
+    A recommender that does not beat popularity has not been shown to
+    personalise anything.
+  </div>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="It is Lecture 20, with the query replaced">
+  <h2>It is Lecture 20, with the query replaced</h2>
+  <div class="eqn-box">
+    $$\text{score}(u, i) = E_{\text{user}}(u) \cdot E_{\text{item}}(i)$$
+  </div>
+  <table class="smaller">
+    <tr><th></th><th>Lecture 20</th><th>Here</th></tr>
+    <tr><td>Left tower</td><td class="small">the query text</td><td class="small">the user &mdash; id, history, context</td></tr>
+    <tr><td>Right tower</td><td class="small">the document</td><td class="small">the item &mdash; id, genre, text</td></tr>
+    <tr><td>Precomputed</td><td class="small">document vectors</td><td class="small">item vectors</td></tr>
+    <tr><td>At request time</td><td class="small">encode the query</td><td class="small">encode the user</td></tr>
+  </table>
+  <p class="small">Identical architecture, identical indexability argument,
+  identical approximate-nearest-neighbour problem. <strong>Retrieval and
+  recommendation converge here</strong>, and that convergence is why Part&nbsp;V
+  is one part rather than two.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="What the towers can hold">
+  <h2>What the towers can hold</h2>
+  <ul class="tight small">
+    <li><strong>Matrix factorisation is the special case</strong> where each
+        tower is a lookup table: $E_{\text{user}}(u) = p_u$,
+        $E_{\text{item}}(i) = q_i$, and there the resemblance ends</li>
+    <li>A tower can instead be a network over <em>features</em>: the item&rsquo;s
+        genre, its text, its age; the user&rsquo;s recent history, device, time
+        of day</li>
+    <li>Which is what buys the cold start: a brand-new item has no $q_i$ to
+        look up, but it does have a genre and a description</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">The honest summary of &ldquo;neural recommenders&rdquo;</span>
+    The architecture is a dot product of two learned vectors, exactly as before.
+    What is new is <strong>what the vectors are computed from</strong> &mdash;
+    and on datasets with no features beyond ids, there is nothing for the
+    network to compute from, which is a large part of why the reproducibility
+    results came out as they did.
+  </div>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="Training: the softmax over the catalogue">
+  <h2>Training: the softmax over the catalogue</h2>
+  <div class="eqn-box compact">
+    $$\mathcal{L} = -\log \frac{\exp(s_{ui})}
+    {\sum_{j \in \text{catalogue}} \exp(s_{uj})}$$
+  </div>
+  <p class="small">The natural objective: the observed item should win against
+  every other item. It is the cross-entropy of Lecture&nbsp;17 with the
+  catalogue as the classes.</p>
+  <p class="small fail">And it is unaffordable. The denominator runs over
+  3,706 films here, and over tens of millions in a real
+  catalogue &mdash; per interaction, per step.</p>
+  <p class="small">So in practice the denominator is estimated from a sample of
+  the catalogue rather than summed over all of it.</p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="Cold start, and what the towers buy">
+  <h2>Cold start, and what the towers buy</h2>
+  <table class="smaller">
+    <tr><th></th><th>Lookup table (MF)</th><th>Feature tower</th></tr>
+    <tr><td>New item</td><td class="num fail">no vector at all</td><td class="small">encode its genre and text</td></tr>
+    <tr><td>New user</td><td class="num fail">no vector at all</td><td class="small">encode context and first actions</td></tr>
+    <tr><td>Tail item</td><td class="small">estimated from very few interactions</td><td class="small">shares parameters with similar items</td></tr>
+  </table>
+  <p class="small">17.9% of films here have fewer than
+  twenty interactions, so row three is most of the catalogue.</p>
+  <p class="small">This &mdash; not accuracy on the head &mdash; is the honest
+  case for a neural recommender. And it is invisible to a metric dominated by
+  popular items, which is one more reason the protocol decides what progress
+  looks like.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Two decisions nobody reports">
+  <h2>Two decisions nobody reports</h2>
+  <p class="small">To evaluate a recommender you must decide two things, and
+  papers routinely state neither:</p>
+  <ol class="tight small">
+    <li><strong>Which interaction is held out?</strong> One chosen at random
+        from the user&rsquo;s history, or their <em>last</em> one in time</li>
+    <li><strong>Against what is it ranked?</strong> The whole catalogue, or the
+        held-out item against a sample of, say, 100 items the user did not
+        interact with</li>
+  </ol>
+  <p class="small">Two binary choices, four protocols. We are going to run the
+  <strong>same model on the same data</strong> under all four.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Guess first</span>
+    How much do you think the four numbers can differ? A few percent? A
+    factor of two? Hold the guess until the table.
+  </div>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="Decision 1 · Which interaction is held out">
+  <h2>Decision 1 · Which interaction is held out</h2>
+  <table class="smaller">
+    <tr><th></th><th>Random (leave one out)</th><th>Temporal (leave last)</th></tr>
+    <tr><td>Held out</td><td class="small">one interaction, chosen uniformly</td><td class="small">the user&rsquo;s most recent</td></tr>
+    <tr><td>Training set contains</td><td class="num fail">the user&rsquo;s future</td><td class="small">only their past</td></tr>
+    <tr><td>Matches deployment</td><td class="num fail">no</td><td class="num hit">yes</td></tr>
+    <tr><td>Prevalence in the literature</td><td class="small">very common</td><td class="small">less common</td></tr>
+  </table>
+  <p class="small">Under a random split the model may have been trained on films
+  the user watched <em>after</em> the one it is being asked to predict. No
+  deployed system ever has that, and it is a leak of exactly the kind
+  Lecture&nbsp;2 was about &mdash; just harder to see, because no column was
+  duplicated.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="The random split, as a leak">
+  <h2>The random split, as a leak</h2>
+  <p class="small">Lecture&nbsp;2 defined a leak: information in the training
+  data that will not be available at prediction time. Check the definition
+  against the random split.</p>
+  <ul class="tight small">
+    <li>The model is asked to predict interaction $t$</li>
+    <li>It was trained on interactions $t{+}1, t{+}2, \ldots$ by that same
+        user</li>
+    <li>A deployed system has none of them, because they have not happened</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">It is a leak, and it looks like a convention</span>
+    No column was duplicated, no target was copied, nothing was fitted before
+    the split. The leak is in the <em>shape</em> of the evaluation, which is why
+    it survived so long as a default &mdash; and why the effect is measured
+    rather than argued in the next few slides.
+  </div>
+  <a class="anim-link" href="../animations/lecture-22.html#splits" target="_blank">Animation</a>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="Failure condition &middot; a random split over interactions">
+  <h2>A random split over interactions</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition</span>
+    Split a user&rsquo;s interactions at random and the model is trained on what they did afterwards and tested on what they did before. The score improves, the protocol is the reason, and no error is raised because every row is genuinely that user&rsquo;s.
+  </div>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="Decision 2 · Against what is it ranked">
+  <h2>Decision 2 · Against what is it ranked</h2>
+  <table class="smaller">
+    <tr><th></th><th>Full catalogue</th><th>Sampled, 100 negatives</th></tr>
+    <tr><td>Candidates ranked</td><td class="num">3,706</td><td class="num">101</td></tr>
+    <tr><td>Cost</td><td class="small">score every item</td><td class="small">score 101</td></tr>
+    <tr><td>Matches deployment</td><td class="num hit">yes &mdash; the system ranks the catalogue</td><td class="num fail">no</td></tr>
+    <tr><td>Why anyone does it</td><td class="small">&mdash;</td><td class="small">it was expensive, once</td></tr>
+  </table>
+  <p class="small">Sampling was a computational shortcut from a time when
+  scoring a catalogue was expensive. Ranking one held-out item against 100
+  random others is a far easier task than ranking it against
+  3,706 &mdash; and the 100 are drawn uniformly, so they are
+  mostly obscure films nobody would recommend.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="The experiment">
+  <h2>The experiment</h2>
+  <ul class="tight small">
+    <li>One model: a rank-32 factorisation of the binarised interaction matrix</li>
+    <li>One dataset: MovieLens 1M, 575,281 positive
+        interactions</li>
+    <li>One baseline: recommend the most popular items, minus what the user has
+        already seen</li>
+    <li>Four protocols: {random, temporal} &times; {full, sampled&nbsp;100}</li>
+  </ul>
+  <p class="small">Everything is held fixed except the protocol. Whatever the
+  numbers do, <strong>the model did not change</strong>.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 20 -->
+<section data-menu-title="Predict the four numbers">
+  <h2>Predict the four numbers</h2>
+  <p class="small">Before the table. You have the pieces:</p>
+  <ul class="tight small">
+    <li>3,706 films in the catalogue, one right answer</li>
+    <li>Sampling replaces that catalogue with 101 candidates</li>
+    <li>A random split lets the model see the user&rsquo;s later choices</li>
+  </ul>
+  <p class="small">Which of the two decisions do you expect to matter more?
+  And &mdash; the question that turns out to be the interesting one &mdash; do
+  you expect the <em>ordering</em> of the two methods to survive both?</p>
+  <p class="small muted">Both effects are large; one of them is much larger. The
+  reason to guess first is to notice, afterwards, that the guess was not obvious
+  &mdash; because a protocol that produces a wrong answer does not feel wrong
+  from the inside.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="The table">
+  <h2>The table</h2>
+  <table>
+    <tr><th>HR@10</th><th class="num">Full catalogue</th><th class="num">Sampled 100</th></tr>
+    <tr><td><strong>Temporal</strong> &middot; factorisation</td><td class="num fail">0.0926</td><td class="num">0.6792</td></tr>
+    <tr><td><strong>Temporal</strong> &middot; popularity</td><td class="num">0.0404</td><td class="num">0.4864</td></tr>
+    <tr><td><strong>Random</strong> &middot; factorisation</td><td class="num">0.2132</td><td class="num hit">0.8102</td></tr>
+    <tr><td><strong>Random</strong> &middot; popularity</td><td class="num">0.0879</td><td class="num">0.6186</td></tr>
+  </table>
+  <p class="small fail">The same model on the same data scores
+  <strong>0.0926</strong> and
+  <strong>0.8102</strong> &mdash; a factor of
+  <strong>8.8</strong>. Nothing about
+  the model changed. Only the two sentences describing how it was scored.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Take that apart · the split">
+  <h2>Take that apart · the split</h2>
+  <table class="smaller">
+    <tr><th>HR@10, full catalogue</th><th class="num">Temporal</th><th class="num">Random</th><th class="num">Ratio</th></tr>
+    <tr><td>Factorisation</td><td class="num">0.0926</td><td class="num">0.2132</td><td class="num fail">&times;2.30</td></tr>
+    <tr><td>Popularity</td><td class="num">0.0404</td><td class="num">0.0879</td><td class="num fail">&times;2.18</td></tr>
+  </table>
+  <p class="small">Switching from a temporal to a random split
+  <strong>more than doubles</strong> both numbers, and does it to the
+  personalised model and the unpersonalised baseline alike.</p>
+  <p class="small">That last part is the tell. If the gain were the model
+  learning something, it would not lift a popularity list by the same factor.
+  It is the <em>task</em> getting easier: predicting a randomly chosen item from
+  a history you have already seen most of.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 23 -->
+<section data-menu-title="How large are modelling gains, for comparison?">
+  <h2>How large are modelling gains, for comparison?</h2>
+  <p class="small">To read the protocol effects, you need a sense of what a
+  <em>real</em> improvement looks like in this field.</p>
+  <ul class="tight small">
+    <li>A new architecture reporting a 5&ndash;10% relative gain on HR@10 is a
+        publishable result</li>
+    <li>Our two protocol decisions moved HR@10 by
+        <strong>130%</strong> and
+        <strong>641%</strong>
+        relative, on an unchanged model</li>
+  </ul>
+  <p class="small fail">The undocumented choices are an order of magnitude
+  larger than the documented contributions. That is the whole reproducibility
+  problem in one comparison, and it is why the reproducibility study found what it found.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Take that apart · the sampling">
+  <h2>Take that apart · the sampling</h2>
+  <table class="smaller">
+    <tr><th>HR@10, temporal split</th><th class="num">Full</th><th class="num">Sampled 100</th><th class="num">Ratio</th></tr>
+    <tr><td>Factorisation</td><td class="num">0.0926</td><td class="num">0.6792</td><td class="num fail">&times;7.3</td></tr>
+    <tr><td>Popularity</td><td class="num">0.0404</td><td class="num">0.4864</td><td class="num fail">&times;12.0</td></tr>
+  </table>
+  <p class="small">Sampling is the larger effect by far. HR@10 against 100
+  random negatives asks &ldquo;is the right item in the top ten of
+  <strong>101</strong>?&rdquo; &mdash; and ten of 101 is already a tenth of the
+  candidate set.</p>
+  <p class="small">A <em>random</em> ranker scores 0.0990 under this
+  protocol. Against the full catalogue it scores about
+  0.0027. The floor moved by a factor of
+  37, and every method rides up with it.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Why sampling flatters unequally">
+  <h2>Why sampling flatters unequally</h2>
+  <p class="small">The 100 negatives are drawn uniformly, and the catalogue is
+  mostly tail: the top 1% of films hold
+  8.7% of interactions.</p>
+  <ul class="tight small">
+    <li>So a uniform sample of 100 contains, in expectation, about
+        1 of the head films &mdash; the only items a
+        user might plausibly have chosen instead</li>
+    <li>A <strong>popularity</strong> model is competing against almost no
+        popular items, so it wins easily</li>
+    <li>A model whose skill is discriminating <em>among plausible</em> items has
+        nothing to discriminate</li>
+  </ul>
+  <p class="small fail">The distortion therefore depends on what kind of model
+  you have, which is exactly the condition under which a metric can reverse an
+  ordering. A bias that were uniform would at least preserve rankings.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="What is stable across protocols">
+  <h2>What is stable across protocols</h2>
+  <table class="smaller">
+    <tr><th>Protocol</th><th class="num">Factorisation ÷ popularity</th></tr>
+    <tr><td>Temporal, full catalogue</td><td class="num hit">&times;2.29</td></tr>
+    <tr><td>Random, full catalogue</td><td class="num">&times;2.42</td></tr>
+    <tr><td>Temporal, sampled 100</td><td class="num">&times;1.40</td></tr>
+    <tr><td>Random, sampled 100</td><td class="num">&times;1.31</td></tr>
+  </table>
+  <p class="small">The absolute numbers spanned a factor of
+  8.8. The <em>ratio</em> to the
+  baseline spans far less &mdash; from
+  &times;1.31
+  to &times;2.42.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">Hence the practical rule</span>
+    <strong>Report the baseline in the same table, under the same protocol.</strong>
+    It does not repair the protocol, and it does make your number readable by
+    someone whose protocol differs &mdash; which is everyone.
+  </div>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="What the numbers actually license">
+  <h2>What the numbers actually license</h2>
+  <ul class="tight small">
+    <li>Under the honest protocol &mdash; temporal, full catalogue &mdash; the
+        factorisation scores 0.0926 and popularity
+        0.0404. <strong>The model is worth
+        2.3 times the baseline</strong>, and
+        that is the real result</li>
+    <li>Every other number in the table is larger and means less</li>
+    <li>NDCG@10 tells the same story: 0.0464 against
+        0.0196</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The honest headline</span>
+    &ldquo;A rank-32 factorisation places the user&rsquo;s next film in the top
+    ten <strong>9.3%</strong> of the time, against
+    <strong>4.0%</strong> for a popularity list, under a
+    temporal split with the full catalogue ranked.&rdquo; Every clause is load
+    bearing.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 28 -->
+<section data-menu-title="The mean hides the users">
+  <h2>The mean hides the users</h2>
+  <p class="small">HR@10 per user is 0 or 1. A mean of
+  0.0926 therefore means precisely this: the held-out film was
+  in the top ten for <strong>9.3% of users</strong> and not
+  for the rest.</p>
+  <ul class="tight small">
+    <li>There is no partial credit and no distribution to inspect &mdash; the
+        mean <em>is</em> the proportion</li>
+    <li>Which makes it honest, and makes its confidence interval computable:
+        it is a proportion over 6,040 users</li>
+    <li>NDCG@10 does have a spread, and it is rarely reported</li>
+  </ul>
+  <p class="small muted">Worth saying because &ldquo;report the variance&rdquo;
+  is good advice that means different things for different metrics. For HR the
+  right companion is an interval; for NDCG it is a distribution.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 29 -->
+<section data-menu-title="So what should you actually do?">
+  <h2>So what should you actually do?</h2>
+  <ol class="tight small">
+    <li><strong>Rank the full catalogue.</strong> It is affordable now; the
+        shortcut is a historical artefact</li>
+    <li><strong>Split in time</strong>, per user, and say so</li>
+    <li><strong>Include popularity</strong> and a tuned classical baseline in
+        the same table</li>
+    <li><strong>Never quote a number from another paper</strong> into your table
+        without re-running it under your protocol</li>
+    <li><strong>Report coverage and the popularity profile</strong> beside the
+        accuracy metric</li>
+  </ol>
+  <p class="small">All five are cheap. None of them is standard. Every one of
+  them can only make your headline number smaller, which is the whole
+  difficulty.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="The feedback loop">
+  <h2>The feedback loop</h2>
+  <p class="small">A recommender is not an observer of its data. It
+  <strong>produces</strong> it:</p>
+  <ol class="tight small">
+    <li>The system recommends popular items, because they are the safe bet</li>
+    <li>Users interact with what they are shown &mdash; they cannot interact
+        with what they are not</li>
+    <li>Those interactions become the next training set</li>
+    <li>Which makes the popular items more popular still</li>
+  </ol>
+  <div class="panel panel-when">
+    <span class="panel-title">Nothing in the objective notices</span>
+    Every offline metric in this lecture is computed on interactions produced by
+    whatever system was running at the time. A model that reproduces the old
+    system&rsquo;s behaviour scores well, and a model that would have shown
+    something better scores badly &mdash; because the evidence for that
+    something was never collected.
+  </div>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="The long tail, and who is served">
+  <h2>The long tail, and who is served</h2>
+  <ul class="tight small">
+    <li>The top 1% of films hold
+        8.7% of interactions, and
+        17.9% of films have fewer than twenty</li>
+    <li>Recommending from the head is <em>correct</em> often enough to score
+        well &mdash; popularity alone reaches 0.0404 honestly
+        measured</li>
+    <li>And it is worth nothing to the user, who had already heard of those
+        films</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">The metric cannot see usefulness</span>
+    HR@10 gives full credit for a correct popular recommendation and the same
+    credit for a correct obscure one. If what you value is discovery, you must
+    <strong>measure something else as well</strong> &mdash; coverage, the
+    popularity distribution of what you recommend, the fraction of the catalogue
+    ever shown.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 32 -->
+<section data-menu-title="What to report, beside the metric">
+  <h2>What to report, beside the metric</h2>
+  <ul class="tight small">
+    <li><strong>Catalogue coverage</strong> &mdash; what fraction of items are
+        ever in anyone&rsquo;s top ten. A model with a great HR@10 and 2%
+        coverage is a popularity list with extra steps</li>
+    <li><strong>Popularity profile</strong> &mdash; the distribution of
+        recommended items&rsquo; interaction counts, against the
+        catalogue&rsquo;s</li>
+    <li><strong>Per-user spread</strong>, not just the mean &mdash; a mean HR of
+        0.09 can be most users at zero and a few at one</li>
+    <li><strong>The protocol</strong>, in the sentence that states the number</li>
+  </ul>
+  <p class="small">None of these is hard. They are absent from papers because
+  nothing forces them to be present, and because each of them can only make the
+  headline look worse.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="Five questions for a recommender paper">
+  <h2>Five questions for a recommender paper</h2>
+  <ol class="tight small">
+    <li><strong>Full catalogue or sampled?</strong> If sampled, the number is
+        not comparable to anything</li>
+    <li><strong>Random split or temporal?</strong> A random split leaks the
+        user&rsquo;s future</li>
+    <li><strong>Is popularity in the table</strong>, under the same protocol?</li>
+    <li><strong>Were the baselines tuned</strong> as carefully as the proposed
+        model, or quoted from elsewhere?</li>
+    <li><strong>Is there an online result?</strong> If not, the claim is about a
+        log, not about users</li>
+  </ol>
+  <p class="small muted">Five questions, and in the reproducibility study most
+  papers failed at least two.</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="And then: none of it is the real test">
+  <h2>And then: none of it is the real test</h2>
+  <p class="small">Every number in this lecture is <strong>offline</strong>:
+  computed on a log, about a system that was never run.</p>
+  <ul class="tight small">
+    <li>The only real measurement is an <strong>online experiment</strong> with
+        users, and it measures something different &mdash; whether people
+        engaged, returned, cancelled</li>
+    <li>Offline and online results correlate weakly, and the literature is
+        candid about that</li>
+    <li>An offline metric is a <em>filter</em>: cheap enough to reject bad ideas
+        before they reach users, not evidence that a good one works</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The honest position</span>
+    Use offline evaluation to decide what is worth testing. Use an online test
+    to decide what is worth keeping. <strong>Do not use either to make the claim
+    the other one supports.</strong>
+  </div>
+</section>
+
+<!-- 35 -->
+
+<!-- 36 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-22.ipynb">Open Lecture 22 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> The four protocols
+        are four loops over the same fitted model</li>
+    <li>The four-cell table reproduced, so you compute the factor rather than
+        take it from a slide</li>
+    <li>The popularity baseline built first, because it is four lines and it is
+        the row that makes the rest legible</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Raise the sampled negatives from 100 to 1,000 and re-run. Predict the
+    direction first: the sampled column should move towards the full one.
+  </div>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Summary">
+  <h2>Summary</h2>
+  <ol class="tight small">
+    <li>A recommender ranks a catalogue for a user, so it is scored by
+        Lecture&nbsp;19&rsquo;s metrics on items the user had not touched
+        &mdash; not by RMSE</li>
+    <li>The two-tower model is Lecture&nbsp;20&rsquo;s bi-encoder with users in
+        place of queries; matrix factorisation is its lookup-table special
+        case, and feature towers are what buy the cold start</li>
+    <li>The <strong>protocol</strong> moved HR@10 from 0.0926
+        to 0.8102 on one unchanged model; the ratio to a popularity baseline
+        under the same protocol is far steadier, so it goes in the same
+        table</li>
+    <li>Popularity bias is a feedback loop no offline metric can see; offline
+        numbers filter ideas, and only an online test measures the thing you
+        care about</li>
+  </ol>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; the protocol, not the model</span>
+    One unchanged model reports HR@10 of 0.0926 or 0.8102 depending only on which interaction was held out and what it was ranked against. A recommender&rsquo;s headline is a property of the evaluation protocol at least as much as of the model, and the protocol is the half that goes unreported.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 22">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 22</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 22">
+  <h2>Exercises &mdash; Lecture 22</h2>
+  <ul class="ex-list">
+    <li>A recommender is scored by RMSE on held-out ratings. State why that is the wrong metric, using the set the model actually operates on. <span class="ex-marks">[5]</span></li>
+    <li>The same model scores HR@10 of 0.0926 and 0.8102 on the same data. Name the two decisions that differ, and which moves the number more. <span class="ex-marks">[5]</span></li>
+    <li>Explain why a sampled metric is not merely noisier than a full-catalogue one, and give the consequence for comparing two published systems. <span class="ex-marks">[5]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 23&rsquo;s deck.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Exercises · 22 (2)">
+  <h2>Exercises &mdash; Lecture 22 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>A new film arrives with a genre and a description but no interactions. State what a matrix factorisation can do with it, what a two-tower model with a feature tower can do, and why. <span class="ex-marks">[4]</span></li>
+    <li>A recommender is trained on interactions produced by an earlier recommender. Name the effect, and say why no offline metric computed on that log can detect it. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 23&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 21">
+  <p class="kicker">The five set at the end of Lecture 21</p>
+  <h1>Solutions<br>Lecture 21</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 21">
+  <h2>Solutions &mdash; Lecture 21</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> State why the truncated SVD cannot be applied directly to a ratings matrix, naming the condition of&hellip;</p>
+      <p class="lead"><span class="fix">The Frobenius norm sums over every entry, and 95.5% of them have no value.</span></p>
+      <ul class="tight smaller">
+        <li>The theorem is about one fully specified matrix</li>
+        <li>Filling the gaps changes the problem into a different one with a different answer</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> A rank-32 SVD of the zero-filled matrix scores worse than predicting one number for everybody. Explain how&hellip;</p>
+      <p class="lead"><span class="fix">It is optimal for the matrix it was given, and that matrix is mostly zeros.</span></p>
+      <ul class="tight smaller">
+        <li>Ratings run from 1 to 5, so a zero is off the scale rather than low</li>
+        <li>The approximation spends its capacity reproducing an assumption nobody made deliberately</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 21 (2)">
+  <h2>Solutions &mdash; Lecture 21 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> Fix $Q$ and write the subproblem ALS solves for one user's $p_u$. Identify it as a familiar estimator.</p>
+      <p class="lead"><span class="fix">$\min_{p_u} \sum_{i \in I_u}(r_{ui} - p_u \cdot q_i)^2 + \lambda\|p_u\|^2$ &mdash; a ridge regression.</span></p>
+      <ul class="tight smaller">
+        <li>The films this user rated are the rows of the design matrix and their ratings the target, so the missing entries never enter it</li>
+        <li>No user's solution depends on another's, so the whole $P$ step is one small regression per user</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> Validation RMSE is lowest at $d = 8$ and rises again by $d = 64$. State what this says about the rank, and on&hellip;</p>
+      <p class="lead"><span class="fix">The rank is a capacity parameter: more factors fit the training ratings better and held-out ratings worse. Choose it on ratings carved from the training half, and read the test set once.</span></p>
+      <ul class="tight smaller">
+        <li>It is the same U-curve as ridge's penalty, with the rank as the dial</li>
+        <li>A rank chosen on the test ratings makes the reported number optimistic</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 21 (3)">
+  <h2>Solutions &mdash; Lecture 21 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> Implicit feedback has no negatives. State why an objective over observed entries alone fails, and how BPR's&hellip;</p>
+      <p class="lead"><span class="fix">It is satisfied by predicting yes everywhere. BPR asks only that an observed item outrank a sampled unobserved one, so it models differences and never claims an absolute score.</span></p>
+      <ul class="tight smaller">
+        <li>Only positives exist, so there is nothing to push down</li>
+        <li>A sampled 'negative' may be an item the user would love: unobserved is not evidence of dislike</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 23 &middot; G&eacute;ron, Chapters 15&ndash;16</p>
+  <h1>Vision transformers<br>and multimodal retrieval</h1>
+  <p class="small">
+    A catalogue of images searched with words, scored with
+    Lecture&nbsp;19&rsquo;s recall@k and MRR<br>
+    Two encoders trained apart share no space; one trained contrastively does
+    &mdash; why normalise, and what the temperature does<br>
+    Zero-shot classification as a known-answer test, and the ways a retrieval
+    evaluation leaks
+  </p>
+  <p class="clock">Part VI begins</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 22
+  <span class="sep">&middot;</span> Recommender systems: neural, and evaluated honestly
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

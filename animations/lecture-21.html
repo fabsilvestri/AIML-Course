@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 21 · From ratings to factors — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 21 of Applications of Machine Learning: bias terms and shrinkage, why the SVD of a filled ratings matrix fails, and matrix factorisation by alternating least squares and by SGD.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-21.html">Lecture 21 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 21 · Animations</p>
+  <h1>Recommender systems: from ratings to factors</h1>
+  <p>One small ratings matrix, three ways of filling in what it does not say:
+  per-user and per-film offsets, the truncated SVD of a matrix whose gaps have
+  been filled, and a factorisation fitted to the observed ratings only. Press
+  <strong>Step</strong> to advance one unit and read what happened; press
+  <strong>Play</strong> to let it run.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture. The
+  same matrix is used throughout: 60 users, 30 films, 460 ratings on a 1–5
+  scale (25.6% of the cells), drawn from a rank-2 taste model with user and
+  film offsets and noise, rounded to whole stars. 92 ratings are held out at
+  random, each leaving its user and its film at least two training ratings,
+  and every RMSE called <em>held-out</em> is measured on them.</p>
+  <ul class="toc">
+    <li><a href="#bias">1 · How much is the user, how much the film</a></li>
+    <li><a href="#svd">2 · Why the SVD cannot simply be taken</a></li>
+    <li><a href="#mf">3 · Factorise only what was observed</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Bias terms and shrinkage
+     ====================================================================== -->
+<section class="anim" id="bias">
+  <h2><span class="num">1</span>How much is the user, how much the film</h2>
+  <p class="lede">The bias model $\hat r_{ui} = \mu + b_u + b_i$, fitted by
+  alternating closed forms: each <strong>Step</strong> solves for every user
+  offset $b_u$ with the film offsets held fixed, or the other way round. On the
+  left, every offset against the number of ratings it was estimated from; the
+  hollow marker is the plain average it would have been without shrinkage. On
+  the right, held-out RMSE for the baselines, the bias model as it is now, and
+  the factorisation of widget 3.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="bi-plots"></div>
+      <div class="narrate" id="bi-say"></div>
+      <div class="toolbar" id="bi-bar"></div>
+    </div>
+    <aside class="side" id="bi-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The bias model minimises, over the training ratings $\Omega$,</p>
+      $$\begin{aligned}J_b = &\sum_{(u,i)\in\Omega}\bigl(r_{ui} - \mu - b_u - b_i\bigr)^2 \\ &+ \lambda\Bigl(\sum_u b_u^2 + \sum_i b_i^2\Bigr).\end{aligned}$$
+      <p>With the $b_i$ fixed, $J_b$ is a quadratic in each $b_u$ alone;
+      setting its derivative to zero gives the slide&rsquo;s closed form</p>
+      $$b_u = \frac{\sum_{i\in I_u}(r_{ui} - \mu - b_i)}{|I_u| + \lambda},$$
+      <p>and symmetrically for $b_i$. Each half-step is therefore an exact
+      minimisation, so $J_b$ never rises. Writing the plain average as
+      $\bar e_u$, the shrunk offset is
+      $b_u = \frac{|I_u|}{|I_u|+\lambda}\,\bar e_u$: the fewer the ratings, the
+      harder the pull towards zero.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The funnel: on the left, the lines from hollow to filled markers
+        are longest at small counts. A user with two ratings keeps only
+        $2/(2+\lambda)$ of their average offset.</li>
+        <li>The fit settles within a few half-steps: there is no interaction
+        between users and films for the alternation to untangle.</li>
+        <li>Two averages and a shrinkage parameter close about half of the
+        gap between the global mean&rsquo;s held-out RMSE and the
+        factorisation&rsquo;s on this matrix — <em>gap closed</em> in the side
+        panel. On MovieLens the same comparison gave
+        79.9%.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Set $\lambda = 0$: the hollow and filled markers coincide, and the
+        offsets of the sparsest users and films spread the widest.</li>
+        <li>Set $\lambda = 30$: every offset is pulled towards zero, and the
+        held-out RMSE climbs back towards the global mean&rsquo;s.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · The SVD of a filled matrix
+     ====================================================================== -->
+<section class="anim" id="svd">
+  <h2><span class="num">2</span>Why the SVD cannot simply be taken</h2>
+  <p class="lede">Fill every empty cell with a number — zero, or the global mean
+  $\mu$ — and the truncated SVD gives the best rank-$d$ approximation of the
+  filled matrix. Each <strong>Step</strong> adds one singular component. Top:
+  the filled matrix and its rank-$d$ approximation (films down, users across;
+  darker is higher; red outlines are the held-out cells). Bottom: RMSE against
+  $d$, on the training ratings and on the held-out ones, for both fills.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="sv-maps"></div>
+      <div id="sv-curve"></div>
+      <div class="narrate" id="sv-say"></div>
+      <div class="toolbar" id="sv-bar"></div>
+    </div>
+    <aside class="side" id="sv-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>Write the filled matrix $M = U\Sigma V^{\top}$ with singular values
+      $\sigma_1 \ge \sigma_2 \ge \dots$, and keep $d$ of them:
+      $M_d = U_d\Sigma_d V_d^{\top} = M V_d V_d^{\top}$. Eckart–Young says
+      $M_d$ is the closest rank-$d$ matrix to $M$, with</p>
+      $$\lVert M - M_d\rVert_F^2 = \sum_{k>d}\sigma_k^2 ,$$
+      <p>so the error falls with every component and is zero at full rank.
+      The Frobenius norm sums over <em>every</em> cell, filled ones included,
+      with equal weight. The $\sigma_k^2$ are the eigenvalues of
+      $M^{\top}M$; the page finds them by Jacobi rotations.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The zero-filled approximation is dragged towards zero everywhere:
+        its held-out RMSE is more than twice the global mean&rsquo;s at every
+        rank.</li>
+        <li>The training RMSE falls as $d$ grows, for both fills. The held-out
+        RMSE does not follow: the extra components fit the fill and the noise,
+        not the tastes.</li>
+        <li>At full rank, $d = 30$, the SVD returns the matrix it was given,
+        so every held-out prediction is the fill value itself. The mean fill
+        then scores exactly the global mean&rsquo;s RMSE.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Play the mean fill to the end and find its best rank: on this
+        matrix it never reaches the bias model of widget 1, let alone the
+        factorisation fitted to the observed entries.</li>
+        <li>Switch the maps to the zero fill: four cells in five of the
+        filled matrix are zero, and the approximation spends its rank on
+        reproducing them.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     3 · Matrix factorisation by ALS and SGD
+     ====================================================================== -->
+<section class="anim" id="mf">
+  <h2><span class="num">3</span>Factorise only what was observed</h2>
+  <p class="lede">The full model $\hat r_{ui} = \mu + b_u + b_i + p_u\cdot q_i$
+  with $d = 2$: the biases are fitted first, as in widget 1 with
+  $\lambda = 3$, and the factors model what they leave. On the left, users
+  ($p_u$) and films ($q_i$) in the same plane; click a user to see its arrow and
+  the lines along which $p_u\cdot q$ is $-1$, $0$ and $+1$ star. On the right,
+  the first 12 users and 15 films: training ratings in bold, held-out cells
+  outlined in red with the prediction underneath, and every other cell showing
+  the model&rsquo;s prediction faintly.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="mf-plots"></div>
+      <div id="mf-curve"></div>
+      <div class="narrate" id="mf-say"></div>
+      <div class="toolbar" id="mf-bar"></div>
+    </div>
+    <aside class="side" id="mf-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>With $\tilde r_{ui} = r_{ui} - \mu - b_u - b_i$, ALS minimises</p>
+      $$\begin{aligned}J = &\sum_{(u,i)\in\Omega}\bigl(\tilde r_{ui} - p_u\cdot q_i\bigr)^2 \\ &+ \lambda\bigl(\lVert P\rVert_F^2 + \lVert Q\rVert_F^2\bigr).\end{aligned}$$
+      <p>Fixing $Q$ makes each $p_u$ a ridge regression; setting the gradient
+      to zero gives
+      $p_u = (Q_u^{\top}Q_u + \lambda I)^{-1}Q_u^{\top}\tilde r_u$, where $Q_u$
+      holds only the films $u$ rated. Each half-step is exact, so $J$ never
+      rises. SGD uses the slide&rsquo;s update, $e_{ui} = \tilde r_{ui} - p_u\cdot q_i$,
+      $p_u \mathrel{+}= \eta(e_{ui}q_i - \lambda p_u)$,
+      $q_i \mathrel{+}= \eta(e_{ui}p_u - \lambda q_i)$. That applies $\lambda$
+      once per <em>rating</em>, the penalty
+      $\lambda(\lVert p_u\rVert^2 + \lVert q_i\rVert^2)$ inside the sum, so
+      its $\lambda$ has its own scale.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>With ALS, $J$ falls at every half-step — the narration checks it —
+        while the held-out RMSE is free to rise.</li>
+        <li>Each user&rsquo;s predictions are projections: films on the
+        &ldquo;$+1$&rdquo; line are predicted one star above the user&rsquo;s
+        and the film&rsquo;s offsets.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>With ALS, set $\lambda$ to its minimum and play: the training RMSE
+        stays low, but the held-out RMSE climbs far above the bias
+        model&rsquo;s. A user with two training ratings gives two equations
+        for two unknowns, is fitted exactly, and has learned nothing.</li>
+        <li>Switch to SGD, set its $\lambda$ to the minimum and play: the
+        held-out RMSE bottoms out and then rises while the training RMSE keeps
+        falling. The epoch count is a capacity parameter too.</li>
+        <li>At the default settings, play ALS and then SGD to the end and
+        compare <em>best held-out so far</em>: different routes, within a
+        hundredth of each other. SGD&rsquo;s held-out RMSE then drifts up as
+        the epochs continue.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 21 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  /* ======================================================================
+     The shared matrix
+     ====================================================================== */
+  // Ratings from a rank-2 taste model plus user and film offsets and noise,
+  // rounded to whole stars and observed unevenly: some users and films are
+  // far more active than others.
+  var DATA = (function () {
+    var R = A.rng(5), m = 60, n = 30, density = 0.3, noise = 0.4;
+    var P = A.range(m).map(function () { return [R.n(0, 0.9), R.n(0, 0.9)]; });
+    var Q = A.range(n).map(function () { return [R.n(0, 0.9), R.n(0, 0.9)]; });
+    var bu = A.range(m).map(function () { return R.n(0, 0.5); });
+    var bi = A.range(n).map(function () { return R.n(0, 0.5); });
+    var act = A.range(m).map(function () { return Math.exp(R.n(0, 0.7)); });
+    var pop = A.range(n).map(function () { return Math.exp(R.n(0, 0.7)); });
+    var ma = A.mean(act), mp = A.mean(pop);
+    function rate(u, i) {
+      return Math.min(5, Math.max(1, Math.round(3.6 + bu[u] + bi[i] + A.dot(P[u], Q[i]) + R.n(0, noise))));
+    }
+    var seen = {}, obs = [];
+    for (var u = 0; u < m; u++) for (var i = 0; i < n; i++) {
+      if (R.u() < Math.min(0.95, density * act[u] / ma * pop[i] / mp)) {
+        obs.push({ u: u, i: i, r: rate(u, i) }); seen[u + "," + i] = 1;
+      }
+    }
+    function count(f) { return obs.filter(f).length; }
+    // Every user and every film gets at least three ratings.
+    for (u = 0; u < m; u++) while (count(function (o) { return o.u === u; }) < 3) {
+      i = Math.floor(R.u() * n);
+      if (!seen[u + "," + i]) { seen[u + "," + i] = 1; obs.push({ u: u, i: i, r: rate(u, i) }); }
+    }
+    for (i = 0; i < n; i++) while (count(function (o) { return o.i === i; }) < 3) {
+      u = Math.floor(R.u() * m);
+      if (!seen[u + "," + i]) { seen[u + "," + i] = 1; obs.push({ u: u, i: i, r: rate(u, i) }); }
+    }
+    // 80/20 at random; a held-out rating must leave its user and its film
+    // at least two training ratings.
+    R.shuffle(obs);
+    var nTest = Math.round(0.2 * obs.length), test = [], train = [];
+    var cu = new Array(m).fill(0), ci = new Array(n).fill(0);
+    obs.forEach(function (o) { cu[o.u]++; ci[o.i]++; });
+    obs.forEach(function (o) {
+      if (test.length < nTest && cu[o.u] > 2 && ci[o.i] > 2) { test.push(o); cu[o.u]--; ci[o.i]--; }
+      else train.push(o);
+    });
+    var byU = A.range(m).map(function () { return []; }), byI = A.range(n).map(function () { return []; });
+    train.forEach(function (o) { byU[o.u].push(o); byI[o.i].push(o); });
+    var cell = {};
+    train.forEach(function (o) { cell[o.u + "," + o.i] = { r: o.r, test: false }; });
+    test.forEach(function (o) { cell[o.u + "," + o.i] = { r: o.r, test: true }; });
+    return { m: m, n: n, train: train, test: test, byU: byU, byI: byI, cell: cell,
+             mu: A.mean(train.map(function (o) { return o.r; })) };
+  })();
+  var MU = DATA.mu;
+
+  function rmse(set, f) { return Math.sqrt(A.mean(set.map(function (o) { var e = o.r - f(o); return e * e; }))); }
+
+  // The bias model by alternating closed forms. side: "u" or "i".
+  function biasHalf(b, side, lam) {
+    if (side === "u") {
+      for (var u = 0; u < DATA.m; u++) {
+        var s = 0; DATA.byU[u].forEach(function (o) { s += o.r - MU - b.bi[o.i]; });
+        b.raw[u] = s / DATA.byU[u].length;
+        b.bu[u] = s / (DATA.byU[u].length + lam);
+      }
+    } else {
+      for (var i = 0; i < DATA.n; i++) {
+        var t = 0; DATA.byI[i].forEach(function (o) { t += o.r - MU - b.bu[o.u]; });
+        b.rawI[i] = t / DATA.byI[i].length;
+        b.bi[i] = t / (DATA.byI[i].length + lam);
+      }
+    }
+  }
+  function newBias() {
+    return { bu: new Array(DATA.m).fill(0), bi: new Array(DATA.n).fill(0),
+             raw: new Array(DATA.m).fill(0), rawI: new Array(DATA.n).fill(0) };
+  }
+  function fitBias(lam) {
+    var b = newBias();
+    for (var k = 0; k < 20; k++) { biasHalf(b, "u", lam); biasHalf(b, "i", lam); }
+    return b;
+  }
+  // The biases widget 3 factorises around, and the baselines everyone cites.
+  var BIAS = fitBias(3);
+  function base(o) { return MU + BIAS.bu[o.u] + BIAS.bi[o.i]; }
+  var RMSE_MEAN = rmse(DATA.test, function () { return MU; });
+  var RMSE_BIAS = rmse(DATA.test, base);
+
+  // ALS half-step on the residuals of the bias model, d = 2.
+  function alsHalf(F, side, lam) {
+    var X = side === "P" ? F.P : F.Q, Y = side === "P" ? F.Q : F.P, lists = side === "P" ? DATA.byU : DATA.byI;
+    for (var a = 0; a < X.length; a++) {
+      var M = [[lam, 0], [0, lam]], v = [0, 0];
+      lists[a].forEach(function (o) {
+        var y = Y[side === "P" ? o.i : o.u], t = o.r - base(o);
+        v[0] += y[0] * t; v[1] += y[1] * t;
+        M[0][0] += y[0] * y[0]; M[0][1] += y[0] * y[1]; M[1][0] += y[1] * y[0]; M[1][1] += y[1] * y[1];
+      });
+      X[a] = A.solve(M, v) || [0, 0];
+    }
+  }
+  function initFactors(seed) {
+    var R = A.rng(seed);
+    return { P: A.range(DATA.m).map(function () { return [R.n(0, 0.3), R.n(0, 0.3)]; }),
+             Q: A.range(DATA.n).map(function () { return [R.n(0, 0.3), R.n(0, 0.3)]; }) };
+  }
+  function mfPredict(F, o) { return base(o) + A.dot(F.P[o.u], F.Q[o.i]); }
+  // The factorisation the other widgets compare against: ALS, lambda = 1.
+  var RMSE_MF = (function () {
+    var F = initFactors(77);
+    for (var h = 0; h < 40; h++) alsHalf(F, h % 2 ? "Q" : "P", 1);
+    return rmse(DATA.test, function (o) { return mfPredict(F, o); });
+  })();
+
+  /* ======================================================================
+     1 · Bias terms
+     ====================================================================== */
+  (function () {
+    var S = { lam: 3 }, st, pl;
+    var cntU = DATA.byU.map(function (l) { return l.length; }), cntI = DATA.byI.map(function (l) { return l.length; });
+    var userMean = DATA.byU.map(function (l) { return A.mean(l.map(function (o) { return o.r; })); });
+    var filmMean = DATA.byI.map(function (l) { return A.mean(l.map(function (o) { return o.r; })); });
+    var RMSE_USER = rmse(DATA.test, function (o) { return userMean[o.u]; });
+    var RMSE_FILM = rmse(DATA.test, function (o) { return filmMean[o.i]; });
+    var xmax = Math.max(Math.max.apply(null, cntU), Math.max.apply(null, cntI)) + 2;
+
+    function J(b) {
+      var s = 0;
+      DATA.train.forEach(function (o) { var e = o.r - MU - b.bu[o.u] - b.bi[o.i]; s += e * e; });
+      return s + S.lam * (A.dot(b.bu, b.bu) + A.dot(b.bi, b.bi));
+    }
+
+    var plots = A.$("#bi-plots");
+    var pF = A.plot(plots, { x: [0, xmax], y: [-2.2, 2.2], w: 420, h: 380, xlabel: "ratings it was estimated from",
+                             ylabel: "offset (stars)", zero: true,
+                             caption: "Every offset against its number of ratings" });
+    var cB = A.canvas(plots, { w: 420, h: 380, caption: "Held-out RMSE, lower is better" });
+
+    var side = A.$("#bi-side");
+    A.slider(side, { label: "Shrinkage $\\lambda$", min: 0, max: 30, step: 0.5, value: S.lam,
+                     fmt: function (v) { return fmt(v, 1); },
+                     onInput: function (v) { S.lam = v; pl.restart(true); } });
+    var ro = A.readout(side, [["k", "half-step"], ["mu", "$\\mu$ (training mean)"], ["J", "objective $J_b$"],
+                              ["bu", "$b_u$ lowest, highest"], ["bi", "$b_i$ lowest, highest"], ["tr", "RMSE, training"],
+                              ["te", "RMSE, held-out"], ["ve", "variance explained"],
+                              ["dc", "gap closed"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "a user, $b_u$" },
+                    { shape: "tri", cls: "pt c1", label: "a film, $b_i$" },
+                    { shape: "circle", cls: "pt c0 hollow", label: "plain average, no shrinkage" },
+                    { line: "line thin muted", label: "the shrinkage" },
+                    { line: "line math dash thin", label: "$c/(c+\\lambda)$: what an average of $+1$ keeps" }]);
+    var say = A.narrate("#bi-say");
+
+    function reset() { st = { b: newBias(), k: 0, J: [], last: null, side: null }; }
+    function step() {
+      var side = st.k % 2 === 0 ? "u" : "i", before = J(st.b), old = (side === "u" ? st.b.bu : st.b.bi).slice();
+      biasHalf(st.b, side, S.lam);
+      var now = side === "u" ? st.b.bu : st.b.bi, change = 0;
+      now.forEach(function (v, j) { change = Math.max(change, Math.abs(v - old[j])); });
+      st.k++; st.side = side;
+      st.last = { before: before, after: J(st.b), change: change };
+      return !(st.k > 2 && change < 1e-4) && st.k < 40;
+    }
+
+    function render() {
+      var b = st.b, pred = function (o) { return MU + b.bu[o.u] + b.bi[o.i]; };
+      var te = rmse(DATA.test, pred), tr = rmse(DATA.train, pred);
+      pF.clear();
+      var showU = st.side !== "i", showI = st.side !== "u";
+      cntU.forEach(function (c, u) {
+        if (st.side === "u") pF.line(c - 0.15, b.raw[u], c - 0.15, b.bu[u], "line thin muted");
+        if (st.side === "u") pF.dot(c - 0.15, b.raw[u], { r: 3.5, cls: "pt c0 hollow" });
+        pF.dot(c - 0.15, b.bu[u], { r: 3.5, cls: "pt c0" + (showU ? "" : " dim") });
+      });
+      cntI.forEach(function (c, i) {
+        if (st.side === "i") pF.line(c + 0.15, b.rawI[i], c + 0.15, b.bi[i], "line thin muted");
+        if (st.side === "i") pF.dot(c + 0.15, b.rawI[i], { shape: "tri", r: 3.5, cls: "pt c1 hollow" });
+        pF.dot(c + 0.15, b.bi[i], { shape: "tri", r: 3.5, cls: "pt c1" + (showI ? "" : " dim") });
+      });
+      // The shrinkage factor c/(c + lambda), as a curve: an offset whose
+      // plain average is +1 star ends here.
+      if (S.lam > 0) {
+        var xs = A.linspace(1, xmax, 60);
+        pF.path(xs.map(function (c) { return [c, c / (c + S.lam)]; }), "line math dash thin");
+        pF.text(xmax, xmax / (xmax + S.lam), "c/(c+λ)", { anchor: "end", dy: -6, cls: "lbl-math" });
+      }
+
+      // Bars.
+      cB.clear();
+      var rows = [["global mean μ", RMSE_MEAN, "fill-ink"], ["this user’s mean", RMSE_USER, "fill-ink"],
+                  ["this film’s mean", RMSE_FILM, "fill-ink"], ["bias model, now", te, "fill-primary"],
+                  ["factorisation (widget 3)", RMSE_MF, "fill-ok"]];
+      var x0 = 160, wmax = 220, top = 1.2;
+      rows.forEach(function (rw, j) {
+        var y = 40 + j * 62, w = wmax * Math.min(rw[1], top) / top;
+        cB.text(x0 - 10, y + 22, rw[0], "lbl", "end");
+        A.el("rect", { x: x0, y: y, width: w, height: 34, class: rw[2], opacity: rw[2] === "fill-ink" ? 0.35 : 0.85 }, cB.g);
+        cB.text(x0 + w + 6, y + 22, fmt(rw[1], 3), "mono");
+      });
+      A.el("line", { x1: x0, x2: x0, y1: 30, y2: 352, class: "axis" }, cB.g);
+      cB.text(x0, 370, "0", "tick", "middle");
+      cB.text(x0 + wmax, 370, fmt(top, 1), "tick", "middle");
+
+      var ve = 1 - te * te / (RMSE_MEAN * RMSE_MEAN), dc = (RMSE_MEAN - te) / (RMSE_MEAN - RMSE_MF);
+      ro.set("k", String(st.k));
+      ro.set("mu", fmt(MU, 3));
+      ro.set("J", sig(J(b), 4));
+      ro.set("bu", fmt(Math.min.apply(null, b.bu), 2) + ", " + fmt(Math.max.apply(null, b.bu), 2));
+      ro.set("bi", fmt(Math.min.apply(null, b.bi), 2) + ", " + fmt(Math.max.apply(null, b.bi), 2));
+      ro.set("tr", fmt(tr, 3));
+      ro.set("te", fmt(te, 3), te < RMSE_MEAN ? "good" : "");
+      ro.set("ve", A.pct(ve, 1));
+      ro.set("dc", A.pct(dc, 1));
+
+      if (st.k === 0) {
+        say.say("<span class='k'>Start.</span> Every offset is zero, so every prediction is the training mean " +
+                K("\\mu = " + fmt(MU, 3)) + ", held-out RMSE " + fmt(te, 4) + ". Press <em>Step</em> to solve for all " +
+                DATA.m + " user offsets at once.");
+      } else {
+        var L = st.last, who = st.side === "u" ? DATA.m + " user offsets " + K("b_u") + ", with the film offsets held fixed"
+                                               : DATA.n + " film offsets " + K("b_i") + ", with the user offsets held fixed";
+        say.say("<span class='k'>Half-step " + st.k + ".</span> Solved for all " + who + ": each is the average residual divided by " +
+                K("|I| + \\lambda") + " rather than " + K("|I|") + ". " + K("J_b") + " " + sig(L.before, 5) + " → " + sig(L.after, 5) +
+                (L.after <= L.before + 1e-9 ? " (it cannot rise)." : " — <strong>it rose</strong>, which an exact minimisation cannot do.") +
+                " Largest change " + sig(L.change, 3) + "; held-out RMSE " + fmt(te, 4) + "." +
+                (L.change < 1e-4 && st.k > 2 ? " <strong>Converged</strong>: no offset moved by more than " + K("10^{-4}") + "." : ""));
+      }
+    }
+
+    pl = A.player("#bi-bar", { step: step, reset: reset, render: render, fps: 2, unit: "half-step" });
+  })();
+
+  /* ======================================================================
+     2 · The SVD of a filled matrix
+     ====================================================================== */
+  (function () {
+    var m = DATA.m, n = DATA.n;
+
+    // Eigen-decomposition of a symmetric matrix by cyclic Jacobi rotations.
+    function jacobi(Sm) {
+      var N = Sm.length, a = Sm.map(function (r) { return r.slice(); });
+      var V = A.range(N).map(function (i) { return A.range(N).map(function (j) { return i === j ? 1 : 0; }); });
+      for (var sweep = 0; sweep < 60; sweep++) {
+        var off = 0;
+        for (var i = 0; i < N; i++) for (var j = i + 1; j < N; j++) off += a[i][j] * a[i][j];
+        if (off < 1e-20) break;
+        for (var p = 0; p < N; p++) for (var q = p + 1; q < N; q++) {
+          if (Math.abs(a[p][q]) < 1e-300) continue;
+          var th = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+          var t = (th >= 0 ? 1 : -1) / (Math.abs(th) + Math.sqrt(th * th + 1)), c = 1 / Math.sqrt(t * t + 1), s = t * c;
+          for (var k = 0; k < N; k++) { var akp = a[k][p], akq = a[k][q]; a[k][p] = c * akp - s * akq; a[k][q] = s * akp + c * akq; }
+          for (k = 0; k < N; k++) { var apk = a[p][k], aqk = a[q][k]; a[p][k] = c * apk - s * aqk; a[q][k] = s * apk + c * aqk; }
+          for (k = 0; k < N; k++) { var vkp = V[k][p], vkq = V[k][q]; V[k][p] = c * vkp - s * vkq; V[k][q] = s * vkp + c * vkq; }
+        }
+      }
+      var ev = A.range(N).map(function (i) { return a[i][i]; });
+      var ord = A.range(N).sort(function (x, y) { return ev[y] - ev[x]; });
+      return { vals: ord.map(function (i) { return Math.max(0, ev[i]); }),
+               vecs: ord.map(function (i) { return V.map(function (r) { return r[i]; }); }) };
+    }
+    // Everything about one fill: the matrix, its spectrum, and the RMSEs at
+    // every rank, so that stepping only reads them.
+    function prepare(fill) {
+      var M = A.range(m).map(function () { return new Array(n).fill(fill); });
+      DATA.train.forEach(function (o) { M[o.u][o.i] = o.r; });
+      var Sm = A.range(n).map(function (i) { return A.range(n).map(function (j) {
+        var s = 0; for (var u = 0; u < m; u++) s += M[u][i] * M[u][j]; return s; }); });
+      var E = jacobi(Sm);
+      // Coordinates of each row on the right singular vectors.
+      var coef = M.map(function (row) { return E.vecs.map(function (v) { return A.dot(row, v); }); });
+      function approx(d) {
+        return M.map(function (row, u) {
+          return A.range(n).map(function (j) { var s = 0; for (var k = 0; k < d; k++) s += coef[u][k] * E.vecs[k][j]; return s; });
+        });
+      }
+      var tr = [], te = [], fro = [];
+      for (var d = 0; d <= n; d++) {
+        var Md = approx(d);
+        tr.push(rmse(DATA.train, function (o) { return Md[o.u][o.i]; }));
+        te.push(rmse(DATA.test, function (o) { return Md[o.u][o.i]; }));
+        fro.push(Math.sqrt(A.sum(E.vals.slice(d))));
+      }
+      return { fill: fill, M: M, E: E, approx: approx, tr: tr, te: te, fro: fro };
+    }
+    var FILLS = { zero: prepare(0), mean: prepare(MU) };
+    var S = { show: "mean" }, st, pl;
+
+    var maps = A.$("#sv-maps");
+    var cMap = A.canvas(maps, { w: 860, h: 250 });
+    var curve = A.plot("#sv-curve", { x: [0, n], y: [0, 4], w: 860, h: 260, xlabel: "rank d",
+                                      ylabel: "RMSE", yticks: [0, 1, 2, 3, 4],
+                                      caption: "Solid: held-out ratings. Dashed: training ratings. Red: zero fill. Blue: mean fill." });
+
+    var side = A.$("#sv-side");
+    A.seg(side, { label: "Maps show", value: S.show, options: [["mean", "mean fill"], ["zero", "zero fill"]],
+                  hint: "Both fills are plotted below whichever is shown.",
+                  onChange: function (v) { S.show = v; render(); } });
+    var ro = A.readout(side, [["d", "rank $d$"], ["sig", "$\\sigma_d$"], ["fro", "$\\lVert M - M_d\\rVert_F$"],
+                              ["tr", "training RMSE"], ["te", "held-out RMSE"], ["best", "best held-out so far"],
+                              ["gm", "global mean, held-out"], ["bm", "bias model (widget 1)"],
+                              ["mf", "factorisation (widget 3)"]]);
+    A.legend(side, [{ line: "line acc", label: "zero fill, held-out" },
+                    { line: "line acc dash", label: "zero fill, training" },
+                    { line: "line", label: "mean fill, held-out" },
+                    { line: "line dash", label: "mean fill, training" },
+                    { line: "line ok thin", label: "factorisation of observed entries" },
+                    { line: "line ok dash thin", label: "bias model" },
+                    { line: "line thin muted dash", label: "global mean" }]);
+    var say = A.narrate("#sv-say");
+
+    function reset() { st = { d: 0 }; }
+    function step() { st.d++; return st.d < n; }
+
+    function heat(Mx, x0, y0, title) {
+      var cw = 6, chh = 6;
+      cMap.text(x0, y0 - 8, title, "axis-label");
+      for (var i = 0; i < n; i++) for (var u = 0; u < m; u++) {
+        var v = A.clamp(Mx[u][i], 0, 5) / 5;
+        if (v > 0.01) A.el("rect", { x: x0 + u * cw, y: y0 + i * chh, width: cw, height: chh,
+                                     class: "fill-primary", opacity: (0.9 * v).toFixed(3) }, cMap.g);
+      }
+      DATA.test.forEach(function (o) {
+        A.el("rect", { x: x0 + o.u * cw + 0.5, y: y0 + o.i * chh + 0.5, width: cw - 1, height: chh - 1, class: "line acc thin" }, cMap.g);
+      });
+      A.el("rect", { x: x0, y: y0, width: m * cw, height: n * chh, class: "frame" }, cMap.g);
+    }
+
+    function render() {
+      var d = st.d, F = FILLS[S.show];
+      cMap.clear();
+      heat(F.M, 20, 30, "The filled matrix M (" + (S.show === "mean" ? "gaps = μ = " + fmt(MU, 2) : "gaps = 0") + ")");
+      heat(F.approx(d), 460, 30, "Its best rank-" + d + " approximation M_d");
+      cMap.text(20, 228, "films ↓ · users →", "lbl-sm");
+      cMap.text(460, 228, "shade: 0 (blank) to 5 stars (darkest); red outline: a held-out cell", "lbl-sm");
+
+      curve.clear();
+      [[RMSE_MEAN, "line thin muted dash", "global mean"], [RMSE_BIAS, "line ok dash thin", "bias model"],
+       [RMSE_MF, "line ok thin", "factorisation"]].forEach(function (r) {
+        curve.line(0, r[0], n, r[0], r[1]);
+      });
+      var xs = A.range(d + 1);
+      [["zero", "acc"], ["mean", ""]].forEach(function (f) {
+        var Fi = FILLS[f[0]];
+        curve.path(xs.map(function (k) { return [k, Fi.te[k]]; }), "line " + f[1]);
+        curve.path(xs.map(function (k) { return [k, Fi.tr[k]]; }), "line dash thin " + f[1]);
+        curve.dot(d, Fi.te[d], { r: 4.5, shape: f[0] === "zero" ? "tri" : "circle", cls: f[0] === "zero" ? "fill-acc" : "pt c0" });
+      });
+      curve.line(d, 0, d, 4, "zero");
+
+      var best = 0;
+      for (var k = 1; k <= d; k++) if (F.te[k] < F.te[best]) best = k;
+      ro.set("d", d + " of " + n);
+      ro.set("sig", d ? sig(Math.sqrt(F.E.vals[d - 1]), 4) : "—");
+      ro.set("fro", sig(F.fro[d], 4));
+      ro.set("tr", fmt(F.tr[d], 3));
+      ro.set("te", fmt(F.te[d], 3), F.te[d] > RMSE_MEAN ? "bad" : "");
+      ro.set("best", fmt(F.te[best], 3) + " at d = " + best);
+      ro.set("gm", fmt(RMSE_MEAN, 3));
+      ro.set("bm", fmt(RMSE_BIAS, 3));
+      ro.set("mf", fmt(RMSE_MF, 3), "good");
+
+      var Z = FILLS.zero, Mf = FILLS.mean;
+      if (d === 0) {
+        say.say("<span class='k'>Start.</span> " + K("d = 0") + ": the approximation is the zero matrix, so every prediction is 0 stars and both fills score " +
+                fmt(Z.te[0], 3) + ". Of the " + m * n + " cells, " + DATA.train.length + " hold a training rating and the other " +
+                (m * n - DATA.train.length) + " hold the fill. Press <em>Step</em> to add the largest singular component.");
+      } else {
+        say.say("<span class='k'>Rank " + d + ".</span> Added " + K("\\sigma_{" + d + "} = " + sig(Math.sqrt(F.E.vals[d - 1]), 4)) +
+                " (" + (S.show === "mean" ? "mean" : "zero") + " fill); " + K("\\lVert M - M_d\\rVert_F") + " " + sig(F.fro[d - 1], 4) + " → " + sig(F.fro[d], 4) + ". " +
+                "Held-out RMSE: zero fill " + fmt(Z.te[d], 3) + ", mean fill " + fmt(Mf.te[d], 3) +
+                ", against " + fmt(RMSE_BIAS, 3) + " for the bias model and " + fmt(RMSE_MF, 3) + " for the factorisation." +
+                (d === n ? " At full rank " + K("M_d = M") + ": every held-out prediction is the fill, so the mean fill scores the global mean’s " +
+                           fmt(RMSE_MEAN, 3) + " exactly." : ""));
+      }
+    }
+
+    pl = A.player("#sv-bar", { step: step, reset: reset, render: render, fps: 3, unit: "component" });
+  })();
+
+  /* ======================================================================
+     3 · Matrix factorisation by ALS and by SGD
+     ====================================================================== */
+  (function () {
+    var S = { method: "als", lamA: 1, lamS: 0.05, eta: 0.05, seed: 77 }, st, pl, sel = 3;
+    var WU = 12, WI = 15;
+
+    function J(F) {
+      var s = 0;
+      DATA.train.forEach(function (o) { var e = o.r - mfPredict(F, o); s += e * e; });
+      F.P.forEach(function (p) { s += S.lamA * A.dot(p, p); });
+      F.Q.forEach(function (q) { s += S.lamA * A.dot(q, q); });
+      return s;
+    }
+    function sgdEpoch(F, ep) {
+      var lam = S.lamS, eta = S.eta;
+      A.rng(500 + ep).shuffle(A.range(DATA.train.length)).forEach(function (k) {
+        var o = DATA.train[k], p = F.P[o.u], q = F.Q[o.i], e = o.r - base(o) - A.dot(p, q);
+        F.P[o.u] = [p[0] + eta * (e * q[0] - lam * p[0]), p[1] + eta * (e * q[1] - lam * p[1])];
+        F.Q[o.i] = [q[0] + eta * (e * p[0] - lam * q[0]), q[1] + eta * (e * p[1] - lam * q[1])];
+      });
+    }
+
+    var plots = A.$("#mf-plots");
+    var pF = A.plot(plots, { x: [-2.4, 2.4], y: [-2.4, 2.4], w: 400, h: 400, equal: true, zero: true,
+                             xlabel: "factor 1", ylabel: "factor 2",
+                             caption: "Users p_u and films q_i (click a user)" });
+    var cM = A.canvas(plots, { w: 460, h: 400, caption: "The first 12 users × 15 films" });
+    var curve = A.curve("#mf-curve", { y: [0, 1.6], ylabel: "RMSE", xlabel: "step", h: 150, n: 40, yticks: [0, 0.4, 0.8, 1.2, 1.6] });
+
+    var side = A.$("#mf-side");
+    A.seg(side, { label: "Method", value: "als", options: [["als", "ALS"], ["sgd", "SGD"]],
+                  hint: "ALS: one step is a half-sweep (all users, or all films). SGD: one step is an epoch over the training ratings.",
+                  onChange: function (v) { S.method = v; showSliders(); pl.restart(true); } });
+    var sA = A.slider(side, { label: "$\\lambda$ for ALS", min: 0.001, max: 30, value: S.lamA, log: true,
+                              fmt: function (v) { return sig(v, 2); },
+                              onInput: function (v) { S.lamA = v; pl.restart(true); } });
+    var sS = A.slider(side, { label: "$\\lambda$ for SGD (per rating)", min: 0.0001, max: 1, value: S.lamS, log: true,
+                              fmt: function (v) { return sig(v, 2); },
+                              onInput: function (v) { S.lamS = v; pl.restart(true); } });
+    var sE = A.slider(side, { label: "Learning rate $\\eta$", min: 0.005, max: 0.2, value: S.eta, log: true,
+                              fmt: function (v) { return sig(v, 2); },
+                              onInput: function (v) { S.eta = v; pl.restart(true); } });
+    A.seg(side, { label: "Initial factors", value: 77, options: [[77, "start A"], [78, "start B"]],
+                  onChange: function (v) { S.seed = v; pl.restart(true); } });
+    function showSliders() {
+      sA.el.style.display = S.method === "als" ? "" : "none";
+      sS.el.style.display = sE.el.style.display = S.method === "sgd" ? "" : "none";
+    }
+    showSliders();
+    var ro = A.readout(side, [["k", "step"], ["J", "objective $J$ (ALS)"], ["tr", "training RMSE"],
+                              ["te", "held-out RMSE"], ["best", "best held-out so far"], ["bm", "bias model alone"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "a user, $p_u$" },
+                    { shape: "tri", cls: "pt c1", label: "a film, $q_i$" },
+                    { line: "arrow", label: "the chosen user’s $p_u$" },
+                    { line: "line", label: "training RMSE" },
+                    { line: "line acc", label: "held-out RMSE" },
+                    { line: "line ok dash thin", label: "bias model alone" }]);
+    var say = A.narrate("#mf-say");
+
+    pF.onClick(function (x, y) {
+      var best = 0, bd = Infinity;
+      st.F.P.forEach(function (p, u) { var v = Math.hypot(p[0] - x, p[1] - y); if (v < bd) { bd = v; best = u; } });
+      sel = best; render();
+    });
+
+    function measure() {
+      var F = st.F;
+      st.tr.push(rmse(DATA.train, function (o) { return mfPredict(F, o); }));
+      st.te.push(rmse(DATA.test, function (o) { return mfPredict(F, o); }));
+    }
+    function reset() {
+      st = { F: initFactors(S.seed), k: 0, tr: [], te: [], last: null };
+      measure();
+    }
+    function step() {
+      var before = J(st.F), side = null;
+      if (S.method === "als") { side = st.k % 2 === 0 ? "P" : "Q"; alsHalf(st.F, side, S.lamA); }
+      else sgdEpoch(st.F, st.k);
+      st.k++;
+      measure();
+      st.last = { before: before, after: J(st.F), side: side };
+      var bad = !isFinite(st.tr[st.tr.length - 1]) || st.tr[st.tr.length - 1] > 50;
+      if (bad) { st.diverged = true; return false; }
+      return st.k < (S.method === "als" ? 80 : 300);
+    }
+
+    function render() {
+      var F = st.F, n = st.tr.length - 1;
+      pF.clear();
+      var p = F.P[sel], pn = A.norm(p);
+      if (pn > 1e-6 && !st.diverged) {
+        [-1, 0, 1].forEach(function (lev) {
+          // The line {x : p.x = lev}: through lev p / |p|^2, along p's normal.
+          var c = [lev * p[0] / (pn * pn), lev * p[1] / (pn * pn)], u = [-p[1] / pn, p[0] / pn];
+          pF.line(c[0] - 6 * u[0], c[1] - 6 * u[1], c[0] + 6 * u[0], c[1] + 6 * u[1], lev ? "line thin muted dash" : "line thin muted");
+          if (Math.abs(c[0]) < 2.2 && Math.abs(c[1]) < 2.2)
+            pF.text(c[0] + 1.6 * u[0], c[1] + 1.6 * u[1], (lev > 0 ? "+" : lev < 0 ? "−" : "") + Math.abs(lev), { cls: "lbl-sm", dx: 3, dy: -4 });
+        });
+      }
+      F.Q.forEach(function (q) { pF.dot(q[0], q[1], { shape: "tri", r: 4.5, cls: "pt c1" }); });
+      F.P.forEach(function (pp, u) { pF.dot(pp[0], pp[1], { r: u === sel ? 6 : 3.5, cls: "pt c0" + (u === sel ? "" : " hollow") }); });
+      if (!st.diverged) pF.arrow(0, 0, p[0], p[1]);
+      pF.text(p[0], p[1], "user " + (sel + 1), { dx: 8, dy: -8, cls: "lbl" });
+
+      // The matrix window.
+      cM.clear();
+      var x0 = 54, y0 = 40, cw = 26, ch = 29;
+      for (var i = 0; i < WI; i++) cM.text(x0 + (i + 0.5) * cw, y0 - 10, String(i + 1), "tick", "middle");
+      cM.text(x0 + WI * cw / 2, 14, "films", "axis-label", "middle");
+      for (var u = 0; u < WU; u++) {
+        var y = y0 + u * ch;
+        cM.text(x0 - 8, y + ch / 2 + 4, (u === sel ? "▸ " : "") + String(u + 1), u === sel ? "lbl" : "tick", "end");
+        for (i = 0; i < WI; i++) {
+          var o = { u: u, i: i }, pr = mfPredict(F, o), c = DATA.cell[u + "," + i], cx = x0 + (i + 0.5) * cw;
+          var shade = A.clamp((pr - 1) / 4, 0, 1);
+          A.el("rect", { x: x0 + i * cw + 1, y: y + 1, width: cw - 2, height: ch - 2, class: "fill-primary",
+                         opacity: (0.04 + 0.28 * shade).toFixed(3) }, cM.g);
+          if (c && !c.test) cM.text(cx, y + ch / 2 + 5, String(c.r), "lbl", "middle").style.fontWeight = "700";
+          else if (c && c.test) {
+            A.el("rect", { x: x0 + i * cw + 1.5, y: y + 1.5, width: cw - 3, height: ch - 3, class: "line acc thin" }, cM.g);
+            cM.text(cx, y + 12, String(c.r), "lbl-sm", "middle");
+            cM.text(cx, y + 24, isFinite(pr) ? fmt(pr, 1) : "—", "lbl-sm", "middle");
+          } else cM.text(cx, y + ch / 2 + 4, isFinite(pr) ? fmt(pr, 1) : "—", "lbl-sm", "middle");
+        }
+      }
+      A.el("text", { x: 0, y: 0, class: "axis-label", "text-anchor": "middle",
+                     transform: "translate(14," + (y0 + WU * ch / 2) + ") rotate(-90)", text: "users" }, cM.g);
+
+      curve.draw([{ values: st.tr, cls: "line" }, { values: st.te, cls: "line acc" }],
+                 [{ y: RMSE_BIAS, label: "bias model alone " + fmt(RMSE_BIAS, 3) }]);
+
+      var tr = st.tr[n], te = st.te[n], bi = 0;
+      for (var k = 1; k <= n; k++) if (st.te[k] < st.te[bi]) bi = k;
+      ro.set("k", String(st.k));
+      ro.set("J", S.method === "als" ? sig(J(F), 4) : "—");
+      ro.set("tr", st.diverged ? "diverged" : fmt(tr, 3), st.diverged ? "bad" : "");
+      ro.set("te", st.diverged ? "diverged" : fmt(te, 3), te < RMSE_BIAS ? "good" : te > RMSE_BIAS ? "bad" : "");
+      ro.set("best", fmt(st.te[bi], 3) + " at step " + bi);
+      ro.set("bm", fmt(RMSE_BIAS, 3));
+
+      if (st.k === 0) {
+        say.say("<span class='k'>Start.</span> The factors are small random numbers, so every prediction is close to the bias model’s " +
+                K("\\mu + b_u + b_i") + ": held-out RMSE " + fmt(te, 3) + ". " +
+                (S.method === "als" ? "Press <em>Step</em> to solve " + DATA.m + " two-by-two ridge regressions, one per user." :
+                                      "Press <em>Step</em> for one epoch: " + DATA.train.length + " updates, one per training rating, in a shuffled order."));
+      } else if (st.diverged) {
+        say.say("<span class='k'>Diverged.</span> The SGD steps grew without bound: " + K("\\eta = " + sig(S.eta, 2)) + " is too large for these updates.");
+      } else {
+        var L = st.last, head;
+        if (S.method === "als") {
+          head = "<span class='k'>Half-step " + st.k + ".</span> Fixed " + (L.side === "P" ? K("Q") + "; solved " + DATA.m + " ridge regressions for the " + K("p_u")
+                                                                                          : K("P") + "; solved " + DATA.n + " ridge regressions for the " + K("q_i")) +
+                 ", each " + K("2\\times 2") + ". " + K("J") + " " + sig(L.before, 5) + " → " + sig(L.after, 5) +
+                 (L.after <= L.before * (1 + 1e-12) ? " (an exact half-step cannot raise it)." : " — <strong>it rose</strong>.");
+        } else {
+          head = "<span class='k'>Epoch " + st.k + ".</span> " + DATA.train.length + " SGD updates, each from one rating.";
+        }
+        say.say(head + " Training RMSE " + fmt(st.tr[n - 1], 3) + " → " + fmt(tr, 3) + "; held-out " + fmt(st.te[n - 1], 3) + " → " + fmt(te, 3) +
+                (te > st.te[bi] + 0.02 ? ", now above its best, " + fmt(st.te[bi], 3) + " at step " + bi + ": the model is fitting the training noise." : "."));
+      }
+    }
+
+    pl = A.player("#mf-bar", { step: step, reset: reset, render: render, fps: 4, unit: "step" });
+  })();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 3 — Honest evaluation, and classification metrics</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 · from deck 3 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Honest evaluation, and classification metrics</h1>
+  <p class="subtitle">California housing, finished &middot; MNIST, detecting one digit</p>
+  <p><span class="badge badge-lec">Lecture 3</span>
+     <span class="badge badge-ch">Géron Ch. 2&ndash;3</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Two halves. The first finishes the housing model and
+  makes its number honest; the second turns on one number, 96.93%, being
+  simultaneously correct and useless. Do not give that away early.</aside>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 2 · from deck 3 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Last lecture, on the California housing data:</p>
+  <table class="smaller">
+    <tr><th>What we did</th><th>What it leaves for today</th></tr>
+    <tr><td>Sealed a stratified test set of 4,128 districts before looking at anything</td><td>a test set that must stay unused until the very end</td></tr>
+    <tr><td>Explored the 16,512 training districts, and warned against new features that are weighted sums of old ones</td><td>today shows why that warning is about linear algebra</td></tr>
+    <tr><td>Wrote least squares as minimising $\lVert\mathbf{X}\boldsymbol\theta - y\rVert_2^2$, and set its gradient to zero</td><td>the stationarity condition $\mathbf{X}^{\intercal}\mathbf{X}\hat{\boldsymbol\theta} = \mathbf{X}^{\intercal}y$, not yet solved</td></tr>
+    <tr><td>Proved the cost convex, so that stationary point is a global minimum</td><td>a minimum we now have to compute, and a model whose error we have to measure</td></tr>
+  </table>
+  <p class="small muted">Nothing has been fitted and nothing has been
+  scored yet. Today does both &mdash; and then asks what a score is worth on a
+  classification problem.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 3 · from deck 3 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol class="small">
+    <li><strong>Finishing the housing model</strong> &mdash; the normal
+        equation and when it breaks; why a training score means nothing;
+        leakage; holdout, $k$-fold cross-validation and pipelines; the test set,
+        used once</li>
+    <li><strong>A classification task</strong> &mdash; detecting one digit in
+        MNIST, and a first detector with a headline accuracy</li>
+    <li><strong>The mathematics</strong> &mdash; what a classifier that never
+        fires scores, and why precision is not monotone in the threshold</li>
+    <li><strong>The method</strong> &mdash; the confusion matrix, precision,
+        recall and $F_1$, the threshold, PR against ROC, and a better model</li>
+  </ol>
+  <p class="small"><span class="scope scope-exam">examinable</span>
+  The normal equation and its invertibility condition; leakage and why
+  cross-validation needs a pipeline; the accuracy of the never-fires
+  classifier; precision, recall, $F_1$, PR and ROC.</p>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-03.ipynb">Open Lecture 3 in Colab</a>
+  </p>
+</section>
+
+<!-- 4 · from old deck 2 13 -->
+<section data-menu-title="The normal equation">
+  <h2>The normal equation</h2>
+  <p class="derive-step">Last lecture&rsquo;s stationarity condition, $\mathbf{X}^{\intercal}\mathbf{X}\hat{\boldsymbol\theta} = \mathbf{X}^{\intercal}y$, rearranged:</p>
+  <div class="eqn-box">
+    $$\hat{\boldsymbol\theta} \;=\; \left(\mathbf{X}^{\intercal}\mathbf{X}\right)^{-1}\mathbf{X}^{\intercal}\,y$$
+  </div>
+  <p class="eqn-label">A closed-form solution &mdash; no iteration required</p>
+  <p class="small muted">A closed-form equation is composed only of a finite
+  number of constants, variables and standard operations. No infinite sums, no
+  limits, no integrals.</p>
+  <a class="anim-link" href="../animations/lecture-03.html#lsq" target="_blank">Animation</a>
+</section>
+
+<!-- 5 · from old deck 2 15 -->
+<section class="figslide" data-menu-title="◆ The projection">
+  <h2>The whole thread, in one picture</h2>
+  <div class="eqn-box compact">
+    $$X^{\mathsf T}\!\left(X\hat{\boldsymbol\theta} - \mathbf y\right) = \mathbf 0$$
+  </div>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-projection.svg"
+         alt="The column space of X drawn as a plane; y points out of it, its projection X theta-hat lies in it, and the residual joins them at a right angle.">
+  </figure>
+  <a class="anim-link" href="../animations/lecture-03.html#proj" target="_blank">Animation</a>
+  <aside class="notes">Not an algebraic trick — a projection onto col(X). Ask:
+  what happens to the plane when two columns are
+  collinear? They should say &ldquo;it collapses&rdquo;. That is the next slide,
+  and it is the whole failure condition.</aside>
+</section>
+
+<!-- 6 · new: merges old deck 2 19-26 -->
+<section data-menu-title="When it breaks">
+  <h2>When $\mathbf{X}^{\intercal}\mathbf{X}$ is singular</h2>
+  <p class="small">The normal equation needs $(\mathbf{X}^{\intercal}\mathbf{X})^{-1}$,
+  and it exists if and only if $\mathbf{X}$ has linearly independent columns.
+  Two ways to lose that:</p>
+  <ul class="tight small">
+    <li><strong>More features than instances</strong>, $m &lt; n+1$: then
+        $\operatorname{rank}(\mathbf{X}) \le m$, and infinitely many
+        $\boldsymbol\theta$ fit equally well</li>
+    <li><strong>Collinear features</strong>: one column a linear combination of
+        others &mdash; exactly what a new feature built as a weighted sum of
+        existing ones is. Last lecture&rsquo;s warning against such features was
+        this singularity</li>
+    <li><strong>Near</strong>-collinear features leave the matrix invertible but
+        ill-conditioned: small changes in the data move $\hat{\boldsymbol\theta}$
+        a lot</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">What Scikit-Learn does instead</span>
+    It computes $\hat{\boldsymbol\theta} = \mathbf{X}^{+}y$ with the
+    pseudoinverse $\mathbf{X}^{+} = \mathbf{V}\boldsymbol\Sigma^{+}\mathbf{U}^{\intercal}$
+    from the SVD, which is always defined: when the inverse does not exist it
+    returns the minimum-norm solution. The fitted values are still unique; the
+    coefficients are not.
+  </div>
+  <p class="small muted"><span class="scope scope-exam">examinable</span>
+  Derive the normal equation; state and justify the invertibility condition.</p>
+</section>
+
+<!-- 7 · from old deck 2 28 -->
+<section data-menu-title="A number that means nothing">
+  <h2>Start with a number that means nothing</h2>
+  <p>Fit an unconstrained decision tree on the 16,512 training districts, then
+  score it on those same 16,512 districts.</p>
+  <p class="big-num bad">0.0</p>
+  <p class="lead">No error at all.</p>
+  <p>Two explanations. Only one of them is flattering.</p>
+  <aside class="notes">Ask for both hypotheses from the room before advancing.
+  Somebody always offers &ldquo;it&rsquo;s perfect&rdquo; first, which is the point.</aside>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 8 · from old deck 2 32 -->
+<section data-menu-title="Why not the test set">
+  <h2>&ldquo;Then use the test set&rdquo;</h2>
+  <p class="fail lead">No &mdash; not yet.</p>
+  <p>We are still choosing between models and tuning them. Every time a choice is
+  made by looking at the test score, that score stops being an estimate of
+  performance on unseen data and becomes a target we are fitting to.</p>
+  <div class="panel">
+    The test set is used <strong>once</strong>, at the very end, to estimate the
+    generalisation error of a system we have already committed to.
+  </div>
+  <p class="small muted">The next slide puts this argument as an exam question.
+  Answer 1 and 2 now; 3 and 4 need cross-validation, so they come once it
+  exists, at the end of this half.</p>
+</section>
+
+<!-- 9 · from old deck 2 33 -->
+
+<!-- 10 · from old deck 2 34 -->
+
+<!-- 11 · from old deck 2 35 -->
+<section data-menu-title="Leakage">
+  <h2>The same error, one step earlier</h2>
+  <p class="small">A score can also be corrupted before any model is fitted:</p>
+  <pre><code class="language-python" data-trim>
+scaler = StandardScaler()
+housing_scaled = scaler.fit_transform(housing_full)      # all 20,640 rows
+train_set, test_set = train_test_split(housing_scaled)   # then split
+  </code></pre>
+  <div class="panel panel-when">
+    <span class="panel-title">Data leakage &mdash; the condition</span>
+    A quantity computed from rows outside the training set enters the training
+    path. Here the mean and standard deviation were computed from a set that
+    includes the test rows, so the model is evaluated on rows whose own values
+    helped define the transformation applied to them.
+  </div>
+  <p class="small">It raises no exception and the reported score improves. How
+  <em>much</em> it improves is not knowable from the code &mdash; sometimes
+  nothing, sometimes everything &mdash; which is why the rule is procedural
+  rather than a matter of judging each case.</p>
+</section>
+
+<!-- 12 · from old deck 2 39 -->
+<section data-menu-title="The rule">
+  <h2>The rule, stated once</h2>
+  <div class="panel">
+    <span class="panel-title">Never violate this</span>
+    Fit every transformer on the <strong>training set only</strong>. Never call
+    <code>fit()</code> or <code>fit_transform()</code> on the validation set, the
+    test set, or new data. Once fitted, you may <code>transform()</code> anything.
+  </div>
+  <p class="small">This applies to imputers, scalers, encoders, dimensionality
+  reduction &mdash; everything that learns anything from data.</p>
+  <p class="small fail">We will not rely on remembering it. The next few slides
+  build an object that makes violating it structurally impossible.</p>
+</section>
+
+<!-- 13 · from old deck 2 43 -->
+<section data-menu-title="Holdout validation">
+  <h2>Hold out a validation set</h2>
+  <p class="small">Split the <em>training</em> set again: a smaller training set,
+  and a <strong>validation set</strong> (also called the development set). Train
+  the candidates on the reduced set, select on the validation set, retrain the
+  winner on the full training set, and evaluate <em>once</em> on the test set.</p>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>Validation set too small</strong></p>
+      <p class="smaller">Evaluations are imprecise; you may select a suboptimal
+      model by chance.</p>
+    </div>
+    <div>
+      <p class="small"><strong>Validation set too large</strong></p>
+      <p class="smaller">The remaining training set is much smaller than the full
+      one &mdash; like selecting a sprinter to run a marathon.</p>
+    </div>
+  </div>
+  <p class="fix">Solution: many small validation sets, used in rotation.</p>
+</section>
+
+<!-- 14 · from old deck 2 45 -->
+<section class="figslide" data-menu-title="◆ k-fold, drawn">
+  <h2>Every row is a complete, independent fit</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-kfold.svg"
+         alt="Five rows of five blocks; in each row a different block is the validation part and the other four are training, each producing one RMSE.">
+  </figure>
+  <p class="takeaway muted">Five fits to get one number &mdash; and a second
+  number, the spread, that a single holdout could never give you.</p>
+  <a class="anim-link" href="../animations/lecture-03.html#kfold" target="_blank">Animation</a>
+</section>
+
+<!-- 15 · from old deck 2 50 -->
+<section class="figslide" data-menu-title="◆ Fold spread">
+  <h2>Ten folds, not one number</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l2-cv-spread.svg"
+         alt="Strip plot of the ten per-fold RMSE values for each of the three models, with the mean and standard deviation marked.">
+  </figure>
+  <p class="takeaway">Linear regression, a decision tree and a random forest,
+  each scored by ten-fold cross-validation. All three spreads are around
+  <span class="usd">&plusmn;$2,000</span>&ndash;<span class="usd">$3,000</span>
+  &mdash; and that is mostly <em>which districts landed in the fold</em>, not the
+  model. Any difference smaller than this is not a difference.</p>
+  <aside class="notes">The instinct to read the widest strip as &ldquo;the least stable
+  model&rdquo; is wrong and worth naming: the folds are shared, so the right comparison
+  is fold by fold.</aside>
+</section>
+
+<!-- 16 · from old deck 2 53 -->
+<section data-menu-title="Pipelines protect">
+  <h2>Pipelines make leakage structurally impossible</h2>
+  <pre><code class="language-python" data-trim>
+full_pipeline = Pipeline([
+    ("prep",  preprocessing),   # imputer + scaler on numbers, one-hot on ocean_proximity
+    ("model", RandomForestRegressor(random_state=42)),
+])
+  </code></pre>
+  <p>When <code>cross_val_score</code> holds out fold $j$, the entire pipeline
+  &mdash; imputer, encoder, scaler, model &mdash; is fitted on the other folds only.</p>
+  <p class="fix">The transformers never see the held-out fold. Leakage cannot
+  occur by accident.</p>
+</section>
+
+<!-- 17 · from old deck 2 66 -->
+<section data-menu-title="The test set">
+  <h2>Finally: the test set</h2>
+  <pre><code class="language-python" data-trim>
+final_model = Pipeline([
+    ("prep",  preprocessing),
+    ("model", RandomForestRegressor(n_estimators=200, max_features=8,
+                                    random_state=42)),
+]).fit(X_train, y_train)                 # the training set, and only that
+
+final_predictions = final_model.predict(X_test)
+final_rmse = root_mean_squared_error(y_test, final_predictions)
+  </code></pre>
+  <p class="big-num good">$49,037</p>
+  <p class="small muted">The forest&rsquo;s two settings were chosen on
+  validation folds of the training set before this cell ran. We
+  <code>predict</code> on the test set; we never <code>fit</code> anything on
+  it, and we look at it once.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 18 · from old deck 2 84+85 -->
+
+<!-- 19 · from deck 3 5 -->
+<section data-menu-title="The scenario">
+  <h2>You have been hired again</h2>
+  <p>A national postal operator sorts handwritten postcodes automatically. A
+  camera photographs each digit; a classifier reads it; the envelope goes down a
+  chute.</p>
+  <div class="panel">
+    <span class="panel-title">The task</span>
+    Their audit team has found that one glyph is misread far more often than the
+    others. They want every scanned digit that <em>is</em> a
+    <strong>5</strong> pulled off the line and sent to a human verification desk.
+  </div>
+  <p class="small">Not &ldquo;read the digit&rdquo;. <strong>Detect one
+  digit.</strong> Yes or no, one class against the other nine.</p>
+</section>
+
+<!-- 20 · from deck 3 8 -->
+<section data-menu-title="The dataset">
+  <h2>The data: MNIST</h2>
+  <ul class="tight small">
+    <li>70,000 small images of handwritten digits, written by US high-school
+        students and Census Bureau employees</li>
+    <li>Each image is 28 &times; 28 pixels, flattened to <strong>784</strong>
+        features</li>
+    <li>Each feature is one pixel&rsquo;s intensity, an integer from 0 (white)
+        to 255 (black)</li>
+    <li>Every image is labelled with the digit it shows</li>
+  </ul>
+  <div class="panel panel-book">
+    The textbook calls MNIST &ldquo;the hello world of machine learning&rdquo;.
+    It is studied so often that it is effectively the field&rsquo;s control
+    experiment: if a method cannot do something here, the something is probably
+    not the method&rsquo;s fault.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 21 · from deck 3 13 -->
+<section data-menu-title="Relabel">
+  <h2>From ten classes to two</h2>
+  <pre><code class="language-python" data-trim>
+y_train_5 = (y_train == 5)          # True for every 5, False otherwise
+y_test_5  = (y_test  == 5)
+
+assert y_train_5.dtype == bool
+assert y_train_5.sum() == 5421
+print(f"{y_train_5.sum():,} positives out of {len(y_train_5):,}")
+  </code></pre>
+  <p class="small">Two lines, and the imbalance is created. Nothing about MNIST
+  is imbalanced; <strong>our question is</strong>.</p>
+  <p class="small fail">Assert the count. OpenML delivers the labels as
+  strings, and a string never equals the integer 5: if they were not cast to
+  integers first, this assertion is what tells you &mdash; it fails at
+  <code>0 == 5421</code> instead of silently training on nothing.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 22 · from deck 3 14 -->
+<section class="figslide" data-menu-title="◆ The class counts">
+  <h2>Balanced data, imbalanced question</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l03-class-counts.svg"
+         alt="Bar chart of the ten digit counts in the 60,000-image training set, all between 5,421 and 6,742, with the bar for digit 5 drawn in red and annotated as 9.0% of the data.">
+  </figure>
+  <p class="takeaway">Every bar is roughly the same height. The moment we ask
+  &ldquo;is it a 5?&rdquo;, one bar becomes the positive class and the other nine
+  become the negative class.</p>
+</section>
+
+<!-- 23 · from deck 3 17 -->
+<section data-menu-title="Accuracy">
+  <h2>The obvious metric for a classifier</h2>
+  <p><strong>Accuracy</strong>: the fraction of instances the classifier gets
+  right.</p>
+  <div class="eqn-box">
+    $$\text{accuracy} \;=\; \frac{\#\{\,i \,:\, \hat y^{(i)} = y^{(i)}\,\}}{m}$$
+  </div>
+  <p class="eqn-label">The proportion of correct predictions</p>
+  <ul class="tight small">
+    <li>It is between 0 and 1, and bigger is better</li>
+    <li>It needs no threshold, no scaling and no interpretation</li>
+    <li>Every stakeholder in the world understands it without being taught</li>
+  </ul>
+</section>
+
+<!-- 24 · from deck 3 19 -->
+<section data-menu-title="The number">
+  <h2>The headline number</h2>
+  <pre><code class="language-python" data-trim>
+clf = make_pipeline(StandardScaler(), SGDClassifier(random_state=42))
+cv  = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+cross_val_score(clf, X_train, y_train_5, cv=cv, scoring="accuracy")
+  </code></pre>
+  <p class="big-num good">96.93%</p>
+  <p class="lead">Three-fold cross-validated accuracy of a linear classifier,
+  on data the model never saw during its own fitting.</p>
+  <p class="small">Folds: 96.85%, 96.86%, 97.09%. A spread of about two tenths
+  of a point &mdash; the three folds agree. The scaler sits inside the
+  pipeline, so each fold refits it on its own training part.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 25 · from deck 3 20 -->
+<section data-menu-title="The trivial baseline">
+  <h2>Before you commit: what does <em>nothing</em> score?</h2>
+  <p class="small">The cheapest possible detector. It looks at nothing and
+  answers &ldquo;not a 5&rdquo; every time.</p>
+  <pre><code class="language-python" data-trim>
+from sklearn.base import BaseEstimator
+
+class NeverFires(BaseEstimator):
+    def fit(self, X, y=None):
+        return self
+    def predict(self, X):
+        return np.zeros(len(X), dtype=bool)
+
+cross_val_score(NeverFires(), X_train, y_train_5, cv=cv,
+                scoring="accuracy")     # array([0.90965, 0.90965, 0.90965])
+  </code></pre>
+  <p class="fix">It is right 54,579 times out of 60,000 &mdash;
+  <strong>90.96%</strong> accuracy, with no model, no fit and no features.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 26 · from deck 3 28+29 -->
+<section class="figslide" data-menu-title="Claim 1">
+  <h2>Claim &middot; the classifier that never fires</h2>
+  <p class="small">$P$ positives, $N$ negatives, $m = P + N$, base rate $p = P/m$.
+  If $h_0(x) = 0$ for every $x$, then $\mathrm{TP} = \mathrm{FP} = 0$. Ours, $p = 0.09035$:</p>
+  <div class="eqn-box compact">
+    $$\text{accuracy}(h_0) \;=\; \frac{0 + N}{m} \;=\; 1 - p \;=\; 0.90965$$
+  </div>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l04-never-fires.svg"
+         alt="A straight line falling from 100% accuracy at a base rate of zero to 50% at a base rate of 50%, with our task marked at 9.04% base rate and 90.96% accuracy, and a dashed line at our classifier's 96.93%.">
+  </figure>
+  <p class="takeaway fail">An identity, not an estimate &mdash; and at a base
+  rate of 1%, doing nothing scores 99%.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 27 · from deck 3 39 -->
+<section data-menu-title="Precision is not">
+  <h2>Recall is monotone; precision is not</h2>
+  <p class="small">Predict positive when the score $s(x) \ge t$. Raising $t$
+  only ever <em>removes</em> instances from the flagged set, so
+  $\mathrm{TP}(t)$ and $\mathrm{FP}(t)$ can only fall. Recall divides
+  $\mathrm{TP}(t)$ by $P$, a constant of the data, so it can only fall too.</p>
+  <div class="eqn-box">
+    $$\text{precision}(t) \;=\; \frac{\mathrm{TP}(t)}{\mathrm{TP}(t) + \mathrm{FP}(t)}$$
+  </div>
+  <p>Here <strong>both</strong> the numerator and the denominator move, in the
+  same direction. A ratio of two decreasing quantities can do anything at
+  all.</p>
+  <div class="panel panel-math">
+    The denominator is the size of the set <em>we chose to flag</em>. It is not
+    a property of the data; it is a property of our decision.
+  </div>
+</section>
+
+<!-- 28 · from deck 3 45 -->
+<section class="figslide" data-menu-title="◆ Non-monotone, measured">
+  <h2>Both metrics, along our own ranking</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l04-nonmonotone.svg"
+         alt="Left: precision falling and recall rising as more instances are predicted positive. Right: a zoom on the twelve top-ranked instances showing precision hold at 100% for the top five, step down to about 83% at the sixth, and then climb again.">
+  </figure>
+  <p class="takeaway">The right-hand panel zooms in on the top of our own
+  ranking: the seventh-ranked digit is a 5, and raising the threshold past it
+  takes precision from <strong>6/7</strong> down to <strong>5/6</strong>.</p>
+</section>
+
+<!-- 29 · from deck 3 50 -->
+<section class="figslide" data-menu-title="◆ The confusion matrix">
+  <h2>The same four numbers, laid out</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l04-confusion.svg"
+         alt="A two-by-two confusion matrix showing 53,958 true negatives, 621 false positives, 1,222 false negatives outlined in red dashes, and 4,199 true positives outlined in green.">
+  </figure>
+  <p class="takeaway fail">1,222 fives went past unflagged &mdash;
+  <strong>22.5%</strong> of every 5 in the training set.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 30 · from deck 3 51 -->
+<section data-menu-title="Reading the matrix">
+  <h2>Reading a confusion matrix</h2>
+  <ul class="tight small">
+    <li>Rows are the <strong>actual</strong> class; columns are the
+        <strong>predicted</strong> class</li>
+    <li>The diagonal is what went right; everything off it went wrong</li>
+    <li>A perfect classifier has zeros off the diagonal, and nothing else</li>
+    <li>Row 1 is the negatives: 53,958 correct, 621 false alarms</li>
+    <li>Row 2 is the positives: 1,222 missed, 4,199 caught</li>
+  </ul>
+  <p class="small">Both mistakes are visible, separately, and they are not the
+  same size or the same kind. Accuracy added them together and divided by
+  60,000.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 31 · from deck 3 57 -->
+<section data-menu-title="Precision and recall">
+  <h2>Ask for both numbers</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.metrics import precision_score, recall_score, f1_score
+
+precision_score(y_train_5, y_pred)   # 0.8712  — 4199 / (4199 + 621)
+recall_score(y_train_5, y_pred)      # 0.7746  — 4199 / (4199 + 1222)
+f1_score(y_train_5, y_pred)          # 0.8200
+  </code></pre>
+  <div class="eqn-box">
+    $$\text{precision} = \frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FP}}, \qquad
+      \text{recall} = \frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FN}}$$
+  </div>
+  <p class="small muted">Recall is also called <em>sensitivity</em> or the
+  <em>true positive rate</em>. Three names, one quantity; the third one comes
+  back on the ROC curve later today.</p>
+</section>
+
+<!-- 32 · from deck 3 58 -->
+<section data-menu-title="F1">
+  <h2>One number, when you must have one</h2>
+  <p class="small">$F_1$ is the <strong>harmonic</strong> mean of precision and
+  recall:</p>
+  <div class="eqn-box">
+    $$F_1 \;=\; \frac{2}{\dfrac{1}{\text{precision}} + \dfrac{1}{\text{recall}}}
+      \;=\; 2 \cdot \frac{\text{precision} \cdot \text{recall}}{\text{precision} + \text{recall}}$$
+  </div>
+  <p>Ours is <strong>82.00%</strong>. The harmonic mean is pulled towards the
+  smaller of the two numbers it combines, so a high $F_1$ needs both precision
+  and recall to be high &mdash; one good number cannot carry a bad one.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 33 · from deck 3 61 -->
+<section data-menu-title="The trade-off">
+  <h2>You cannot have both</h2>
+  <p class="lead">Raising recall lowers precision, and lowering recall raises it
+  &mdash; usually.</p>
+  <p class="small">&ldquo;Usually&rdquo; is doing real work in that sentence, and
+  counting every step down our own ranking says exactly how much: precision
+  rises at 54,579 of the steps and falls at 5,416 of them. The <em>trend</em> is reliable; the individual step is
+  not.</p>
+  <div class="panel">
+    <span class="panel-title">The precision/recall trade-off</span>
+    It is not a property of our model, or of SGD, or of MNIST. It is a property
+    of ranking instances and cutting the ranking somewhere.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 34 · from deck 3 63 -->
+<section class="figslide" data-menu-title="◆ The trade-off">
+  <h2>The dial, and the curve it traces</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l04-pr-curve.svg"
+         alt="Left: precision rising and recall falling as the decision threshold increases, with a dashed line at threshold 19. Right: the precision-recall curve with the 90%-precision operating point marked at 73.5% recall.">
+  </figure>
+  <p class="takeaway">Precision starts to fall off a cliff at about 80% recall.
+  Choose the operating point just before the cliff, not on it.</p>
+</section>
+
+<!-- 35 · from deck 3 64 -->
+<section data-menu-title="Choose a threshold">
+  <h2>Choose the threshold deliberately</h2>
+  <pre><code class="language-python" data-trim>
+import numpy as np
+
+flagged = recalls[:-1] * n_pos / precisions[:-1]   # tp / precision = tp + fp
+ok  = (precisions[:-1] &gt;= 0.90) &amp; (flagged &gt;= 500)  # and enough flagged
+idx = int(np.argmax(ok))                   # first crossing WITH support
+threshold_90 = thresholds[idx]             # 18.95
+
+y_pred_90 = (y_scores &gt;= threshold_90)
+print(precision_score(y_train_5, y_pred_90))   # 0.9001
+print(recall_score(y_train_5, y_pred_90))      # 0.7347
+  </code></pre>
+  <p class="small"><code>argmax</code> on a boolean array returns the first
+  <code>True</code>. The idiom is compact and it is not obvious; read it once
+  and remember it.</p>
+  <p class="fail">Ninety per cent precision costs us 3.98 points of recall,
+  from 77.46% down to 73.47%.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 36 · from deck 3 62 -->
+<section data-menu-title="decision_function">
+  <h2>Where the dial is</h2>
+  <pre><code class="language-python" data-trim>
+y_scores = clf.decision_function([some_digit])
+print(y_scores)                       # e.g. array([1231.4])
+
+threshold = 0
+y_scores &gt; threshold                  # array([ True])
+
+threshold = 3000
+y_scores &gt; threshold                  # array([False]) — the same 5, missed
+  </code></pre>
+  <p class="small">How a chosen threshold is applied. Every scoring classifier
+  computes a number and compares it to a threshold. <code>predict()</code> hides the number and hard-codes the
+  threshold at zero.</p>
+  <p class="small fix">There is no <code>set_threshold()</code> method, and there
+  should not be. You compute the scores and you compare them yourself.</p>
+</section>
+
+<!-- 37 · from deck 3 67 -->
+<section data-menu-title="ROC">
+  <h2>The ROC curve</h2>
+  <p class="small">Same sweep, different pair of axes: the true positive rate
+  against the false positive rate.</p>
+  <div class="eqn-box">
+    $$\mathrm{TPR} = \frac{\mathrm{TP}}{P} = \text{recall}, \qquad
+      \mathrm{FPR} = \frac{\mathrm{FP}}{N} = 1 - \text{specificity}$$
+  </div>
+  <pre><code class="language-python" data-trim>
+from sklearn.metrics import roc_curve, roc_auc_score
+fpr, tpr, thresholds = roc_curve(y_train_5, y_scores)
+roc_auc_score(y_train_5, y_scores)          # 0.9723
+  </code></pre>
+  <p class="small">Note that <strong>both</strong> denominators are fixed by the
+  data. Neither axis moves when we change the threshold&rsquo;s effect on the
+  flagged count &mdash; which is precisely why the ROC curve behaves so much
+  better than the PR curve, and why that is a warning rather than a
+  recommendation.</p>
+  <a class="anim-link" href="../animations/lecture-03.html#curves" target="_blank">Animation</a>
+</section>
+
+<!-- 38 · from deck 3 70 -->
+<section data-menu-title="PR or ROC">
+  <h2>Which curve to prefer</h2>
+  <div class="panel panel-book">
+    <span class="panel-title">The rule</span>
+    Prefer the precision/recall curve whenever the <strong>positive class is
+    rare</strong>, or whenever you care more about false positives than about
+    false negatives. Otherwise use the ROC curve.
+  </div>
+  <p class="small">The reason is arithmetic. FPR divides false positives by
+  $N$, which is huge when positives are rare, so a large number of false alarms
+  produces a small, comfortable-looking FPR. Precision divides the same false
+  positives by the flagged count, which is small.</p>
+  <p class="small fix">Do not take that on trust. Measure it.</p>
+</section>
+
+<!-- 39 · from deck 3 72+73 -->
+<section class="figslide" data-menu-title="Failure condition &middot; ROC on a rare positive class">
+  <h2>ROC on a rare positive class</h2>
+  <p class="small">Our scores, unchanged; only the positives are thinned, so
+  the base rate falls from 9.04% to 2% and then 1%.</p>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l04-pr-vs-roc.svg"
+         alt="Left: three ROC curves at base rates 9.04%, 2% and 1% lying almost on top of one another. Right: the corresponding precision-recall curves, falling steadily lower as the positive class gets rarer.">
+  </figure>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition</span>
+    Three indistinguishable ROC curves, three very different PR curves, from
+    one set of scores: the false-positive rate divides by the abundant class,
+    so ROC cannot see what a rare positive costs.
+  </div>
+  <a class="anim-link" href="../animations/lecture-03.html#rare" target="_blank">Animation</a>
+  <aside class="notes">This is the slide that answers &ldquo;why did you make us learn
+  two curves&rdquo;. Do not rush it.</aside>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 40 · from deck 3 74+75 -->
+<section data-menu-title="A better model">
+  <h2>A better classifier, on the same metrics</h2>
+  <div class="cols">
+  <div>
+  <pre><code class="language-python" data-trim>
+forest = RandomForestClassifier(
+    n_estimators=100, random_state=42)
+y_proba = cross_val_predict(
+    forest, X_train, y_train_5, cv=cv,
+    method="predict_proba")
+y_scores_forest = y_proba[:, 1]
+  </code></pre>
+  <p class="small">A forest has no <code>decision_function</code>. The
+  positive-class column of <code>predict_proba</code> plays the role of the
+  score, and every curve works unchanged.</p>
+  </div>
+  <div>
+  <table class="smaller">
+    <tr><th>Metric</th><th class="num">SGD</th><th class="num">Random forest</th></tr>
+    <tr><td>Accuracy</td><td class="num">96.93%</td><td class="num">98.77%</td></tr>
+    <tr><td>Precision</td><td class="num">87.12%</td><td class="num">98.93%</td></tr>
+    <tr><td>Recall</td><td class="num">77.46%</td><td class="num hit">87.31%</td></tr>
+    <tr><td>$F_1$</td><td class="num">82.00%</td><td class="num">92.76%</td></tr>
+    <tr><td>ROC AUC</td><td class="num">0.9723</td><td class="num">0.9984</td></tr>
+    <tr><td>Average precision</td><td class="num">0.8788</td><td class="num">0.9883</td></tr>
+    <tr><td>Recall available at 90% precision</td><td class="num">73.47%</td><td class="num hit">97.51%</td></tr>
+  </table>
+  </div>
+  </div>
+  <p class="small">Accuracy improves by 1.84 points, which reads as polish. The
+  last row improves by <strong>24.04 points</strong>, and it is the row the brief
+  is about.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 41 · from deck 3 86 -->
+
+<!-- 42 · from deck 3 87+88 -->
+
+<!-- 43 · from deck 3 91 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-03.ipynb">Open Lecture 3 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU</strong></li>
+    <li>Part 1, on the housing data: the normal equation with the residual
+        checked orthogonal to every column, the training score of zero, ten-fold
+        cross-validation of three models inside one pipeline, and the single use
+        of the test set</li>
+    <li>Part 2, on MNIST: the never-fires baseline, the detector, the confusion
+        matrix, precision, recall and $F_1$, the curves, the threshold choice,
+        and the forest &mdash; with the never-fires accuracy checked against
+        $1-p$, and the non-monotonicity of precision checked at every one of
+        the 59,999 thresholds</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change before the next lecture</span>
+    Detect a different digit. Change one character &mdash; the <code>5</code> in
+    <code>y_train == 5</code> &mdash; and re-run. The baseline moves, the
+    accuracy moves with it, and the pair tells you something neither does alone.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 44 · from deck 3 93 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight smaller">
+    <li>Solved least squares in closed form,
+        $\hat{\boldsymbol\theta} = (\mathbf{X}^{\intercal}\mathbf{X})^{-1}\mathbf{X}^{\intercal}y$,
+        read it as an orthogonal projection, and saw that it breaks when the
+        columns of $\mathbf{X}$ are dependent &mdash; which the SVD pseudoinverse
+        survives</li>
+    <li>Saw a training error of zero mean nothing, and a leak improve a score
+        silently: every transformer is fitted on training data only, and a
+        <code>Pipeline</code> inside cross-validation enforces it</li>
+    <li>Measured with $k$-fold cross-validation, reported the fold spread with
+        the mean, and touched the test set once</li>
+    <li>Framed a detection task as binary classification: the positive class is
+        rare by construction, and the classifier that never fires scores exactly
+        $1-p$</li>
+    <li>Showed that recall is monotone in the threshold and precision is not</li>
+    <li>Read the confusion matrix, used precision, recall and $F_1$, chose a
+        threshold deliberately, and preferred the PR curve to ROC because the
+        positives are rare</li>
+  </ol>
+</section>
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 3">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 3</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 3">
+  <h2>Exercises &mdash; Lecture 3</h2>
+  <ul class="ex-list">
+    <li>The normal equation is $\hat\theta = (X^{\mathsf T}X)^{-1}X^{\mathsf T}y$. Your training matrix $X$ has a column equal to the sum of two others. State what happens to $X^{\mathsf T}X$, and what the pseudoinverse $X^{+}$ returns instead. <span class="ex-marks">[5]</span></li>
+    <li>A pipeline scales the features and then fits a model, and is passed whole to <code>cross_val_score</code>. Explain what would go wrong if the scaling were done once, before the call. <span class="ex-marks">[5]</span></li>
+    <li>On the MNIST 5-detector, a classifier that never fires scores $90.96\%$ accuracy on the training set. State what that number is a measurement of. <span class="ex-marks">[3]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 4&rsquo;s deck.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Exercises · 3 (2)">
+  <h2>Exercises &mdash; Lecture 3 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>Prove or disprove: as the decision threshold is lowered, precision increases monotonically. <span class="ex-marks">[5]</span></li>
+    <li>Two models have the same ROC AUC. One is far better on a precision&ndash;recall curve. What does that tell you about the problem? <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 4&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 2">
+  <p class="kicker">The five set at the end of Lecture 2</p>
+  <h1>Solutions<br>Lecture 2</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 2">
+  <h2>Solutions &mdash; Lecture 2</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> A colleague reports their model&rsquo;s error on the California housing test set, and says they chose the&hellip;</p>
+      <p class="lead"><span class="fix">It estimates the best-of-several error on that particular test set; it is not an estimate of the generalisation error, the error on new districts.</span></p>
+      <ul class="tight smaller">
+        <li>Choosing the minimum of several numbers measured on the same data makes that minimum a <em>selection</em>, not a measurement</li>
+        <li>This is data snooping: the test set picked the model, so its error is an optimistic estimate of generalisation error, which needs data that took part in no choice</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> You are given a stratified split on income category and a naive random split of the same data. A model scored&hellip;</p>
+      <p class="lead"><span class="fix">No.</span></p>
+      <ul class="tight smaller">
+        <li>A similar error on <em>one</em> draw says nothing about the spread over draws, and the stratification is there to reduce that spread</li>
+        <li>The failure a naive split risks is sampling bias &mdash; measured here as up to 6.4% off in the income mix, against 0.36% stratified &mdash; and a single comparison of errors cannot show it</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 2 (2)">
+  <h2>Solutions &mdash; Lecture 2 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> On the training set, longitude has a correlation of $r = -0.05$ with the median house value. A colleague&hellip;</p>
+      <p class="lead"><span class="fix">$r$ measures only a linear relationship, and price depends on location non-linearly. The geographic scatter coloured by price refutes it.</span></p>
+      <ul class="tight smaller">
+        <li>$r \approx 0$ rules out a straight-line trend in longitude alone, not dependence</li>
+        <li>Prices are highest along the coast and around the two big metropolitan areas, a pattern no single coordinate traces as a straight line</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> The course reports the RMSE of a regression model, yet training minimises the MSE. Explain why the two give&hellip;</p>
+      <p class="lead"><span class="fix">The square root is strictly increasing on $[0, \infty)$, so $\arg\min \sqrt{f} = \arg\min f$. The RMSE is reported because it is in the units of the target, dollars.</span></p>
+      <ul class="tight smaller">
+        <li>A strictly increasing function preserves the order of the values, so it preserves where the minimum is</li>
+        <li>Minimising the MSE avoids differentiating a square root: same minimiser, simpler algebra</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 2 (3)">
+  <h2>Solutions &mdash; Lecture 2 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> The Hessian of the MSE of a linear model is $\tfrac{2}{m}\mathbf{X}^{\intercal}\mathbf{X}$. Show that it is&hellip;</p>
+      <p class="lead"><span class="fix">For any $\mathbf{v}$, $\mathbf{v}^{\intercal}\mathbf{X}^{\intercal}\mathbf{X}\mathbf{v} = \lVert \mathbf{X}\mathbf{v}\rVert_2^2 \ge 0$. So the MSE is convex, and any stationary point is a global minimum.</span></p>
+      <ul class="tight smaller">
+        <li>The quadratic form is a squared norm, so it cannot be negative, whatever $\mathbf{X}$ is</li>
+        <li>A convex function has no local minima other than the global one, so setting the gradient to zero finds <em>the</em> minimum</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+
+<!-- Next -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 4 &middot; G&eacute;ron Ch. 4</p>
+  <h1>Training models</h1>
+  <p class="small">
+    Gradient descent, derived &mdash; the update rule, the step size, why the
+    features must be scaled, and one instance at a time<br>
+    Logistic regression on the Titanic passengers: a probability, not a label,
+    and coefficients read as log-odds<br>
+    Calibration, and softmax regression for more than two classes
+  </p>
+  <p class="clock">Run the Lecture 3 notebook first</p>
+</section>
+
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 3
+  <span class="sep">&middot;</span> Honest evaluation, and classification metrics
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

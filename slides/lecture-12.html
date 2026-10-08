@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 12 — Convolutional networks</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Convolutional networks</h1>
+  <p class="subtitle">Flowers102</p>
+  <p><span class="badge badge-lec">Lecture 12</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 12</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Part III opens. The mathematics is short &mdash; one
+  count and two definitions &mdash; so that the time goes to building, training
+  and reading the network.</aside>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Lecture&nbsp;11 took a deep fully connected stack on flattened
+  28&times;28 greyscale images that would not train, and repaired it:</p>
+  <ul class="tight small">
+    <li>Two probes located the fault: the forward signal looked healthy, the
+        <em>backward</em> one shrank by a constant factor per layer</li>
+    <li>One variance recursion explained it, and Glorot&rsquo;s and He&rsquo;s
+        initialisations are the two ways of setting that factor to one</li>
+    <li>Six repairs &mdash; initialisation, activation, batch normalisation,
+        clipping, optimiser, schedule &mdash; added one at a time, and an
+        ablation saying which of them paid</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">What breaks when the image gets bigger</span>
+    Flattening a 224&times;224 colour image gives 150,528 inputs. A single dense
+    layer of 1,000 units on that is <strong>150 million parameters</strong> —
+    for one layer, on one image size. Every one of them has to be learned from
+    data, and none of them knows that two adjacent pixels are related.
+  </div>
+  <p class="small">Today&rsquo;s method fixes both problems at once, and the
+  derivation says exactly how much it saves.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>The task, and why a flattened image is the wrong representation</li>
+    <li><strong>The mathematics</strong> &mdash; what weight sharing saves,
+        equivariance, and how pooling buys invariance</li>
+    <li><strong>The method</strong> &mdash; convolution, pooling, an
+        architecture, and training it</li>
+    <li>What it learned, what it scores, and what goes wrong quietly</li>
+  </ol>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-12.ipynb">Open Lecture 12 in Colab</a>
+  </p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="The stakeholder">
+  <h2>The stakeholder</h2>
+  <p class="lead">A horticultural wholesaler receives mixed pallets of cut
+  stems and has to sort them by species before they reach the auction floor.</p>
+  <ul class="tight small">
+    <li>One overhead camera per lane, one photograph per stem</li>
+    <li>A human inspector currently does this and is the bottleneck</li>
+    <li>They want the machine to name the species from the photograph</li>
+  </ul>
+  <p class="small muted">Same shape of problem as the garment sorter in
+  Lecture 9. Everything that makes it harder is in the pixels.</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="What they asked for">
+  <h2>What they actually asked for</h2>
+  <div class="panel">
+    <span class="panel-title">In their words</span>
+    &ldquo;Tell us which of our species it is. If you cannot tell, say so and
+    we will look at it ourselves &mdash; but do not tell us the wrong
+    one.&rdquo;
+  </div>
+  <p class="small">Two requirements hiding in one sentence: a classifier over
+  a fixed list of species, and a usable notion of <em>confidence</em>.</p>
+  <p class="small muted">We build the first today. The second waits until the
+  numbers are good enough to be worth calibrating.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; a classifier with no way to abstain</span>
+    The stakeholder asked to be told when the model cannot tell. A softmax always returns a class, and its largest probability is not a confidence you have calibrated. Deliver it as one and you have answered a different requirement while appearing to meet this one.
+  </div>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="The dataset">
+  <h2>The dataset</h2>
+  <p><code>torchvision.datasets.Flowers102</code> &mdash; 8,189
+  photographs of 102 flowering species common in the United
+  Kingdom.</p>
+  <pre><code class="language-python" data-trim>
+from torchvision.datasets import Flowers102
+
+train = Flowers102("data", split="train", download=True)
+val   = Flowers102("data", split="val",   download=True)
+test  = Flowers102("data", split="test",  download=True)
+  </code></pre>
+  <p class="small muted">About 345 MB. It is one of the datasets the textbook
+  names for this chapter, and the split used here is the one shipped with it &mdash;
+  so every result in the literature is on the same 6,149 test
+  images.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 7 -->
+<section class="figslide" data-menu-title="◆ Twelve species">
+  <h2>What the camera sees</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l15-grid.png"
+         alt="Twelve colour photographs of flowers, two rows of six, each captioned with its species name; the flowers vary in scale, orientation and background clutter.">
+  </figure>
+  <p class="takeaway">Different scales, different backgrounds, different
+  lighting &mdash; and several of these species are hard to tell apart by eye.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="What is hard here">
+  <h2>What is hard here, precisely</h2>
+  <ul class="tight small">
+    <li><strong>Position</strong> &mdash; the flower is not centred, and not at
+        a fixed scale</li>
+    <li><strong>Background</strong> &mdash; leaves, soil, other flowers, a
+        gardener&rsquo;s hand</li>
+    <li><strong>Between-class similarity</strong> &mdash; several of the
+        102 species are separated by petal count and little
+        else</li>
+    <li><strong>Within-class variation</strong> &mdash; the same species at two
+        stages of opening</li>
+  </ul>
+  <p class="small">Only the first of those has a structural answer. It is the
+  answer this chapter is about.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 9 -->
+<section data-menu-title="The split we are given">
+  <h2>The split we are given</h2>
+  <table>
+    <tr><th>Split</th><th class="num">Images</th><th class="num">Per class</th><th>Used for</th></tr>
+    <tr><td>train</td><td class="num">1,020</td><td class="num">10, exactly</td><td>fitting</td></tr>
+    <tr><td>val</td><td class="num">1,020</td><td class="num">10, exactly</td><td>choosing</td></tr>
+    <tr><td class="fail">test</td><td class="num fail">6,149</td><td class="num">20&ndash;238</td><td>reporting, once</td></tr>
+  </table>
+  <p class="lead fail">There are six times as many test images as training
+  images.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 10 -->
+<section data-menu-title="Why so few labels">
+  <h2>Why the training split is so small</h2>
+  <p>Because somebody had to look at every photograph and name the species.</p>
+  <div class="panel">
+    <span class="panel-title">The standing constraint of applied vision</span>
+    Images are cheap and labels are not. Every application in this part of the
+    course has more pixels than it can use and fewer labels than it wants.
+  </div>
+  <p class="small">Design for that. A method that needs thousands of labelled
+  examples per class is not a method you can deploy here.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="The obvious thing">
+  <h2>The obvious thing to try first</h2>
+  <p>You have a multilayer perceptron that works. Resize every photograph to
+  128 &times; 128, flatten it, and feed it in.</p>
+  <table>
+    <tr><th></th><th class="num">Count</th></tr>
+    <tr><td>Inputs, 128 &times; 128 &times; 3</td><td class="num">49,152</td></tr>
+    <tr><td>Outputs, 32 values at every pixel position</td><td class="num">524,288</td></tr>
+    <tr><td class="fail">Weights in one fully connected layer between them</td><td class="num fail">25,769,803,776</td></tr>
+  </table>
+  <p class="fail small">That is 96 GB of float32
+  for one layer. The full argument is this lecture&rsquo;s mathematics block; here it
+  is just a reason to do something else.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 12 -->
+<section data-menu-title="The ratio">
+  <h2>What weight sharing saves</h2>
+  <p class="small">Input $3 \times H \times W$, output $32 \times H \times W$.
+  A dense layer connects every output to every input:
+  $n_{\text{in}} n_{\text{out}} = 96\,H^2W^2$ weights. A convolution connects
+  each output to a $k \times k$ window of every channel, <strong>with the same
+  weights at every position</strong>: $C_{\text{out}} C_{\text{in}} k^2 =
+  32 \times 3 \times 7 \times 7$, which is 4,704 weights.</p>
+  <div class="eqn-box">
+    $$\frac{n_{\text{in}} n_{\text{out}}}
+           {C_{\text{out}} C_{\text{in}} k^2}
+      \;=\; \frac{H^2 W^2}{k^2}$$
+  </div>
+  <p class="big-num bad">5,478,275</p>
+  <p class="lead">times fewer weights at $H = W = 128$, for the same output shape.</p>
+  <p class="small muted">With the 3 &times; 3 filters used everywhere else in
+  the network the factor is larger again, by $(7/3)^2$: the dense count never
+  contained $k$.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 13 -->
+<section class="figslide" data-menu-title="◆ Dense against conv">
+  <h2>The same output shape, two ways</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l16-params.svg"
+         alt="Two horizontal bars on a logarithmic weight axis: the dense layer at about 25.8 billion weights and the convolutional layer at 4,704 weights, more than six decades apart.">
+  </figure>
+  <p class="takeaway">A logarithmic axis, and the two bars still barely fit on
+  the same figure.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Equivariance definition">
+  <h2>Equivariance, precisely</h2>
+  <p class="small">Sharing the weights assumes that a pattern means the same
+  thing wherever it appears. Let $T_{\mathbf{v}}$ be the operator that shifts an image by the vector
+  $\mathbf{v}$:</p>
+  <div class="eqn-box">
+    $$(T_{\mathbf{v}} x)(\mathbf{p}) \;=\; x(\mathbf{p} - \mathbf{v})$$
+  </div>
+  <p>A map $f$ is <strong>equivariant</strong> to translation when</p>
+  <div class="eqn-box">
+    $$f(T_{\mathbf{v}}\, x) \;=\; T_{\mathbf{v}}\, f(x)
+      \qquad \text{for every } \mathbf{v}$$
+  </div>
+  <p class="small">Shift then compute, or compute then shift &mdash; the same
+  answer. A convolution has this property because its weights do not depend on
+  the position; it holds exactly away from the border, where zero padding
+  invents input that was not there.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="Pooling makes invariance">
+  <h2>How pooling manufactures invariance</h2>
+  <p>A map $g$ is <strong>invariant</strong> to translation when</p>
+  <div class="eqn-box">
+    $$g(T_{\mathbf{v}}\, x) \;=\; g(x)
+      \qquad \text{for every } \mathbf{v}$$
+  </div>
+  <p class="small">The output does not move at all, so it no longer says
+  <em>where</em>. Classification wants that; equivariance alone does not give
+  it.</p>
+  <p class="small">A $2 \times 2$ max pool is invariant to any shift that keeps the maximum
+  inside its own window &mdash; so half the one-pixel shifts, in each
+  direction.</p>
+  <ul class="tight small">
+    <li>Stack four pooling stages and the tolerated shift grows to
+        $\pm$ 8 pixels in the last feature map</li>
+    <li>A global pool over the whole map is invariant to <em>every</em>
+        shift &mdash; there is no position left to be sensitive to</li>
+  </ul>
+  <p class="small muted">The invariance is approximate and it is built, one
+  factor of two at a time. Nothing in the architecture declares it.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="The idea">
+  <h2>The idea, in one sentence</h2>
+  <p class="lead">A feature worth detecting in the top left corner is worth
+  detecting in the bottom right, so <strong>use the same weights
+  everywhere</strong>.</p>
+  <ul class="tight small">
+    <li>That is the whole of it. Everything else is bookkeeping</li>
+    <li>It buys two things at once: far fewer parameters, and a network that
+        does not have to relearn a petal edge at every position</li>
+  </ul>
+  <p class="small muted">Both halves were stated in the mathematics block.
+  Here we use them.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="A convolution">
+  <h2>A convolution, as arithmetic</h2>
+  <p>For an input $x$ with $C$ channels and a kernel $w$ of size $k \times k$,
+  the output at position $(i, j)$ of filter $f$ is</p>
+  <div class="eqn-box">
+    $$z^{(f)}_{ij} \;=\; b^{(f)} \;+\;
+      \sum_{c=1}^{C}\;\sum_{u=0}^{k-1}\;\sum_{v=0}^{k-1}
+      w^{(f)}_{c,u,v}\, x_{c,\,i+u,\,j+v}$$
+  </div>
+  <p class="small">A dot product between the kernel and a window of the input,
+  repeated at every position. The sum over $c$ is why a filter reads
+  <em>all</em> the input channels at once.</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="nn.Conv2d">
+  <h2><code>nn.Conv2d</code>, and the defaults you did not ask for</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-9|3|4|5">nn.Conv2d(
+    in_channels=3,       # must match the previous layer's output
+    out_channels=32,     # how many filters -> how many output maps
+    kernel_size=7,
+    stride=1,            # the default
+    padding=3,           # NOT the default; the default is 0
+    bias=False,          # a batch-norm follows, and it has its own shift
+)
+  </code></pre>
+  <p class="small">The default you did not ask for: <strong>padding defaults to
+  zero</strong>, which silently shrinks every feature map by $k-1$ and will
+  eventually give you a shape error twelve layers later.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="Pooling">
+  <h2>Pooling</h2>
+  <p>After a couple of convolutions, halve the height and width by keeping only
+  the largest value in each $2 \times 2$ block.</p>
+  <ul class="tight small">
+    <li>Three quarters of the activations disappear, and with them three
+        quarters of the memory and the arithmetic in every later layer</li>
+    <li>It has <strong>no parameters</strong> &mdash; nothing about it is
+        learned</li>
+    <li>Each later unit therefore sees a larger piece of the original image</li>
+  </ul>
+  <p class="small muted">There is a fourth consequence &mdash; invariance
+  &mdash; and it is the one the mathematics block ended on.</p>
+</section>
+
+<!-- 20 -->
+<section class="figslide" data-menu-title="◆ Max pooling">
+  <h2>Max pooling, on numbers</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l15-pooling.svg"
+         alt="A four by four grid of single-digit numbers with four two-by-two windows outlined in red, beside the resulting two by two grid holding the maximum of each window.">
+  </figure>
+  <p class="takeaway">Sixteen numbers in, four out, and the four are the
+  largest of each block.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Batch norm here">
+  <h2>Why every convolution is followed by a batch norm</h2>
+  <p>Because ten layers of untreated convolutions on 1,020 images do not
+  train. This is Lecture 11's $\rho \ne 1$ in a new architecture &mdash; and
+  here, unlike there, initialisation alone does not reach it. Lecture 11
+  measured batch normalisation making a <em>repaired</em> network worse by 3.2
+  points; the size of an effect depends on what else is in the system.</p>
+  <ul class="tight small">
+    <li>Ten layers of untreated convolutions on 1,020 images do not
+        train: the loss sits at $\log 102 \approx 4.62$ and the network
+        predicts one class</li>
+    <li><code>BatchNorm2d</code> normalises across the batch <em>and</em> both
+        spatial axes, so it holds one mean and one variance per channel</li>
+  </ul>
+  <pre><code class="language-python" data-trim>
+nn.Conv2d(c_in, c_out, 3, padding=1, bias=False)
+nn.BatchNorm2d(c_out)     # 2 * c_out parameters, not 2 * c_out * H * W
+nn.ReLU()
+  </code></pre>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 22 -->
+<section data-menu-title="The architecture">
+  <h2>The architecture</h2>
+  <table>
+    <tr><th>Stage</th><th>Layers</th><th class="num">Output</th></tr>
+    <tr><td>1</td><td>conv 7&times;7 &times;32, conv 3&times;3 &times;32, pool</td><td class="num">32 &times; 64 &times; 64</td></tr>
+    <tr><td>2</td><td>conv &times;64, conv &times;64, pool</td><td class="num">64 &times; 32 &times; 32</td></tr>
+    <tr><td>3</td><td>conv &times;128, conv &times;128, pool</td><td class="num">128 &times; 16 &times; 16</td></tr>
+    <tr><td>4</td><td>conv &times;256, pool</td><td class="num">256 &times; 8 &times; 8</td></tr>
+    <tr><td class="fix">head</td><td class="fix">flatten, dense 256, dropout, dense 102</td><td class="num fix">102</td></tr>
+  </table>
+  <p class="small">Channels double as the map halves &mdash; the textbook&rsquo;s own
+  rule of thumb: what pooling takes away in resolution, the extra filters
+  give back in channels.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 23 -->
+<section data-menu-title="The architecture in code">
+  <h2>The architecture, in code</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-14|1-3|10-13">def conv_block(c_in, c_out, k=3):
+    return [nn.Conv2d(c_in, c_out, k, padding=k // 2, bias=False),
+            nn.BatchNorm2d(c_out), nn.ReLU()]
+
+net = nn.Sequential(
+    *conv_block(3, 32, k=7), *conv_block(32, 32), nn.MaxPool2d(2),
+    *conv_block(32, 64),     *conv_block(64, 64), nn.MaxPool2d(2),
+    *conv_block(64, 128),  *conv_block(128, 128), nn.MaxPool2d(2),
+    *conv_block(128, 256),                        nn.MaxPool2d(2),
+    nn.Flatten(),
+    nn.Linear(256 * 8 * 8, 256), nn.ReLU(),
+    nn.Dropout(0.5),
+    nn.Linear(256, 102),
+)
+  </code></pre>
+  <p class="small muted">Thirty modules. Nothing in it that was not on a slide
+  in this lecture or the previous one.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Check the shapes">
+  <h2>Check the shapes before you check anything else</h2>
+  <pre><code class="language-python" data-trim>
+x = torch.zeros(2, 3, 128, 128)
+for m in net:
+    x = m(x)
+    print(f"{type(m).__name__:12s} {tuple(x.shape)}")
+
+assert x.shape == (2, 102), f"the head is wrong: {x.shape}"
+  </code></pre>
+  <p class="small"><em>What is the shape here?</em> Asking costs four lines. A shape error
+  inside a training loop surfaces as a size-mismatch traceback two hundred
+  lines deep; here it surfaces as a printed line.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Counting parameters">
+  <h2>Count the parameters, and look at where they are</h2>
+  <table>
+    <tr><th>Part</th><th class="num">Parameters</th><th class="num">Share</th></tr>
+    <tr><td>Every convolution and batch-norm layer together</td><td class="num">586,720</td><td class="num">12.2%</td></tr>
+    <tr><td class="fail">One dense layer, 16,384 &rarr; 256</td><td class="num fail">4,194,560</td><td class="num fail">87.3%</td></tr>
+    <tr><td>Output layer, 256 &rarr; 102</td><td class="num">26,214</td><td class="num">0.5%</td></tr>
+    <tr><td class="fix">Total</td><td class="num fix">4,807,494</td><td class="num">100%</td></tr>
+  </table>
+  <p class="lead fail">Nine parameters in ten are in the layer that is not
+  convolutional.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 26 -->
+<section data-menu-title="The loop">
+  <h2>The training loop &mdash; unchanged</h2>
+  <pre><code class="language-python" data-trim>
+opt   = torch.optim.Adam(net.parameters(), lr=3e-4)
+lossf = nn.CrossEntropyLoss()
+
+for epoch in range(30):
+    net.train()
+    for xb, yb in train_loader:
+        opt.zero_grad()
+        loss = lossf(net(xb), yb)
+        loss.backward()
+        opt.step()
+  </code></pre>
+  <p class="small">Exactly the five lines from Lecture 10. Convolution changed
+  the model; it did not change the loop, because autograd does not care what
+  the modules are.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Learning rate">
+  <h2>One hyperparameter that is not a free choice</h2>
+  <table>
+    <tr><th>Learning rate</th><th class="num">Seed 42</th><th class="num">Seed 43</th><th class="num">Mean</th></tr>
+    <tr><td class="fail">$10^{-3}$, Adam&rsquo;s default</td><td class="num">0.98%</td><td class="num">1.86%</td><td class="num fail">1.42%</td></tr>
+    <tr><td class="fix">$3 \times 10^{-4}$</td><td class="num">6.86%</td><td class="num">4.61%</td><td class="num hit">5.74%</td></tr>
+  </table>
+  <p class="small">Validation accuracy after 12 epochs, on this architecture
+  and this data. The default does not diverge &mdash; it plateaus at or near
+  chance, which on a split with ten images of every species is 0.98%, and that
+  is the failure mode that does not announce itself.</p>
+  <p class="small muted">4.31 points, from one keyword argument nobody wrote
+  down &mdash; about twice the 2.25 points between the two seeds of the good
+  rate.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Run it">
+  <h2>Run it</h2>
+  <table>
+    <tr><th>Setting</th><th class="num">Value</th></tr>
+    <tr><td>Epochs</td><td class="num">30</td></tr>
+    <tr><td>Batch size</td><td class="num">32</td></tr>
+    <tr><td>Steps per epoch</td><td class="num">32</td></tr>
+    <tr><td>Total optimiser steps</td><td class="num">960</td></tr>
+    <tr><td class="fail">Wall clock, seed 42</td><td class="num fail">62 s</td></tr>
+  </table>
+  <p class="small muted">Measured on an Apple MPS backend, no CUDA, and
+  including a validation pass after every epoch. A free Colab T4 is in the same
+  range for a model this size; the point of the number is the comparison we
+  make next lecture, not the hardware.</p>
+</section>
+
+<!-- 29 -->
+<section class="figslide" data-menu-title="◆ The learning curve">
+  <h2>The cost, on the x-axis</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l15-curve.svg"
+         alt="Training and validation accuracy plotted against wall-clock seconds over thirty epochs; both rise throughout, the training curve to 43 per cent and the validation curve far more slowly to 16.3 per cent, with a dotted line at the 3.87 per cent majority baseline.">
+  </figure>
+  <p class="takeaway">The x-axis is seconds, not epochs. That is deliberate:
+  from the next lecture on, time is one of the things being compared.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Score the test set">
+  <h2>The test set. Once.</h2>
+  <pre><code class="language-python" data-trim>
+net.eval()
+with torch.no_grad():
+    correct = sum((net(xb).argmax(1) == yb).sum().item()
+                  for xb, yb in test_loader)
+print(f"test accuracy {correct / len(test_ds):.4f}")
+  </code></pre>
+  <p class="big-num">11.71%</p>
+  <p class="small">One run, seed 42. Two seeds of a shorter run of the same
+  network land 2.25 points apart, so one run of a network this size on 1,020
+  images is an anecdote.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Quote the spread">
+  <h2>Why one run is not a result</h2>
+  <table>
+    <tr><th>Seed</th><th class="num">Validation accuracy, 12 epochs</th></tr>
+    <tr><td>42</td><td class="num">6.86%</td></tr>
+    <tr><td>43</td><td class="num">4.61%</td></tr>
+  </table>
+  <p class="lead fail">2.25 points between two runs,
+  and nothing changed but the seed.</p>
+  <p class="small">Any comparison you make from here that is smaller than that
+  is not a comparison. Two seeds only show that the spread exists; a mean you
+  would report needs more runs than a free CPU affords.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Failure condition &middot; one seed reported as a result">
+  <h2>One seed reported as a result</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition</span>
+    2.25 points separate two runs with nothing changed but the seed. A single run is one draw from that spread, and a comparison of two single runs is two draws &mdash; which is why what gets reported is the spread as well as the mean.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 33 -->
+<section class="figslide" data-menu-title="◆ The filters">
+  <h2>Thirty-two filters, before and after</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l15-filters.png"
+         alt="Two montages of thirty-two seven-by-seven colour patches: on the left the filters at random initialisation, on the right the same filters after thirty epochs of training. The two blocks look the same.">
+  </figure>
+  <p class="takeaway">Look at the two blocks for ten seconds, and say what
+  changed.</p>
+  <aside class="notes">Give them the ten seconds. Somebody always says
+  &ldquo;nothing&rdquo;, hesitantly, expecting to be wrong. They are right, and
+  the whole of the next lecture hangs on it.</aside>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="Nothing changed">
+  <h2>It moved a little. It did not become anything</h2>
+  <pre><code class="language-python" data-trim>
+import torch.nn.functional as F
+
+# init_filters: a copy of net[0].weight, taken before the first step
+before, after = init_filters.flatten(), net[0].weight.flatten()
+print(f"cosine similarity {F.cosine_similarity(before, after, dim=0):.4f}")
+print(f"mean |change| / mean |weight| "
+      f"{(after - before).abs().mean() / before.abs().mean():.1%}")
+  </code></pre>
+  <table>
+    <tr><th></th><th class="num">Value</th></tr>
+    <tr><td class="fix">cosine similarity, all 4,704 weights before against after</td><td class="num hit">0.9880</td></tr>
+    <tr><td>mean absolute change, as a share of the mean weight</td><td class="num">14.1%</td></tr>
+    <tr><td>weights that changed sign</td><td class="num">160</td></tr>
+  </table>
+  <p class="lead fail">The weights moved. No structure appeared &mdash; the
+  right-hand block is still noise, and 62 seconds of training
+  bought it.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Why nothing appeared">
+  <h2>Two reasons, and both are worth knowing</h2>
+  <ol class="tight small">
+    <li><strong>The gradient that reaches it is small.</strong> Ten layers of
+        chain rule separate the loss from these weights, and 1,020
+        images give 960 optimiser steps in total</li>
+    <li><strong>Its scale does not matter.</strong> A batch norm follows
+        immediately, and normalising the output makes the overall size of these
+        weights irrelevant to the function &mdash; so there is no gradient
+        pressure on it at all</li>
+  </ol>
+  <p class="small">The textbook picture of a first layer &mdash; colour blobs,
+  oriented edges &mdash; is real, and you will see it next lecture. It comes
+  from a corpus a thousand times this size.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 36 -->
+<section class="figslide" data-menu-title="◆ Feature maps">
+  <h2>What a filter does to one photograph</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l15-featmaps.png"
+         alt="Two rows: the input photograph followed by eight first-layer feature maps at 128 by 128 in which the flower is still recognisable, and below it the same photograph followed by eight maps after four convolutions at 32 by 32 in which only blobs remain.">
+  </figure>
+  <p class="takeaway">Early maps still look like the photograph. Four layers
+  down they do not, and that is the point.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Reading feature maps">
+  <h2>Reading a feature map</h2>
+  <ul class="tight small">
+    <li>Bright means <em>this filter fired strongly here</em> &mdash; nothing
+        more mystical than that</li>
+    <li>The spatial layout survives: a bright patch is where in the image the
+        pattern was found</li>
+    <li>After four pooling stages the map is 8 &times; 8, so one cell answers
+        for a 256-pixel square of the
+        original</li>
+  </ul>
+  <p class="small">That last line is a loss of information we chose. It is
+  the right choice for naming a species, and the wrong one for any task that
+  must say <em>where</em>.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 38 -->
+<section data-menu-title="The scoreboard">
+  <h2>The scoreboard</h2>
+  <table>
+    <tr><th></th><th class="num">Test accuracy</th></tr>
+    <tr><td>Uniform guess</td><td class="num">0.98%</td></tr>
+    <tr><td>Commonest species</td><td class="num">3.87%</td></tr>
+    <tr><td class="fix">Yours, today</td><td class="num hit">11.71%</td></tr>
+    <tr><td>Operator&rsquo;s requirement</td><td class="num">90%</td></tr>
+  </table>
+  <p class="lead">Far above both baselines, and far below the requirement.
+  Both distances matter.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Honest limits">
+  <h2>What this number is and is not</h2>
+  <ul class="tight small">
+    <li><strong>Is</strong>: one run, seed 42, of one
+        architecture on one split, measured on 6,149
+        held-out images</li>
+    <li><strong>Is not</strong>: a claim about convolutional networks. It is a
+        claim about this one, trained on 1,020 images</li>
+    <li>Two seeds of a shorter run differed by
+        2.25 points. Any comparison smaller than that is
+        not a comparison</li>
+  </ul>
+  <p class="small">Quote the spread whenever you quote the number. It is the
+  difference between a measurement and an anecdote.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 40 -->
+<section data-menu-title="Common mistakes">
+  <h2>Five ways this build goes wrong quietly</h2>
+  <table>
+    <tr><th>Mistake</th><th>Symptom</th></tr>
+    <tr><td><code>padding=0</code> left at the default</td><td>maps shrink; a shape error many layers later</td></tr>
+    <tr><td>Forgetting <code>net.eval()</code></td><td>the score wobbles between calls &mdash; Lecture 10</td></tr>
+    <tr><td>Normalising with statistics of all splits</td><td>0.20 points, inside the seed noise</td></tr>
+    <tr><td><code>lr</code> left at Adam&rsquo;s default</td><td>4.31 points, and no error</td></tr>
+    <tr><td>Pooling before any convolution</td><td>throws away the pixels before anything reads them</td></tr>
+  </table>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 41 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-12.ipynb">Open Lecture 12 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> It trains 30 epochs, and every
+        accuracy on these slides is one it printed</li>
+    <li>The dense-against-convolutional parameter count, computed rather than
+        quoted &mdash; the arithmetic you can do on paper first</li>
+    <li>The network built and shape-checked layer by layer, the learning-rate
+        and seed comparisons, one test score, and the first layer&rsquo;s
+        filters and feature maps</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Set <code>padding=0</code> on every convolution and re-run the shape
+    check. Every map shrinks and the first linear layer no longer matches.
+  </div>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="small">
+    <li>Counted the weights of a dense layer and a convolutional layer producing
+        the same output, and found the image size absent from the convolutional
+        count</li>
+    <li>Defined translation <em>equivariance</em>, the property weight sharing
+        buys, and saw that pooling builds <em>invariance</em> on top of it</li>
+    <li>Built a convolutional network &mdash; convolution, batch norm, pooling,
+        a dense head &mdash; checked its shapes, and found nine parameters in
+        ten in the one dense layer</li>
+    <li>Trained it with a learning rate that is not a free choice, scored the
+        test set once, and quoted the seed spread beside the number</li>
+    <li>Looked inside: the first-layer filters barely moved, and the feature
+        maps lose the photograph as they go down the stack</li>
+  </ol>
+</section>
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 12">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 12</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 12">
+  <h2>Exercises &mdash; Lecture 12</h2>
+  <ul class="ex-list">
+    <li>A dense layer mapping a $3\times128\times128$ input to a $32\times128\times128$ output has $n_{\text{in}}n_{\text{out}}$ weights. Give the convolutional count for a $7\times7$ kernel, and say which symbols are absent from it. <span class="ex-marks">[5]</span></li>
+    <li>State the difference between equivariance and invariance, say which of the two pooling builds, and why a species classifier wants it. <span class="ex-marks">[4]</span></li>
+    <li>Convolution is equivariant to translation on the interior of an image but not at the border. Give the reason. <span class="ex-marks">[3]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 13&rsquo;s deck.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Exercises · 12 (2)">
+  <h2>Exercises &mdash; Lecture 12 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>Trained with Adam at its default learning rate of $10^{-3}$, the lecture&rsquo;s network neither diverges nor raises an error. State what it does instead, and how the lecture showed it. <span class="ex-marks">[4]</span></li>
+    <li>Two runs of the same network, differing only in the seed, reach 6.86% and 4.61% validation accuracy. A change to the pipeline then gains 1.5 points in a single run. What can you conclude, and what should be reported? <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 13&rsquo;s deck.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 11">
+  <p class="kicker">The five set at the end of Lecture 11</p>
+  <h1>Solutions<br>Lecture 11</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 11">
+  <h2>Solutions &mdash; Lecture 11</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> One layer multiplies the standard deviation of the backward signal by&hellip;</p>
+      <p class="lead"><span class="fix">They multiply it by $\rho^{L-1}$ &mdash; $L-1$ steps between the first gradient and the last &mdash; so anything but 1 vanishes or explodes geometrically.</span></p>
+      <ul class="tight smaller">
+        <li>A constant applied $L$ times is exponential in $L$</li>
+        <li>There is no regime where a repeated constant other than 1 is safe</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> Preserving the forward signal asks for $\operatorname{Var}(w) = 1/n_{\text{in}}$ and preserving the gradient&hellip;</p>
+      <p class="lead"><span class="fix">They agree only when $n_{\text{in}} = n_{\text{out}}$; Glorot takes the harmonic mean, $2/(n_{\text{in}}+n_{\text{out}})$.</span></p>
+      <ul class="tight smaller">
+        <li>Any layer that changes width cannot satisfy both</li>
+        <li>The compromise accepts a small error in each direction rather than a large one in either</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 11 (2)">
+  <h2>Solutions &mdash; Lecture 11 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> He initialisation doubles the weight variance for ReLU. Derive the factor of two in one line.</p>
+      <p class="lead"><span class="fix">ReLU zeroes half of a symmetric zero-mean input, so $\mathbb{E}[\text{ReLU}(z)^2] = \tfrac12\mathbb{E}[z^2]$.</span></p>
+      <ul class="tight smaller">
+        <li>Exactly half the variance is discarded at each layer</li>
+        <li>Doubling $\operatorname{Var}(w)$ puts it back</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> A gradient profile that is a straight line on a log axis tells you something a curved one does not. State&hellip;</p>
+      <p class="lead"><span class="fix">The attenuation is the same factor at every layer, so it is the initialisation rather than one bad layer.</span></p>
+      <ul class="tight smaller">
+        <li>A constant ratio per layer is a straight line in log space</li>
+        <li>A single broken layer would show a step, not a slope</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 11 (3)">
+  <h2>Solutions &mdash; Lecture 11 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> Gradient clipping is applied to a network whose gradients are fifteen orders of magnitude too small. Predict&hellip;</p>
+      <p class="lead"><span class="fix">No effect &mdash; clipping bounds gradients that are too large.</span></p>
+      <ul class="tight smaller">
+        <li>The threshold is never reached, so nothing is rescaled</li>
+        <li>Reaching for it means the failure mode was never measured</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 13 &middot; G&eacute;ron Ch. 12</p>
+  <h1>Transfer learning</h1>
+  <p class="small">
+    Why features learned on a large labelled corpus transfer to these
+    flowers<br>
+    Freeze the backbone and train a head; then let the last block move, at
+    its own learning rate<br>
+    Augmentation &mdash; and why it belongs to the training loader only
+  </p>
+  <p class="clock">Run the Lecture 12 notebook first</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 12
+  <span class="sep">&middot;</span> Convolutional networks
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

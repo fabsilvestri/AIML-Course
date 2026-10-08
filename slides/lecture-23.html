@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 23 — Vision transformers and multimodal retrieval</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Vision transformers and<br>multimodal retrieval</h1>
+  <p class="subtitle">COCO</p>
+  <p><span class="badge badge-lec">Lecture 23</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 15&ndash;16</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Part&nbsp;V built retrieval over text and over user
+  behaviour. Both reduced to the same object: <strong>two encoders and an inner
+  product</strong>.</p>
+  <ul class="tight small">
+    <li>Lecture&nbsp;20 &mdash; a query encoder and a document encoder,
+        retrieved by inner product</li>
+    <li>Lecture&nbsp;22 &mdash; a user tower and an item tower, the same
+        architecture with users in place of queries, and an evaluation whose
+        number depends on the protocol stated beside it</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">Today the two towers take different modalities</span>
+    One encodes <strong>images</strong>, the other <strong>text</strong>, and a
+    photograph and its caption must land close together. Everything about the
+    retrieval is unchanged; what is new is that the two encoders never see the
+    same kind of input.
+  </div>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>The brief: a catalogue of photographs searched with sentences, and the
+        vision transformer, which reads an image as a sequence of patches</li>
+    <li>A metric and its baseline: Recall@k, the mean reciprocal rank, and what
+        random ranking scores, exactly</li>
+    <li>Two encoders trained separately, measured against each other</li>
+    <li><strong>The mathematics</strong> &mdash; why the sphere, the gap between
+        the modalities, and what the temperature does</li>
+    <li>A jointly trained dual encoder: a known-answer test, text-to-image
+        retrieval, and an audit of the evaluation</li>
+  </ol>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-23.ipynb">Open Lecture 23 in Colab</a>
+  </p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="The stakeholder">
+  <h2>The stakeholder</h2>
+  <p>A retailer&rsquo;s catalogue team. Their catalogue has one property that
+  breaks every search system they have bought:</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">The entries are photographs</span>
+    Product photos arrive from suppliers with an identifier, a price and a
+    picture. Written descriptions are inconsistent, often absent, and never
+    written by the person searching.
+  </div>
+  <p class="small">Customers type sentences. The catalogue stores pixels.
+  Nothing in the system converts one into the other.</p>
+  <aside class="notes">Ask what they would do first. Someone will say &ldquo;label
+  every image&rdquo;. Ask how many labels, and who writes them, and what happens when
+  the customer uses a word that is not in the label set.</aside>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="What they ask for">
+  <h2>What they are asking for</h2>
+  <table>
+    <tr><th>Input</th><th>Output</th></tr>
+    <tr><td>A sentence typed by a customer</td><td>A ranked list of catalogue entries</td></tr>
+    <tr><td>&ldquo;a red bus on a city street&rdquo;</td><td>the entries whose <em>picture</em> shows that</td></tr>
+  </table>
+  <ul class="tight small">
+    <li>No labels. Nobody is going to annotate the catalogue</li>
+    <li>No fixed vocabulary. The query is whatever the customer typed</li>
+    <li>The answer must be a <strong>ranking</strong>, not a yes/no</li>
+  </ul>
+  <p class="small muted">This is the first brief in the course whose input and
+  output are not the same kind of object.</p>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="Why keyword search fails">
+  <h2>Why the obvious thing does not apply</h2>
+  <p>Keyword search needs text on both sides. So does the semantic search you
+  built in the previous application: it embeds a sentence and compares it to
+  other <em>sentences</em>.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">There is no text on the catalogue side</span>
+    You can index descriptions when they exist. But an entry with no
+    description is invisible to a text index, no matter how good the index is
+    &mdash; not badly ranked, absent.
+  </div>
+  <p class="small muted">Hold that thought. The next lecture counts how many
+  entries it costs us, and repairs it.</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="The corpus, stated">
+  <h2>The corpus, and its size</h2>
+  <div class="cols cols-40-60">
+    <div>
+      <p class="big-num">200</p>
+      <p class="small">catalogue entries<br>
+      <span class="muted">32.6 MB on disk</span></p>
+    </div>
+    <div>
+      <ul class="tight small">
+        <li>COCO 2014 validation images, taken in order of image id, so
+            everyone&rsquo;s catalogue is the same catalogue</li>
+        <li>5 independent human captions per image
+            &mdash; written by people who were not shown each other&rsquo;s</li>
+        <li>Every retrieval number today is measured against
+            <strong>200 candidates</strong></li>
+      </ul>
+    </div>
+  </div>
+  <p class="small fail">Say the candidate-set size every time you say a recall.
+  A recall without it is not a measurement.</p>
+  <aside class="notes">This is the honesty slide. 200 is small, and small is
+  fine; pretending it is 5,000 is not. Recall rises as the candidate set
+  shrinks, and they should expect that.</aside>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; the candidate set is the number</span>
+    Every retrieval score here is measured against 200 candidates. Widen the catalogue and the same model reports a worse number without having changed, so a recall figure quoted without its candidate-set size cannot be compared with anything.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 8 -->
+<section class="figslide" data-menu-title="◆ The catalogue">
+  <h2>Sixteen of the two hundred entries</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l23-catalogue.png"
+         alt="Two rows of eight photographs of everyday scenes: people, food, vehicles, animals, rooms.">
+  </figure>
+  <p class="takeaway muted">Ordinary photographs of ordinary things &mdash; and
+  five sentences each, written by five different people, which the search system
+  never sees.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="Query and description">
+  <h2>Two different uses for five captions</h2>
+  <table>
+    <tr><th>Caption</th><th>Role</th><th>Who sees it</th></tr>
+    <tr><td>#1</td><td>the entry&rsquo;s <em>description</em>, when it has one</td><td>the text index</td></tr>
+    <tr><td>#2</td><td>the customer&rsquo;s <em>query</em></td><td>the search box</td></tr>
+    <tr><td>#3&ndash;5</td><td>held back</td><td>nobody, today</td></tr>
+  </table>
+  <p class="small">Using two different people&rsquo;s sentences about the same
+  picture makes this a paraphrase problem rather than a lookup. If we used the
+  same sentence on both sides, a hash table would score 100%.</p>
+  <aside class="notes">This is the design decision most worth defending out
+  loud. Ask them what would happen if query and description were the same
+  string; someone will get to &ldquo;the metric would measure nothing&rdquo;.</aside>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="The known-answer test">
+  <h2>A second corpus, for a different job</h2>
+  <p><strong>Test against a case whose answer you know.</strong> The catalogue has no labels, so it cannot play that role.</p>
+  <table>
+    <tr><th>Corpus</th><th class="num">Size</th><th>Job</th></tr>
+    <tr><td>COCO catalogue</td><td class="num">200 images</td><td>the real task: rank entries for a query</td></tr>
+    <tr><td>CIFAR-10 test</td><td class="num">500 images</td><td>the known-answer check: ten labels we have</td></tr>
+  </table>
+  <p class="small muted">CIFAR-10 is 32&times;32. That is a hard setting for any
+  model trained on web photographs, and we will see the cost.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="An image as a sequence">
+  <h2>An image as a sequence</h2>
+  <p class="small">A transformer takes a sequence. An image is a grid. So cut
+  it up:</p>
+  <ol class="tight small">
+    <li>Split the image into fixed patches &mdash; 16&times;16 pixels is the
+        usual choice</li>
+    <li>Flatten each patch and project it linearly to $d_{\text{model}}$. That
+        projection plays the part of a language model&rsquo;s token-embedding
+        table, with patches in place of tokens</li>
+    <li>Add a positional encoding, because attention by itself has no notion
+        of order &mdash; and a grid has two</li>
+    <li>Run the standard transformer blocks</li>
+  </ol>
+  <p class="small">A 224&times;224 image at 16&times;16 patches is
+  $14 \times 14 = 196$ tokens. Well within reach of the quadratic cost, which
+  is exactly why this patch size and not a smaller one.</p>
+  <a class="anim-link" href="../animations/lecture-23.html#vit" target="_blank">Animation</a>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 12 -->
+<section data-menu-title="What does 'works' mean">
+  <h2>What would &ldquo;it works&rdquo; even mean?</h2>
+  <p>The system returns a ranked list. So the quantity that matters is
+  <strong>where the right entry landed</strong>.</p>
+  <div class="eqn-box">
+    $$r_q \;=\; 1 + \#\{\,j \neq q^{\star} : s(q, j) \ge s(q, q^{\star})\,\}$$
+    <div class="eqn-label">the rank of the relevant entry for query q</div>
+  </div>
+  <p class="small">Ties count <em>against</em> us: a tie is scored as the worse
+  rank. A metric that flatters a degenerate score matrix is not a metric.</p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="Recall@k">
+  <h2>Recall@k</h2>
+  <div class="eqn-box">
+    $$\mathrm{R}@k \;=\; \frac{1}{Q}\sum_{q=1}^{Q} \mathbf{1}\!\left[\,r_q \le k\,\right]$$
+    <div class="eqn-label">the share of queries whose answer is in the top k</div>
+  </div>
+  <p class="small">With exactly one relevant entry per query, recall and
+  precision at <em>k</em> carry the same information, and recall is the one the
+  literature reports. We will read R@1, R@5 and R@10.</p>
+  <p class="small muted">R@1 is the number the product actually cares about: it
+  is the top of the page.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="MRR">
+  <h2>Mean reciprocal rank</h2>
+  <div class="eqn-box">
+    $$\mathrm{MRR} \;=\; \frac{1}{Q}\sum_{q=1}^{Q}\frac{1}{r_q}$$
+  </div>
+  <p class="small">Rank 1 contributes 1, rank 2 contributes 0.5, rank 100
+  contributes 0.01. It rewards being nearly right and stops rewarding it
+  quickly &mdash; which matches a page of ten results.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="The trivial baseline">
+  <h2>The trivial baseline, computed rather than run</h2>
+  <p class="small"><strong>Every number needs a baseline.</strong> Here the baseline needs no experiment at all.</p>
+  <p class="small">Shuffle the catalogue. One relevant entry among $n$, placed
+  uniformly at random:</p>
+  <div class="eqn-box">
+    $$\Pr[r \le k] \;=\; \frac{k}{n}, \qquad
+      \mathbb{E}[r] \;=\; \frac{n+1}{2}, \qquad
+      \mathbb{E}\!\left[\tfrac{1}{r}\right] \;=\; \frac{H_n}{n}$$
+    <div class="eqn-label">random ranking, exactly</div>
+  </div>
+  <p class="small">On our catalogue, $n$ = 200: R@1 is 0.5%, R@10 is 5.0%, the
+  expected rank is 100.5 and the MRR is 0.029.</p>
+  <p class="small muted">$H_n$ is the harmonic number. No simulation, no seed,
+  no error bar &mdash; this one is arithmetic.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 16 -->
+<section data-menu-title="Encode the images">
+  <h2>Step 1 &mdash; encode the images</h2>
+  <pre><code class="language-python" data-trim data-line-numbers># an image-only encoder: ImageNet labels, no text anywhere in training
+import torch
+from transformers import AutoImageProcessor, ViTModel
+
+proc = AutoImageProcessor.from_pretrained("google/vit-base-patch16-224")
+vit = ViTModel.from_pretrained("google/vit-base-patch16-224",
+                               add_pooling_layer=False).to(device).eval()
+
+feats = []
+with torch.no_grad():
+    for i in range(0, len(images), 32):
+        batch = proc(images=images[i:i + 32], return_tensors="pt").to(device)
+        feats.append(vit(**batch).last_hidden_state[:, 0].cpu())  # [CLS]
+
+V = torch.cat(feats).numpy()
+assert V.shape == (200, 768), V.shape
+</code></pre>
+  <p class="small muted"><code>add_pooling_layer=False</code> because that
+  checkpoint has no pooler weights &mdash; ask for one and you get a randomly
+  initialised layer, silently.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="Encode the queries">
+  <h2>Step 2 &mdash; encode the queries</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>from transformers import AutoModel, AutoTokenizer
+
+tok = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+enc = AutoModel.from_pretrained("sentence-transformers/all-MiniLM-L6-v2") \
+               .to(device).eval()
+
+with torch.no_grad():
+    b = tok(queries, return_tensors="pt", padding=True,
+            truncation=True, max_length=128).to(device)
+    h = enc(**b).last_hidden_state              # (200, tokens, 384)
+    m = b["attention_mask"].unsqueeze(-1).float()
+    T = ((h * m).sum(1) / m.sum(1)).cpu().numpy()   # mean pooling
+
+assert T.shape == (200, 384), T.shape
+</code></pre>
+  <p class="small">Mean pooling over real tokens only &mdash; the mask matters,
+  and forgetting it averages in the padding.</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="The measurement">
+  <h2>Step 3 &mdash; make the shapes agree, then measure</h2>
+  <p class="small">The image vectors have 768 coordinates and the sentence
+  vectors 384, so <code>V @ T.T</code> does not even run. Make them agree three
+  ways, so that nobody can blame the fix: a random Gaussian projection
+  768&nbsp;&rarr;&nbsp;384, the first 384 image coordinates, or the text
+  zero-padded to 768.</p>
+  <p class="small">Then measure &mdash; against what? Compute two numbers,
+  always:</p>
+  <ul class="tight small">
+    <li>the cosine between an image and <strong>its own caption</strong></li>
+    <li>the cosine between an image and <strong>somebody else&rsquo;s caption</strong>
+        &mdash; 200 &times; 200 minus the diagonal,
+        so nearly forty thousand of them</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The comparison is the measurement</span>
+    If the two distributions sit on top of one another, the similarity carries
+    no information about whether the pair matches.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 19 -->
+<section class="figslide" data-menu-title="◆ Two spaces, measured">
+  <h2>The two spaces, measured</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l23-space-mismatch.svg"
+         alt="Left: two nearly identical histograms of cosine similarity, one for matched image-caption pairs and one for unrelated pairs. Right: bars showing Recall@1 for three ways of matching the dimensions, all at or near the random-ranking line.">
+  </figure>
+  <p class="takeaway muted">The matched pairs and the unrelated pairs are the
+  same distribution, and all three fixes land on the random-ranking line.</p>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="The retrieval number">
+  <h2>And as a retrieval system</h2>
+  <table>
+    <tr><th>System</th><th class="num">R@1</th><th class="num">R@5</th><th class="num">R@10</th><th class="num">Median rank</th></tr>
+    <tr><td>Random ranking (exact)</td><td class="num">0.5%</td><td class="num">2.5%</td><td class="num">5.0%</td><td class="num">100</td></tr>
+    <tr><td>ViT + MiniLM, random projection</td><td class="num">1.0%</td><td class="num">4.0%</td><td class="num">6.0%</td><td class="num">97</td></tr>
+    <tr><td>ViT + MiniLM, truncated</td><td class="num">0.5%</td><td class="num">2.0%</td><td class="num">5.5%</td><td class="num">88</td></tr>
+    <tr><td>ViT + MiniLM, zero-padded</td><td class="num">0.0%</td><td class="num">2.5%</td><td class="num">5.0%</td><td class="num">88</td></tr>
+  </table>
+  <p class="small fail">Two of the 200 queries put the right
+  image first. Shuffling is expected to get one. Two strong encoders, over a
+  hundred million parameters between them, and that is the whole difference.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="The surprise">
+  <h2>Say the result out loud</h2>
+  <p class="lead">A picture of a bus and the sentence <em>&ldquo;a red bus on a
+  city street&rdquo;</em> are <strong>no closer</strong> than that picture and a
+  sentence about a sandwich.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Both encoders work perfectly</span>
+    The ViT separates images from one another. MiniLM separates sentences from
+    one another. Neither was ever shown a single (image, sentence) pair, so
+    neither has any reason to place them anywhere in particular relative to each
+    other.
+  </div>
+  <aside class="notes">This is the hinge of the lecture. Pause here. Ask what
+  training signal would have been needed; steer towards &ldquo;something that saw both
+  at once&rdquo;.</aside>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Why, precisely">
+  <h2>Why, precisely</h2>
+  <ul class="tight small">
+    <li>An embedding space is defined <em>only</em> up to whatever the training
+        objective constrained</li>
+    <li>ImageNet classification constrains images relative to images</li>
+    <li>Sentence-similarity training constrains sentences relative to sentences</li>
+    <li>Nothing in either loss ever compared a vector from one to a vector from
+        the other, so the relative orientation of the two spaces is
+        <strong>arbitrary</strong></li>
+  </ul>
+  <div class="panel panel-math">
+    <span class="panel-title">A rotation you cannot see</span>
+    Apply any orthogonal map to the image space: every image&ndash;image cosine
+    is unchanged, so the ViT&rsquo;s loss is unchanged. The image&ndash;text
+    cosines all change. The loss cannot distinguish those worlds, so it did not
+    pick one.
+  </div>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="Why the sphere">
+  <h2>Why normalise at all</h2>
+  <p class="small">The unnormalised inner product factorises:</p>
+  <div class="eqn-box">
+    $$\langle a, b\rangle = \lVert a\rVert\,\lVert b\rVert\cos\theta$$
+  </div>
+  <ul class="tight small">
+    <li>Two quantities are mixed: <em>which direction</em> the encoder chose,
+        and <em>how loudly</em> it said it</li>
+    <li>Only the direction carries the semantics. The length is whatever the
+        last linear layer happened to scale to</li>
+    <li>Measured on our catalogue, with the jointly trained encoder used later
+        today: the longest image embedding is
+        1.32&times; the shortest</li>
+  </ul>
+  <p class="small">Divide both by their norms and the score
+  $S_{ij} = \mathbf{u}_i^{\top}\mathbf{v}_j$ of image $i$ against caption $j$
+  is a pure cosine, in $[-1, 1]$, comparable across pairs, models and runs.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 24 -->
+<section class="figslide" data-menu-title="◆ The modality gap">
+  <h2>One space, two cones</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l24-geometry.svg"
+         alt="Left: two overlaid histograms of cosine similarity against a line at zero — unrelated CLIP image-caption pairs centred a little right of zero, and unrelated CLIP image-image pairs further right still. Right: a two-dimensional projection showing image embeddings and caption embeddings in two separated clouds.">
+  </figure>
+  <p class="takeaway muted">In the jointly trained encoder used later today,
+  images occupy one region of the sphere and captions another: the two centroids are 0.83 apart. The
+  objective aligns pairs <em>relatively</em>, and never asks the two clouds to
+  coincide.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="What τ does">
+  <h2>What dividing by $\tau$ actually does</h2>
+  <p class="small">Training scores a batch of $B$ pairs. Row $i$ of $S$ is a
+  $B$-class softmax whose correct answer is column $i$, with every cosine
+  divided by a temperature $\tau$ &mdash; the InfoNCE loss:</p>
+  <div class="eqn-box">
+    $$\mathcal{L}_i = -\log\frac{\exp(S_{ii}/\tau)}{\sum_{j}\exp(S_{ij}/\tau)},
+      \qquad
+      \frac{\partial \mathcal{L}_i}{\partial S_{ij}}
+      = \frac{1}{\tau}\left(p_{ij} - \mathbf{1}[j = i]\right)$$
+    <div class="eqn-label">the softmax of row i, prediction minus target, scaled by the inverse temperature</div>
+  </div>
+  <ul class="tight small">
+    <li>$\tau$ does <strong>not</strong> change which column is largest, so it
+        cannot change the top-1 accuracy of a fixed model</li>
+    <li>It changes <em>where the gradient goes</em>. Small $\tau$ concentrates
+        $p$ on the few hardest negatives; those get almost all the push</li>
+    <li>Too small and the loss is dominated by one negative per row, which may be
+        a mislabelled pair rather than an informative one</li>
+  </ul>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="The idea">
+  <h2>The idea, in one paragraph</h2>
+  <p class="small">Take a large collection of (image, caption) pairs. Push each
+  image through an image tower and each caption through a text tower, both
+  ending in a linear map into the <em>same</em> $d$-dimensional space. Normalise
+  onto the unit sphere. Then train so that, within a batch, each image&rsquo;s
+  own caption scores higher than every other caption in the batch.</p>
+  <p class="small">The checkpoint we use: a ViT-B/32 image tower and a 12-layer
+  text transformer, meeting in one 512-dimensional space on the unit sphere,
+  trained on image&ndash;text pairs collected from the web.</p>
+  <div class="panel panel-math">
+    <span class="panel-title">the derivation, earlier today</span>
+    Why the sphere, why the two modalities still sit in separate regions of it,
+    and what the temperature does &mdash; all from this lecture&rsquo;s
+    mathematics block. Here we use the result and measure it.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 27 -->
+<section data-menu-title="The code">
+  <h2>The whole system, in fourteen lines</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>from transformers import CLIPModel, CLIPProcessor
+
+proc  = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32") \
+                 .to(device).eval()
+
+with torch.no_grad():
+    ib = proc(images=images, return_tensors="pt").to(device)
+    I  = model.get_image_features(**ib).cpu().numpy()
+    tb = proc(text=queries, return_tensors="pt",
+              padding=True, truncation=True, max_length=77).to(device)
+    T  = model.get_text_features(**tb).cpu().numpy()
+
+I, T = unit(I), unit(T)          # onto the sphere, both of them
+sim  = T @ I.T                   # (queries, images) — now this is legal
+assert sim.shape == (200, 200)
+</code></pre>
+  <p class="small">Same shape on both sides, so the matrix product exists. That
+  is the entire difference.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Known-answer test first">
+  <h2>Before the catalogue: the known-answer test</h2>
+  <p class="small">The catalogue has no labels, so nothing there can tell us the
+  model is loaded correctly, pointed at the right tensors, and preprocessing the
+  images the way it was trained to.</p>
+  <ul class="tight small">
+    <li>Take 500 CIFAR-10 test images and the ten class
+        names</li>
+    <li>Embed the sentence <em>&ldquo;a photo of a {class}&rdquo;</em> for each
+        class</li>
+    <li>Assign each image to the nearest of the ten sentences</li>
+  </ul>
+  <p class="small muted">No training, no fitting, no labels used except to
+  score. This is what &ldquo;zero-shot&rdquo; means, and it is the check, not
+  the product.</p>
+</section>
+
+<!-- 29 -->
+<section class="figslide" data-menu-title="◆ Zero-shot">
+  <h2>Zero-shot on a set whose labels we have</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l23-zeroshot.svg"
+         alt="Left: per-class zero-shot accuracy bars for ten CIFAR-10 classes over 500 images, all far above a dashed 10% chance line. Right: three bars comparing accuracy for three different prompt sentences: 88.0%, 90.6% and 90.6%.">
+  </figure>
+  <p class="takeaway muted">90.6% over
+  500 images against a 10% chance
+  level &mdash; from a model that has never seen CIFAR-10.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 30 -->
+<section data-menu-title="The prompt is a hyperparameter">
+  <h2>The sentence is a hyperparameter</h2>
+  <table>
+    <tr><th>Prompt</th><th class="num">Accuracy over 500 images</th></tr>
+    <tr><td>&ldquo;dog&rdquo;</td><td class="num">88.0%</td></tr>
+    <tr><td>&ldquo;a photo of a dog&rdquo;</td><td class="num">90.6%</td></tr>
+    <tr><td>&ldquo;a low-resolution photo of a dog&rdquo;</td><td class="num">90.6%</td></tr>
+    <tr><td>Chance</td><td class="num">10.0%</td></tr>
+  </table>
+  <p class="small fail">A spread of 2.6% from
+  changing the wording alone. A &ldquo;zero-shot&rdquo; number is a number for
+  one particular sentence, and the sentence is a choice you made.</p>
+  <aside class="notes">Connect this to hyperparameters chosen on the test set.
+  Picking the best template by looking at the test accuracy is
+  exactly that error in a new costume.</aside>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Back to the catalogue">
+  <h2>The check passed. Back to the catalogue</h2>
+  <p class="small">Same 200 images. Same
+  200 queries. Same metric, same ties rule, same
+  baseline. Only the encoders changed.</p>
+  <pre><code class="language-python" data-trim>rank = (sim &gt;= sim.diagonal()[:, None]).sum(axis=1)   # ties count against us
+for k in (1, 5, 10):
+    print(f"R@{k:&lt;3d} {(rank &lt;= k).mean():6.1%}   random: {k / len(rank):6.1%}")
+print(f"median rank {np.median(rank):.0f} of {len(rank)}")
+</code></pre>
+</section>
+
+<!-- 32 -->
+<section class="figslide" data-menu-title="◆ Recall, all three">
+  <h2>Three systems, one metric</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l23-recall.svg"
+         alt="Grouped bars of Recall@1, @5 and @10 for random ranking, the two-separate-encoder system, and the jointly trained one, over 200 candidates; the jointly trained one reaches 75.0%, 97.0% and 99.0%.">
+  </figure>
+  <p class="takeaway muted">Random ranking and the two-encoder system are the
+  same bar. The joint encoder is a different picture entirely.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="The results table">
+  <h2>The results</h2>
+  <table>
+    <tr><th>System</th><th class="num">R@1</th><th class="num">R@5</th><th class="num">R@10</th><th class="num">Median rank</th><th class="num">MRR</th></tr>
+    <tr><td>Random ranking</td><td class="num">0.5%</td><td class="num">2.5%</td><td class="num">5.0%</td><td class="num">100</td><td class="num">0.029</td></tr>
+    <tr><td>ViT + MiniLM</td><td class="num miss">1.0%</td><td class="num">4.0%</td><td class="num">6.0%</td><td class="num">97</td><td class="num">0.037</td></tr>
+    <tr><td>Joint dual encoder</td><td class="num hit">75.0%</td><td class="num hit">97.0%</td><td class="num hit">99.0%</td><td class="num">1</td><td class="num">0.841</td></tr>
+  </table>
+  <p class="small">Text to image, 200 candidates, ties against the
+  model, one caption per entry as the query.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 34 -->
+<section class="figslide" data-menu-title="◆ Against the anchors">
+  <h2>Recall@1, against the anchors</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l23-commitment.svg"
+         alt="Horizontal bars of Recall@1 over 200 candidates: random ranking 0.5%, two separate encoders 1.0%, one joint encoder 75.0%.">
+  </figure>
+  <p class="takeaway muted">Two of these three bars are the same bar. Which two,
+  and why?</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Where it still fails">
+  <h2>Report the failure cases</h2>
+  <p class="small">75.0% at rank 1 means
+  <strong>25.0%</strong> of queries did not get the
+  right entry first. Look at them.</p>
+  <ul class="tight small">
+    <li>Queries that describe a scene rather than an object &mdash; several
+        entries fit equally well, and the &ldquo;wrong&rdquo; one is often a
+        reasonable answer</li>
+    <li>Fine distinctions the caption makes and the picture barely shows</li>
+    <li>Counts and spatial relations: &ldquo;three&rdquo;, &ldquo;behind&rdquo;,
+        &ldquo;to the left of&rdquo;</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">One relevant entry is a fiction</span>
+    Our metric assumes exactly one right answer per query because that is what
+    the data gives us. For &ldquo;a man riding a horse&rdquo; on a real
+    catalogue it is simply false, and the measured recall is therefore a
+    <em>lower</em> bound.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Ambiguous queries">
+  <h2>The queries that have no single answer</h2>
+  <p class="small">Customers do not type captions. They type things like:</p>
+  <ul class="tight small">
+    <li>&ldquo;something to sit on&rdquo;</li>
+    <li>&ldquo;gear for bad weather&rdquo;</li>
+    <li>&ldquo;something you would take to the beach&rdquo;</li>
+  </ul>
+  <p class="small">The right output is not one entry. It is a shortlist with
+  reasons &mdash; and we have no way to produce, or to score, a reason.</p>
+  <p class="small muted">The second thing the next lecture repairs.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Retrieval-specific leaks">
+  <h2>Six ways to leak in a retrieval evaluation</h2>
+  <ol class="tight smaller">
+    <li>The query text is also the indexed description &mdash; you are measuring
+        string equality</li>
+    <li>The query&rsquo;s own entry is scored against a shortlist that was built
+        using the query</li>
+    <li>The prompt template was chosen by looking at the number it produced</li>
+    <li>Recall reported without the candidate-set size</li>
+    <li>Ties broken in the model&rsquo;s favour &mdash; a constant scorer then
+        reports R@1 = 100%</li>
+    <li>Normalisation applied to one side only, so &ldquo;cosine&rdquo; is not a
+        cosine</li>
+  </ol>
+  <aside class="notes">Number 5 is worth demonstrating live: set sim to all
+  zeros and compute recall with a strict inequality. It reports perfect.</aside>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="◇ Audit — the tie bug">
+  <h2>Audit this</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>sim  = T_emb @ I_emb.T
+rank = 1 + (sim &gt; sim.diagonal()[:, None]).sum(axis=1)
+print(f"R@1 = {(rank == 1).mean():.1%}")
+</code></pre>
+  <p class="small">It runs. On the real embeddings it prints a number close to
+  the R@1 in the results table. What is wrong with it, and what input would
+  make it print 100%?</p>
+  <aside class="notes">Give them ninety seconds. The answer is the next slide;
+  do not advance until at least one person has said &ldquo;ties&rdquo;.</aside>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="◇ Answer — the tie bug">
+  <h2>Answer</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Strict inequality</span>
+    <code>&gt;</code> counts only candidates that <em>beat</em> the right answer.
+    Anything that ties with it is placed behind it, for free.
+  </div>
+  <p class="small">Feed it a similarity matrix of all zeros &mdash; a model that
+  has learned nothing, or a bug that zeroed the embeddings &mdash; and every
+  rank is 1. It reports <strong>R@1 = 100%</strong>.</p>
+  <pre><code class="language-python" data-trim>rank = (sim &gt;= sim.diagonal()[:, None]).sum(axis=1)   # ties count against us
+</code></pre>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="◇ Audit — the split">
+  <h2>Audit this too</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>best = None
+for template in ["{}", "a photo of a {}", "a low-resolution photo of a {}"]:
+    acc = zero_shot_accuracy(template, X_test, y_test)
+    if best is None or acc &gt; best[1]:
+        best = (template, acc)
+
+print(f"best template {best[0]!r}: {best[1]:.1%} on the test set")
+</code></pre>
+  <p class="small">What is wrong with it, and where have you met the same error
+  before?</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="◇ Answer — the split">
+  <h2>Answer</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Selection on the test set</span>
+    Three templates were tried and the best <em>on the test set</em> was
+    reported. That is a hyperparameter chosen on the test set &mdash; the same
+    error, with a sentence in place of a regularisation strength.
+  </div>
+  <p class="small">The spread across the three was
+  2.6%, so the optimism is of that order. The
+  repair is the one you already know: choose the template on a validation split,
+  report the chosen one on the test set, once.</p>
+</section>
+
+<!-- 42 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-23.ipynb">Open Lecture 23 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> Pretrained encoders, inference only,
+        on the 200-entry catalogue</li>
+    <li>The two separately trained encoders, their dimensions matched three
+        ways, measured against the matched-versus-unrelated control</li>
+    <li>The jointly trained encoder: its embedding lengths, the gap between the
+        modalities, the CIFAR-10 known-answer test, and the recall table</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Skip the normalisation before the inner product. Retrieval degrades and the
+    reason is in the derivation: without unit norm the score confounds direction
+    with magnitude, and magnitude carries no meaning here.
+  </div>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight smaller">
+    <li>Fed an image to a transformer as a sequence of patches</li>
+    <li>Measured retrieval by the rank of the right entry &mdash; Recall@k and
+        the mean reciprocal rank, ties counted against the model, beside a
+        random baseline computed exactly</li>
+    <li>Encoded images and text with two separately trained models and found
+        their spaces unrelated: nothing in either loss ever compared a vector
+        from one with a vector from the other</li>
+    <li>Derived why embeddings are normalised onto the sphere, saw that the two
+        modalities keep separate regions of it, and what $\tau$ does: it cannot
+        reorder a row, it decides where the gradient goes</li>
+    <li>Used a jointly trained dual encoder &mdash; a known-answer test first,
+        then text-to-image retrieval at 75.0% R@1 over 200 candidates</li>
+    <li>Audited the evaluation: the failure cases, six ways to leak, the tie
+        bug and the template chosen on the test set</li>
+  </ol>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 44 -->
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 23">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 23</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 23">
+  <h2>Exercises &mdash; Lecture 23</h2>
+  <ul class="ex-list">
+    <li>Two encoders are trained separately, one on images and one on text. Explain why their cosine similarity carries no information about matching, using a rotation argument. <span class="ex-marks">[5]</span></li>
+    <li>A rank is computed by counting only the candidates that score strictly higher than the right answer. State the Recall@1 this reports for a similarity matrix of all zeros, and the repair. <span class="ex-marks">[5]</span></li>
+    <li>The InfoNCE logits are cosines divided by a temperature $\tau$. State what $\tau$ cannot change for a fixed model, and what it does change. <span class="ex-marks">[5]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 24&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 23 (2)">
+  <h2>Exercises &mdash; Lecture 23 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>Recall@10 is reported over 200 candidates. State the exact random baseline, and why it is computed rather than simulated. <span class="ex-marks">[3]</span></li>
+    <li>An entry with no written description is never returned by a text index built over the descriptions. State whether this is a ranking failure or a structural one, and what follows. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 24&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 22">
+  <p class="kicker">The five set at the end of Lecture 22</p>
+  <h1>Solutions<br>Lecture 22</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 22">
+  <h2>Solutions &mdash; Lecture 22</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> A recommender is scored by RMSE on held-out ratings. State why that is the wrong metric, using the set the&hellip;</p>
+      <p class="lead"><span class="fix">RMSE is computed on films the user chose to watch and rate; a recommender operates on the complement.</span></p>
+      <ul class="tight smaller">
+        <li>It weights every prediction equally when only ten items are shown</li>
+        <li>A constant offset ruins RMSE and changes no ranking at all</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> The same model scores HR@10 of 0.0926 and 0.8102 on the same data. Name the two decisions that differ, and&hellip;</p>
+      <p class="lead"><span class="fix">Random against temporal split, and sampled-100 against the full catalogue. Sampling moves it far more.</span></p>
+      <ul class="tight smaller">
+        <li>Ten of 101 candidates is already a tenth of the set</li>
+        <li>A random ranker goes from 0.0027 to 0.0990 under the same change</li>
+      </ul>
+    </div>
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Solutions · 22 (2)">
+  <h2>Solutions &mdash; Lecture 22 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> Explain why a sampled metric is not merely noisier than a full-catalogue one, and give the consequence for&hellip;</p>
+      <p class="lead"><span class="fix">The 100 negatives are drawn uniformly from a mostly-tail catalogue, so the distortion depends on the model. Orderings can reverse.</span></p>
+      <ul class="tight smaller">
+        <li>A popularity model competes against almost no popular items</li>
+        <li>A uniform bias would at least preserve rankings; this one does not</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> A new film arrives with a genre and a description but no interactions. State what a matrix factorisation can&hellip;</p>
+      <p class="lead"><span class="fix">The factorisation has no vector for it at all; a feature tower encodes its genre and text, so it has a vector at once.</span></p>
+      <ul class="tight smaller">
+        <li>Matrix factorisation is the two-tower model whose towers are lookup tables, and there is no row to look up for an item never interacted with</li>
+        <li>The same argument covers the tail: a feature tower shares parameters with similar items, where a lookup row is estimated from very few interactions</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 22 (3)">
+  <h2>Solutions &mdash; Lecture 22 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> A recommender is trained on interactions produced by an earlier recommender. Name the effect, and say why no&hellip;</p>
+      <p class="lead"><span class="fix">The feedback loop. The log records only what the earlier system chose to show, so it rewards reproducing that system.</span></p>
+      <ul class="tight smaller">
+        <li>Users cannot interact with what they were not shown</li>
+        <li>A model that would have shown something better scores badly, because the evidence for it was never collected; only an online test can see it</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 24 &middot; G&eacute;ron Ch. 15&ndash;16</p>
+  <h1>Generation, retrieval-augmented<br>systems, and where this leaves you</h1>
+  <p class="small">
+    Captioning the catalogue entries that have no usable description<br>
+    Retrieval-augmented generation: Lecture&nbsp;20&rsquo;s retriever joined to
+    Lecture&nbsp;18&rsquo;s generator, and the failures that belong to the join<br>
+    The course as one argument, and what it did not cover
+  </p>
+  <p class="clock">The last lecture</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 23
+  <span class="sep">&middot;</span> Vision transformers and multimodal retrieval
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

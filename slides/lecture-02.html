@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 2 — The end-to-end project</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>The end-to-end project</h1>
+  <p class="subtitle">California housing</p>
+  <p><span class="badge badge-lec">Lecture 2</span>
+     <span class="badge badge-ch">Géron Ch. 2</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Assume some of them did not run the Lecture 1 notebook.
+  The next slide carries everything they need from it.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Last lecture we framed the brief and looked at the whole
+  dataset once. Everything you need from that, in one table:</p>
+  <table>
+    <tr><th>What we found</th><th>Why it matters today</th></tr>
+    <tr><td>The output is consumed as a <em>price</em></td><td class="small">supervised regression: one number per district, error in dollars</td></tr>
+    <tr><td>207 missing values in <code>total_bedrooms</code>; <code>ocean_proximity</code> is categorical, one level with n=5</td><td class="small">both must be handled before anything is fitted</td></tr>
+    <tr><td>A target capped at <span class="usd">$500,000</span></td><td class="small">4.8% of districts carry a label that is not the answer</td></tr>
+    <tr><td>Scales four orders of magnitude apart, many columns skewed right</td><td class="small">matters for some methods; not for the least squares we derive today</td></tr>
+    <tr><td>Nothing split yet</td><td class="small">so the split comes first, before we look any closer</td></tr>
+  </table>
+  <p class="small fail">We stopped at exactly the moment to stop: four
+  histograms in, before plotting one variable against another. Today starts
+  there.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li><strong>The split</strong> &mdash; why the test set is set aside before
+        any exploration, and a stratified split, measured against a random one</li>
+    <li><strong>Exploring the training set</strong> &mdash; geography, a colour
+        scale that lies, correlations and what they miss, ratios worth more than
+        their columns</li>
+    <li><strong>The mathematics</strong> &mdash; least squares: what fitting a
+        linear model minimises, and why the point where its gradient vanishes is
+        the minimum</li>
+  </ol>
+  <p class="small muted">By the end you will have a sealed test set, a training
+  set you have looked at properly, and the objective a linear model minimises
+  &mdash; with a proof that it has no false minima.</p>
+</section>
+
+<!-- 4 -->
+<section class="divider" data-menu-title="◆ The split">
+  <p class="kicker">Part one</p>
+  <h1>The split</h1>
+  <p class="clock">set the test set aside, then measure the split</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="Data snooping">
+  <h2>Set it aside <em>now</em>, and do not look</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Data snooping bias</span>
+    Your brain is an outstanding pattern detector, which means it overfits.
+    If you study the test set, you will pick a model that suits it, your estimate
+    of generalisation error will be optimistic, and you will ship something that
+    underperforms.
+  </div>
+  <p class="fail lead">Create the test set before you explore
+  any further.</p>
+  <a class="anim-link" href="../animations/lecture-02.html#select" target="_blank">Animation</a>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="Naive split">
+  <h2>The obvious split, and its flaw</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.model_selection import train_test_split
+
+train_set, test_set = train_test_split(housing_full, test_size=0.2,
+                                       random_state=42)
+  </code></pre>
+  <p>Purely random sampling is fine <em>if the dataset is large enough relative
+  to the number of attributes</em>.</p>
+  <p class="fail">Ours may not be. Random sampling risks significant
+  <strong>sampling bias</strong>.</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="Stratified sampling">
+  <h2>Stratified sampling</h2>
+  <p>Surveyors do not call 1,000 people at random. They ensure the sample is
+  representative of the population on the dimensions that matter.</p>
+  <p>Experts tell us <strong>median income</strong> predicts price. So our test
+  set must be representative across income levels.</p>
+  <pre><code class="language-python" data-trim>
+import numpy as np
+
+housing_full["income_cat"] = pd.cut(housing_full["median_income"],
+                                    bins=[0., 1.5, 3.0, 4.5, 6., np.inf],
+                                    labels=[1, 2, 3, 4, 5])
+  </code></pre>
+</section>
+
+<!-- 8 -->
+<section class="figslide" data-menu-title="◆ Income categories">
+  <h2>Five strata, none of them tiny</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l1-income-cat.svg"
+         alt="Bar chart of district counts per income category: 822, 6581, 7236, 3639, 2362.">
+  </figure>
+  <p class="takeaway muted">The bins are chosen so that no stratum is too small
+  to sample from. Category&nbsp;1 has 822 districts &mdash; enough.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 9 -->
+<section data-menu-title="Stratified split">
+  <h2>Split on the strata</h2>
+  <pre><code class="language-python" data-trim>
+strat_train_set, strat_test_set = train_test_split(
+    housing_full, test_size=0.2,
+    stratify=housing_full["income_cat"], random_state=42)
+
+for set_ in (strat_train_set, strat_test_set):
+    set_.drop("income_cat", axis=1, inplace=True)
+  </code></pre>
+  <p class="small">The stratified test set has income proportions almost identical
+  to the full dataset. The purely random one is visibly skewed.</p>
+  <p class="small muted">Not too many strata, and each stratum large enough &mdash;
+  or the estimate of a stratum&rsquo;s importance is itself biased.</p>
+  <a class="anim-link" href="../animations/lecture-02.html#strat" target="_blank">Animation</a>
+</section>
+
+<!-- 10 -->
+<section class="figslide" data-menu-title="◆ Sampling bias, measured">
+  <h2>Does it actually matter? Measure it.</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l1-strat-bias.svg"
+         alt="Bar chart comparing per-category composition error of a random split against a stratified split; random errs by up to 6.4%, stratified by up to 0.36%.">
+  </figure>
+  <p class="takeaway"><span class="fail">Random split: up to 6.4% off.</span>
+  <span class="fix">Stratified: up to 0.36% off.</span> Roughly eighteen times
+  better, for one keyword argument.</p>
+  <aside class="notes">This is the first time in the course they see a design
+  choice justified by a measurement rather than an assertion. Name that.</aside>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="Check the split">
+  <h2>Check the split before you trust it</h2>
+  <pre><code class="language-python" data-trim>
+assert len(strat_train_set) + len(strat_test_set) == 20640
+assert set(strat_train_set.columns) == set(strat_test_set.columns)
+assert strat_train_set.index.intersection(strat_test_set.index).empty
+  </code></pre>
+  <p class="small">Three lines: nothing was dropped, the two frames have the
+  same columns, and no district is in both. Each one has been a real bug in a
+  real notebook.</p>
+  <div class="panel">
+    <span class="panel-title">Assert after every structural step</span>
+    An assertion is a claim about your data that fails <em>loudly</em>. It is the
+    only thing in this course that does. Write one after every split, merge,
+    reshape and drop &mdash; and count what you dropped.
+  </div>
+</section>
+
+<!-- 12 -->
+<section class="divider" data-menu-title="◆ Exploring">
+  <p class="kicker">Part two</p>
+  <h1>Exploring the<br>training set</h1>
+  <p class="clock">look properly &mdash; on the training set, and only that</p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="Explore the training set">
+  <h2>Now explore &mdash; the training set, and only that</h2>
+  <pre><code class="language-python" data-trim>
+housing = strat_train_set.copy()          # 16,512 districts. The other 4,128
+                                          # are sealed until the final
+                                          # evaluation.
+  </code></pre>
+  <p>Everything from here to the end of this part is computed on
+  <code>housing</code>. Every correlation, every scatter, every ratio.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">Why the copy</span>
+    So that nothing we invent while exploring &mdash; a new column, a filter, a
+    dropped row &mdash; can reach <code>strat_train_set</code> by accident. And
+    so that the numbers on the next eight slides are honestly labelled: they are
+    <strong>training-set</strong> numbers, and they will differ slightly from
+    anything you compute on all 20,640 rows.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Geographic scatter">
+  <h2>The data is geographical &mdash; so look at it</h2>
+  <pre><code class="language-python" data-trim>
+housing.plot(kind="scatter", x="longitude", y="latitude", grid=True)
+plt.show()
+  </code></pre>
+  <p>It looks like California. Beyond that, nothing is visible.</p>
+</section>
+
+<!-- 15 -->
+<section class="figslide" data-menu-title="◆ Scatter, alpha=1">
+  <h2>Every district, plotted</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l1-geo-plain.png"
+         alt="Scatter plot of district longitude against latitude, fully opaque, showing the outline of California and nothing else.">
+  </figure>
+  <p class="takeaway muted">California. And nothing else &mdash; the ink is
+  saturated.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="Scatter with alpha">
+  <h2>One parameter changes everything</h2>
+  <pre><code class="language-python" data-trim>
+housing.plot(kind="scatter", x="longitude", y="latitude",
+             grid=True, alpha=0.2)
+plt.show()
+  </code></pre>
+  <p>Now the high-density areas appear: the Bay Area, Los Angeles, San Diego, and
+  the Central Valley around Sacramento and Fresno.</p>
+  <p class="small muted">Our brains are excellent at spotting patterns in pictures.
+  Expect to tune plotting parameters until the pattern shows.</p>
+</section>
+
+<!-- 17 -->
+<section class="figslide" data-menu-title="◆ Scatter, alpha=0.2">
+  <h2>The same data, at one fifth the opacity</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l1-geo-alpha.png"
+         alt="The same scatter plot with alpha 0.2, revealing dense clusters at the Bay Area, the Central Valley, Los Angeles and San Diego.">
+  </figure>
+  <p class="takeaway muted">One keyword argument. Same data, and now you can see
+  the population of a state.</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="Price and population">
+  <h2>Three variables at once</h2>
+  <pre><code class="language-python" data-trim>
+housing.plot(kind="scatter", x="longitude", y="latitude", grid=True,
+             s=housing["population"] / 100, label="population",
+             c="median_house_value", cmap="jet", colorbar=True,
+             legend=True, sharex=False, figsize=(10, 7))
+plt.show()
+  </code></pre>
+  <p>Radius encodes population, colour encodes price.</p>
+  <p class="small">Prices are strongly related to <strong>location</strong> and
+  <strong>population density</strong>. A clustering algorithm should be useful
+  here &mdash; we will come back to that idea.</p>
+  <p class="small muted">One line in that cell is worth arguing with, and we
+  will &mdash; in the next slide but one.</p>
+</section>
+
+<!-- 19 -->
+<section class="figslide" data-menu-title="◆ Price and population">
+  <h2>Location and density, against price</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l1-geo-price.png"
+         alt="Scatter of districts with marker radius proportional to population and colour showing median house value; the coast and the two big metros are red.">
+  </figure>
+  <p class="takeaway muted">Red on the coast, blue inland. The model does not know
+  what &ldquo;coast&rdquo; means &mdash; but it will learn longitude.</p>
+</section>
+
+<!-- 20 -->
+<section class="figslide" data-menu-title="◆ The colour scale">
+  <h2>The one line worth arguing with</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l1-colormap.png"
+         alt="The same California map twice, coloured by jet and by viridis, with the lightness of each colormap plotted beneath it. jet's lightness rises, falls and rises again; viridis's rises in a straight line.">
+  </figure>
+  <p class="takeaway"><code>cmap="jet"</code> ran, produced something
+  colourful, and is wrong.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Why jet is wrong">
+  <h2>Why, and how you can check it yourself</h2>
+  <p class="small">A colour scale is a claim that equal steps in the data look
+  like equal steps on the screen. The bottom row of that figure is that claim,
+  tested: it plots each colormap&rsquo;s <strong>lightness</strong> against position.</p>
+  <table class="smaller">
+    <tr><th>Colormap</th><th class="num">Lightness range</th><th class="num">Largest reversal</th><th>Verdict</th></tr>
+    <tr><td class="fail"><code>jet</code></td><td class="num">83.0</td><td class="num fail">1.06</td><td class="fail">rises, falls, rises</td></tr>
+    <tr><td><code>turbo</code></td><td class="num">78.9</td><td class="num">0.87</td><td>better, still not monotone</td></tr>
+    <tr><td class="fix"><code>viridis</code></td><td class="num">75.9</td><td class="num hit">0.00</td><td class="fix">every step is a step</td></tr>
+  </table>
+  <p class="small">So <code>jet</code> invents bands the data does not have,
+  buries detail in its yellow, and for the 8% of men with a red&ndash;green
+  deficiency it reverses rank order outright. Photocopy it and it stops being a
+  scale at all.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">Notice the shape of this</span>
+    The code ran. Nothing errored. The defect was in a default nobody chose
+    deliberately, and it took a measurement to see. <strong>That is every
+    failure in this course, and it is only the second lecture.</strong>
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Failure condition &middot; a default nobody chose">
+  <h2>A default nobody chose</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition</span>
+    The code ran and nothing errored. <code>jet</code> is matplotlib&rsquo;s default from an older era, and it invents boundaries the data does not have. It took a measurement to see &mdash; the same map redrawn on a perceptually uniform scale. A default is a decision somebody made, not the absence of one.
+  </div>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="Correlations">
+  <h2>Standard correlation coefficient</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; corr_matrix = housing.corr(numeric_only=True)
+&gt;&gt;&gt; corr_matrix["median_house_value"].sort_values(ascending=False)
+median_house_value    1.000000
+median_income         0.688380
+total_rooms           0.137455
+housing_median_age    0.102175
+households            0.071426
+total_bedrooms        0.054635
+population           -0.020153
+longitude            -0.050859
+latitude             -0.139584
+  </code></pre>
+  <p class="small">Pearson&rsquo;s $r$ ranges from $-1$ to $+1$. Income dominates.</p>
+  <p class="small fail">These are training-set values. Compute them on all 20,640
+  rows and the third decimal moves &mdash; which is why a number is worth nothing
+  without the set it was measured on.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 24 -->
+<section class="figslide" data-menu-title="◆ Correlations">
+  <h2>The same column, as a picture</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l1-corr.svg"
+         alt="Horizontal bar chart of each attribute's Pearson correlation with median house value; median_income at +0.688 dwarfs everything else.">
+  </figure>
+  <p class="takeaway muted">One bar is five times the next. That is the feature
+  we already stratified on &mdash; on the experts&rsquo; word, before we had
+  looked. The measurement says they were right.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="What correlation misses">
+  <h2>What the correlation coefficient cannot see</h2>
+  <p>$r$ measures <strong>linear</strong> correlation only.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">Two traps</span>
+    A dataset can have $r = 0$ and be completely dependent — any nonlinear
+    relationship. And $r = \pm 1$ says nothing about the <em>slope</em>: your
+    height in inches correlates $1.0$ with your height in nanometres.
+  </div>
+  <a class="anim-link" href="../animations/lecture-02.html#corr" target="_blank">Animation</a>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="The price cap, visible">
+  <h2>Zoom in on the strongest predictor</h2>
+  <pre><code class="language-python" data-trim>
+housing.plot(kind="scatter", x="median_income", y="median_house_value",
+             alpha=0.1, grid=True)
+plt.show()
+  </code></pre>
+  <ul class="tight small">
+    <li>The upward trend is real, though noisy</li>
+    <li>The <span class="usd">$500,001</span> cap is a clear horizontal line
+        &mdash; <span class="fail">787 districts</span> in our training split</li>
+    <li>There are fainter lines too. <strong>Which ones?</strong> Do not squint
+        at the plot &mdash; count.</li>
+  </ul>
+  <p class="small muted">A horizontal stripe means many districts share one exact
+  price. That is a property of the table, not of California, so it is countable.</p>
+  <aside class="notes">Resist naming the values here. The next slide is the
+  measurement, and it does not agree with what the eye reports.</aside>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; a capped label</span>
+    Every district above <span class="usd">$500,000</span> is recorded at the cap. A model fits that ceiling perfectly and reports a good error, while being unusable for exactly the districts a client is most likely to ask about. The defect is in the label, so no amount of model choice reaches it.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 27 -->
+<section class="figslide" data-menu-title="◆ The cap, visible">
+  <h2>Income against price &mdash; and the lines that are really there</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l1-income-value.png"
+         alt="Scatter of median income against median house value. A solid line marks the $500,001 cap; five dashed lines mark the commonest values below it, listed with their district counts in a box at the right.">
+  </figure>
+  <p class="takeaway fail">The trend is real. The stripes are not: every one
+  sits on a multiple of <span class="usd">$12,500</span>.</p>
+  <aside class="notes">The five dashed values are the commonest below the cap,
+  measured. A typical price is shared by three districts; these are shared by
+  75 to 101.</aside>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 28 -->
+<section data-menu-title="What the eye reported">
+  <h2>What the eye reported, and what the count says</h2>
+  <p class="small">A well-known description of this dataset names three fainter
+  lines. We counted them in our own training split.</p>
+  <table>
+    <tr><th>Value</th><th class="num">Districts</th><th>Verdict</th></tr>
+    <tr><td><span class="usd">$350,000</span></td><td class="num">62</td><td class="fix">real &mdash; 21&times; the background</td></tr>
+    <tr><td><span class="usd">$450,000</span></td><td class="num">31</td><td>marginal</td></tr>
+    <tr><td><span class="usd">$280,000</span></td><td class="num fail">3</td><td class="fail">indistinguishable from background</td></tr>
+  </table>
+  <p class="small">A typical price is shared by <strong>3</strong> districts, so
+  the last one is not a line at all. Meanwhile the five commonest values below the
+  cap &mdash; <span class="usd">$137,500</span>, <span class="usd">$162,500</span>,
+  <span class="usd">$112,500</span>, <span class="usd">$187,500</span>,
+  <span class="usd">$225,000</span> &mdash; go unmentioned, and they are the
+  strongest stripes in the plot.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">The habit, not the numbers</span>
+    Three values were asserted; one survives. Counting took one line. You will
+    inherit descriptions of data for the rest of your career &mdash; check them
+    against the data before you build on them.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Attribute combinations">
+  <h2>Combine attributes before modelling</h2>
+  <pre><code class="language-python" data-trim>
+housing["rooms_per_house"]  = housing["total_rooms"] / housing["households"]
+housing["bedrooms_ratio"]   = housing["total_bedrooms"] / housing["total_rooms"]
+housing["people_per_house"] = housing["population"] / housing["households"]
+  </code></pre>
+  <table>
+    <tr><th>Attribute</th><th class="num">Correlation with price</th></tr>
+    <tr><td>median_income</td><td class="num">0.688</td></tr>
+    <tr><td>rooms_per_house</td><td class="num">0.144</td></tr>
+    <tr><td>total_rooms</td><td class="num">0.137</td></tr>
+    <tr><td>bedrooms_ratio</td><td class="num hit">&minus;0.256</td></tr>
+  </table>
+  <p class="small"><code>bedrooms_ratio</code> is far more informative than
+  either raw count.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 30 -->
+<section data-menu-title="A warning on combinations">
+  <h2>A warning you will need shortly</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Collinearity</span>
+    When you create combined features, make sure they are not too linearly
+    correlated with existing ones. In particular, <strong>avoid simple weighted
+    sums of existing features.</strong>
+  </div>
+  <p>Collinearity causes real problems for some models &mdash; linear regression
+  above all.</p>
+  <p class="small muted">We will see <em>exactly</em> why when we derive the
+  normal equation &mdash; a derivation this lecture starts, and the next one
+  finishes.</p>
+</section>
+
+<!-- 31 -->
+<section class="divider" data-menu-title="◆ The mathematics">
+  <p class="kicker">The mathematics</p>
+  <h1>Least squares</h1>
+  <p class="small">Géron &sect;4.1, brought forward &mdash; before we fit a linear
+  model, we should know what fitting one does</p>
+  <p class="clock">examinable</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="The question">
+  <h2>The question</h2>
+  <p class="lead">You called <code>LinearRegression().fit()</code>.</p>
+  <p class="lead">What did it actually compute &mdash; and when does
+  that computation <em>fail</em>?</p>
+  <div class="panel panel-math">
+    <span class="panel-title">Why you need the answer</span>
+    The failure condition is exactly the warning from earlier today about
+    engineering features as weighted sums.
+  </div>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="The model">
+  <h2>The linear model</h2>
+  <div class="eqn-box">
+    $$\hat{y} \;=\; \theta_0 + \theta_1 x_1 + \theta_2 x_2 + \dots + \theta_n x_n$$
+  </div>
+  <ul class="tight small">
+    <li>$\hat{y}$ &mdash; the predicted value</li>
+    <li>$n$ &mdash; the number of features</li>
+    <li>$x_i$ &mdash; the $i$-th feature value</li>
+    <li>$\theta_j$ &mdash; the $j$-th model parameter, including the bias term $\theta_0$</li>
+  </ul>
+  <p class="small muted">A weighted sum of the input features, plus a constant
+  called the <em>bias</em> or <em>intercept</em> term.</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="Vectorised form">
+  <h2>Vectorised form</h2>
+  <div class="eqn-box">
+    $$\hat{y} \;=\; h_{\boldsymbol\theta}(\mathbf{x}) \;=\; \boldsymbol\theta \cdot \mathbf{x}$$
+  </div>
+  <p class="small">where $\mathbf{x}$ contains $x_0$ through $x_n$ with
+  $x_0 \equiv 1$, so the dot product reproduces the bias term.</p>
+  <div class="panel">
+    In machine learning, vectors are usually <strong>column vectors</strong>. With
+    that convention the prediction is $\boldsymbol\theta^{\intercal}\mathbf{x}$ —
+    the same quantity, written as a single-cell matrix rather than a scalar.
+  </div>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="What 'best fit' means">
+  <h2>What &ldquo;fit&rdquo; means</h2>
+  <p>Training the model means setting $\boldsymbol\theta$ so the model best fits
+  the training set. To do that we need a measure of how badly it fits.</p>
+  <div class="eqn-box">
+    $$\mathrm{MSE}(\mathbf{X}, y, h_{\boldsymbol\theta}) \;=\; \frac{1}{m}\sum_{i=1}^{m}\left(\boldsymbol\theta^{\intercal}\mathbf{x}^{(i)} - y^{(i)}\right)^{2}$$
+  </div>
+  <p class="eqn-label">Mean squared error of a linear hypothesis</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="MSE not RMSE">
+  <h2>Why minimise MSE and not RMSE?</h2>
+  <p>The <strong>root mean squared error</strong> is the square root of the
+  MSE, $\mathrm{RMSE} = \sqrt{\mathrm{MSE}}$. It is in the units of the target
+  &mdash; dollars here &mdash; which is why it is the number this course
+  reports. We minimise the MSE instead, because $\sqrt{\cdot}$ is strictly
+  increasing on $[0,\infty)$:</p>
+  <div class="eqn-box">
+    $$\arg\min_{\boldsymbol\theta} \sqrt{f(\boldsymbol\theta)} \;=\; \arg\min_{\boldsymbol\theta} f(\boldsymbol\theta)$$
+  </div>
+  <p>Same minimiser, simpler algebra.</p>
+  <div class="panel panel-book">
+    Learning algorithms often optimise a different function during training than
+    the one used to evaluate the final model &mdash; because it is easier to
+    optimise, or because it carries extra terms needed only during training.
+  </div>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Matrix form">
+  <h2>In matrix form</h2>
+  <p>Stack the instances as rows of $\mathbf{X}$ and the labels into $y$:</p>
+  <div class="eqn-box">
+    $$\mathrm{MSE}(\boldsymbol\theta) \;=\; \frac{1}{m}\,\lVert \mathbf{X}\boldsymbol\theta - y \rVert_2^{\,2}$$
+  </div>
+  <p>We are minimising a squared Euclidean norm. <strong>That is a geometric
+  statement</strong>, and it is the whole content of this thread.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="Differentiate">
+  <h2>Differentiate and set to zero</h2>
+  <div class="eqn-box">
+    $$\nabla_{\boldsymbol\theta}\,\mathrm{MSE}(\boldsymbol\theta) \;=\; \frac{2}{m}\,\mathbf{X}^{\intercal}\!\left(\mathbf{X}\boldsymbol\theta - y\right)$$
+  </div>
+  <p class="derive-step">Setting the gradient to zero at the minimiser $\hat{\boldsymbol\theta}$:</p>
+  <div class="eqn-box">
+    $$\mathbf{X}^{\intercal}\!\left(\mathbf{X}\hat{\boldsymbol\theta} - y\right) \;=\; \mathbf{0}$$
+  </div>
+  <p class="small muted">A stationary point. Is it a minimum?</p>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Convexity">
+  <h2>Why that stationary point is <em>the</em> minimum</h2>
+  <p>The Hessian of the MSE is</p>
+  <div class="eqn-box">
+    $$\nabla^{2}_{\boldsymbol\theta}\,\mathrm{MSE} \;=\; \frac{2}{m}\,\mathbf{X}^{\intercal}\mathbf{X}$$
+  </div>
+  <p>For any vector $\mathbf{v}$, $\;\mathbf{v}^{\intercal}\mathbf{X}^{\intercal}\mathbf{X}\mathbf{v} = \lVert \mathbf{X}\mathbf{v}\rVert_2^2 \ge 0$,
+  so the Hessian is positive semi-definite and the MSE is <strong>convex</strong>.</p>
+  <p class="fix small">A convex function has no local minima — only a global one.
+  Any stationary point is it.</p>
+  <p class="small muted">This is also why gradient descent, in Lecture 4, is
+  guaranteed to reach this minimum.</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-02.ipynb">Open Lecture 2 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU</strong>, and loads the data itself &mdash; it
+        stands on its own</li>
+    <li>The stratified split and the sampling-bias measurement; the cap and the
+        famous three lines, counted on the training set; the map, the colour-scale
+        test, the correlations and the three ratios</li>
+    <li>The mathematics, checked on the training data: the gradient formula
+        against finite differences, and the Hessian&rsquo;s eigenvalues</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to do with it before the next lecture</span>
+    Run it top to bottom once. Then change one thing &mdash; the number of income
+    bands in <code>pd.cut</code> &mdash; and see what happens to the sampling
+    bias table. Two lines, and it is the whole argument of the stratification
+    section.
+  </div>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight small">
+    <li>Set the test set aside before exploring: data snooping is a bias of the
+        analyst, and no library prevents it</li>
+    <li>Stratified on income, and measured it: up to 6.4% off in the income mix
+        for a random split, 0.36% for the stratified one</li>
+    <li>Explored the training set only: a map that needed <code>alpha</code>,
+        and a default colour scale whose lightness runs backwards</li>
+    <li>Income dominates the correlations at 0.688; $r$ sees only straight
+        lines; of three asserted stripes in the target, counting kept one</li>
+    <li>A ratio of two weak columns, <code>bedrooms_ratio</code>, beat both
+        &mdash; and weighted sums of existing columns are to be avoided</li>
+    <li>Wrote the MSE of a linear model, differentiated it, and showed its
+        Hessian $\tfrac{2}{m}\mathbf{X}^{\intercal}\mathbf{X}$ is positive
+        semi-definite: the MSE is convex</li>
+  </ol>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Where the derivation stops">
+  <h2>Where the derivation stops today</h2>
+  <div class="eqn-box">
+    $$\mathbf{X}^{\intercal}\mathbf{X}\,\hat{\boldsymbol\theta} \;=\; \mathbf{X}^{\intercal}y$$
+  </div>
+  <p>We know what any solution of this is: <strong>the</strong> minimum of the
+  MSE, because the MSE is convex. We have not yet solved it.</p>
+  <ul class="tight small">
+    <li>When does it have exactly one solution?</li>
+    <li>What is that solution, written in closed form?</li>
+    <li>And what happens to it when one feature is a weighted sum of others
+        &mdash; the warning from the exploration?</li>
+  </ul>
+  <p class="small muted">All three are answered by solving for
+  $\hat{\boldsymbol\theta}$. That is where the next lecture starts.</p>
+</section>
+
+<!-- 43 -->
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 2">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 2</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 2">
+  <h2>Exercises &mdash; Lecture 2</h2>
+  <ul class="ex-list">
+    <li>A colleague reports their model&rsquo;s error on the California housing test set, and says they chose the model by trying several on that same test set and keeping the one with the lowest error. State, in one sentence, what that number is an estimate of &mdash; and what it is <em>not</em> an estimate of. <span class="ex-marks">[4]</span></li>
+    <li>You are given a stratified split on income category and a naive random split of the same data. A model scored on each test set gives a similar error. Does that mean the stratification was unnecessary? Answer yes or no, with a reason. <span class="ex-marks">[4]</span></li>
+    <li>On the training set, <code>longitude</code> has a correlation of $r = -0.05$ with the median house value. A colleague concludes that location does not affect price, and drops the column. State the flaw in one sentence, and name the plot from this lecture that refutes it. <span class="ex-marks">[3]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 3&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 2 (2)">
+  <h2>Exercises &mdash; Lecture 2 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>The course reports the RMSE of a regression model, yet training minimises the MSE. Explain why the two give the same fitted parameters, and say why the RMSE is the one reported. <span class="ex-marks">[3]</span></li>
+    <li>The Hessian of the MSE of a linear model is $\tfrac{2}{m}\mathbf{X}^{\intercal}\mathbf{X}$. Show that it is positive semi-definite, and state what that guarantees about a point where the gradient vanishes. <span class="ex-marks">[5]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 3&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 1">
+  <p class="kicker">The five set at the end of Lecture 1</p>
+  <h1>Solutions<br>Lecture 1</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 1">
+  <h2>Solutions &mdash; Lecture 1</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> The brief says the output feeds a downstream system that expects a price. Name the one thing this fact&hellip;</p>
+      <p class="lead"><span class="fix">It settles that this is supervised regression, not classification. It leaves the metric open.</span></p>
+      <ul class="tight smaller">
+        <li>'A price' fixes the type of the output and nothing about how error is weighed</li>
+        <li>Whether being wrong by the same number of dollars on a cheap district matters as much as on an expensive one is a question for the client, not the data &mdash; the experts&rsquo; 30% is a relative criterion, a dollar error is not</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> info() reports that 207 of the 20,640 districts have no value for total_bedrooms. Give the three legitimate&hellip;</p>
+      <p class="lead"><span class="fix">Drop those districts, drop the whole attribute, or fill the gaps. Filling leaves a decision: the value to fill with.</span></p>
+      <ul class="tight smaller">
+        <li>Dropping 207 rows, or the column, needs no further choice &mdash; each simply has a cost</li>
+        <li>&ldquo;Fill the gaps with a chosen value&rdquo; leaves the choice open: a constant, the median, the mean, each computed from some set of rows</li>
+      </ul>
+    </div>
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Solutions · 1 (2)">
+  <h2>Solutions &mdash; Lecture 1 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> total_rooms runs from single digits to tens of thousands, median_income from about 0.5 to 15. Name two&hellip;</p>
+      <p class="lead"><span class="fix">It matters for gradient descent and $k$-nearest neighbours; it does not for decision trees and ordinary least squares. A tree splits on one feature at a time, so any monotone rescaling gives the same tree.</span></p>
+      <ul class="tight smaller">
+        <li>Anything that measures a distance, penalises a coefficient or takes a step depends on the units of the features</li>
+        <li>Least squares is equivariant under an invertible affine map of the features: the fit is identical and the coefficients absorb the change</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> The median income column is capped at 15. Give one consequence for the model and one for the evaluation, and&hellip;</p>
+      <p class="lead"><span class="fix">Model: it can never learn what happens above the cap. Evaluation: the test set is capped too, so the error is silent about exactly those districts.</span></p>
+      <ul class="tight smaller">
+        <li>The cap is in the data before any split, so every held-out set inherits it and no held-out number reveals it</li>
+        <li>Raise the evaluation one first: the model can be retrained, but a metric that cannot see the failure will not tell you to</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 1 (3)">
+  <h2>Solutions &mdash; Lecture 1 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> A model&rsquo;s error is low on its training set and high on new districts. Name the condition, and explain&hellip;</p>
+      <p class="lead"><span class="fix">Overfitting. The training error is measured on cases the model has already seen; the generalisation error is defined on cases it has not.</span></p>
+      <ul class="tight smaller">
+        <li>A model can fit its training set, noise included, and the training error then rewards it for doing so</li>
+        <li>Only data held out from training estimates the error on new cases &mdash; which is why the data is split into a training set and a test set</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Next lecture</p>
+  <h1>The normal equation</h1>
+  <p class="small">
+    Solving $\mathbf{X}^{\intercal}\mathbf{X}\hat{\boldsymbol\theta} = \mathbf{X}^{\intercal}y$
+    in closed form, and reading it as a projection<br>
+    When $\mathbf{X}^{\intercal}\mathbf{X}$ is not invertible &mdash; collinear
+    features, too few instances &mdash; and the pseudoinverse
+  </p>
+  <p class="clock">Run the Lecture 2 notebook first</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 2
+  <span class="sep">&middot;</span> The end-to-end project
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

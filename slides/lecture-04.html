@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 4 — Training models</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Training models</h1>
+  <p class="subtitle">Gradient descent, and the models it fits</p>
+  <p><span class="badge badge-lec">Lecture 4</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 4</span></p>
+  <p class="lead">How a model is <em>fitted</em>, when there is no formula for the answer</p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year<br>
+    Worked example: the Titanic passenger manifest
+  </p>
+  <aside class="notes">Ask what <code>.fit()</code> does. Almost everyone has
+  called it; almost nobody has been asked. That gap is the whole lecture.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Lecture 3 solved least squares in closed form &mdash; the
+  <strong>normal equation</strong>
+  $\hat{\boldsymbol\theta} = (\mathbf{X}^{\intercal}\mathbf{X})^{-1}\mathbf{X}^{\intercal}y$,
+  defined exactly when $\mathbf{X}$ has full column rank &mdash; and then
+  measured a classifier properly: precision, recall, and a threshold chosen
+  against a stated constraint. Both called <code>.fit()</code> and moved on.
+  Today we open it, because the closed form runs out:</p>
+  <table class="smaller">
+    <tr><th>Situation</th><th>What the normal equation does</th></tr>
+    <tr><td>Many features</td><td>inverts an $(n{+}1)\times(n{+}1)$ matrix &mdash; cost grows like $n^{3}$</td></tr>
+    <tr><td>Many instances</td><td>forms $\mathbf{X}^{\intercal}\mathbf{X}$, so every row must be seen at once</td></tr>
+    <tr><td>Rank-deficient design</td><td>the inverse does not exist</td></tr>
+    <tr><td class="fail">A cost that is not squared error</td><td class="fail">there is <strong>no closed form at all</strong></td></tr>
+  </table>
+  <p class="small">The last row is the one that matters: the classifier we
+  build today has no formula for its answer, so the answer has to be
+  <em>walked to</em>.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li><strong>The mathematics</strong> &mdash; gradient descent: the
+        gradient, the update, how large a step may be, why the features must be
+        scaled, and why one row at a time is legitimate</li>
+    <li><strong>The method</strong> &mdash; descent against the closed form,
+        and polynomial features</li>
+    <li><strong>The worked example</strong> &mdash; logistic regression on 891
+        Titanic passengers: a probability, not a label; a design matrix that is
+        rank-deficient; a degree sweep; and whether the probabilities are
+        calibrated</li>
+    <li>More than two classes: softmax regression</li>
+  </ol>
+  <p class="small"><span class="scope scope-exam">examinable</span>
+  The derivation, and logistic and softmax regression: the model, the log loss,
+  coefficients as log-odds, and why a rank-deficient design leaves the fit
+  without a unique answer. <span class="scope scope-eng">not examinable</span>
+  The Titanic feature engineering.</p>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-04.ipynb">Open Lecture 4 in Colab</a>
+  </p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 4 -->
+<section data-menu-title="The question">
+  <h2>The question</h2>
+  <p class="lead">You have a cost $J(\boldsymbol\theta)$ and no formula for its
+  minimiser.</p>
+  <p class="lead">How do you find one, and how do you know you have?</p>
+  <div class="panel panel-math">
+    <span class="panel-title">Three things the answer must supply</span>
+    A <strong>direction</strong> to move in, a <strong>step size</strong> that
+    does not overshoot, and a <strong>reason</strong> to believe the point you
+    stop at is the minimum and not merely a place where you stopped.
+  </div>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="Step 1 — the cost is a surface">
+  <h2>Step 1 &middot; The cost is a surface</h2>
+  <p class="small">$m$ instances, $n$ features; $\mathbf{X}$ is $m \times (n{+}1)$
+  with a leading column of ones, and $\boldsymbol\theta \in \mathbb{R}^{n+1}$
+  includes the bias. We derive on squared error, the one cost whose minimiser we
+  can also compute in closed form &mdash; so the method can be <em>checked</em>:</p>
+  <div class="eqn-box">
+    $$J(\boldsymbol\theta) \;=\; \mathrm{MSE}(\boldsymbol\theta)
+      \;=\; \frac{1}{m}\,\lVert \mathbf{X}\boldsymbol\theta - y \rVert_2^{\,2}$$
+  </div>
+  <div class="panel">
+    <span class="panel-title">The algorithm, in one sentence</span>
+    Start anywhere. Step <strong>downhill</strong>, along $-\nabla J$. Repeat
+    until the downhill direction is flat.
+  </div>
+  <p class="small muted">Why $-\nabla J$: along a unit direction $\mathbf{u}$
+  the cost changes at rate $\nabla J\cdot\mathbf{u}$, and by
+  Cauchy&ndash;Schwarz that is most negative when $\mathbf{u}$ points along
+  $-\nabla J$.</p>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="Step 2 — the gradient">
+  <h2>Step 2 &middot; The gradient</h2>
+  <div class="eqn-box">
+    $$\nabla J(\boldsymbol\theta) \;=\; \frac{2}{m}\,\mathbf{X}^{\intercal}
+      \bigl(\mathbf{X}\boldsymbol\theta - y\bigr)$$
+  </div>
+  <p class="eqn-label">The gradient of the mean squared error</p>
+  <p class="small">The chain rule on the square gives one partial derivative,
+  $\partial J/\partial\theta_j = \frac{2}{m}\sum_i
+  \bigl(\boldsymbol\theta^{\intercal}\mathbf{x}^{(i)} - y^{(i)}\bigr)x_j^{(i)}$
+  &mdash; <strong>error &times; feature</strong>, averaged. That sum is the
+  $j$-th entry of $\mathbf{X}^{\intercal}\mathbf{r}$, with
+  $\mathbf{r} = \mathbf{X}\boldsymbol\theta - y$ the residual vector.</p>
+  <p class="small fix">One matrix product over the whole training set. Cost per
+  evaluation: $O(mn)$ &mdash; linear in the rows, where the normal equation was
+  cubic in the columns.</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="Step 3 — the update rule">
+  <h2>Step 3 &middot; The update rule</h2>
+  <div class="eqn-box">
+    $$\boldsymbol\theta^{(k+1)} \;=\; \boldsymbol\theta^{(k)} \;-\; \eta\,\nabla J\bigl(\boldsymbol\theta^{(k)}\bigr)
+      \;=\; \boldsymbol\theta^{(k)} \;-\; \frac{2\eta}{m}\,\mathbf{X}^{\intercal}\bigl(\mathbf{X}\boldsymbol\theta^{(k)} - y\bigr)$$
+  </div>
+  <p class="eqn-label">Batch gradient descent</p>
+  <p><em>Batch</em>, because every step uses the whole training set. Three lines
+  of NumPy, and no matrix is ever inverted.</p>
+  <p class="small muted">$\eta$ has units: it converts a gradient into a
+  displacement in parameter space. That is why its right value depends on how
+  the features are scaled &mdash; step 5.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="Step 4 — how large may the step be">
+  <h2>Step 4 &middot; How large may $\eta$ be?</h2>
+  <p class="derive-step">Write $H = \nabla^2 J = \frac{2}{m}\mathbf{X}^{\intercal}\mathbf{X}$
+  and subtract the fixed point $\hat{\boldsymbol\theta}$ ($\nabla J = \mathbf{0}$):</p>
+  <div class="eqn-box">
+    $$\boldsymbol\theta^{(k+1)} - \hat{\boldsymbol\theta}
+      \;=\; \bigl(\mathbf{I} - \eta H\bigr)\bigl(\boldsymbol\theta^{(k)} - \hat{\boldsymbol\theta}\bigr)$$
+  </div>
+  <p class="derive-step">$H$ is symmetric and positive semi-definite
+  ($\mathbf{v}^{\intercal}\mathbf{X}^{\intercal}\mathbf{X}\mathbf{v} = \lVert\mathbf{X}\mathbf{v}\rVert^2 \ge 0$),
+  so it has an orthonormal basis of <strong>eigenvectors</strong> with
+  $\lambda_i \ge 0$. In that basis $\mathbf{I} - \eta H$ scales component $i$
+  by $(1 - \eta\lambda_i)$ and mixes nothing, so all decay iff
+  $\lvert 1-\eta\lambda_i\rvert &lt; 1$:</p>
+  <div class="eqn-box">
+    $$0 \;&lt;\; \eta \;&lt;\; \frac{2}{\lambda_{\max}}$$
+  </div>
+  <p class="small">Because $J$ is quadratic the argument is exact, not a local
+  approximation.</p>
+  <a class="anim-link" href="../animations/lecture-04.html#gd" target="_blank">Animation</a>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="What too large and too small look like">
+  <h2>What each failure looks like</h2>
+  <table>
+    <tr><th>Learning rate</th><th>Factor per step</th><th>What you see</th></tr>
+    <tr><td>$\eta$ far below $2/\lambda_{\max}$</td><td>$1-\eta\lambda_i$ just under 1</td><td>the cost falls, slowly, and is still falling when you stop</td></tr>
+    <tr><td class="fix">$\eta \approx 1/\lambda_{\max}$</td><td class="fix">small</td><td class="fix">the cost drops fast and flattens</td></tr>
+    <tr><td class="fail">$\eta &gt; 2/\lambda_{\max}$</td><td class="fail">$\lvert 1-\eta\lambda_i\rvert &gt; 1$</td><td class="fail">the cost <em>rises</em>, oscillates, and overflows to <code>nan</code></td></tr>
+  </table>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; divergence is silent until it is loud</span>
+    A diverging fit does not raise. It returns weights full of <code>inf</code>
+    and a model that predicts one value everywhere. <strong>Plot the cost
+    against the step number</strong>; it is the only cheap way to see which of
+    the three rows you are in.
+  </div>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="Step 5 — why scaling matters">
+  <h2>Step 5 &middot; Why you must scale the features</h2>
+  <p class="derive-step">The step count is governed by the slowest mode. With the best fixed $\eta$, the error contracts per step by a factor</p>
+  <div class="eqn-box">
+    $$\frac{\kappa - 1}{\kappa + 1},
+      \qquad \kappa \;=\; \frac{\lambda_{\max}}{\lambda_{\min}}
+      \;=\; \text{the condition number of } \mathbf{X}^{\intercal}\mathbf{X}$$
+  </div>
+  <ul class="tight small">
+    <li>$\kappa = 1$ &mdash; circular bowl, one step</li>
+    <li>$\kappa = 100$ &mdash; a long thin valley; the path zig-zags across it</li>
+    <li>$\kappa$ large because one column is in thousands and another in units &mdash; a scaling accident, and entirely avoidable</li>
+  </ul>
+  <p class="small fix">Standardising the columns is not cosmetic. It changes
+  $\kappa$, and $\kappa$ is what sets the number of steps.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="Step 6 — one instance at a time">
+  <h2>Step 6 &middot; One instance at a time</h2>
+  <p class="small">Each batch step costs $O(mn)$, which for large $m$ is
+  unaffordable. Draw an index $i$ uniformly at random and use only that row:</p>
+  <div class="eqn-box">
+    $$\mathbf{g}^{(i)}(\boldsymbol\theta) \;=\; 2\bigl(\boldsymbol\theta^{\intercal}\mathbf{x}^{(i)} - y^{(i)}\bigr)\,\mathbf{x}^{(i)}$$
+  </div>
+  <p class="derive-step">Take the expectation over the draw:</p>
+  <div class="eqn-box">
+    $$\mathbb{E}_i\bigl[\mathbf{g}^{(i)}\bigr]
+      \;=\; \sum_{i=1}^{m}\frac{1}{m}\,2\bigl(\boldsymbol\theta^{\intercal}\mathbf{x}^{(i)} - y^{(i)}\bigr)\mathbf{x}^{(i)}
+      \;=\; \nabla J(\boldsymbol\theta)$$
+  </div>
+  <p class="fix">The one-instance gradient is an <strong>unbiased estimate</strong>
+  of the batch gradient.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="What the derivation buys you">
+  <h2>What the derivation buys you</h2>
+  <table>
+    <tr><th>The result</th><th>What it lets you do today</th></tr>
+    <tr><td>$\nabla J = \frac{2}{m}\mathbf{X}^{\intercal}(\mathbf{X}\boldsymbol\theta - y)$</td><td>fit a linear model without inverting anything</td></tr>
+    <tr><td>$\eta &lt; 2/\lambda_{\max}$</td><td>read a rising cost curve as a step-size fault, not a bug</td></tr>
+    <tr><td>Contraction $(\kappa-1)/(\kappa+1)$</td><td>know that scaling is part of the algorithm, not tidiness</td></tr>
+    <tr><td class="fix">Unbiasedness of $\mathbf{g}^{(i)}$</td><td class="fix">use mini-batches on data that does not fit in memory</td></tr>
+  </table>
+  <p class="small fix">And one more: only step 2 used the fact that the cost was
+  squared error. Swap the cost, recompute the gradient, and the algorithm is
+  unchanged &mdash; which is how the classifier later today is fitted.</p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="Two routes, same answer">
+  <h2>Two routes to the same $\hat{\boldsymbol\theta}$</h2>
+  <table>
+    <tr><th>&nbsp;</th><th>Normal equation / SVD</th><th>Gradient descent</th></tr>
+    <tr><td>Cost in $m$</td><td class="num">linear</td><td class="num">linear, per step</td></tr>
+    <tr><td>Cost in $n$</td><td class="num fail">$n^{2.4}$ to $n^{3}$</td><td class="num hit">linear</td></tr>
+    <tr><td>Out-of-core</td><td class="fail">no &mdash; needs all rows</td><td class="hit">yes, with mini-batches</td></tr>
+    <tr><td>Scaling required</td><td>no</td><td class="fail">yes</td></tr>
+    <tr><td>Hyperparameters</td><td>none</td><td class="fail">$\eta$, batch size, schedule, stopping rule</td></tr>
+    <tr><td>Other costs</td><td class="fail">squared error only</td><td class="hit">any differentiable cost</td></tr>
+  </table>
+  <p class="small"><strong>When to prefer each.</strong> Few features and data
+  that fits in memory: use the closed form, it has no knobs to get wrong. Many
+  features, streaming data, or any cost that is not squared error: descent.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Polynomial features">
+  <h2>Curvature without leaving linearity</h2>
+  <p>A straight line cannot fit a curve. Add the powers as <em>columns</em>:</p>
+  <div class="eqn-box">
+    $$\hat{y} \;=\; \theta_0 + \theta_1 x + \theta_2 x^{2}
+      \quad\text{is linear in } \boldsymbol\theta,\ \text{not in } x$$
+  </div>
+  <p>Everything derived above still applies unchanged &mdash; the gradient, the
+  step-size bound, the case for scaling &mdash; because all of them were
+  statements about $\boldsymbol\theta$.</p>
+  <p class="small"><code>PolynomialFeatures(degree=d)</code> also generates every
+  <em>cross</em> product, which is how a linear model represents an interaction
+  such as &ldquo;third class <em>and</em> travelling alone&rdquo;. The count is
+  $\binom{n+d}{d}$ &mdash; the number of monomials of degree at most $d$ &mdash;
+  so &ldquo;a bit more capacity&rdquo; is never a small change.</p>
+</section>
+
+<!-- 15 -->
+<section class="figslide" data-menu-title="◆ How fast it grows">
+  <h2>What that costs in columns</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l05-degree-features.svg"
+         alt="Bar chart of the number of model columns against polynomial degree, rising from 22 at degree 1 to 227 at degree 6, with a line marking the 712 training rows.">
+  </figure>
+  <p class="takeaway">Degree 6 on four numeric columns gives the model 227
+  weights to determine from 712 passengers &mdash; about three rows per weight.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 16 -->
+<section data-menu-title="The task">
+  <h2>The task</h2>
+  <div class="panel">
+    <span class="panel-title">Marine safety planning unit</span>
+    &ldquo;We are building an evacuation-assistance model from historical
+    passenger manifests. We need to know, for each passenger profile,
+    <strong>how likely that person is to get off unaided</strong> &mdash; and we
+    need to be able to explain the assignment afterwards.&rdquo;
+  </div>
+  <table class="smaller">
+    <tr><th>What they asked for</th><th>What that forces</th></tr>
+    <tr><td>&ldquo;how likely&rdquo;</td><td>a <strong>probability</strong>, not a label</td></tr>
+    <tr><td>the number is used to allocate</td><td>it must be <strong>calibrated</strong></td></tr>
+    <tr><td>&ldquo;explain the assignment&rdquo;</td><td>weights a human can <strong>read</strong></td></tr>
+  </table>
+  <p class="small fix">&ldquo;This passenger survives&rdquo; is not checkable on
+  its own. &ldquo;This passenger survives with probability 0.31&rdquo; is: take
+  everyone the model puts near 0.31 and count. That is why requirement 1 is not
+  a formatting preference.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="The data">
+  <h2>The data</h2>
+  <pre><code class="language-python" data-trim>
+def load_titanic():
+    tarball = Path("datasets/titanic.tgz")
+    if not tarball.is_file():
+        Path("datasets").mkdir(parents=True, exist_ok=True)
+        url = "https://github.com/ageron/data/raw/main/titanic.tgz"
+        urllib.request.urlretrieve(url, tarball)
+        with tarfile.open(tarball) as t:
+            t.extractall(path="datasets", filter="data")
+    return pd.read_csv("datasets/titanic/train.csv")
+  </code></pre>
+  <p class="small">891 passengers, 12 columns &mdash; the whole labelled corpus
+  (the archive&rsquo;s <code>test.csv</code> has no <code>Survived</code> column,
+  so we hold out our own test set). To the class, sex, age, fare and family
+  counts we add four engineered columns: <code>Title</code> from the name
+  (Mr, Mrs, Miss, Master, Rare), <code>FamilySize = SibSp + Parch + 1</code>,
+  <code>IsAlone</code>, and <code>Deck</code> &mdash; the cabin letter, or
+  <code>U</code> where none was recorded.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 18 -->
+<section data-menu-title="The label">
+  <h2>The label</h2>
+  <table>
+    <tr><th>Outcome</th><th class="num">Passengers</th><th class="num">Share</th></tr>
+    <tr><td>Did not survive</td><td class="num">549</td><td class="num">61.6%</td></tr>
+    <tr><td>Survived</td><td class="num">342</td><td class="num">38.4%</td></tr>
+  </table>
+  <p>Mildly imbalanced &mdash; nothing like the rare-event problem of the
+  previous lecture, where the positive class was one row in ten. Accuracy will
+  not be absurd here.</p>
+  <p class="small fail">It will be something more dangerous than absurd:
+  plausible.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 19 -->
+<section data-menu-title="Split first">
+  <h2>Split first &mdash; still</h2>
+  <pre><code class="language-python" data-trim>
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y)
+
+assert len(X_train) == 712 and len(X_test) == 179
+print(f"train rate {y_train.mean():.4f}   test rate {y_test.mean():.4f}")
+# train rate 0.3834   test rate 0.3855
+  </code></pre>
+  <p class="small">Stratified on the <strong>label</strong> this time, not on a
+  predictor: with 179 test rows an unstratified draw can shift the base rate by
+  several points, and every downstream number moves with it.</p>
+  <p class="small fix">712 training passengers. That is a small dataset, and by
+  the end of the lecture the size is doing visible damage.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 20 -->
+<section data-menu-title="The anchor">
+  <h2>Before the model: what does <em>nothing</em> score?</h2>
+  <pre><code class="language-python" data-trim>
+p = y_train.mean()                                   # 0.3834
+
+majority_accuracy = 1 - p                            # 0.617
+constant_log_loss = -(p*np.log(p) + (1-p)*np.log(1-p))
+  </code></pre>
+  <p class="big-num">0.666</p>
+  <p class="small">The log loss of a model that has learned <strong>nothing
+  except the base rate</strong>. It is the entropy of the label, in nats, and
+  every number below it has to be compared against it.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 21 -->
+<section class="figslide" data-menu-title="◆ The sigmoid">
+  <h2>Logistic regression: one function, and the whole difference</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l05-sigmoid.svg"
+         alt="The logistic curve rising from 0 to 1, passing through 0.5 at t equals zero, flattening at both ends.">
+  </figure>
+  <p class="takeaway">$\hat p = \sigma(\boldsymbol\theta^{\intercal}\mathbf{x})$,
+  $\sigma(t) = 1/(1+e^{-t})$: the linear model of least squares, passed through
+  one function. Monotone, so the ranking is the linear model&rsquo;s; saturating,
+  so beyond about $\lvert t\rvert = 5$ more evidence changes almost nothing.</p>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Log-odds">
+  <h2>What $\boldsymbol\theta^{\intercal}\mathbf{x}$ <em>is</em></h2>
+  <p class="derive-step">Invert $\sigma$:</p>
+  <div class="eqn-box">
+    $$t \;=\; \log\frac{\hat p}{1 - \hat p} \;=\; \boldsymbol\theta^{\intercal}\mathbf{x}$$
+  </div>
+  <p>The linear model does not predict the probability. It predicts the
+  <strong>log-odds</strong>, and the coefficients act on the odds.</p>
+  <p class="small fix">Add 1 to $x_j$ and the odds are multiplied by
+  $e^{\theta_j}$, wherever you started. The probability has no such rule
+  &mdash; how far it moves depends on where you started.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="The loss">
+  <h2>What it minimises</h2>
+  <div class="eqn-box">
+    $$J(\boldsymbol\theta) \;=\; -\frac{1}{m}\sum_{i=1}^{m}
+      \Big[\, y^{(i)} \log \hat p^{(i)} + \bigl(1-y^{(i)}\bigr)\log\bigl(1-\hat p^{(i)}\bigr)\Big]$$
+  </div>
+  <p class="eqn-label">The log loss, in nats</p>
+  <ul class="tight small">
+    <li>Only the probability you gave the <em>true</em> class enters each term</li>
+    <li>Unbounded above: claim 0.001 for a passenger who survived and that term is $-\log 0.001 \approx 6.9$</li>
+    <li>It is the negative log-likelihood of the labels under the model, divided by $m$</li>
+  </ul>
+  <a class="anim-link" href="../animations/lecture-04.html#logit" target="_blank">Animation</a>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Why this loss">
+  <h2>Why <em>this</em> loss and not something friendlier</h2>
+  <p>A scoring rule is <strong>proper</strong> if the expected score is
+  optimised by reporting your true belief.</p>
+  <ul class="tight small">
+    <li><strong>Log loss</strong> &mdash; proper. Reporting anything other than the true $p$ is expected to score worse</li>
+    <li><strong>Brier score</strong>, $\frac{1}{m}\sum(\hat p - y)^2$ &mdash; also proper, bounded, easier to read; we report it too</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; accuracy is not proper</span>
+    Under accuracy a model reporting 0.51 scores exactly the same as one
+    reporting 0.99. So accuracy gives a model <em>no reason at all</em> to tell
+    the truth about its uncertainty, and optimising it destroys calibration.
+  </div>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Fit and measure">
+  <h2>Fit it, and measure it honestly</h2>
+  <pre><code class="language-python" data-trim>
+# prep: impute; standardise the numbers (step 5); one-hot the categories
+clf = LogisticRegression(C=1e6, max_iter=4000)   # C=1e6 turns the penalty OFF
+model = Pipeline([("prep", prep), ("clf", clf)])
+
+cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+scores = cross_validate(model, X_train, y_train, cv=cv,
+                        scoring=["neg_log_loss", "accuracy", "neg_brier_score"],
+                        return_train_score=True)
+  </code></pre>
+  <p class="small"><code>StratifiedKFold</code>, not <code>KFold</code>: with
+  71 passengers per fold, an unstratified split can hand a fold a base rate
+  several points from the truth.</p>
+  <p class="small fail">Scikit-learn regularises logistic regression
+  <strong>by default</strong> &mdash; <code>C=1.0</code>. We switch it off so
+  that today&rsquo;s coefficients are the data&rsquo;s and not a compromise with a penalty.
+  Regularisation is the next lecture.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="First numbers">
+  <h2>The first numbers</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Log loss</th><th class="num">Accuracy</th></tr>
+    <tr><td>Report the base rate to everyone</td><td class="num">0.666</td><td class="num">61.7%</td></tr>
+    <tr><td>Logistic regression, 10-fold cross-validated</td><td class="num hit">0.496</td><td class="num hit">81.5%</td></tr>
+  </table>
+  <p>About a quarter below the anchor on log loss, and twenty points of accuracy
+  above the majority class.</p>
+  <p class="small muted">Cross-validated, not training. And the per-fold spread
+  of the log loss is <strong>0.22</strong> &mdash; larger than any difference
+  this lecture will compare. Read every later gap against it.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Three rows that cannot be right">
+  <h2>Three rows that cannot be right</h2>
+  <ul class="tight small">
+    <li><code>Title_Miss</code> at &minus;2.81 &mdash; but 70.3% of them survived, against 38.4% overall</li>
+    <li><code>Title_Mrs</code> at &minus;2.02 &mdash; the highest-surviving group in the data</li>
+    <li><code>Deck_T</code> is the largest weight in the model &mdash; and there is exactly <strong>one</strong> passenger on deck T</li>
+  </ul>
+  <p class="fail">These are not weak effects or noisy estimates. They have the
+  wrong sign, and the model&rsquo;s predictions are nonetheless good.</p>
+  <p class="small">Before reaching for a story about confounding, ask the
+  cheaper question: <em>what is the shape of the design matrix?</em></p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Count the rank">
+  <h2>Count the columns, then count the rank</h2>
+  <pre><code class="language-python" data-trim>
+Z   = model[:-1].transform(X_train)
+Z_b = np.c_[np.ones(len(Z)), Z]          # add the intercept column
+
+print("columns:", Z_b.shape[1])          # 29
+print("rank:   ", np.linalg.matrix_rank(Z_b))   # 23
+print("cond:   ", np.linalg.cond(Z_b))          # 4.75e+16
+  </code></pre>
+  <p class="lead fail">Six columns of the design matrix are linear combinations
+  of the others.</p>
+  <ul class="tight small">
+    <li><strong>Five from the encoder.</strong> Each one-hot block sums to 1 in
+        every row &mdash; and so does the intercept column</li>
+    <li><strong>One from us.</strong> <code>FamilySize = SibSp + Parch + 1</code>
+        exactly, for every passenger: an identity, not a correlation</li>
+  </ul>
+</section>
+
+<!-- 29 -->
+<section class="figslide" data-menu-title="◆ Coefficients are not the data">
+  <h2>Two coefficient vectors, one model</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l05-coef-ambiguity.svg"
+         alt="Paired bars for intercept, Sex_female and Sex_male under two fits that differ by a shift of 2.5 along the null space, with a note that all predicted probabilities agree to 3e-16.">
+  </figure>
+  <p class="takeaway">Add 2.5 to <code>Sex_female</code> and to
+  <code>Sex_male</code>, subtract 2.5 from the intercept: the two columns sum to
+  the intercept&rsquo;s, so every prediction is unchanged. The minimiser is not
+  unique, and the solver returns one point of a whole family of them.
+  <span class="fail">A coefficient that can be moved without changing any
+  prediction is not a property of the data.</span></p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="The repair">
+  <h2>The repair: delete the redundancy</h2>
+  <pre><code class="language-python" data-trim>
+NUM = ["Age", "Fare", "SibSp", "Parch"]        # FamilySize removed
+
+("cat", make_pipeline(SimpleImputer(strategy="most_frequent"),
+                      OneHotEncoder(drop="first", min_frequency=2,
+                                    handle_unknown="infrequent_if_exist")), CAT),
+  </code></pre>
+  <table class="smaller">
+    <tr><th>Design matrix</th><th class="num">Columns</th><th class="num">Rank</th><th class="num">Condition number</th></tr>
+    <tr><td>As first written</td><td class="num">29</td><td class="num fail">23</td><td class="num fail">4.75e+16</td></tr>
+    <tr><td>One level dropped, FamilySize removed</td><td class="num">23</td><td class="num hit">23</td><td class="num hit">83.6</td></tr>
+  </table>
+  <p class="small">Fourteen orders of magnitude. <code>IsAlone</code> stays: it
+  is an indicator, not a linear function of the counts.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 31 -->
+<section class="figslide" data-menu-title="◆ Coefficients">
+  <h2>Now the coefficients can be read</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l05-coefficients.svg"
+         alt="Horizontal bar chart of logistic regression coefficients with odds multipliers labelled, sorted from most negative to most positive.">
+  </figure>
+  <p class="takeaway">Each bar is a log-odds. The label beside it is what the
+  odds get multiplied by.</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Reading one coefficient">
+  <h2>Reading one of them out loud</h2>
+  <div class="panel">
+    <span class="panel-title"><code>Pclass_3</code> = &minus;1.169</span>
+    &ldquo;Holding every other recorded feature fixed, travelling third class
+    multiplies the <em>odds</em> of survival by $e^{-1.169} = 0.31$, relative to
+    first class.&rdquo;
+  </div>
+  <ul class="tight small">
+    <li>&ldquo;Holding every other feature fixed&rdquo; is doing real work &mdash; drop it and the sentence is false</li>
+    <li>Odds, not probability. Multiplying odds of 1 by 0.31 gives $p = 0.24$; doing it from $p = 0.9$ gives 0.74</li>
+    <li>Relative to the reference level &mdash; the level <code>drop="first"</code> removed, here first class &mdash; always</li>
+  </ul>
+  <p class="small fail">Unique is not the same as <em>stable</em>:
+  <code>Sex</code> and <code>Title</code> still carry much of the same
+  information, so how the effect is split between them moves with the sample.
+  We only fixed uniqueness.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="The degree sweep">
+  <h2>Push the capacity up, and record <em>both</em> curves</h2>
+  <p class="small">Polynomial features on the four numeric columns only, degrees
+  1 to 6, the same ten folds:</p>
+  <table class="smaller">
+    <tr><th class="num">Degree</th><th class="num">Columns</th><th class="num">Training log loss</th><th class="num">Held-out log loss</th><th class="num">Held-out accuracy</th></tr>
+    <tr><td class="num">1</td><td class="num">22</td><td class="num">0.395</td><td class="num hit">0.468</td><td class="num hit">81.5%</td></tr>
+    <tr><td class="num">2</td><td class="num">32</td><td class="num">0.381</td><td class="num hit">0.471</td><td class="num hit">82.2%</td></tr>
+    <tr><td class="num">3</td><td class="num">52</td><td class="num">0.355</td><td class="num">0.539</td><td class="num">79.8%</td></tr>
+    <tr><td class="num">4</td><td class="num">87</td><td class="num">0.310</td><td class="num fail">1.380</td><td class="num">77.1%</td></tr>
+    <tr><td class="num">5</td><td class="num">143</td><td class="num">0.286</td><td class="num fail">1.952</td><td class="num">75.1%</td></tr>
+    <tr><td class="num">6</td><td class="num">227</td><td class="num">0.284</td><td class="num fail">2.009</td><td class="num">76.0%</td></tr>
+  </table>
+  <p class="small">Degrees 1 and 2 differ by 0.003 in held-out log loss, and
+  their fold-to-fold spread, 0.13, is 52 times that. <span class="fail">Those two
+  are a tie</span>, and the curve turns <em>after</em> degree 2. Crowning either
+  one &mdash; degree 1 has the lower mean &mdash; would be reporting noise.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 34 -->
+<section class="figslide" data-menu-title="◆ The two curves">
+  <h2>The two curves</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l05-degree-curves.svg"
+         alt="Left: training and held-out log loss against polynomial degree; training falls steadily while held-out rises sharply from degree three. Right: the same in accuracy, on a much smaller vertical scale.">
+  </figure>
+  <p class="takeaway fail">The training curve never stops improving. The
+  held-out curve is flat across degrees 1 and 2, turns after degree 2 and then
+  falls off a cliff.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Which metric saw it">
+  <h2>Log loss saw it first</h2>
+  <p>From degree 2 to degree 5, held-out accuracy falls by 7.0 points.
+  Held-out log loss is multiplied by more than <strong>four</strong>.</p>
+  <ul class="tight small">
+    <li>Accuracy only notices when a prediction crosses the cut-off</li>
+    <li>Log loss notices a confident prediction becoming a confidently <em>wrong</em> one</li>
+    <li>The failure is not that the model gets more passengers wrong &mdash; it is that it becomes <em>certain</em> about the ones it gets wrong</li>
+  </ul>
+  <p class="small fix">The requirement was for probabilities. The metric that
+  matches the requirement is the metric that saw the damage.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="What calibration means">
+  <h2>What &ldquo;calibrated&rdquo; means, precisely</h2>
+  <div class="eqn-box">
+    $$P\!\left(y = 1 \;\middle|\; \hat p(\mathbf{x}) = q\right) \;=\; q
+      \qquad \text{for every } q \in (0,1)$$
+  </div>
+  <p>Take every passenger the model scored near $q$. The fraction who actually
+  survived should be about $q$.</p>
+  <p class="small muted">This is a property of a <em>set</em> of predictions,
+  not of any one prediction. You cannot check it on a single passenger, which is
+  exactly why it is so easy to ship a model that fails it.</p>
+</section>
+
+<!-- 37 -->
+<section class="figslide" data-menu-title="◆ Calibration">
+  <h2>The reliability diagram</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l05-calibration.svg"
+         alt="Reliability diagram comparing predicted probability against observed survival rate for training and held-out predictions, with marker area proportional to bin count.">
+  </figure>
+  <p class="takeaway">Out of fold &mdash; every probability from a fit that never
+  saw that passenger. Close to the diagonal in the bins that hold most of the
+  passengers: the two ends, where the model is confident.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="predict hides a threshold">
+  <h2><code>.predict()</code> is <code>.predict_proba() &gt;= 0.5</code></h2>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; a bare label hides a decision nobody made</span>
+    Calling <code>.predict()</code> silently applies a cut-off of 0.5, which is
+    cost-optimal only when the two mistakes cost the same. Nothing in the code
+    mentions 0.5. Nothing errors. The accuracy printed is true, and it answers a
+    question the stakeholder did not ask.
+  </div>
+  <p class="small">Lecture 3 chose an operating point against a stated
+  constraint and defended it. The same discipline applies here, with one
+  addition: <strong>the model produces the probability, and the cut-off is a
+  separate decision taken on top of it</strong>.</p>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Softmax regression">
+  <h2>Softmax regression</h2>
+  <p>One parameter <em>vector</em> per class. Score each class, then normalise:</p>
+  <div class="eqn-box">
+    $$s_k(\mathbf{x}) = \boldsymbol\theta_k^{\intercal}\mathbf{x},
+      \qquad
+      \hat p_k = \frac{\exp\bigl(s_k(\mathbf{x})\bigr)}{\sum_{j=1}^{K}\exp\bigl(s_j(\mathbf{x})\bigr)}$$
+  </div>
+  <p class="small">Every $\hat p_k &gt; 0$ and they sum to 1 by construction, so
+  the output is a distribution over the $K$ classes without any further work.</p>
+  <p class="small muted">Multi<em>class</em>, not multi<em>label</em>: softmax
+  assigns one class per instance. Four objects in one photograph need $K$
+  separate binary classifiers, not this.</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="Cross-entropy">
+  <h2>Its cost: cross-entropy</h2>
+  <div class="eqn-box">
+    $$J(\boldsymbol\Theta) \;=\; -\frac{1}{m}\sum_{i=1}^{m}\sum_{k=1}^{K}
+      y_k^{(i)}\log \hat p_k^{(i)}$$
+  </div>
+  <p class="small">$y_k^{(i)}$ is 1 if instance $i$ belongs to class $k$ and 0
+  otherwise, so the inner sum keeps exactly one term: the log of the probability
+  given to the <em>true</em> class.</p>
+  <p class="fix">At $K = 2$ this is the log loss, term for term. Logistic
+  regression is the two-class case of softmax, not a different model.</p>
+  <a class="anim-link" href="../animations/lecture-04.html#softmax" target="_blank">Animation</a>
+</section>
+
+<!-- 41 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-04.ipynb">Open Lecture 4 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU</strong></li>
+    <li>Gradient descent implemented from the derivation, checked against the
+        closed form to eight decimals, run at three learning rates &mdash; one
+        past $2/\lambda_{\max}$ &mdash; and the one-row gradient checked to be
+        unbiased</li>
+    <li>Then the Titanic manifest as on the slides: the anchor, the first
+        numbers, the rank computation and the shift that leaves every prediction
+        unchanged, the repair, the coefficients, the degree sweep, the
+        calibration bins, and softmax on three classes</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Raise <code>ETA_DIVERGE</code> in the learning-rate cell and watch where the
+    cost first becomes <code>inf</code>. Then compute
+    $2/\lambda_{\max}$ for that design matrix and check the two agree.
+  </div>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Summary">
+  <h2>Summary</h2>
+  <ul class="tight small">
+    <li>Descent steps along $-\nabla J$; on the MSE that gradient is
+        $\frac{2}{m}\mathbf{X}^{\intercal}(\mathbf{X}\boldsymbol\theta - y)$
+        &mdash; error times feature &mdash; and no matrix is ever inverted</li>
+    <li>The step converges iff $\eta &lt; 2/\lambda_{\max}$, and the step
+        <em>count</em> is set by the condition number &mdash; which is why you
+        scale</li>
+    <li>One instance gives an unbiased gradient, which is what makes stochastic
+        and mini-batch descent legitimate rather than merely cheap</li>
+    <li>Logistic regression predicts the <strong>log-odds</strong> linearly and
+        is fitted on the log loss, a proper scoring rule; coefficients multiply
+        the odds, always relative to a reference level</li>
+    <li>A rank-deficient design leaves the minimiser not unique: the predictions
+        stand, the coefficients mean nothing &mdash; count the rank</li>
+    <li>A probability is checkable and a label is not &mdash; and
+        <code>.predict()</code> is a cut-off nobody chose</li>
+  </ul>
+</section>
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 4">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 4</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 4">
+  <h2>Exercises &mdash; Lecture 4</h2>
+  <ul class="ex-list">
+    <li>Gradient descent on the same data, with the features unscaled, takes many more steps to converge than on scaled features. Explain why, in terms of the shape of the cost surface. <span class="ex-marks">[5]</span></li>
+    <li>On the Titanic manifest, your logistic regression on one-hot encoded columns produces coefficients that look wrong, and the design matrix has rank six less than its column count. State the cause and the standard repair. <span class="ex-marks">[5]</span></li>
+    <li>A model reaches 0.80 accuracy and is <em>badly calibrated</em>. Explain what that means, and name a decision it would make wrongly that accuracy cannot see. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 5&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 4 (2)">
+  <h2>Exercises &mdash; Lecture 4 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>In a logistic regression with first class as the reference level, the coefficient on <code>Pclass_3</code> is $-1.169$. State what it multiplies, by how much, and why no single change in the survival probability follows from it. <span class="ex-marks">[4]</span></li>
+    <li>State the update rule for batch gradient descent, and say what changes in it for stochastic gradient descent &mdash; and what does not. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 5&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 3">
+  <p class="kicker">The five set at the end of Lecture 3</p>
+  <h1>Solutions<br>Lecture 3</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 3">
+  <h2>Solutions &mdash; Lecture 3</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> The normal equation is $\hat\theta = (X^{\mathsf T}X)^{-1}X^{\mathsf T}y$. Your training matrix $X$ has a&hellip;</p>
+      <p class="lead"><span class="fix">$X^{\mathsf T}X$ is singular; the pseudoinverse returns the minimum-norm least-squares solution.</span></p>
+      <ul class="tight smaller">
+        <li>A linear dependence among columns means $X$ does not have linearly independent columns, so $X^{\mathsf T}X$ does not have full rank and has no inverse</li>
+        <li>The fitted <em>values</em> are still unique &mdash; the projection onto the column space is &mdash; only the coefficients are not</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> A pipeline scales the features and then fits a model, and is passed whole to cross_val_score. Explain what&hellip;</p>
+      <p class="lead"><span class="fix">The scaler would be fitted on every fold&rsquo;s validation rows, so each fold&rsquo;s score could be optimistic &mdash; by an amount the code cannot tell you.</span></p>
+      <ul class="tight smaller">
+        <li>A scaler is a fitted object: its mean and standard deviation are parameters learned from data</li>
+        <li>Fitting it before the split lets validation rows influence the transformation applied to themselves</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 3 (2)">
+  <h2>Solutions &mdash; Lecture 3 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> On the MNIST 5-detector, a classifier that never fires scores $90.96\%$ accuracy on the training set. State&hellip;</p>
+      <p class="lead"><span class="fix">The share of the data that is not a 5.</span></p>
+      <ul class="tight smaller">
+        <li>With no positive prediction, accuracy is exactly the negative class&rsquo;s base rate</li>
+        <li>It measures the data, not the model &mdash; which is why it is the anchor every other number is read against</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> Prove or disprove: as the decision threshold is lowered, precision increases monotonically.</p>
+      <p class="lead"><span class="fix">Disprove &mdash; precision is not monotone in the threshold.</span></p>
+      <ul class="tight smaller">
+        <li>Lowering the threshold admits one instance at a time; recall cannot fall, but precision rises or falls depending on whether that instance is a true or a false positive</li>
+        <li>A single false positive admitted at a high-precision point lowers it, and a later true positive can raise it again</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 3 (3)">
+  <h2>Solutions &mdash; Lecture 3 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> Two models have the same ROC AUC. One is far better on a precision&ndash;recall curve. What does that tell&hellip;</p>
+      <p class="lead"><span class="fix">The positive class is rare.</span></p>
+      <ul class="tight smaller">
+        <li>ROC uses the false-positive <em>rate</em>, whose denominator is the large negative class, so many false positives barely move it</li>
+        <li>PR uses precision, whose denominator is what the model predicted, so the same false positives dominate it</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Next lecture</p>
+  <h1>Regularisation, and<br>the bias&ndash;variance<br>trade-off</h1>
+  <p class="small">Why the held-out curve turned upward after degree 2, decomposed
+  into three terms &mdash; and the one penalty term that gives a fit like
+  today&rsquo;s rank-deficient one a unique answer</p>
+</section>
+
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 4
+  <span class="sep">&middot;</span> Training models
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 4 · Training models — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 4 of Applications of Machine Learning: gradient descent on the cost surface, logistic regression and softmax regression.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-04.html">Lecture 4 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 4 · Animations</p>
+  <h1>Training models</h1>
+  <p>Three models from today, each trained in front of you one step at a time.
+  Press <strong>Step</strong> to advance a single iteration and read what
+  happened; press <strong>Play</strong> to let it run. Every number in the side
+  panel is recomputed at every step.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#gd">1 · Gradient descent on the cost surface</a></li>
+    <li><a href="#logit">2 · Logistic regression</a></li>
+    <li><a href="#softmax">3 · Softmax regression</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Gradient descent
+     ====================================================================== -->
+<section class="anim" id="gd">
+  <h2><span class="num">1</span>Gradient descent on the cost surface</h2>
+  <p class="lede">A straight line $\hat y = \theta_0 + \theta_1 x$ fitted by
+  descent. On the left, the data and the current line; on the right, the cost
+  $J(\theta_0, \theta_1)$ as a contour map, with every step the algorithm has
+  taken. The green cross is the normal-equation answer
+  $\hat{\boldsymbol\theta}$ — where descent is heading.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="gd-plots"></div>
+      <div id="gd-cost"></div>
+      <div class="narrate" id="gd-say"></div>
+      <div class="toolbar" id="gd-bar"></div>
+    </div>
+    <aside class="side" id="gd-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The cost is the mean squared error, and its gradient is</p>
+      $$\nabla J(\boldsymbol\theta) = \frac{2}{m}\,\mathbf{X}^{\intercal}\bigl(\mathbf{X}\boldsymbol\theta - y\bigr).$$
+      <p>Each step moves against it:
+      $\boldsymbol\theta^{(k+1)} = \boldsymbol\theta^{(k)} - \eta\,\nabla J(\boldsymbol\theta^{(k)})$.
+      It converges exactly when $0 &lt; \eta &lt; 2/\lambda_{\max}$, where
+      $\lambda_{\max}$ is the largest eigenvalue of the Hessian
+      $\tfrac{2}{m}\mathbf{X}^{\intercal}\mathbf{X}$ — the side panel computes it.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>Each step crosses the contour lines <strong>at right angles</strong>:
+        the gradient is perpendicular to the level set it starts on.</li>
+        <li>With <em>raw</em> $x$ the bowl is a long thin valley, and descent
+        zig-zags across it. Standardising $x$ makes it round, and the same
+        $\eta$ walks straight in.</li>
+        <li>Stochastic and mini-batch steps are noisy: each one uses only the
+        highlighted points, so it is a guess at the true gradient.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Push $\eta$ just past $2/\lambda_{\max}$ and press Play. The cost
+        curve turns upward and the path spirals <em>out</em>.</li>
+        <li>Set $\eta$ near $1/\lambda_{\max}$: the fastest it gets.</li>
+        <li>Switch to stochastic with a large $\eta$, then lower $\eta$:
+        the cloud around $\hat{\boldsymbol\theta}$ shrinks with it.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · Logistic regression
+     ====================================================================== -->
+<section class="anim" id="logit">
+  <h2><span class="num">2</span>Logistic regression</h2>
+  <p class="lede">Two classes in the plane, and a model that outputs a
+  probability $\hat p = \sigma(\boldsymbol\theta^{\intercal}\mathbf{x})$.
+  The shading is $\hat p$ itself; the solid line is $\hat p = 0.5$, the
+  dashed ones $\hat p = 0.1$ and $0.9$. On the right, every point sits on
+  the logistic curve at its own score $t = \boldsymbol\theta^{\intercal}\mathbf{x}$.
+  Click the plot to add points.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="lg-plots"></div>
+      <div class="narrate" id="lg-say"></div>
+      <div class="toolbar" id="lg-bar"></div>
+    </div>
+    <aside class="side" id="lg-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>Each step of descent lowers the log loss:</p>
+      $$\begin{aligned}J(\boldsymbol\theta) = -\frac{1}{m}\sum_{i}\Big[&y^{(i)}\log\hat p^{(i)} \\ &+ (1-y^{(i)})\log(1-\hat p^{(i)})\Big].\end{aligned}$$
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>Points far on the wrong side of the line sit at the flat end of
+        the curve but carry the <strong>largest</strong> loss — their term
+        $-\log\hat p$ grows without limit.</li>
+        <li>The boundary $\hat p = 0.5$ is always a straight line: it is
+        $\boldsymbol\theta^{\intercal}\mathbf{x} = 0$.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Add one gold triangle deep inside the blue cloud and watch how far
+        it pulls the boundary — then compare a point just over the line.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     3 · Softmax regression
+     ====================================================================== -->
+<section class="anim" id="softmax">
+  <h2><span class="num">3</span>Softmax regression</h2>
+  <p class="lede">Three classes. Each class $k$ has its own score
+  $t_k = \boldsymbol\theta_k^{\intercal}\mathbf{x}$, and softmax turns the three
+  scores into three probabilities that sum to one. The colour is the class with
+  the highest probability, and fades where the model is unsure. Click anywhere
+  on the plot to probe it: the bars show the scores and the probabilities at
+  that point.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="sm-plots"></div>
+      <div class="narrate" id="sm-say"></div>
+      <div class="toolbar" id="sm-bar"></div>
+    </div>
+    <aside class="side" id="sm-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      $$\hat p_k = \frac{e^{t_k}}{\sum_{j} e^{t_j}},\qquad
+        J = -\frac{1}{m}\sum_i\sum_k y_k^{(i)}\log\hat p_k^{(i)}$$
+      <p>with $y^{(i)}$ one-hot: the log of the probability given to the true
+      class, averaged.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>Each boundary between two regions is a straight line, the set where
+        $t_j = t_k$. Three classes give at most three such lines, meeting at a point.</li>
+        <li>Adding the same number to all three scores changes nothing: softmax
+        only sees their <strong>differences</strong>.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Probe a point exactly where the three regions meet: three bars of
+        about $1/3$.</li>
+        <li>Probe a point far out in one region: one probability near 1 even
+        though the scores differ by only a few units — softmax is exponential.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 4 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  /* ======================================================================
+     1 · Gradient descent on the MSE of a straight line
+     ====================================================================== */
+  (function () {
+    // y = 4 + 3x + noise on x in [0, 2]: the shape of the book's Chapter 4
+    // example, so a reader of both sees the same line.
+    var R = A.rng(4), m = 40, xs = [], ys = [];
+    for (var i = 0; i < m; i++) {
+      var x = 2 * R.u();
+      xs.push(x); ys.push(4 + 3 * x + R.n(0, 0.9));
+    }
+    var mx = A.mean(xs), sx = A.std(xs);
+    var all = A.range(m);
+
+    var S = { mode: "batch", scaled: false, eta: 0.1, batch: 8 };
+    var st, pl;
+
+    // The feature as the model sees it: raw x, or standardised x.
+    function feat(x) { return S.scaled ? (x - mx) / sx : x; }
+
+    // The Hessian (2/m) X^T X for X = [1, feat(x)], and its two eigenvalues.
+    function hessian() {
+      var s1 = 0, s2 = 0;
+      xs.forEach(function (x) { var f = feat(x); s1 += f; s2 += f * f; });
+      var a = 2, b = 2 * s1 / m, d = 2 * s2 / m;
+      var tr = a + d, det = a * d - b * b, disc = Math.sqrt(tr * tr / 4 - det);
+      return { lmax: tr / 2 + disc, lmin: tr / 2 - disc };
+    }
+    // The normal-equation answer, in the model's own coordinates.
+    function optimum() {
+      var F = xs.map(feat);
+      var sF = A.sum(F), sFF = A.dot(F, F);
+      return A.solve([[m, sF], [sF, sFF]], [A.sum(ys), A.dot(F, ys)]);
+    }
+    function cost(t0, t1) {
+      var s = 0;
+      for (var i = 0; i < m; i++) { var r = t0 + t1 * feat(xs[i]) - ys[i]; s += r * r; }
+      return s / m;
+    }
+    function grad(t0, t1, idx) {
+      var g0 = 0, g1 = 0;
+      idx.forEach(function (i) {
+        var f = feat(xs[i]), r = t0 + t1 * f - ys[i];
+        g0 += r; g1 += r * f;
+      });
+      return [2 * g0 / idx.length, 2 * g1 / idx.length];
+    }
+
+    // --- layout
+    var plots = A.$("#gd-plots");
+    var pData = A.plot(plots, { x: [0, 2], y: [-2, 14], w: 420, h: 340, xlabel: "x", ylabel: "y",
+                                caption: "The data and the current line (dashed: the optimum)" });
+    var costHost = A.h("div", null, plots), pCost, view;
+    var curve = A.curve("#gd-cost", { y: [-1, 3], log: true, ylabel: "cost J", n: 60 });
+
+    var side = A.$("#gd-side");
+    A.seg(side, { label: "Feature", value: "raw",
+                  options: [["raw", "raw $x$"], ["std", "standardised"]],
+                  hint: "Standardised: $(x - \\bar x)/s_x$, mean 0 and standard deviation 1.",
+                  onChange: function (v) { S.scaled = v === "std"; buildCost(); pl.restart(true); } });
+    A.seg(side, { label: "Each step uses", value: "batch",
+                  options: [["batch", "all points"], ["mini", "8 points"], ["sgd", "1 point"]],
+                  hint: "Batch, mini-batch and stochastic gradient descent.",
+                  onChange: function (v) { S.mode = v; pl.restart(true); } });
+    A.slider(side, { label: "Learning rate $\\eta$", min: 0.005, max: 1.5, value: S.eta, log: true,
+                     fmt: function (v) { return sig(v, 3); },
+                     onInput: function (v) { S.eta = v; pl.restart(true); } });
+    var ro = A.readout(side, [["k", "iteration"], ["J", "cost $J$"], ["g", "$\\lVert\\nabla J\\rVert$"],
+                              ["th", "$\\boldsymbol\\theta$"], ["opt", "$\\hat{\\boldsymbol\\theta}$"],
+                              ["lmax", "$\\lambda_{\\max}$"], ["bound", "$2/\\lambda_{\\max}$"],
+                              ["kappa", "$\\kappa = \\lambda_{\\max}/\\lambda_{\\min}$"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "used by this step" },
+                    { shape: "circle", cls: "pt c0 hollow", label: "not used" },
+                    { line: "resid", label: "residual" },
+                    { line: "arrow", label: "next step, $-\\eta\\nabla J$" }]);
+    var say = A.narrate("#gd-say");
+
+    function buildCost() {
+      A.clear(costHost);
+      var o = optimum();
+      view = { o: o, x: [o[0] - 9, o[0] + 9], y: [o[1] - 9, o[1] + 9] };
+      pCost = A.plot(costHost, { x: view.x, y: view.y, w: 420, h: 340,
+                                 xlabel: "θ₀ (intercept)", ylabel: "θ₁ (slope)",
+                                 caption: "Contours of J(θ₀, θ₁), and the path so far" });
+      drawSurface();
+    }
+    function drawSurface() {
+      var o = view.o, Jmin = cost(o[0], o[1]);
+      var ink = A.rgb("primary"), top = Math.log(1 + cost(view.x[0], view.y[0]) - Jmin);
+      // Shaded by the log of the excess cost, so the valley floor shows.
+      pCost.field(function (a, b) {
+        var t = A.clamp(1 - Math.log(1 + cost(a, b) - Jmin) / top, 0, 1);
+        return [ink[0], ink[1], ink[2], 0.04 + 0.30 * t * t];
+      });
+      A.clear(pCost.layer("grid"));
+      pCost.axes();
+      [0.3, 1, 3, 8, 20, 50, 120, 300].forEach(function (lev) {
+        pCost.contour(function (a, b) { return cost(a, b) - Jmin; }, lev, "line thin muted", "grid", 90);
+      });
+      pCost.dot(o[0], o[1], { shape: "cross", r: 6, cls: "line ok", layer: "grid" });
+    }
+    A.onTheme(drawSurface);
+
+    function reset() {
+      var o = optimum();
+      // The same start relative to the optimum, whatever the scaling.
+      st = { th: [o[0] - 7, o[1] - 6], path: [], costs: [], batch: all, diverged: false, last: null };
+      st.path.push(st.th.slice());
+      st.costs.push(cost(st.th[0], st.th[1]));
+    }
+    function pickBatch() {
+      if (S.mode === "batch") return all;
+      var n = S.mode === "sgd" ? 1 : S.batch;
+      return A.rng(1000 + st.path.length).shuffle(A.range(m)).slice(0, n);
+    }
+    function step() {
+      var idx = pickBatch(), g = grad(st.th[0], st.th[1], idx), before = st.costs[st.costs.length - 1];
+      st.th = [st.th[0] - S.eta * g[0], st.th[1] - S.eta * g[1]];
+      st.batch = idx;
+      var J = cost(st.th[0], st.th[1]);
+      st.last = { g: g, before: before, after: J, n: idx.length };
+      st.path.push(st.th.slice());
+      st.costs.push(J);
+      if (!isFinite(J) || J > 1e5) { st.diverged = true; return false; }
+      var gF = grad(st.th[0], st.th[1], all);
+      if (S.mode === "batch" && Math.hypot(gF[0], gF[1]) < 1e-4) { st.converged = true; return false; }
+      return st.path.length <= 600;
+    }
+
+    function render() {
+      var o = optimum(), H = hessian(), th = st.th, Jmin = cost(o[0], o[1]);
+      var n = st.costs.length, J = st.costs[n - 1], bound = 2 / H.lmax;
+      var lineAt = function (x) { return th[0] + th[1] * feat(x); };
+
+      // Left: the data, the current line, and the residuals this step used.
+      pData.clear();
+      var used = {};
+      st.batch.forEach(function (i) { used[i] = true; });
+      if (!st.diverged) st.batch.forEach(function (i) { pData.line(xs[i], ys[i], xs[i], lineAt(xs[i]), "resid"); });
+      xs.forEach(function (x, i) {
+        pData.dot(x, ys[i], { cls: "pt c0" + (used[i] ? "" : " hollow"), r: used[i] && S.mode !== "batch" ? 5.5 : 4 });
+      });
+      pData.path([[0, o[0] + o[1] * feat(0)], [2, o[0] + o[1] * feat(2)]], "line ok dash thin");
+      if (!st.diverged) pData.path([[0, lineAt(0)], [2, lineAt(2)]], "line");
+
+      // Right: the path across the cost surface.
+      pCost.clear();
+      pCost.path(st.path, "line acc thin");
+      st.path.forEach(function (q, j) {
+        if (j < st.path.length - 1) pCost.dot(q[0], q[1], { r: 2.2, cls: "fill-acc" });
+      });
+      if (!st.diverged) {
+        pCost.dot(th[0], th[1], { r: 5.5, cls: "pt c0" });
+        // The full-batch negative gradient, to the scale of one step.
+        var gN = grad(th[0], th[1], all);
+        pCost.arrow(th[0], th[1], th[0] - S.eta * gN[0], th[1] - S.eta * gN[1]);
+      }
+
+      // Below: the cost against iteration, on a log scale.
+      curve.draw([{ values: st.costs, cls: "line acc" }],
+                 [{ y: Jmin, label: "minimum cost " + sig(Jmin, 3) }]);
+
+      var gF = grad(th[0], th[1], all), gn = Math.hypot(gF[0], gF[1]);
+      ro.set("k", String(n - 1));
+      ro.set("J", st.diverged ? "diverged" : sig(J, 4), st.diverged ? "bad" : (J - Jmin < 1e-4 ? "good" : ""));
+      ro.set("g", st.diverged ? "—" : sig(gn, 3));
+      ro.set("th", st.diverged ? "—" : "(" + fmt(th[0], 3) + ", " + fmt(th[1], 3) + ")");
+      ro.set("opt", "(" + fmt(o[0], 3) + ", " + fmt(o[1], 3) + ")", "good");
+      ro.set("lmax", sig(H.lmax, 3));
+      ro.set("bound", sig(bound, 3), S.eta >= bound ? "bad" : "");
+      ro.set("kappa", sig(H.lmax / H.lmin, 3));
+
+      if (n === 1) {
+        say.say("<span class='k'>Start.</span> " + K("\\boldsymbol\\theta^{(0)} = (" + fmt(th[0], 2) + ",\\ " + fmt(th[1], 2) + ")") +
+                ", cost " + sig(J, 4) + ". The Hessian's eigenvalues differ by a factor " +
+                K("\\kappa = " + sig(H.lmax / H.lmin, 3)) +
+                (S.scaled ? ": close to 1, a round bowl." : ": a long, narrow valley.") +
+                " The learning rate is " + (S.eta >= bound ? "<strong>above</strong>" : "below") + " " +
+                K("2/\\lambda_{\\max} = " + sig(bound, 3)) + ". Press <em>Step</em>.");
+      } else if (st.diverged) {
+        say.say("<span class='k'>Diverged.</span> " + K("\\eta = " + sig(S.eta, 3)) + " is above " +
+                K("2/\\lambda_{\\max} = " + sig(bound, 3)) + ", so the error along the steepest direction is multiplied by " +
+                K("|1 - \\eta\\lambda_{\\max}| = " + fmt(Math.abs(1 - S.eta * H.lmax), 2)) +
+                " at every step. That is more than 1, and the cost grows geometrically.");
+      } else {
+        var L = st.last;
+        var src = S.mode === "batch" ? "all " + m + " points" : (L.n === 1 ? "one point" : L.n + " points");
+        say.say("<span class='k'>Iteration " + (n - 1) + ".</span> Gradient from " + src + ": " +
+                K("\\nabla J \\approx (" + fmt(L.g[0], 2) + ",\\ " + fmt(L.g[1], 2) + ")") + ", so the step is " +
+                K("-\\eta\\nabla J = (" + fmt(-S.eta * L.g[0], 3) + ",\\ " + fmt(-S.eta * L.g[1], 3) + ")") +
+                ". Cost " + sig(L.before, 4) + " → " + sig(L.after, 4) +
+                (L.after > L.before
+                  ? (S.mode === "batch" ? ": <strong>up</strong>, the step overshot." : ": <strong>up</strong>. This batch pointed somewhere the full data did not.")
+                  : ".") +
+                (st.converged ? " <strong>Converged</strong>: " + K("\\lVert\\nabla J\\rVert < 10^{-4}") + ", on the normal-equation answer." : ""));
+      }
+    }
+
+    buildCost();
+    pl = A.player("#gd-bar", { step: step, reset: reset, render: render, fps: 6, unit: "iteration" });
+  })();
+
+  /* ======================================================================
+     2 · Logistic regression
+     ====================================================================== */
+  (function () {
+    var S = { eta: 0.5, add: 1, data: "overlap" }, pts, st, pl;
+
+    function makeData(kind) {
+      var R = A.rng(kind === "overlap" ? 11 : 12), out = [];
+      var sd = kind === "overlap" ? 1.0 : 0.55, d = kind === "overlap" ? 1.0 : 1.7;
+      for (var i = 0; i < 24; i++) out.push({ x: [R.n(-d, sd), R.n(-0.6 * d, sd)], y: 0 });
+      for (i = 0; i < 24; i++) out.push({ x: [R.n(d, sd), R.n(0.6 * d, sd)], y: 1 });
+      return out;
+    }
+    function score(th, x) { return th[0] + th[1] * x[0] + th[2] * x[1]; }
+    function loss(th) {
+      var s = 0;
+      pts.forEach(function (p) {
+        var t = score(th, p.x);
+        // log(1 + e^{-t}) and log(1 + e^{t}), written so neither overflows.
+        var l = t >= 0 ? Math.log1p(Math.exp(-t)) : -t + Math.log1p(Math.exp(t));
+        s += p.y ? l : l + t;
+      });
+      return s / pts.length;
+    }
+    function accuracy(th) {
+      return A.mean(pts.map(function (p) { return (score(th, p.x) > 0 ? 1 : 0) === p.y ? 1 : 0; }));
+    }
+
+    var plots = A.$("#lg-plots");
+    var pX = A.plot(plots, { x: [-4, 4], y: [-3.5, 3.5], w: 420, h: 370, xlabel: "x₁", ylabel: "x₂",
+                             caption: "The plane, shaded by p̂" });
+    var pS = A.plot(plots, { x: [-8, 8], y: [-0.05, 1.05], w: 420, h: 370, xlabel: "score t = θᵀx",
+                             ylabel: "p̂ = σ(t)", yticks: [0, 0.25, 0.5, 0.75, 1],
+                             caption: "Every point on the logistic curve, at its own score" });
+    pS.layers.data.removeAttribute("clip-path");
+
+    var side = A.$("#lg-side");
+    A.slider(side, { label: "Learning rate $\\eta$", min: 0.02, max: 5, value: S.eta, log: true,
+                     fmt: function (v) { return sig(v, 3); },
+                     onInput: function (v) { S.eta = v; } });
+    A.seg(side, { label: "A click adds", value: 1,
+                  options: [[0, "class 0 (●)"], [1, "class 1 (▲)"]],
+                  onChange: function (v) { S.add = v; } });
+    var ro = A.readout(side, [["k", "iteration"], ["J", "log loss $J$"], ["acc", "accuracy"],
+                              ["th", "$(\\theta_0, \\theta_1, \\theta_2)$"],
+                              ["w", "$\\lVert(\\theta_1,\\theta_2)\\rVert$"], ["band", "band width"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "class 0" },
+                    { shape: "tri", cls: "pt c1", label: "class 1" },
+                    { shape: "circle", cls: "pt c0 wrong", label: "misclassified" },
+                    { line: "resid", label: "$\\hat p - y$" }]);
+    var say = A.narrate("#lg-say");
+
+    pX.onClick(function (x1, x2) {
+      if (pts.length >= 150) return;
+      pts.push({ x: [x1, x2], y: S.add });
+      render();
+    });
+
+    function reset() {
+      if (!pts) pts = makeData(S.data);
+      st = { th: [0, 0, 0], losses: [], last: null };
+      st.losses.push(loss(st.th));
+    }
+    function step() {
+      var g = [0, 0, 0], th = st.th;
+      pts.forEach(function (p) {
+        var r = A.sigmoid(score(th, p.x)) - p.y;
+        g[0] += r; g[1] += r * p.x[0]; g[2] += r * p.x[1];
+      });
+      g = g.map(function (v) { return v / pts.length; });
+      var before = loss(th);
+      st.th = [th[0] - S.eta * g[0], th[1] - S.eta * g[1], th[2] - S.eta * g[2]];
+      var J = loss(st.th);
+      st.losses.push(J);
+      st.last = { g: g, before: before, after: J };
+      if (Math.hypot(g[0], g[1], g[2]) < 1e-5) { st.converged = true; return false; }
+      return st.losses.length <= 3000;
+    }
+
+    function shade() {
+      var c0 = A.rgb("c0"), c1 = A.rgb("c1"), th = st.th;
+      pX.field(function (a, b) {
+        var p = A.sigmoid(score(th, [a, b])), c = p > 0.5 ? c1 : c0;
+        return [c[0], c[1], c[2], 0.05 + 0.32 * Math.abs(2 * p - 1)];
+      });
+    }
+    A.onTheme(function () { shade(); });
+
+    function render() {
+      var th = st.th, w = Math.hypot(th[1], th[2]);
+      shade();
+      pX.clear();
+      if (w > 1e-9) {
+        pX.boundary(th[0], th[1], th[2], "line ink");
+        pX.boundary(th[0] - Math.log(9), th[1], th[2], "line thin muted dash");
+        pX.boundary(th[0] + Math.log(9), th[1], th[2], "line thin muted dash");
+      }
+      pts.forEach(function (p) {
+        var wrong = (score(th, p.x) > 0 ? 1 : 0) !== p.y;
+        pX.dot(p.x[0], p.x[1], { shape: p.y ? "tri" : "circle", cls: "pt c" + p.y + (wrong && w > 1e-9 ? " wrong" : "") });
+      });
+
+      pS.clear();
+      var ts = A.linspace(-8, 8, 161);
+      pS.line(-8, 0.5, 8, 0.5, "zero");
+      pS.path(ts.map(function (t) { return [t, A.sigmoid(t)]; }), "line math");
+      pts.forEach(function (p) {
+        var t = A.clamp(score(th, p.x), -8, 8), q = A.sigmoid(score(th, p.x));
+        pS.line(t, q, t, p.y, "resid faint");
+      });
+      pts.forEach(function (p) {
+        var t = A.clamp(score(th, p.x), -8, 8), q = A.sigmoid(score(th, p.x));
+        pS.dot(t, q, { shape: p.y ? "tri" : "circle", cls: "pt c" + p.y, r: 4 });
+      });
+
+      var n = st.losses.length, J = st.losses[n - 1], acc = accuracy(th);
+      var band = w > 1e-9 ? 2 * Math.log(9) / w : Infinity;
+      ro.set("k", String(n - 1));
+      ro.set("J", sig(J, 4));
+      ro.set("acc", A.pct(acc, 0), acc === 1 ? "good" : "");
+      ro.set("th", "(" + fmt(th[0], 2) + ", " + fmt(th[1], 2) + ", " + fmt(th[2], 2) + ")");
+      ro.set("w", sig(w, 3));
+      ro.set("band", isFinite(band) ? sig(band, 3) : "∞");
+
+      if (n === 1) {
+        say.say("<span class='k'>Start.</span> " + K("\\boldsymbol\\theta = \\mathbf 0") + ", so every score is 0 and every " +
+                K("\\hat p = \\sigma(0) = 0.5") + ". The log loss is " + K("\\log 2 \\approx 0.693") +
+                ", the cost of knowing nothing. Every red segment on the right is " + K("\\hat p - y = \\pm 0.5") + ".");
+      } else {
+        var L = st.last;
+        say.say("<span class='k'>Iteration " + (n - 1) + ".</span> " +
+                K("\\nabla J = \\tfrac1m\\mathbf X^{\\intercal}(\\hat{\\mathbf p} - y) = (" + fmt(L.g[0], 3) + ",\\ " + fmt(L.g[1], 3) + ",\\ " + fmt(L.g[2], 3) + ")") +
+                ". Log loss " + sig(L.before, 4) + " → " + sig(L.after, 4) + ". The band from " +
+                K("\\hat p = 0.1") + " to " + K("0.9") + " is " + K("2\\ln 9 / \\lVert(\\theta_1,\\theta_2)\\rVert") + " = " + sig(band, 3) + " wide" +
+                (acc === 1 ? "; every point is on its side, so the only way to lower the loss is to <strong>sharpen</strong> the band, which grows " +
+                             K("\\lVert\\boldsymbol\\theta\\rVert") + " for ever." : ".") +
+                (st.converged ? " <strong>Converged.</strong>" : ""));
+      }
+    }
+
+    pl = A.player("#lg-bar", { step: step, reset: reset, render: render, fps: 10, unit: "iteration" });
+    A.button("#lg-bar", "Clear added points", function () { pts = makeData(S.data); pl.restart(); });
+  })();
+
+  /* ======================================================================
+     3 · Softmax regression
+     ====================================================================== */
+  (function () {
+    var KC = 3, R = A.rng(31), pts = [];
+    var centres = [[-1.7, -1.1], [1.7, -1.1], [0, 1.7]];
+    centres.forEach(function (c, k) {
+      for (var i = 0; i < 20; i++) pts.push({ x: [R.n(c[0], 0.85), R.n(c[1], 0.85)], y: k });
+    });
+    var S = { eta: 0.5 }, st, pl, probe = [0.4, 0.1];
+
+    function scores(Th, x) { return Th.map(function (t) { return t[0] + t[1] * x[0] + t[2] * x[1]; }); }
+    function xent(Th) {
+      return A.mean(pts.map(function (p) { return -Math.log(Math.max(A.softmax(scores(Th, p.x))[p.y], 1e-300)); }));
+    }
+    function accuracy(Th) { return A.mean(pts.map(function (p) { return A.argmax(scores(Th, p.x)) === p.y ? 1 : 0; })); }
+
+    var plots = A.$("#sm-plots");
+    var pX = A.plot(plots, { x: [-4, 4], y: [-3.5, 3.5], w: 420, h: 370, xlabel: "x₁", ylabel: "x₂",
+                             caption: "Regions of the most probable class (click to probe)" });
+    var bars = A.canvas(plots, { w: 420, h: 370, caption: "Scores and probabilities at the probe" });
+
+    var side = A.$("#sm-side");
+    A.slider(side, { label: "Learning rate $\\eta$", min: 0.02, max: 5, value: S.eta, log: true,
+                     fmt: function (v) { return sig(v, 3); }, onInput: function (v) { S.eta = v; } });
+    var ro = A.readout(side, [["k", "iteration"], ["J", "cross-entropy $J$"], ["acc", "accuracy"],
+                              ["t", "scores $t$ at probe"], ["p", "$\\hat{\\mathbf p}$ at probe"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "class 0" }, { shape: "tri", cls: "pt c1", label: "class 1" },
+                    { shape: "sq", cls: "pt c2", label: "class 2" }, { shape: "diamond", cls: "pt halo", label: "probe" }]);
+    var say = A.narrate("#sm-say");
+
+    pX.onClick(function (a, b) { probe = [a, b]; render(); });
+
+    function reset() {
+      st = { Th: A.range(KC).map(function () { return [0, 0, 0]; }), losses: [], last: null };
+      st.losses.push(xent(st.Th));
+    }
+    function step() {
+      var G = A.range(KC).map(function () { return [0, 0, 0]; });
+      pts.forEach(function (p) {
+        var q = A.softmax(scores(st.Th, p.x));
+        for (var k = 0; k < KC; k++) {
+          var r = q[k] - (p.y === k ? 1 : 0);
+          G[k][0] += r; G[k][1] += r * p.x[0]; G[k][2] += r * p.x[1];
+        }
+      });
+      var before = st.losses[st.losses.length - 1];
+      st.Th = st.Th.map(function (t, k) { return t.map(function (v, j) { return v - S.eta * G[k][j] / pts.length; }); });
+      var J = xent(st.Th);
+      st.losses.push(J);
+      st.last = { before: before, after: J };
+      return st.losses.length <= 3000;
+    }
+
+    function shade() {
+      var cs = [A.rgb("c0"), A.rgb("c1"), A.rgb("c2")], Th = st.Th;
+      pX.field(function (a, b) {
+        var q = A.softmax(scores(Th, [a, b])), k = A.argmax(q), c = cs[k];
+        return [c[0], c[1], c[2], 0.05 + 0.34 * (q[k] - 1 / 3) * 1.5];
+      });
+    }
+    A.onTheme(function () { shade(); });
+
+    function render() {
+      var Th = st.Th;
+      shade();
+      pX.clear();
+      // The boundaries: for each pair, t_j = t_k, drawn only where j and k
+      // are the two leading classes -- elsewhere a third class wins.
+      for (var j = 0; j < KC; j++) for (var k = j + 1; k < KC; k++) (function (j, k) {
+        pX.contour(function (a, b) {
+          var t = scores(Th, [a, b]), w = A.argmax(t);
+          var other = 3 - j - k;
+          if (t[other] > Math.max(t[j], t[k])) return NaN;
+          return t[j] - t[k];
+        }, 0, "line ink thin", "data", 90);
+      })(j, k);
+      pts.forEach(function (p) {
+        var wrong = A.argmax(scores(Th, p.x)) !== p.y && st.losses.length > 1;
+        pX.dot(p.x[0], p.x[1], { shape: A.SHAPES[p.y], cls: "pt c" + p.y + (wrong ? " wrong" : "") });
+      });
+      pX.dot(probe[0], probe[1], { shape: "diamond", r: 7, cls: "pt halo", layer: "over" });
+
+      // Bars at the probe: scores on the left, probabilities on the right.
+      var t = scores(Th, probe), q = A.softmax(t);
+      bars.clear();
+      var g = bars.g, W = bars.W, top = 40, bot = 320, mid = (top + bot) / 2;
+      var tmax = Math.max(2, Math.max.apply(null, t.map(Math.abs)));
+      bars.text(105, 22, "scores tₖ", "axis-label", "middle");
+      bars.text(315, 22, "probabilities p̂ₖ", "axis-label", "middle");
+      A.el("line", { x1: 20, x2: 190, y1: mid, y2: mid, class: "axis" }, g);
+      A.el("line", { x1: 230, x2: 400, y1: bot, y2: bot, class: "axis" }, g);
+      A.el("line", { x1: 230, x2: 400, y1: top, y2: top, class: "zero" }, g);
+      bars.text(404, top + 4, "1", "tick");
+      for (var c = 0; c < KC; c++) {
+        // Half-height 110 leaves room under a negative bar for its value
+        // and the class label beneath the axis.
+        var x = 30 + c * 55, hgt = (t[c] / tmax) * 110;
+        A.el("rect", { x: x, y: Math.min(mid, mid - hgt), width: 40, height: Math.abs(hgt), class: "c" + c, opacity: 0.85 }, g);
+        bars.text(x + 20, hgt >= 0 ? mid - hgt - 6 : mid - hgt + 15, fmt(t[c], 2), "lbl mono", "middle");
+        bars.text(x + 20, bot + 18, "class " + c, "lbl-sm", "middle");
+        var xx = 240 + c * 55, ph = q[c] * (bot - top);
+        A.el("rect", { x: xx, y: bot - ph, width: 40, height: ph, class: "c" + c, opacity: 0.85 }, g);
+        bars.text(xx + 20, bot - ph - 6, fmt(q[c], 3), "lbl mono", "middle");
+        bars.text(xx + 20, bot + 18, "class " + c, "lbl-sm", "middle");
+      }
+      bars.text(210, 352, "softmax: exponentiate, then divide by the sum", "lbl-sm", "middle");
+
+      var n = st.losses.length, J = st.losses[n - 1], acc = accuracy(Th);
+      ro.set("k", String(n - 1));
+      ro.set("J", sig(J, 4));
+      ro.set("acc", A.pct(acc, 0));
+      ro.set("t", "(" + t.map(function (v) { return fmt(v, 2); }).join(", ") + ")");
+      ro.set("p", "(" + q.map(function (v) { return fmt(v, 2); }).join(", ") + ")");
+
+      var e = t.map(function (v) { return Math.exp(v - Math.max.apply(null, t)); });
+      if (n === 1) {
+        say.say("<span class='k'>Start.</span> Every score is 0, so every probability is " + K("e^0/(3e^0) = 1/3") +
+                " and the cross-entropy is " + K("\\log 3 \\approx 1.099") + ". Press <em>Step</em>, or click the plot to move the probe.");
+      } else {
+        say.say("<span class='k'>Iteration " + (n - 1) + ".</span> Cross-entropy " + sig(st.last.before, 4) + " → " +
+                sig(st.last.after, 4) + ". At the probe, subtracting the largest score and exponentiating gives (" +
+                e.map(function (v) { return fmt(v, 3); }).join(", ") + "); dividing by their sum, " + fmt(A.sum(e), 3) +
+                ", gives the probabilities (" + q.map(function (v) { return fmt(v, 3); }).join(", ") + ").");
+      }
+    }
+
+    pl = A.player("#sm-bar", { step: step, reset: reset, render: render, fps: 10, unit: "iteration" });
+  })();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,834 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 7 · Ensembles and random forests — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 7 of Applications of Machine Learning: the variance of an average of correlated predictors, bagging and random forests with out-of-bag error, AdaBoost with decision stumps, and gradient boosting on residuals.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-07.html">Lecture 7 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 7 · Animations</p>
+  <h1>Ensembles and random forests</h1>
+  <p>First the one formula of today, checked by simulation. Then the two
+  families it does and does not describe: averaging many trees grown in
+  parallel, and boosting, which grows them in sequence, each one correcting
+  the last. Press <strong>Step</strong> to advance one unit and read what
+  happened; press <strong>Play</strong> to let it run.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#varavg">1 · The variance of an average</a></li>
+    <li><a href="#forest">2 · Bagging and random forests</a></li>
+    <li><a href="#adaboost">3 · AdaBoost with stumps</a></li>
+    <li><a href="#gboost">4 · Gradient boosting</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Variance of an average
+     ====================================================================== -->
+<section class="anim" id="varavg">
+  <h2><span class="num">1</span>The variance of an average</h2>
+  <p class="lede">$n$ predictors of the same quantity, each with variance
+  $\sigma^2 = 1$ and pairwise correlation $\rho$. Each step is one
+  <strong>draw</strong>: all $n$ predictions at once, and their average
+  $\bar f$. On the left, the latest draws, one per row; on the right, the
+  spread of a single predictor against the spread of the average over every
+  draw so far. Below, the law itself: the variance of the average against
+  $n$.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="va-plots"></div>
+      <div id="va-law"></div>
+      <div class="narrate" id="va-say"></div>
+      <div class="toolbar" id="va-bar"></div>
+    </div>
+    <aside class="side" id="va-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The variance of a sum is the sum of every covariance,
+      $\operatorname{Var}(\sum_t f_t) = \sum_s\sum_t \operatorname{Cov}(f_s, f_t)$:
+      $n$ diagonal terms equal to $\sigma^2$ and $n(n-1)$ off-diagonal ones
+      equal to $\rho\sigma^2$. Dividing by $n^2$,</p>
+      $$\operatorname{Var}(\bar f) = \rho\sigma^2 + \frac{(1-\rho)\,\sigma^2}{n}.$$
+      <p>The draws are built to have exactly that structure: with $Z$ and
+      $\varepsilon_1, \dots, \varepsilon_n$ independent standard normals,
+      $f_t = \sigma\bigl(\sqrt\rho\,Z + \sqrt{1-\rho}\,\varepsilon_t\bigr)$
+      has variance $\sigma^2(\rho + 1 - \rho) = \sigma^2$, and two of them
+      share only $Z$, so $\operatorname{Cov}(f_s, f_t) = \rho\sigma^2$.</p>
+      <p>A variance estimated from $N$ draws of a normal quantity has
+      standard error about $V\sqrt{2/N}$; the side panel prints it.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>In each row the $n$ dots cluster around a common centre, the
+        shared part $\sqrt\rho\,Z$, and that centre moves from row to row.
+        Averaging pulls $\bar f$ to the centre; it cannot hold the centre
+        still.</li>
+        <li>The histogram of $\bar f$ is narrower than that of one
+        predictor, but not as narrow as $\sigma^2/n$ would make it.</li>
+        <li>The law falls steeply for the first few members and then
+        flattens out just above the floor $\rho\sigma^2$, which it never
+        crosses.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Set $\rho = 0$ and $n = 50$: the variance of the average drops
+        to $1/50 = 0.02$, the classical result.</li>
+        <li>Set $\rho = 1$: every row collapses to a single point and the
+        average is exactly as variable as one predictor.</li>
+        <li>With $\rho = 0.3$, compare $n = 10$ and $n = 50$. Five times the
+        members buys a variance of $0.37$ instead of $0.314$.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · Bagging and random forests
+     ====================================================================== -->
+<section class="anim" id="forest">
+  <h2><span class="num">2</span>Bagging and random forests</h2>
+  <p class="lede">Two classes with a curved boundary and 10% of the labels
+  flipped. Each step draws a bootstrap sample — 300 rows drawn with
+  replacement from the 300 training rows — grows an unconstrained tree on
+  it, and adds it to the vote. The shading is the ensemble's vote share; the
+  dashed line is the boundary of the tree just added, and the hollow points
+  are its out-of-bag rows. On the right, test error and out-of-bag error as
+  the ensemble grows.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="fo-plots"></div>
+      <div class="narrate" id="fo-say"></div>
+      <div class="toolbar" id="fo-bar"></div>
+    </div>
+    <aside class="side" id="fo-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>A given row is missed by one draw with probability $1 - 1/m$, so by
+      all $m$ draws of a bootstrap sample with probability</p>
+      $$\Bigl(1 - \frac1m\Bigr)^{m} \;\longrightarrow\; e^{-1} \approx 0.368,$$
+      <p>using $\lim_{m\to\infty}(1 + x/m)^m = e^{x}$ with $x = -1$. For
+      $m = 300$ the exact value is $0.367$. Each row's
+      <strong>out-of-bag</strong> prediction is the majority vote of the
+      trees that never saw it, and the out-of-bag error is the error of those
+      predictions.</p>
+      <p>A random forest also draws, at every node, which features may be
+      split on. With two features and one allowed per node, each node splits
+      on a feature chosen at random — a worse tree, and a less correlated
+      one: $\rho$ falls in
+      $\rho\sigma^2 + (1-\rho)\sigma^2/n$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>Each new tree's dashed boundary is jagged and chases flipped
+        labels. The ensemble's boundary smooths as trees are added.</li>
+        <li>The ensemble's test error falls about five points below a single
+        tree's within the first twenty or so trees, and then barely moves.</li>
+        <li>The out-of-bag error follows the test error's shape without a
+        single held-out row, ending about two points below it — an estimate
+        from 300 rows, whose standard error is itself about two points.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Play to 100 trees with bagging, then switch to the random forest
+        and play again. The forest's trees are a little worse on their own
+        (mean error 23.1% against 22.7%), and the forest is better (16.0%
+        against 17.8%): a lower $\rho$ bought with a slightly larger
+        $\sigma^2$. On CoverType the same trade went the other way.</li>
+        <li>Read the out-of-bag share in the side panel as trees are added:
+        it wanders between about 0.34 and 0.40, around $0.367$.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     3 · AdaBoost
+     ====================================================================== -->
+<section class="anim" id="adaboost">
+  <h2><span class="num">3</span>AdaBoost with stumps</h2>
+  <p class="lede">A decision stump — a tree of depth 1 — can draw one
+  straight, axis-aligned line, and these two classes need a curved boundary.
+  Each step fits a stump to the <strong>weighted</strong> data, gives it a vote
+  $\alpha_j$ by its weighted error, and multiplies the weight of every point it
+  got wrong by $e^{\alpha_j}$. Point size is weight. The shading is the
+  weighted vote of every stump so far.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="ab-plots"></div>
+      <div class="narrate" id="ab-say"></div>
+      <div class="toolbar" id="ab-bar"></div>
+    </div>
+    <aside class="side" id="ab-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The book's AdaBoost, with weights $w^{(i)}$ starting at $1/m$. The
+      $j$-th stump's weighted error rate and vote are</p>
+      $$r_j = \frac{\sum_{\hat y_j^{(i)} \ne y^{(i)}} w^{(i)}}{\sum_i w^{(i)}},
+        \qquad \alpha_j = \eta\,\log\frac{1 - r_j}{r_j},$$
+      <p>with $\eta$ the learning rate. Every misclassified point's weight is
+      multiplied by $e^{\alpha_j}$, then all weights are divided by their
+      sum. A prediction is the class with the largest total vote,
+      $\arg\max_k \sum_{j:\,\hat y_j(\mathbf x) = k} \alpha_j$.</p>
+      <p>$\alpha_j &gt; 0$ exactly when $r_j &lt; \tfrac12$, and it grows
+      without limit as $r_j \to 0$. Each stump is the axis-aligned threshold
+      with the smallest weighted error $r_j$, each side predicting the class
+      that carries more of its weight. (Scikit-learn's stumps minimise the
+      weighted Gini impurity instead; the idea is the same.)</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The points a stump gets wrong swell, so the next stump is drawn
+        towards them. The same few thresholds come back again and again,
+        each time with a different weight on the points around them.</li>
+        <li>Each new stump's weighted error $r_j$ is measured on the reweighted
+        data, so later stumps have errors nearer $\tfrac12$ and smaller
+        votes.</li>
+        <li>The ensemble's boundary, the thin line, is built only from
+        axis-aligned pieces: a staircase that climbs with the parabola's arms
+        wherever training points pin it down.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Step five times and read $r_j$ and $\alpha_j$ in the narration
+        each time.</li>
+        <li>Lower $\eta$ to 0.2 and replay: the weights change more slowly,
+        and the training error takes more rounds to fall.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     4 · Gradient boosting
+     ====================================================================== -->
+<section class="anim" id="gboost">
+  <h2><span class="num">4</span>Gradient boosting</h2>
+  <p class="lede">Sixty noisy points from a smooth curve. The ensemble starts
+  as the mean of the targets. Each stage fits a small regression tree to the
+  current <strong>residuals</strong> — what the ensemble still gets wrong —
+  and adds it, scaled by the learning rate $\eta$. On the left, the data and
+  the ensemble; on the right, the residuals and the tree fitted to them.
+  Below, training and test error stage by stage.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="gb-plots"></div>
+      <div id="gb-cost"></div>
+      <div class="narrate" id="gb-say"></div>
+      <div class="toolbar" id="gb-bar"></div>
+    </div>
+    <aside class="side" id="gb-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>With $F_0 = \bar y$, stage $j$ computes the residuals
+      $r^{(i)} = y^{(i)} - F_{j-1}(\mathbf x^{(i)})$, fits a regression tree
+      $h_j$ to them, and sets</p>
+      $$F_j = F_{j-1} + \eta\,h_j .$$
+      <p>For the squared error $\tfrac12(y - F)^2$ the residual is exactly the
+      negative gradient with respect to the prediction,
+      $-\partial/\partial F\;\tfrac12(y - F)^2 = y - F$: each stage is one
+      step of gradient descent, taken in the space of functions, with the
+      tree as the step direction. The learning rate is the shrinkage: each
+      tree corrects only a fraction $\eta$ of what it found.</p>
+      <p>Training error cannot rise. A least-squares tree's leaf values are
+      means of the residuals in each leaf, so $\langle r, h\rangle = \lVert h\rVert^2$
+      over the training points, and</p>
+      $$\lVert r - \eta h\rVert^2 = \lVert r\rVert^2 - (2\eta - \eta^2)\lVert h\rVert^2 \le \lVert r\rVert^2$$
+      <p>for every $0 &lt; \eta \le 2$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The residuals on the right lose their shape. At first they trace
+        the part of the curve the ensemble has missed; within a few dozen
+        stages they are a structureless band about zero, about as wide as the
+        noise, and each new tree is fitting that noise.</li>
+        <li>Training error falls at every stage. Test error falls, bottoms
+        out at stage 13, and then creeps back up — from 0.127 to 0.168 by
+        stage 300. Unlike bagging, more members can hurt.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Set $\eta = 1$, no shrinkage, and play to 300. The lowest test
+        error is 0.140, at stage 7, and by stage 300 it has climbed to
+        0.195.</li>
+        <li>Set $\eta = 0.1$ and replay. The minimum comes much later, at
+        stage 82, and is lower than with $\eta = 1$: 0.127; at stage 300 the test error is still
+        only 0.142. Shrinkage needs more members and overfits more
+        slowly.</li>
+        <li>Switch to depth 2 at $\eta = 0.5$: each tree is more flexible,
+        the training error reaches almost zero, and the test error ends at
+        0.230.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 7 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  /* ----------------------------------------------------------------------
+     CART, as in Lecture 6, grown to the end in one call. Classification by
+     Gini, regression by MSE. maxFeatures < d draws, at every node, which
+     features may be split on: the random forest's extra randomness.
+     ---------------------------------------------------------------------- */
+  function gini(c, m) { var s = 0; for (var k = 0; k < c.length; k++) s += (c[k] / m) * (c[k] / m); return 1 - s; }
+  function tree(X, y, o) {
+    var reg = o.task === "reg", K = o.K || 2, d = X[0].length;
+    var maxF = o.maxFeatures || d, R = o.rng;
+    function node(idx, depth) {
+      var m = idx.length, n = { m: m };
+      var c = null, mu = 0, q = 0, imp;
+      if (reg) {
+        idx.forEach(function (i) { mu += y[i]; q += y[i] * y[i]; });
+        mu /= m; imp = Math.max(q / m - mu * mu, 0); n.value = mu;
+      } else {
+        c = new Array(K).fill(0);
+        idx.forEach(function (i) { c[y[i]]++; });
+        imp = gini(c, m); n.value = A.argmax(c);
+      }
+      if (imp < 1e-12 || depth >= (o.maxDepth || Infinity) || m < 2 * (o.minLeaf || 1)) return n;
+      var feats = A.range(d);
+      if (maxF < d) feats = R.shuffle(feats).slice(0, maxF);
+      var best = null;
+      feats.forEach(function (f) {
+        var s = idx.slice().sort(function (a, b) { return X[a][f] - X[b][f]; });
+        var cl = reg ? null : new Array(K).fill(0), sl = 0, ql = 0, sT = mu * m, qT = q;
+        for (var j = 0; j < m - 1; j++) {
+          var i = s[j];
+          if (reg) { sl += y[i]; ql += y[i] * y[i]; } else cl[y[i]]++;
+          var a = X[i][f], b = X[s[j + 1]][f];
+          if (a === b) continue;
+          var mL = j + 1, mR = m - mL, J;
+          if (mL < (o.minLeaf || 1) || mR < (o.minLeaf || 1)) continue;
+          if (reg) {
+            var vL = ql / mL - (sl / mL) * (sl / mL), sr = sT - sl, vR = (qT - ql) / mR - (sr / mR) * (sr / mR);
+            J = (mL * vL + mR * vR) / m;
+          } else {
+            var cr = c.map(function (v, k) { return v - cl[k]; });
+            J = (mL * gini(cl, mL) + mR * gini(cr, mR)) / m;
+          }
+          if (!best || J < best.J - 1e-12) best = { f: f, t: (a + b) / 2, J: J };
+        }
+      });
+      if (!best || imp - best.J < 1e-12) return n;
+      n.f = best.f; n.t = best.t;
+      n.left = node(idx.filter(function (i) { return X[i][best.f] <= best.t; }), depth + 1);
+      n.right = node(idx.filter(function (i) { return X[i][best.f] > best.t; }), depth + 1);
+      return n;
+    }
+    var root = node(o.idx || A.range(X.length), 0);
+    return {
+      root: root,
+      predict: function (x) { var n = root; while (n.left) n = x[n.f] <= n.t ? n.left : n.right; return n.value; },
+      leaves: function () { var c = 0; (function w(n) { if (n.left) { w(n.left); w(n.right); } else c++; })(root); return c; }
+    };
+  }
+
+  // The pixel centres AIML's field() samples, so a raster can be cached.
+  function gridOf(p, nx) {
+    var pw = p.box.x1 - p.box.x0, ph = p.box.y1 - p.box.y0, ny = Math.max(2, Math.round(nx * ph / pw));
+    var xd = p.x.domain, yd = p.y.domain, pts = [];
+    for (var j = 0; j < ny; j++) for (var i = 0; i < nx; i++)
+      pts.push([xd[0] + (i + 0.5) / nx * (xd[1] - xd[0]), yd[1] - (j + 0.5) / ny * (yd[1] - yd[0])]);
+    return { nx: nx, ny: ny, pts: pts, xd: xd, yd: yd,
+             index: function (x, y) {
+               var i = Math.min(nx - 1, Math.max(0, Math.floor((x - xd[0]) / (xd[1] - xd[0]) * nx)));
+               var j = Math.min(ny - 1, Math.max(0, Math.floor((yd[1] - y) / (yd[1] - yd[0]) * ny)));
+               return j * nx + i;
+             } };
+  }
+
+  /* ======================================================================
+     1 · The variance of an average
+     ====================================================================== */
+  (function () {
+    var S = { n: 10, rho: 0.3 }, SIG = 1, MAXD = 600, ROWS = 14, st, pl;
+    var law = function (n, r) { return r * SIG * SIG + (1 - r) * SIG * SIG / n; };
+
+    var plots = A.$("#va-plots");
+    var pRows = A.plot(plots, { x: [-3.5, 3.5], y: [0.5, ROWS + 0.5], w: 420, h: 330, xlabel: "prediction",
+                                yticks: [], grid: true, margin: { l: 20, r: 16, t: 14, b: 44 },
+                                caption: "The latest draws, newest at the top: n predictions and their average" });
+    var pHist = A.plot(plots, { x: [-3.5, 3.5], y: [0, 1.4], w: 420, h: 330, xlabel: "value", ylabel: "density",
+                                caption: "One predictor against the average, over all draws" });
+    var pLaw = A.plot("#va-law", { x: [0, 50], y: [0, 1.05], w: 860, h: 210, xlabel: "number of predictors n",
+                                   ylabel: "Var(f̄)", xticks: [1, 5, 10, 20, 30, 40, 50],
+                                   caption: "ρσ² + (1 − ρ)σ²/n for the current ρ; the point is measured" });
+
+    var side = A.$("#va-side");
+    A.slider(side, { label: "Predictors $n$", min: 1, max: 50, step: 1, value: S.n,
+                     fmt: function (v) { return String(Math.round(v)); },
+                     onInput: function (v) { S.n = Math.round(v); pl.restart(true); } });
+    A.slider(side, { label: "Correlation $\\rho$", min: 0, max: 1, step: 0.05, value: S.rho,
+                     fmt: function (v) { return fmt(v, 2); },
+                     onInput: function (v) { S.rho = Math.round(v * 20) / 20; pl.restart(true); } });
+    var ro = A.readout(side, [["N", "draws"], ["v1", "Var of one predictor"], ["vb", "Var$(\\bar f)$, measured"],
+                              ["law", "$\\rho\\sigma^2 + (1-\\rho)\\sigma^2/n$"], ["se", "standard error"],
+                              ["floor", "floor $\\rho\\sigma^2$"], ["indep", "$\\sigma^2/n$ (if independent)"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0 hollow", label: "one prediction $f_t$" },
+                    { shape: "diamond", cls: "pt c2", label: "their average $\\bar f$" },
+                    { line: "line ok thin", label: "shared part $\\sqrt\\rho\\,Z$" },
+                    { swatch: "fill-primary", label: "one predictor" }, { swatch: "fill-math", label: "the average" },
+                    { line: "line ok dash thin", label: "floor $\\rho\\sigma^2$" }]);
+    var say = A.narrate("#va-say");
+
+    function reset() { st = { rows: [], f1: [], fb: [], R: A.rng(7000 + S.n * 31 + Math.round(S.rho * 100)) }; }
+    function step() {
+      var R = st.R, Z = R.n(), a = Math.sqrt(S.rho), b = Math.sqrt(1 - S.rho), f = [];
+      for (var t = 0; t < S.n; t++) f.push(SIG * (a * Z + b * R.n()));
+      var mean = A.mean(f);
+      st.rows.push({ f: f, mean: mean, z: SIG * a * Z });
+      if (st.rows.length > ROWS) st.rows.shift();
+      st.f1.push(f[0]); st.fb.push(mean);
+      return st.fb.length < MAXD;
+    }
+    function hist(vals, cls) {
+      var bins = 28, lo = -3.5, w = 7 / bins, c = new Array(bins).fill(0);
+      vals.forEach(function (v) { var k = Math.floor((v - lo) / w); if (k >= 0 && k < bins) c[k]++; });
+      c.forEach(function (n, k) {
+        var hgt = n / (vals.length * w);
+        if (hgt > 0) pHist.rect(lo + k * w, 0, lo + (k + 1) * w, Math.min(hgt, 1.4), cls, "data", { opacity: 0.45 });
+      });
+    }
+    function normal(V) {
+      return A.linspace(-3.5, 3.5, 141).map(function (x) { return [x, Math.min(Math.exp(-x * x / (2 * V)) / Math.sqrt(2 * Math.PI * V), 1.4)]; });
+    }
+    function render() {
+      var N = st.fb.length, V = law(S.n, S.rho);
+      pRows.clear();
+      st.rows.forEach(function (r, k) {
+        var yy = ROWS - (st.rows.length - 1 - k);
+        if (S.rho > 0) pRows.line(r.z, yy - 0.4, r.z, yy + 0.4, "line ok thin");
+        r.f.forEach(function (v) { pRows.dot(v, yy, { r: 3, cls: "pt c0 hollow" }); });
+        pRows.dot(r.mean, yy, { shape: "diamond", r: 5, cls: "pt c2", layer: "over" });
+      });
+      if (!N) pRows.text(0, ROWS / 2, "no draws yet", { anchor: "middle", cls: "lbl-sm" });
+
+      pHist.clear();
+      hist(st.f1, "fill-primary");
+      hist(st.fb, "fill-math");
+      pHist.path(normal(SIG * SIG), "line thin");
+      pHist.path(normal(V), "line math thin");
+
+      pLaw.clear();
+      var ns = A.range(50).map(function (i) { return i + 1; });
+      pLaw.path(ns.map(function (n) { return [n, law(n, S.rho)]; }), "line math");
+      pLaw.path(ns.map(function (n) { return [n, SIG * SIG / n]; }), "line thin muted dash");
+      pLaw.line(0, S.rho * SIG * SIG, 50, S.rho * SIG * SIG, "line ok dash thin");
+      pLaw.text(50, S.rho * SIG * SIG, "floor ρσ² = " + fmt(S.rho, 2), { anchor: "end", dy: -5, cls: "lbl-sm" });
+      pLaw.text(6, SIG * SIG / 6, "σ²/n, if independent", { dx: 6, dy: 12, cls: "lbl-sm" });
+      var vb = N > 1 ? A.variance(st.fb) * N / (N - 1) : NaN, v1 = N > 1 ? A.variance(st.f1) * N / (N - 1) : NaN;
+      if (N > 1) pLaw.dot(S.n, Math.min(vb, 1.05), { shape: "diamond", r: 6, cls: "pt c2", layer: "over" });
+
+      var se = V * Math.sqrt(2 / Math.max(N, 1));
+      ro.set("N", String(N));
+      ro.set("v1", N > 1 ? fmt(v1, 3) : "—");
+      ro.set("vb", N > 1 ? fmt(vb, 3) : "—");
+      ro.set("law", fmt(V, 3), "good");
+      ro.set("se", N > 1 ? "± " + fmt(se, 3) : "—");
+      ro.set("floor", fmt(S.rho * SIG * SIG, 3));
+      ro.set("indep", fmt(SIG * SIG / S.n, 3));
+      if (!N) {
+        say.say("<span class='k'>Start.</span> " + K("n = " + S.n) + " predictors, " + K("\\rho = " + fmt(S.rho, 2)) + ", " + K("\\sigma^2 = 1") +
+                ". The formula predicts " + K("\\operatorname{Var}(\\bar f) = " + fmt(S.rho, 2) + " + " + fmt(1 - S.rho, 2) + "/" + S.n + " = " + fmt(V, 3)) +
+                ", against " + K("1/" + S.n + " = " + fmt(1 / S.n, 3)) + " if they were independent. Press <em>Play</em>.");
+      } else {
+        var r = st.rows[st.rows.length - 1], z = Math.abs(vb - V) / se;
+        say.say("<span class='k'>Draw " + N + ".</span> Shared part " + K("\\sqrt\\rho\\,Z = " + fmt(r.z, 2)) + "; the " + S.n +
+                " predictions average to " + K("\\bar f = " + fmt(r.mean, 2)) + ". " +
+                (N > 1 ? "Over " + N + " draws the average has variance " + fmt(vb, 3) + " against the formula's " + fmt(V, 3) +
+                  " (" + (z <= 2 ? "within two standard errors" : sig(z, 2) + " standard errors away: a sampling miss, of the size one run in twenty shows") + "), and one predictor " +
+                  fmt(v1, 3) + " against " + K("\\sigma^2 = 1") + "." : ""));
+      }
+    }
+    pl = A.player("#va-bar", { step: step, reset: reset, render: render, fps: 12, unit: "draw" });
+  })();
+
+  /* ======================================================================
+     2 · Bagging and random forests
+     ====================================================================== */
+  (function () {
+    var M = 300, NT = 100, FLIP = 0.10;
+    var truth = function (q) { return q[1] > 0.9 * Math.sin(1.4 * q[0]) ? 1 : 0; };
+    function sample(R, n) {
+      var X = [], y = [];
+      for (var i = 0; i < n; i++) {
+        var q = [R.uniform(-3, 3), R.uniform(-2.5, 2.5)], c = truth(q);
+        if (R.u() < FLIP) c = 1 - c;
+        X.push(q); y.push(c);
+      }
+      return { X: X, y: y };
+    }
+    var D = sample(A.rng(71), M), TE = sample(A.rng(72), 2000);
+    var S = { mode: "bag" }, st, pl;
+
+    var plots = A.$("#fo-plots");
+    var pX = A.plot(plots, { x: [-3, 3], y: [-2.5, 2.5], w: 420, h: 360, xlabel: "x₁", ylabel: "x₂",
+                             caption: "Vote share of the ensemble; dashed: the newest tree" });
+    var pE = A.plot(plots, { x: [0, NT], y: [0, 0.4], w: 420, h: 360, xlabel: "trees in the ensemble", ylabel: "error rate",
+                             caption: "Error as trees are added" });
+    var G = gridOf(pX, 90);
+
+    var side = A.$("#fo-side");
+    A.seg(side, { label: "Ensemble", value: "bag", options: [["bag", "bagging"], ["rf", "random forest"]],
+                  hint: "Random forest: one of the two features, drawn at random, per node.",
+                  onChange: function (v) { S.mode = v; pl.restart(true); } });
+    var ro = A.readout(side, [["n", "trees"], ["te", "ensemble test error"], ["oob", "out-of-bag error"],
+                              ["one", "this tree's test error"], ["mean1", "mean single-tree error"],
+                              ["share", "this tree's out-of-bag share"], ["leaves", "this tree's leaves"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "class 0" }, { shape: "tri", cls: "pt c1", label: "class 1" },
+                    { shape: "circle", cls: "pt c0 hollow", label: "out of this tree's bag" },
+                    { line: "line ok thin", label: "true boundary" }, { line: "line ink thin dash", label: "newest tree" },
+                    { line: "line acc", label: "ensemble test error" }, { line: "line math dash", label: "out-of-bag error" },
+                    { shape: "circle", cls: "pt fill-primary", label: "single tree's test error" }]);
+    var say = A.narrate("#fo-say");
+
+    function reset() {
+      st = { trees: [], R: A.rng(S.mode === "bag" ? 731 : 732), gv: new Float64Array(G.pts.length),
+             tv: new Int32Array(TE.X.length), ov: D.X.map(function () { return [0, 0]; }),
+             hist: [], last: null };
+    }
+    function step() {
+      var R = st.R, idx = [], inb = new Uint8Array(M);
+      for (var i = 0; i < M; i++) { var k = Math.floor(R.u() * M); idx.push(k); inb[k] = 1; }
+      var T = tree(D.X, D.y, { task: "clf", K: 2, idx: idx, maxFeatures: S.mode === "rf" ? 1 : 2, rng: R });
+      st.trees.push(T);
+      G.pts.forEach(function (q, j) { st.gv[j] += T.predict(q); });
+      var wrong1 = 0;
+      TE.X.forEach(function (q, j) { var p = T.predict(q); st.tv[j] += p; if (p !== TE.y[j]) wrong1++; });
+      var oobN = 0;
+      D.X.forEach(function (q, j) { if (!inb[j]) { st.ov[j][T.predict(q)]++; oobN++; } });
+      var n = st.trees.length;
+      var te = A.mean(TE.y.map(function (c, j) { var v = st.tv[j] / n; return (v > 0.5 ? 1 : 0) === c ? 0 : 1; }));
+      var oc = 0, ow = 0;
+      st.ov.forEach(function (v, j) { if (v[0] + v[1] > 0) { oc++; if ((v[1] > v[0] ? 1 : 0) !== D.y[j]) ow++; } });
+      st.hist.push({ te: te, oob: oc ? ow / oc : NaN, one: wrong1 / TE.X.length, cover: oc });
+      st.last = { T: T, inb: inb, share: oobN / M };
+      return n < NT;
+    }
+    function render() {
+      var n = st.trees.length, c0 = A.rgb("c0"), c1 = A.rgb("c1");
+      if (n) pX.field(function (a, b) {
+        var v = st.gv[G.index(a, b)] / n, c = v > 0.5 ? c1 : c0;
+        return [c[0], c[1], c[2], 0.06 + 0.32 * Math.abs(2 * v - 1)];
+      }, { res: G.nx });
+      else A.clear(pX.layer("back"));
+      pX.clear();
+      pX.path(A.linspace(-3, 3, 121).map(function (x) { return [x, 0.9 * Math.sin(1.4 * x)]; }), "line ok thin");
+      if (st.last) pX.contour(function (a, b) { return st.last.T.predict([a, b]) - 0.5; }, 0, "line ink thin dash", "data", 90);
+      D.X.forEach(function (q, j) {
+        var out = st.last && !st.last.inb[j];
+        pX.dot(q[0], q[1], { shape: D.y[j] ? "tri" : "circle", r: 3.4, cls: "pt c" + D.y[j] + (out ? " hollow" : "") });
+      });
+
+      pE.clear();
+      var H = st.hist;
+      H.forEach(function (h, k) { pE.dot(k + 1, h.one, { r: 2.2, cls: "pt fill-primary" }); });
+      pE.path(H.map(function (h, k) { return [k + 1, h.te]; }), "line acc");
+      pE.path(H.map(function (h, k) { return [k + 1, h.oob]; }), "line math dash");
+      pE.line(0, FLIP, NT, FLIP, "line ok dash thin");
+      pE.text(NT, FLIP, "label noise 10%", { anchor: "end", dy: 13, cls: "lbl-sm" });
+
+      var h = H[H.length - 1], mean1 = H.length ? A.mean(H.map(function (q) { return q.one; })) : NaN;
+      ro.set("n", String(n));
+      ro.set("te", h ? A.pct(h.te, 1) : "—");
+      ro.set("oob", h && isFinite(h.oob) ? A.pct(h.oob, 1) + (h.cover < M ? " (" + h.cover + " rows)" : "") : "—");
+      ro.set("one", h ? A.pct(h.one, 1) : "—");
+      ro.set("mean1", h ? A.pct(mean1, 1) : "—");
+      ro.set("share", st.last ? fmt(st.last.share, 3) : "—");
+      ro.set("leaves", st.last ? String(st.last.T.leaves()) : "—");
+      var name = S.mode === "bag" ? "bagging" : "random forest";
+      if (!n) {
+        say.say("<span class='k'>Start.</span> No trees yet. Each step draws " + M + " rows with replacement from the " + M +
+                " training rows and grows an unconstrained tree on them" + (S.mode === "rf" ? ", choosing at every node one of the two features at random" : "") +
+                ". About " + K("e^{-1} \\approx 37\\%") + " of the rows will be left out of each bag. Press <em>Step</em>.");
+      } else {
+        say.say("<span class='k'>Tree " + n + " (" + name + ").</span> Its bag left out " + Math.round(st.last.share * M) + " of " + M +
+                " rows (" + A.pct(st.last.share, 1) + "), and it grew " + st.last.T.leaves() + " leaves. Alone it errs on " + A.pct(h.one, 1) +
+                " of the test points; the vote of all " + n + " errs on " + A.pct(h.te, 1) + ". Out-of-bag error " +
+                (isFinite(h.oob) ? A.pct(h.oob, 1) + ", from " + h.cover + " rows that at least one tree has not seen." : "not yet defined."));
+      }
+    }
+    A.onTheme(render);
+    pl = A.player("#fo-bar", { step: step, reset: reset, render: render, fps: 4, unit: "tree" });
+  })();
+
+  /* ======================================================================
+     3 · AdaBoost with stumps
+     ====================================================================== */
+  (function () {
+    var M = 80, MAXR = 60;
+    var truth = function (q) { return q[1] > 0.45 * q[0] * q[0] - 1.2 ? 1 : 0; };
+    function sample(R, n) {
+      var X = [], y = [];
+      for (var i = 0; i < n; i++) { var q = [R.uniform(-2.5, 2.5), R.uniform(-2.5, 2.5)]; X.push(q); y.push(truth(q)); }
+      return { X: X, y: y };
+    }
+    var D = sample(A.rng(81), M), TE = sample(A.rng(82), 2000);
+    var S = { eta: 1 }, st, pl;
+
+    // A depth-1 tree: the threshold, on either feature, with the smallest
+    // weighted error, each side predicting its weighted majority. A stump that
+    // predicts the same class on both sides is not a split, and is skipped.
+    function stump(w) {
+      var best = null, W = A.sum(w);
+      for (var f = 0; f < 2; f++) {
+        var s = A.range(M).sort(function (a, b) { return D.X[a][f] - D.X[b][f]; });
+        var l = [0, 0], tot = [0, 0];
+        s.forEach(function (i) { tot[D.y[i]] += w[i]; });
+        for (var j = 0; j < M - 1; j++) {
+          var i = s[j]; l[D.y[i]] += w[i];
+          var a = D.X[i][f], b = D.X[s[j + 1]][f];
+          if (a === b) continue;
+          var r = [tot[0] - l[0], tot[1] - l[1]], cL = l[1] > l[0] ? 1 : 0, cR = r[1] > r[0] ? 1 : 0;
+          if (cL === cR && best && best.diff) continue;
+          var J = (Math.min(l[0], l[1]) + Math.min(r[0], r[1])) / W;
+          var diff = cL !== cR;
+          if (!best || (diff && !best.diff) || (diff === best.diff && J < best.J - 1e-12))
+            best = { f: f, t: (a + b) / 2, J: J, L: cL, R: cR, diff: diff };
+        }
+      }
+      return best;
+    }
+    var hpred = function (h, x) { return x[h.f] <= h.t ? h.L : h.R; };
+    function vote(x) {
+      var v = [0, 0];
+      st.stumps.forEach(function (h) { v[hpred(h, x)] += h.alpha; });
+      return v;
+    }
+    var predict = function (x) { var v = vote(x); return v[1] > v[0] ? 1 : 0; };
+
+    var plots = A.$("#ab-plots");
+    var pX = A.plot(plots, { x: [-2.5, 2.5], y: [-2.5, 2.5], w: 420, h: 380, equal: true, xlabel: "x₁", ylabel: "x₂",
+                             caption: "Weights (point size), the newest stump, and the vote" });
+    var pE = A.plot(plots, { x: [0, MAXR], y: [0, 0.5], w: 420, h: 380, xlabel: "round j", ylabel: "error",
+                             caption: "Ensemble error, and each stump's weighted error rⱼ" });
+    var side = A.$("#ab-side");
+    A.slider(side, { label: "Learning rate $\\eta$", min: 0.1, max: 1.5, step: 0.05, value: S.eta,
+                     fmt: function (v) { return fmt(v, 2); },
+                     onInput: function (v) { S.eta = v; pl.restart(true); } });
+    var ro = A.readout(side, [["j", "round"], ["q", "newest stump"], ["r", "its $r_j$"], ["a", "its $\\alpha_j$"],
+                              ["tr", "ensemble training error"], ["te", "ensemble test error"], ["wmax", "largest weight / smallest"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "class 0" }, { shape: "tri", cls: "pt c1", label: "class 1" },
+                    { shape: "circle", cls: "pt c0 wrong", label: "wrong for the newest stump" },
+                    { line: "line ok thin", label: "true boundary" }, { line: "line ink thin", label: "ensemble boundary" },
+                    { line: "line acc", label: "newest stump" },
+                    { line: "line", label: "training error" }, { line: "line acc dash", label: "test error" },
+                    { shape: "circle", cls: "pt fill-math", label: "stump's $r_j$" }]);
+    var say = A.narrate("#ab-say");
+
+    function reset() { st = { w: new Array(M).fill(1 / M), stumps: [], hist: [], last: null, wrong: null }; }
+    function step() {
+      var h = stump(st.w), W = A.sum(st.w), wrongW = 0, wrong = [];
+      for (var i = 0; i < M; i++) { var bad = hpred(h, D.X[i]) !== D.y[i]; wrong.push(bad); if (bad) wrongW += st.w[i]; }
+      var r = Math.max(wrongW / W, 1e-10);
+      h.r = r; h.alpha = S.eta * Math.log((1 - r) / r);
+      st.stumps.push(h);
+      var before = st.w.slice();
+      st.w = st.w.map(function (v, i) { return wrong[i] ? v * Math.exp(h.alpha) : v; });
+      var Z = A.sum(st.w);
+      st.w = st.w.map(function (v) { return v / Z; });
+      var tr = A.mean(D.X.map(function (x, i) { return predict(x) !== D.y[i] ? 1 : 0; }));
+      var te = A.mean(TE.X.map(function (x, i) { return predict(x) !== TE.y[i] ? 1 : 0; }));
+      st.hist.push({ tr: tr, te: te, r: r });
+      st.last = h; st.wrong = wrong; st.before = before;
+      return st.stumps.length < MAXR;
+    }
+    function render() {
+      var c0 = A.rgb("c0"), c1 = A.rgb("c1"), n = st.stumps.length;
+      if (n) pX.field(function (a, b) {
+        var v = vote([a, b]), s = v[0] + v[1], q = s > 0 ? v[1] / s : 0.5, c = q > 0.5 ? c1 : c0;
+        return [c[0], c[1], c[2], 0.06 + 0.3 * Math.abs(2 * q - 1)];
+      }, { res: 80 });
+      else A.clear(pX.layer("back"));
+      pX.clear();
+      pX.path(A.linspace(-2.5, 2.5, 121).map(function (u) { return [u, 0.45 * u * u - 1.2]; }), "line ok thin");
+      if (n) pX.contour(function (a, b) { var v = vote([a, b]); return v[1] - v[0]; }, 0, "line ink thin", "data", 90);
+      var h = st.last;
+      if (h) {
+        if (h.f === 0) pX.line(h.t, -2.5, h.t, 2.5, "line acc");
+        else pX.line(-2.5, h.t, 2.5, h.t, "line acc");
+      }
+      D.X.forEach(function (q, i) {
+        var r = 2 + 9 * Math.sqrt(st.w[i] * M) / 3;
+        pX.dot(q[0], q[1], { shape: D.y[i] ? "tri" : "circle", r: Math.min(r, 14),
+                              cls: "pt c" + D.y[i] + (st.wrong && st.wrong[i] ? " wrong" : "") });
+      });
+
+      pE.clear();
+      var H = st.hist;
+      pE.path(H.map(function (q, k) { return [k + 1, q.tr]; }), "line");
+      pE.path(H.map(function (q, k) { return [k + 1, q.te]; }), "line acc dash");
+      H.forEach(function (q, k) { pE.dot(k + 1, Math.min(q.r, 0.5), { r: 2.6, cls: "pt fill-math" }); });
+      pE.line(0, 0.5, MAXR, 0.5, "zero");
+
+      var q = H[H.length - 1];
+      ro.set("j", String(n));
+      ro.set("q", h ? "x" + (h.f ? "₂" : "₁") + " ≤ " + fmt(h.t, 2) + " → " + h.L + ", else " + h.R : "—");
+      ro.set("r", h ? fmt(h.r, 3) : "—");
+      ro.set("a", h ? fmt(h.alpha, 3) : "—");
+      ro.set("tr", q ? A.pct(q.tr, 1) : "—");
+      ro.set("te", q ? A.pct(q.te, 1) : "—");
+      ro.set("wmax", fmt(Math.max.apply(null, st.w) / Math.min.apply(null, st.w), 1) + "×");
+      if (!h) {
+        say.say("<span class='k'>Start.</span> All " + M + " weights are " + K("1/" + M) + ". The true boundary is the green parabola; no single " +
+                "axis-aligned line can follow it. Press <em>Step</em> to fit the first stump.");
+      } else {
+        var nw = st.wrong.filter(Boolean).length;
+        say.say("<span class='k'>Round " + n + ".</span> Stump " + K("x_" + (h.f + 1) + " \\le " + fmt(h.t, 2)) + " gets " + nw +
+                " of " + M + " points wrong, carrying " + K("r_{" + n + "} = " + fmt(h.r, 3)) + " of the weight, so " +
+                K("\\alpha_{" + n + "} = " + fmt(S.eta, 2) + "\\,\\log\\frac{1 - " + fmt(h.r, 3) + "}{" + fmt(h.r, 3) + "} = " + fmt(h.alpha, 3)) +
+                ". Those " + nw + " weights are multiplied by " + K("e^{\\alpha} = " + fmt(Math.exp(h.alpha), 2)) +
+                " before renormalising. The vote of all " + n + " stumps errs on " + A.pct(q.tr, 1) + " of the training points and " +
+                A.pct(q.te, 1) + " of the test points.");
+      }
+    }
+    A.onTheme(render);
+    pl = A.player("#ab-bar", { step: step, reset: reset, render: render, fps: 2, unit: "round" });
+  })();
+
+  /* ======================================================================
+     4 · Gradient boosting
+     ====================================================================== */
+  (function () {
+    var M = 60, MAXS = 300;
+    var f = function (x) { return Math.sin(2 * Math.PI * x) + 0.5 * x; };
+    var R = A.rng(91), X = [], y = [];
+    for (var i = 0; i < M; i++) { var x = R.u(); X.push([x]); y.push(f(x) + R.n(0, 0.3)); }
+    var RT = A.rng(92), TX = [], TY = [];
+    for (i = 0; i < 1000; i++) { var u = RT.u(); TX.push(u); TY.push(f(u) + RT.n(0, 0.3)); }
+    var S = { eta: 0.5, depth: 1 }, st, pl;
+
+    var plots = A.$("#gb-plots");
+    var pF = A.plot(plots, { x: [0, 1], y: [-1.8, 2.2], w: 420, h: 320, xlabel: "x", ylabel: "y",
+                             caption: "The data, the truth, and the ensemble F" });
+    var pR = A.plot(plots, { x: [0, 1], y: [-1.2, 1.2], w: 420, h: 320, xlabel: "x", ylabel: "residual y − F", zero: true,
+                             caption: "Residuals before this stage, and the tree fitted to them" });
+    var cost = A.curve("#gb-cost", { y: [-2, 0], log: true, ylabel: "MSE", xlabel: "stage", n: 100 });
+
+    var side = A.$("#gb-side");
+    A.slider(side, { label: "Learning rate $\\eta$", min: 0.05, max: 1, step: 0.05, value: S.eta,
+                     fmt: function (v) { return fmt(v, 2); },
+                     onInput: function (v) { S.eta = v; pl.restart(true); } });
+    A.seg(side, { label: "Depth of each tree", value: 1, options: [[1, "1"], [2, "2"], [3, "3"]],
+                  onChange: function (v) { S.depth = v; pl.restart(true); } });
+    var ro = A.readout(side, [["j", "stage"], ["tr", "training MSE"], ["te", "test MSE"], ["best", "lowest test MSE"],
+                              ["noise", "noise $\\sigma^2$"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "training point" }, { line: "line ok thin", label: "truth" },
+                    { line: "line", label: "ensemble $F_j$" }, { shape: "circle", cls: "pt c2", label: "residual" },
+                    { line: "line math", label: "tree $h_j$" }, { line: "line acc", label: "test MSE" },
+                    { line: "line", label: "training MSE (below)" }]);
+    var say = A.narrate("#gb-say");
+
+    function reset() {
+      var mu = A.mean(y);
+      st = { F: y.map(function () { return mu; }), FT: TX.map(function () { return mu; }), trees: [], mu: mu,
+             tr: [], te: [], resid: y.map(function (v) { return v - mu; }), last: null };
+      st.tr.push(mse(y, st.F)); st.te.push(mse(TY, st.FT));
+    }
+    function mse(a, b) { var s = 0; for (var i = 0; i < a.length; i++) s += (a[i] - b[i]) * (a[i] - b[i]); return s / a.length; }
+    function predict(x) { var s = st.mu; st.trees.forEach(function (T) { s += S.eta * T.predict([x]); }); return s; }
+    function step() {
+      var r = y.map(function (v, i) { return v - st.F[i]; });
+      var T = tree(X, r, { task: "reg", maxDepth: S.depth });
+      st.trees.push(T);
+      st.F = st.F.map(function (v, i) { return v + S.eta * T.predict(X[i]); });
+      st.FT = st.FT.map(function (v, i) { return v + S.eta * T.predict([TX[i]]); });
+      st.resid = r; st.last = T;
+      st.tr.push(mse(y, st.F)); st.te.push(mse(TY, st.FT));
+      return st.trees.length < MAXS;
+    }
+    function render() {
+      var xs = A.linspace(0, 1, 301), j = st.trees.length;
+      pF.clear();
+      pF.path(xs.map(function (x) { return [x, f(x)]; }), "line ok thin");
+      X.forEach(function (x, i) { pF.dot(x[0], y[i], { r: 3.2, cls: "pt c0" }); });
+      pF.path(xs.map(function (x) { return [x, predict(x)]; }), "line");
+
+      pR.clear();
+      X.forEach(function (x, i) { pR.dot(x[0], A.clamp(st.resid[i], -1.2, 1.2), { r: 3, cls: "pt c2" }); });
+      if (st.last) pR.path(xs.map(function (x) { return [x, st.last.predict([x])]; }), "line math");
+
+      var bi = 0;
+      st.te.forEach(function (v, k) { if (v < st.te[bi]) bi = k; });
+      cost.draw([{ values: st.tr, cls: "line" }, { values: st.te, cls: "line acc" }],
+                [{ y: 0.09, label: "noise σ² = 0.09" }]);
+      var tr = st.tr[j], te = st.te[j];
+      ro.set("j", String(j));
+      ro.set("tr", sig(tr, 3));
+      ro.set("te", sig(te, 3));
+      ro.set("best", sig(st.te[bi], 3) + " at stage " + bi, "good");
+      ro.set("noise", "0.0900");
+      if (!j) {
+        say.say("<span class='k'>Start.</span> " + K("F_0 = \\bar y = " + fmt(st.mu, 3)) + " everywhere. The residuals on the right are the targets minus that constant; " +
+                "the first tree will be fitted to them. Training MSE " + sig(tr, 3) + ", test MSE " + sig(te, 3) + ". Press <em>Step</em>.");
+      } else {
+        var rm = Math.sqrt(A.mean(st.resid.map(function (v) { return v * v; })));
+        say.say("<span class='k'>Stage " + j + ".</span> Residuals before this stage had root mean square " + fmt(rm, 3) +
+                ". A depth-" + S.depth + " tree with " + st.last.leaves() + " leaves was fitted to them and added at " + K("\\eta = " + fmt(S.eta, 2)) +
+                ". Training MSE " + sig(st.tr[j - 1], 3) + " → " + sig(tr, 3) + "; test MSE " + sig(st.te[j - 1], 3) + " → " + sig(te, 3) +
+                (te > st.te[j - 1] ? " — <strong>up</strong>." : ".") + " Lowest test MSE so far: " + sig(st.te[bi], 3) + ", at stage " + bi +
+                (j > bi + 20 ? "; the stages since then have fitted noise." : "."));
+      }
+    }
+    pl = A.player("#gb-bar", { step: step, reset: reset, render: render, fps: 4, unit: "stage" });
+  })();
+})();
+</script>
+</body>
+</html>

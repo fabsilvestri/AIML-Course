@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 10 — PyTorch</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>PyTorch</h1>
+  <p class="subtitle">Fashion-MNIST</p>
+  <p><span class="badge badge-lec">Lecture 10</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 10</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">The derivation is the reason the rest of the course is
+  possible. Do not rush it to get to the code.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Lecture&nbsp;9 fitted a network with
+  <code>MLPClassifier</code> and found four things it will not let you do:</p>
+  <table class="smaller">
+    <tr><th>you want to</th><th>you cannot</th></tr>
+    <tr><td>change what it optimises</td><td>there is no argument for it</td></tr>
+    <tr><td>see a gradient</td><td>nothing is exposed</td></tr>
+    <tr><td>stop mid-epoch, or log per batch</td><td>the smallest unit is one pass</td></tr>
+    <tr><td>move the computation to another device</td><td>there is no device to move to</td></tr>
+  </table>
+  <div class="panel">
+    <span class="panel-title">All four are one wall</span>
+    <code>fit()</code> contains a loop over epochs and batches that you did not
+    write, cannot see and cannot enter. The repair is not a better library. It
+    is owning the loop.
+  </div>
+  <p class="small muted">Today: what that loop has to compute, why it can be
+  computed at all, and how to write it.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li><strong>The mathematics</strong> &mdash; backpropagation as reverse-mode
+        automatic differentiation</li>
+    <li>What the wrapper costs, measured</li>
+    <li><strong>The method</strong> &mdash; tensors, autograd, and the training
+        loop written out in full</li>
+    <li>Three bugs that never raise an exception, measured</li>
+  </ol>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">
+       Open Lecture 10 in Google Colab</a>
+  </p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="The question">
+  <h2>The question</h2>
+  <p class="lead">You called <code>clf.fit()</code>.</p>
+  <p class="lead">It computed 266,610 partial derivatives, on every
+  batch, 20 times over. <em>How?</em></p>
+  <div class="panel panel-math">
+    <span class="panel-title">Why you need the answer</span>
+    Because the cost of that computation is what decides whether training a
+    network is possible at all &mdash; and the reason it is possible is a
+    property of the <em>direction</em> in which the chain rule is applied.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 5 -->
+<section data-menu-title="The chain rule">
+  <h2>The chain rule, as a product of Jacobians</h2>
+  <p>A network is a composition. Write the loss as</p>
+  <div class="eqn-box">
+    $$L \;=\; f_3\!\left(f_2\!\left(f_1(\boldsymbol\theta)\right)\right)
+      \qquad\Longrightarrow\qquad
+      \frac{\partial L}{\partial \boldsymbol\theta} \;=\; J_3\,J_2\,J_1$$
+  </div>
+  <p class="small">where $J_i$ is the Jacobian of $f_i$ evaluated at the point
+  the forward pass reached. Every layer contributes one factor.</p>
+  <p class="lead fix">Matrix multiplication is associative.</p>
+  <p class="small">So the product can be bracketed from either end.
+  $(J_3 J_2)\,J_1$ starts at the output &mdash;
+  <strong>reverse mode</strong>. $J_3\,(J_2 J_1)$ starts at the parameters
+  &mdash; <strong>forward mode</strong>. Same number; very different cost.</p>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="Reverse mode">
+  <h2>Reverse mode &middot; propagate an adjoint</h2>
+  <p>Pick a direction in <em>output</em> space &mdash; for a scalar loss there
+  is only one, and it is 1. Carry
+  $\bar{u} = \partial L / \partial u$ backwards:</p>
+  <div class="eqn-box">
+    $$\bar{u}_{\text{in}} \;=\; \bar{u}_{\text{out}}\,
+      \frac{\partial f}{\partial u_{\text{in}}}$$
+  </div>
+  <ul class="tight small">
+    <li>One sweep gives the derivative of <strong>one output</strong> with
+        respect to <strong>every input</strong></li>
+    <li>The forward values must be kept, because the Jacobians are evaluated at
+        them &mdash; that is the memory cost</li>
+  </ul>
+  <p class="small">Forward mode, bracketed from the other end, gets one
+  <em>input</em> direction per sweep, so a gradient over $n$ parameters costs
+  $n$ sweeps. Reverse mode costs one sweep per <em>output</em> &mdash; and a
+  loss has exactly one.</p>
+</section>
+
+<!-- 7 -->
+<section class="figslide" data-menu-title="◆ The computational graph">
+  <h2>The whole derivation, in one picture</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/d-compgraph.svg"
+         alt="A computational graph for L equals w squared with w equal to x times y plus sine x: forward edges in blue carrying values left to right, dashed purple reverse edges carrying adjoints right to left, and the two contributions to the derivative with respect to x summed in a box.">
+  </figure>
+  <p class="takeaway">One sweep forward fills in the values, one sweep back every
+  derivative &mdash; and $x$, used twice, <strong>sums</strong> its two edges.</p>
+  <a class="anim-link" href="../animations/lecture-10.html#autodiff" target="_blank">Animation</a>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="What backprop is">
+  <h2>So: what is backpropagation?</h2>
+  <div class="panel panel-math">
+    <span class="panel-title">In one sentence</span>
+    Reverse-mode automatic differentiation, applied to a neural network, with
+    the seed set to 1 at the loss.
+  </div>
+  <ul class="tight small">
+    <li>It is not specific to neural networks</li>
+    <li>It is not an approximation</li>
+    <li>It is not gradient descent &mdash; it <em>supplies</em> the gradient
+        that descent then uses</li>
+  </ul>
+  <p class="small muted">The 1986 paper&rsquo;s contribution was noticing that this
+  was cheap enough to be practical, not inventing the chain rule.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="The accuracy is fine">
+  <h2>The accuracy is not the bug</h2>
+  <p class="lead"><code>MLPClassifier</code>, refitted on this lecture&rsquo;s
+  12,000 images: 87.38% validation accuracy against a 10.0% baseline is a real
+  result.</p>
+  <p>Nothing here was measured dishonestly. The split was clean, the validation
+  set was separate, the test set was touched once.</p>
+  <p class="fail lead">The bug is that you cannot do anything else.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 10 -->
+<section class="figslide" data-menu-title="◆ Wall clock">
+  <h2>The same problem, three times</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l12-walltime.svg"
+         alt="Horizontal bar chart of wall-clock seconds for Scikit-Learn on CPU, PyTorch on CPU and PyTorch on the MPS backend, each labelled with its validation accuracy.">
+  </figure>
+  <p class="takeaway">Only the clock moved. Bars one and two share a CPU, so
+  their ratio is the framework; bars two and three share the code, so theirs is
+  the device &mdash; each under a factor of two.</p>
+</section>
+
+<!-- 11 -->
+<section class="figslide" data-menu-title="◆ When the GPU pays">
+  <h2>The accelerator&rsquo;s lead grows with the arithmetic per batch</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l12-device-crossover.svg"
+         alt="Line chart of CPU seconds divided by MPS seconds against parameter count on a log axis, from near one at 79,510 parameters to nearly four at 5,592,010, above the break-even line throughout.">
+  </figure>
+  <p class="takeaway">At the smallest width the two devices nearly tie. From
+  there the ratio climbs, because each batch carries more arithmetic to cover the
+  cost of dispatching it.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="The diagnosis">
+  <h2>The diagnosis</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">One sentence</span>
+    <code>fit()</code> contains a loop over epochs and batches that you did not
+    write, cannot see, and cannot enter.
+  </div>
+  <p>Every wall is the same wall. The repair is therefore not a better library
+  &mdash; it is <strong>owning the loop</strong>.</p>
+  <p class="small muted">Note what is <em>not</em> wrong: the maths, the metric,
+  the split, the architecture. All of that carries over unchanged.</p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="Tensors">
+  <h2>Tensors</h2>
+  <p>An array that also knows two things a NumPy array does not.</p>
+  <pre><code class="language-python" data-trim data-line-numbers="1-7|4|6">import torch
+
+a = torch.tensor([[1., 2.], [3., 4.]])
+print(a.device)              # cpu
+b = a.to("cuda")             # or "mps"
+print(a.requires_grad)       # False — nothing is recorded yet
+print(a.numpy())             # shares memory with a, on CPU
+  </code></pre>
+  <ul class="tight small">
+    <li><strong>Where it lives</strong> &mdash; an operation between tensors on
+        different devices is an error, and a loud one</li>
+    <li><strong>Whether to record</strong> &mdash; the subject of
+        <code>requires_grad</code>, two slides on</li>
+  </ul>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Devices">
+  <h2>Finding the device, portably</h2>
+  <pre><code class="language-python" data-trim>
+if torch.cuda.is_available():
+    device = "cuda"                       # NVIDIA, and Colab
+elif torch.backends.mps.is_available():
+    device = "mps"                        # Apple Silicon
+else:
+    device = "cpu"                        # correct, and slow
+  </code></pre>
+  <div class="panel">
+    <span class="panel-title">Not examinable</span>
+    Device selection is engineering, not machine learning. It is on a slide
+    because from here to the end of the course, getting it wrong is the
+    difference between a one-minute cell and a twenty-minute one.
+  </div>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="requires_grad">
+  <h2>Why <code>requires_grad</code> builds a graph</h2>
+  <p class="lead">It does not compute a derivative. It says
+  <em>record what happens to me</em>.</p>
+  <ul class="tight small">
+    <li>Every operation on a recording tensor creates a node holding the
+        operation and its inputs</li>
+    <li>The graph is built <strong>during the forward pass</strong>, by running
+        it &mdash; there is no separate compilation step</li>
+    <li>It is rebuilt from scratch on every batch, which is why a Python
+        <code>if</code> inside <code>forward</code> just works</li>
+  </ul>
+  <p class="small">That is the forward sweep from this lecture&rsquo;s mathematics
+  block, with the graph written down as it goes so the reverse sweep has
+  something to walk.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="grad_fn">
+  <h2>You can look at the graph</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; u = torch.tensor(2.0, requires_grad=True)
+&gt;&gt;&gt; v = torch.tensor(3.0, requires_grad=True)
+&gt;&gt;&gt; q = u * v + torch.sin(u)
+&gt;&gt;&gt; r = q ** 2
+&gt;&gt;&gt; r.grad_fn
+&lt;PowBackward0 object at 0x1291a4b50&gt;
+&gt;&gt;&gt; r.grad_fn.next_functions
+((&lt;AddBackward0 object at 0x1291a4be0&gt;, 0),)
+  </code></pre>
+  <p class="small">Those are the nodes in the diagram, by name. Walking
+  <code>next_functions</code> to the leaves <em>is</em> the reverse sweep.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="no_grad">
+  <h2>And you can turn it off</h2>
+  <pre><code class="language-python" data-trim>
+with torch.no_grad():
+    preds = model(X_val)          # no graph is built
+  </code></pre>
+  <ul class="tight small">
+    <li>Evaluation needs no derivatives, so recording them wastes memory
+        proportional to the size of the batch</li>
+    <li>On a large validation set the difference is the difference between
+        fitting on the GPU and not</li>
+  </ul>
+  <p class="fail small">Forgetting <code>no_grad</code> is slow and
+  memory-hungry, but it is <em>not</em> a correctness bug. The two bugs that
+  follow are.</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="The loop">
+  <h2>The training loop</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-12|5|6-7|8|9">model = build_model().to(device)
+opt   = torch.optim.Adam(model.parameters(), lr=1e-3)
+lossf = nn.CrossEntropyLoss()
+
+for epoch in range(EPOCHS):
+    model.train()
+    for xb, yb in train_loader:
+        opt.zero_grad()                       # 1
+        out  = model(xb)                      # 2
+        loss = lossf(out, yb)                 # 3
+        loss.backward()                       # 4
+        opt.step()                            # 5
+  </code></pre>
+  <p class="small">Five lines. There is no hidden machinery: this is the whole
+  of what <code>fit()</code> was doing.</p>
+  <a class="anim-link" href="../animations/lecture-10.html#loop" target="_blank">Animation</a>
+</section>
+
+<!-- 19 -->
+<section class="figslide" data-menu-title="◆ The loop, drawn">
+  <h2>One turn per mini-batch</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-trainloop.svg"
+         alt="A cycle of five boxes: zero_grad, forward, loss, backward and step, with a central panel noting that every step is ordinary Python.">
+  </figure>
+  <p class="takeaway">Every arrow is a line you wrote, so every arrow is a place
+  you can print, clip, log, branch or stop.</p>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="Line by line">
+  <h2>Line by line</h2>
+  <table>
+    <tr><th>Line</th><th>What it does</th></tr>
+    <tr><td><code>model.train()</code></td><td>puts dropout and batch-norm layers into training behaviour</td></tr>
+    <tr><td class="fail"><code>opt.zero_grad()</code></td><td class="fail">clears <code>p.grad</code>, which <code>backward()</code> <em>adds</em> to</td></tr>
+    <tr><td><code>model(xb)</code></td><td>the forward sweep; the graph is recorded as it runs</td></tr>
+    <tr><td><code>lossf(out, yb)</code></td><td>reduces the batch to one scalar &mdash; the whole point of the reverse sweep</td></tr>
+    <tr><td><code>loss.backward()</code></td><td>the reverse sweep; fills <code>p.grad</code> for every parameter</td></tr>
+    <tr><td><code>opt.step()</code></td><td>updates the parameters from <code>p.grad</code></td></tr>
+  </table>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Same model">
+  <h2>Run it</h2>
+  <table>
+    <tr><th>Model, 10 epochs on 12,000 images</th><th class="num">Validation accuracy</th></tr>
+    <tr><td>Scikit-Learn, CPU</td><td class="num">87.38%</td></tr>
+    <tr><td class="fix">PyTorch, MPS</td><td class="num hit">86.48%</td></tr>
+  </table>
+  <p class="lead">The accuracies agree, as they must.</p>
+  <p class="small">Same architecture, same optimiser, same learning rate, same
+  epochs, same data. <strong>The rebuild is not an improvement &mdash; it is the
+  same model.</strong> What we bought is the loop.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 22 -->
+<section class="figslide" data-menu-title="◆ Learning curves">
+  <h2>Two libraries, one model</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l12-learning-curves.svg"
+         alt="Training loss against epoch for the Scikit-Learn model and the PyTorch model, the two curves nearly overlapping.">
+  </figure>
+  <p class="takeaway muted">If these curves had disagreed, one of the two
+  implementations would be wrong. Overlaying them is the first check after any
+  rewrite.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="Silent failure 1">
+  <h2>The first bug that never raises</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>for xb, yb in train_loader:
+    out  = model(xb)
+    loss = lossf(out, yb)
+    loss.backward()
+    opt.step()
+  </code></pre>
+  <p class="lead">One line has been removed. It runs. The loss goes down.</p>
+  <p class="small muted">Take thirty seconds before the next slide.</p>
+  <aside class="notes">Do not use stepped line highlighting here — pointing at
+  the missing line gives away the whole exercise. The answer slide may step.</aside>
+</section>
+
+<!-- 24 -->
+<section class="figslide" data-menu-title="◆ zero_grad">
+  <h2>One missing line, measured</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l12-zerograd.svg"
+         alt="Two panels: training loss on a log scale with and without zero_grad, and validation accuracy for both, with the gap between them annotated.">
+  </figure>
+  <p class="takeaway fail">Both runs completed without error. One of them is a
+  working classifier and the other is not.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="zero_grad measured">
+  <h2>The cost of the missing <code>zero_grad()</code></h2>
+  <table>
+    <tr><th></th><th class="num">Final training loss</th><th class="num">Validation accuracy</th></tr>
+    <tr><td>With <code>opt.zero_grad()</code></td><td class="num">0.3088</td><td class="num hit">86.48%</td></tr>
+    <tr><td class="fail">Without it</td><td class="num fail">2.2400</td><td class="num fail">20.22%</td></tr>
+  </table>
+  <p class="big-num bad">66.3 points</p>
+  <p class="small">The missing line is <code>opt.zero_grad()</code>.
+  <code>backward()</code> <em>adds</em> to <code>p.grad</code>, so every step
+  uses the sum of all the gradients so far. 10 epochs on 12,000 images,
+  identical seeds, identical everything else &mdash; and no exception, no
+  warning, no <code>NaN</code>.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Silent failure 2">
+  <h2>The second bug that never raises</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>model = build_model(dropout=0.2)
+train(model, ...)
+
+with torch.no_grad():
+    acc = (model(X_test).argmax(1) == y_test).float().mean()
+print(f"test accuracy {acc:.4f}")
+  </code></pre>
+  <p class="lead">Correct output type, plausible value, no error.</p>
+  <p class="small muted">Same question. Thirty seconds.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="train vs eval">
+  <h2><code>train()</code> and <code>eval()</code></h2>
+  <p>Some layers behave differently in the two phases. Two of them matter in
+  this course:</p>
+  <table>
+    <tr><th>Layer</th><th>In <code>train()</code></th><th>In <code>eval()</code></th></tr>
+    <tr><td>Dropout</td><td>zeroes a random fraction of units</td><td>passes everything through</td></tr>
+    <tr><td>Batch normalisation</td><td>uses this batch&rsquo;s statistics</td><td>uses the running averages</td></tr>
+  </table>
+  <p class="fail small">The module defaults to training mode. Build a model,
+  never call <code>eval()</code>, and every evaluation you make is of a randomly
+  crippled network.</p>
+  <p class="small muted">Batch normalisation arrives in Lecture 11; the same
+  failure applies to it and is harder to see, because it does not fluctuate.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; the module is still in training mode</span>
+    <code>nn.Module</code> defaults to training mode, so dropout stays active and batch normalisation keeps updating its running statistics through every evaluation. Nothing raises. The number is simply of a different model than the one you meant to score.
+  </div>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="eval measured">
+  <h2>The cost of the missing <code>model.eval()</code></h2>
+  <table>
+    <tr><th>Evaluation mode</th><th class="num">Test accuracy</th></tr>
+    <tr><td class="fix"><code>model.eval()</code></td><td class="num hit">85.41%</td></tr>
+    <tr><td class="fail"><code>model.train()</code>, mean of 10 calls</td><td class="num fail">84.71%</td></tr>
+    <tr><td>lowest of those 10</td><td class="num">84.56%</td></tr>
+    <tr><td>highest of those 10</td><td class="num">84.94%</td></tr>
+  </table>
+  <p class="big-num bad">0.70 points</p>
+  <p class="small">Dropout 0.2, measured on 10,000 test images. Look at the
+  spread: a deterministic function of fixed weights and fixed data returns the
+  same number every call, so a metric that wobbles between calls has a layer
+  still in training mode.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Both bugs together">
+  <h2>What the two bugs have in common</h2>
+  <table>
+    <tr><th></th><th>Missing <code>zero_grad()</code></th><th>Missing <code>eval()</code></th></tr>
+    <tr><td>Raises?</td><td class="num">no</td><td class="num">no</td></tr>
+    <tr><td>Warns?</td><td class="num">no</td><td class="num">no</td></tr>
+    <tr><td>Produces a plausible number?</td><td class="num fail">yes</td><td class="num fail">yes</td></tr>
+    <tr><td>Cost, measured today</td><td class="num fail">66.3 points</td><td class="num fail">0.70 points</td></tr>
+    <tr><td>Caught by</td><td>reading the loop</td><td>running it twice</td></tr>
+  </table>
+  <p class="small">Both are one line. Both survive a code review that is looking
+  for exceptions rather than for behaviour.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 30 -->
+<section data-menu-title="DataLoader">
+  <h2><code>Dataset</code> and <code>DataLoader</code></h2>
+  <pre><code class="language-python" data-trim>
+from torch.utils.data import TensorDataset, DataLoader
+
+train_dl = DataLoader(TensorDataset(X_fit, y_fit),
+                      batch_size=128, shuffle=True,
+                      generator=torch.Generator().manual_seed(42))
+  </code></pre>
+  <ul class="tight small">
+    <li><code>Dataset</code> answers two questions: how many, and give me
+        number $i$</li>
+    <li><code>DataLoader</code> shuffles, batches, and can load in parallel
+        while the GPU is busy</li>
+  </ul>
+  <p class="small muted">Indexing a big tensor by hand works while the data fits
+  in memory. It stops working once the data does not, and the interface does
+  not change.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Batch mean measured">
+  <h2>Averaging the metric per batch, measured</h2>
+  <p class="small">10,000 test images in batches of 384 give 27 batches, the
+  last containing 16. A plain mean of per-batch accuracies weights that short
+  batch exactly as heavily as a full one.</p>
+  <table>
+    <tr><th>How the accuracy was aggregated</th><th class="num">Value</th></tr>
+    <tr><td class="fix">Counted over the whole set</td><td class="num hit">85.350%</td></tr>
+    <tr><td class="fail">Mean of the per-batch accuracies</td><td class="num fail">85.204%</td></tr>
+  </table>
+  <p class="small">0.146 accuracy points &mdash; small <em>here</em>, because the
+  short batch is 16 of 384. With batch size 3,000 on 10,000 images it would
+  carry a quarter of the weight instead of a tenth.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; a metric averaged per batch</span>
+    Weight by the batch size, or count over the set. The error is not always
+    large; the point is that <strong>you cannot tell from the number whether it
+    was.</strong>
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Custom module">
+  <h2>A custom module</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-13|2-3|10-13">class Sorter(nn.Module):
+    def __init__(self, widths=(300, 100), n_in=784, n_out=10):
+        super().__init__()
+        sizes = (n_in,) + tuple(widths)
+        self.blocks = nn.ModuleList(
+            nn.Linear(a, b) for a, b in zip(sizes, sizes[1:]))
+        self.head = nn.Linear(sizes[-1], n_out)
+
+    def forward(self, x):
+        for blk in self.blocks:
+            x = torch.relu(blk(x))
+        return self.head(x)
+  </code></pre>
+  <p class="small"><code>super().__init__()</code> before anything else, or
+  parameter registration silently does not happen. Everything after that
+  &mdash; <code>.to(device)</code>, <code>.parameters()</code>,
+  <code>state_dict()</code> &mdash; comes for free.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="Optuna">
+  <h2>Searching the hyperparameters properly</h2>
+  <p>The previous lecture tuned by hand: ten points, one axis at a time.
+  <strong>Optuna</strong> proposes a configuration, trains it briefly, scores
+  it, and lets a sampler choose the next from what it has learned.</p>
+  <pre><code class="language-python" data-trim>
+def objective(trial):
+    lr   = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
+    drop = trial.suggest_float("dropout", 0.0, 0.5, step=0.1)
+    return validation_accuracy(train(lr=lr, dropout=drop, epochs=4))
+
+study = optuna.create_study(direction="maximize")
+study.optimize(objective, n_trials=8)
+  </code></pre>
+  <div class="panel">
+    <span class="panel-title">Not examinable</span>
+    Optuna is not in the book. It is here because it is what you will actually
+    use, and because it makes the point that hand tuning was never a search.
+  </div>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="Saving">
+  <h2>Saving the model</h2>
+  <pre><code class="language-python" data-trim>
+torch.save(model.state_dict(), "sorter.pt")          # the tensors
+
+fresh = build_model().to(device)
+fresh.load_state_dict(torch.load("sorter.pt", weights_only=True))
+  </code></pre>
+  <p>The tensors are 1041 KB &mdash; 266,610 float32 numbers, and this is
+  their size, not the file&rsquo;s. The notebook prints what the file actually
+  weighs, and it is a little more: <code>state_dict</code> is written as a zip
+  archive, so the names and the container are in there too.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">What not to do</span>
+    <code>torch.save(model, ...)</code> pickles the object, and unpickling it
+    needs your class definition at the same import path. Next term, when the
+    file has moved, the checkpoint will not load.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Check the reload">
+  <h2>And check the reload</h2>
+  <pre><code class="language-python" data-trim>
+assert accuracy(model, X_test, y_test) == accuracy(fresh, X_test, y_test)
+  </code></pre>
+  <p class="small"><code>accuracy</code> counts hits over the whole set, in
+  <code>eval()</code> mode, under <code>no_grad</code>. Not &ldquo;it looks
+  about the same&rdquo;: a reloaded network is either the same function or it
+  is not, and the difference is one assertion.</p>
+  <p class="small muted">The usual cause of failure is loading a
+  <code>state_dict</code> into a model built with different widths. PyTorch
+  raises for that &mdash; but only if you did not pass
+  <code>strict=False</code> to silence it.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="The final table">
+  <h2>Where we ended</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Validation accuracy</th><th class="num">Wall clock</th></tr>
+    <tr><td>Always one class</td><td class="num">10.0%</td><td class="num">&mdash;</td></tr>
+    <tr><td>Scikit-Learn MLP, CPU</td><td class="num">87.38%</td><td class="num fail">2.1 s</td></tr>
+    <tr><td class="fix">PyTorch, same model, MPS</td><td class="num hit">86.48%</td><td class="num hit">0.8 s</td></tr>
+    <tr><td class="fail">The same code without <code>zero_grad()</code></td><td class="num fail">20.22%</td><td class="num">unchanged</td></tr>
+  </table>
+  <p class="small">The PyTorch model&rsquo;s test accuracy, touched once:
+  85.35%. The last row is the one to remember. It ran, it finished, and it
+  reported a number.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 37 -->
+<section data-menu-title="The catalogue">
+  <h2>The silent-failure catalogue so far</h2>
+  <table>
+    <tr><th>Failure</th><th>Diagnosed in</th><th class="num">Measured cost</th></tr>
+    <tr><td>Scaler fitted before the split</td><td>Part I</td><td class="num">nothing measurable</td></tr>
+    <tr><td>Evaluating on training data</td><td>Part I</td><td class="num">an RMSE of zero</td></tr>
+    <tr><td>Accuracy under class imbalance</td><td>Part I</td><td class="num">a useless model above 90%</td></tr>
+    <tr><td>Hyperparameters chosen on the test set</td><td>Part I</td><td class="num">an optimistic report</td></tr>
+    <tr><td class="fail">Missing <code>optimizer.zero_grad()</code></td><td class="fail">today</td><td class="num fail">66.3 points</td></tr>
+    <tr><td class="fail">Missing <code>model.eval()</code></td><td class="fail">today</td><td class="num fail">0.70 points</td></tr>
+    <tr><td class="fail">Metric averaged per batch</td><td class="fail">today</td><td class="num fail">0.146 points</td></tr>
+  </table>
+  <p class="small muted">Every one of them ran to completion and printed a
+  plausible number.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 38 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">Open Lecture 10 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> The corpus is subsampled to 12,000
+        images, and the numbers on these slides are its run</li>
+    <li>Autograd checked against the hand derivative, then the wrapper timed
+        against the loop written out line by line</li>
+    <li>All three silent bugs, reproduced and measured &mdash; a missing
+        <code>zero_grad()</code>, a missing <code>model.eval()</code>, a metric
+        averaged per batch</li>
+    <li><code>DataLoader</code>, a custom <code>Module</code>, an Optuna search,
+        and a checkpoint that reloads to the same function</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Make the network four times deeper and re-run the training loop. It
+    trains far worse than its size suggests it should &mdash; and the next
+    lecture derives why, and repairs it.
+  </div>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight small">
+    <li>Derived reverse-mode differentiation: the chain rule is a product of
+        Jacobians, and bracketed from the output end it costs one sweep per
+        output</li>
+    <li>Concluded that training &mdash; many parameters, one scalar loss &mdash;
+        leaves reverse mode as the only viable choice; that is what
+        backpropagation is</li>
+    <li>Measured what the convenience wrapper costs: under a factor of two from
+        the framework and from the device at this size, and a device lead that
+        grows with the width</li>
+    <li>Wrote the training loop &mdash; tensors, <code>requires_grad</code>, the
+        graph, <code>backward()</code>, the optimiser step &mdash; and got the same
+        model back</li>
+    <li>Met three bugs that raise nothing: a missing <code>zero_grad()</code>, a
+        missing <code>model.eval()</code>, a metric averaged per batch</li>
+    <li>Added <code>DataLoader</code>, a custom <code>Module</code>, an Optuna
+        search, and a checkpoint checked by assertion</li>
+  </ol>
+</section>
+
+<!-- 40 -->
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 10">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 10</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 10">
+  <h2>Exercises &mdash; Lecture 10</h2>
+  <ul class="ex-list">
+    <li>Reverse-mode automatic differentiation costs one sweep for all partial derivatives; forward mode costs one per input. State the condition on the function&rsquo;s shape that makes reverse mode the right choice. <span class="ex-marks">[4]</span></li>
+    <li>Test accuracy on 10,000 images is computed as the plain mean of the per-batch accuracies, in batches of 384. State why this is wrong, and the rule that fixes it. <span class="ex-marks">[3]</span></li>
+    <li>The five lines of the training loop are reordered so that <code>opt.step()</code> comes before <code>loss.backward()</code>. State what the student observes. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 11&rsquo;s deck.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Exercises · 10 (2)">
+  <h2>Exercises &mdash; Lecture 10 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>A network with dropout is evaluated without calling <code>model.eval()</code>. Describe the symptom precisely, and the one-line diagnostic that catches it. <span class="ex-marks">[5]</span></li>
+    <li>In the measured comparison the accelerator barely beat the CPU on the smallest network, and its lead grew as the layers widened. Give the reason, and the quantity that decides where the crossover sits. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 11&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 9">
+  <p class="kicker">The five set at the end of Lecture 9</p>
+  <h1>Solutions<br>Lecture 9</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 9">
+  <h2>Solutions &mdash; Lecture 9</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> A multilayer perceptron with the activation removed is written as $W_3W_2W_1x$. State what function class it&hellip;</p>
+      <p class="lead"><span class="fix">Only linear maps &mdash; the product of matrices is a matrix.</span></p>
+      <ul class="tight smaller">
+        <li>Composition of linear maps is linear, whatever the depth</li>
+        <li>The nonlinearity is what makes an extra layer a new function rather than a re-parameterisation</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> Give the parameter count of a dense layer from $m$ inputs to $n$ units, and evaluate it for the first layer&hellip;</p>
+      <p class="lead"><span class="fix">$mn + n$; here $784 \times 300 + 300 = 235{,}500$.</span></p>
+      <ul class="tight smaller">
+        <li>One weight per input-output pair, plus one bias per unit</li>
+        <li>The first layer of an image network usually dominates the count, because $m$ is the pixel count</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 9 (2)">
+  <h2>Solutions &mdash; Lecture 9 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> A ten-class classifier for mutually exclusive classes is built with ten sigmoid output units and binary&hellip;</p>
+      <p class="lead"><span class="fix">It is the multilabel row. Mutually exclusive classes are the multiclass row: ten units, softmax, cross-entropy.</span></p>
+      <ul class="tight smaller">
+        <li>Ten sigmoids ask ten independent yes/no questions, and their outputs need not sum to 1</li>
+        <li>Softmax couples the outputs into one ten-way question, and cross-entropy with a one-hot target is minus the log probability of the true class</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> Fashion-MNIST is exactly balanced across ten classes. State the trivial baseline&rsquo;s accuracy, and why&hellip;</p>
+      <p class="lead"><span class="fix">10%. With equal class sizes and equal costs, accuracy is not dominated by one class.</span></p>
+      <ul class="tight smaller">
+        <li>The majority-class predictor scores the largest class share, which is one tenth</li>
+        <li>Lecture 3's objection to accuracy was imbalance, and it does not apply</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 9 (3)">
+  <h2>Solutions &mdash; Lecture 9 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> An architecture sweep finds the best hidden-layer size on this dataset. State what that result does and does&hellip;</p>
+      <p class="lead"><span class="fix">Very little. It holds for this task at the training-set size you swept at. In the lecture the order survived a move from 6,000 to 12,000 images, but that is a measurement on this corpus, not a guarantee: only a re-run on all the data says whether a subset&rsquo;s ranking was real.</span></p>
+      <ul class="tight smaller">
+        <li>A deeper network needs more data to pay for its extra parameters, so a ranking measured on a fraction of the data can change on the rest</li>
+        <li>It is a measurement of one sweep at one size, not a rule. Reporting it as a general recommendation is the error</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 11 &middot; G&eacute;ron Ch. 11</p>
+  <h1>Training deep networks</h1>
+  <p class="small">
+    A twenty-layer network that will not train, instrumented until it says why<br>
+    The variance recursion, and the Glorot and He initialisations it gives<br>
+    Six repairs &mdash; initialisation, activation, normalisation, clipping,
+    optimisers, schedules &mdash; and an ablation of which one paid
+  </p>
+  <p class="clock">Run the Lecture 10 notebook first</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 10
+  <span class="sep">&middot;</span> PyTorch
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

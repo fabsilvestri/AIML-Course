@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 22 · Neural recommenders, evaluated honestly — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 22 of Applications of Machine Learning: why a random split over a user’s interactions leaks the future into training.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-22.html">Lecture 22 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 22 · Animations</p>
+  <h1>Recommender systems: neural, and evaluated honestly</h1>
+  <p>One decision about how to score a recommender that moves the number more
+  than the model does: which of a user&rsquo;s interactions is held out.
+  Press <strong>Step</strong> to advance one unit and read what happened; press
+  <strong>Play</strong> to let it run.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture. The
+  widget says how its users and items were generated; none of the numbers is a
+  MovieLens number.</p>
+  <ul class="toc">
+    <li><a href="#splits">1 · A random split leaks the future</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Leave-one-out against leave-last
+     ====================================================================== -->
+<section class="anim" id="splits">
+  <h2><span class="num">1</span>A random split leaks the future</h2>
+  <p class="lede">300 users, 200 films. Each user&rsquo;s history is an ordered
+  sequence of 12 to 30 films; their taste drifts along it, and early choices
+  lean on popularity more than late ones. Each <strong>Step</strong> evaluates
+  one more user under both protocols: hold out one interaction at random, or
+  hold out the last. On the left, the timelines of the users just evaluated:
+  the held-out film is the diamond, and every red mark is an interaction from
+  <em>after</em> it that the model was trained on. On the right, HR@10 so far
+  for a popularity list and an item–item model, under both splits.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="sp-plots"></div>
+      <div class="narrate" id="sp-say"></div>
+      <div class="toolbar" id="sp-bar"></div>
+    </div>
+    <aside class="side" id="sp-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>For a user with history $i_1, \dots, i_T$ in time order, the random
+      split holds out $i_t$ with $t$ uniform on $\{1,\dots,T\}$ and trains on
+      the other $T-1$; of those, $T - t$ come after the held-out one, so on
+      average $(T-1)/2$ — half the training history — is the user&rsquo;s
+      future. The temporal split holds out $i_T$, and none is. The item–item
+      model scores a candidate $j$ by
+      $\sum_{i \in H_u} s_{ij}$ over the user&rsquo;s training history
+      $H_u$, with $s_{ij} = c_{ij}/\sqrt{c_i\,c_j}$, where $c_{ij}$ counts
+      users with both $i$ and $j$ in training and $c_i$ users with $i$.
+      Seen films are removed from the candidates before ranking.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>Under the random split, red marks sit on both sides of the diamond:
+        the model has seen what the user did next, and with a drifting taste
+        that is the most informative evidence there is.</li>
+        <li>The random split lifts <strong>both</strong> models, the
+        popularity list included, by a similar factor. A gain that lifts the
+        unpersonalised baseline as much as the model is the task getting
+        easier, not the model getting better.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Play to the end and read the two ratios in the side panel: the
+        random split more than doubles both models&rsquo; HR@10.</li>
+        <li>Read <em>future in training</em>, the share of the random
+        split&rsquo;s training interactions that come after the held-out one:
+        about half, as the expectation $(T-1)/2$ predicts.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 22 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  /* ======================================================================
+     1 · Leave-one-out against leave-last
+     ====================================================================== */
+  (function () {
+    var NI = 200, NU = 300, KTOP = 10, SHOW = 8;
+    // Each user's taste angle drifts along their history; the weight on
+    // popularity falls from 1.2 to 0.3 from first choice to last. Films are
+    // chosen without replacement.
+    var USERS = (function () {
+      var R = A.rng(3);
+      var phi = A.range(NI).map(function () { return R.uniform(0, 2 * Math.PI); });
+      var pop = A.range(NI).map(function (i) { return 1 / (i + 1); });
+      var users = [];
+      for (var u = 0; u < NU; u++) {
+        var T = R.int(12, 30), th0 = R.uniform(0, 2 * Math.PI), dr = (R.u() < 0.5 ? -1 : 1) * R.uniform(0.5, 1) * 2;
+        var seen = {}, seq = [];
+        for (var t = 0; t < T; t++) {
+          var f = t / (T - 1), th = th0 + dr * f, a = 1.2 - 0.9 * f;
+          var w = A.range(NI).map(function (i) { return seen[i] ? 0 : Math.pow(pop[i], a) * Math.exp(2 * Math.cos(th - phi[i])); });
+          var s = A.sum(w), x = R.u() * s, i = 0;
+          while (x > w[i] || seen[i]) { x -= w[i]; i++; }
+          seen[i] = 1; seq.push(i);
+        }
+        users.push(seq);
+      }
+      return users;
+    })();
+
+    // One protocol, evaluated for every user at once.
+    function protocol(kind) {
+      var R = A.rng(11);
+      var held = USERS.map(function (seq) { return kind === "last" ? seq.length - 1 : Math.floor(R.u() * seq.length); });
+      var train = USERS.map(function (seq, u) { return seq.filter(function (_, t) { return t !== held[u]; }); });
+      var cnt = new Array(NI).fill(0);
+      train.forEach(function (h) { h.forEach(function (i) { cnt[i]++; }); });
+      var C = A.range(NI).map(function () { return new Float64Array(NI); });
+      train.forEach(function (h) { h.forEach(function (i) { h.forEach(function (j) { if (i !== j) C[i][j]++; }); }); });
+      var res = USERS.map(function (seq, u) {
+        var g = seq[held[u]], H = train[u], seen = {};
+        H.forEach(function (i) { seen[i] = 1; });
+        function ii(i) { var s = 0; H.forEach(function (j) { if (cnt[i] && cnt[j]) s += C[i][j] / Math.sqrt(cnt[i] * cnt[j]); }); return s; }
+        var out = { held: held[u], future: seq.length - 1 - held[u], n: H.length };
+        [["pop", function (i) { return cnt[i]; }], ["ii", ii]].forEach(function (m) {
+          var sg = m[1](g), above = 0;
+          for (var i = 0; i < NI; i++) if (!seen[i] && i !== g && m[1](i) > sg) above++;
+          out[m[0]] = above < KTOP;
+        });
+        return out;
+      });
+      return res;
+    }
+    var RND = protocol("random"), LAST = protocol("last");
+
+    var st, pl;
+    var plots = A.$("#sp-plots");
+    var cT = A.canvas(plots, { w: 460, h: 420, caption: "The users just evaluated, each history in time order" });
+    var cB = A.canvas(plots, { w: 380, h: 420, caption: "HR@10 so far" });
+
+    var side = A.$("#sp-side");
+    var ro = A.readout(side, [["u", "users evaluated"], ["pr", "popularity · random"], ["pt", "popularity · last"],
+                              ["ir", "item–item · random"], ["it", "item–item · last"],
+                              ["rp", "ratio, popularity"], ["ri", "ratio, item–item"],
+                              ["fut", "future in training"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "trained on, before the held-out film" },
+                    { shape: "circle", cls: "fill-acc", label: "trained on, but from after it" },
+                    { shape: "diamond", cls: "pt c4", label: "the held-out film" },
+                    { swatch: "fill-primary", label: "random split" },
+                    { swatch: "fill-gold", label: "leave last" }]);
+    var say = A.narrate("#sp-say");
+
+    function reset() { st = { n: 0, h: { pr: 0, pt: 0, ir: 0, it: 0 }, fut: 0, tot: 0 }; }
+    function step() {
+      var u = st.n, r = RND[u], l = LAST[u];
+      if (r.pop) st.h.pr++;
+      if (l.pop) st.h.pt++;
+      if (r.ii) st.h.ir++;
+      if (l.ii) st.h.it++;
+      st.fut += r.future; st.tot += r.n;
+      st.n++;
+      return st.n < NU;
+    }
+
+    function timeline(y, u, res, label) {
+      var T = USERS[u].length, x0 = 64, W = 380;
+      cT.text(x0 - 8, y + 4, label, "lbl-sm", "end");
+      A.el("line", { x1: x0, x2: x0 + W, y1: y, y2: y, class: "zero" }, cT.g);
+      for (var t = 0; t < T; t++) {
+        var x = x0 + W * t / (T - 1);
+        if (t === res.held) cT.marker(x, y, "diamond", 6, "pt c4");
+        else cT.marker(x, y, "circle", 3.4, t < res.held ? "pt c0" : "fill-acc");
+      }
+    }
+    function render() {
+      cT.clear();
+      cT.text(64, 20, "first interaction", "lbl-sm");
+      cT.text(440, 20, "last", "lbl-sm", "end");
+      var from = Math.max(0, st.n - SHOW);
+      if (!st.n) cT.text(230, 200, "Press Step to evaluate the first user.", "lbl", "middle");
+      for (var k = 0; k < Math.min(st.n, SHOW); k++) {
+        var u = from + k, y = 48 + k * 48;
+        cT.text(64, y - 9, "user " + (u + 1), "lbl-sm");
+        timeline(y, u, RND[u], "random");
+        timeline(y + 18, u, LAST[u], "last");
+      }
+
+      cB.clear();
+      var n = Math.max(st.n, 1), h = st.h, x0 = 50, H = 300, y0 = 40, top = 0.5;
+      function Y(v) { return y0 + H - H * Math.min(v, top) / top; }
+      [0, 0.1, 0.2, 0.3, 0.4, 0.5].forEach(function (v) {
+        A.el("line", { x1: x0, x2: 370, y1: Y(v), y2: Y(v), class: v ? "zero" : "axis" }, cB.g);
+        cB.text(x0 - 6, Y(v) + 4, fmt(v, 1), "tick", "end");
+      });
+      [["popularity", "pr", "pt", 80], ["item–item", "ir", "it", 230]].forEach(function (g) {
+        [[g[1], "fill-primary"], [g[2], "fill-gold"]].forEach(function (b, k) {
+          var v = h[b[0]] / n, x = g[3] + k * 56;
+          A.el("rect", { x: x, y: Y(v), width: 44, height: Y(0) - Y(v), class: b[1], opacity: 0.85 }, cB.g);
+          cB.text(x + 22, Y(v) - 6, st.n ? fmt(v, 3) : "—", "mono", "middle");
+          cB.text(x + 22, Y(0) + 16, k ? "last" : "random", "lbl-sm", "middle");
+        });
+        cB.text(g[3] + 50, Y(0) + 38, g[0], "axis-label", "middle");
+      });
+
+      function ratio(a, b) { return b ? "×" + fmt(a / b, 2) : "—"; }
+      ro.set("u", st.n + " of " + NU);
+      ro.set("pr", st.n ? fmt(h.pr / n, 3) : "—");
+      ro.set("pt", st.n ? fmt(h.pt / n, 3) : "—");
+      ro.set("ir", st.n ? fmt(h.ir / n, 3) : "—");
+      ro.set("it", st.n ? fmt(h.it / n, 3) : "—");
+      ro.set("rp", ratio(h.pr, h.pt));
+      ro.set("ri", ratio(h.ir, h.it));
+      ro.set("fut", st.tot ? A.pct(st.fut / st.tot, 1) : "—");
+
+      if (!st.n) {
+        say.say("<span class='k'>Start.</span> Each protocol has been applied to all " + NU + " users and both models fitted on its training set. " +
+                "Press <em>Step</em> to read off the first user’s results under both.");
+      } else {
+        var u = st.n - 1, r = RND[u], l = LAST[u], T = USERS[u].length;
+        say.say("<span class='k'>User " + st.n + ".</span> " + T + " interactions. Random split: held out number " + (r.held + 1) + ", so " + r.future +
+                " of the " + (T - 1) + " training interactions come from after it" + (r.future ? " (red)" : "") + "; popularity " + (r.pop ? "hit" : "missed") +
+                ", item–item " + (r.ii ? "hit" : "missed") + ". Leave last: held out number " + T + ", nothing from the future; popularity " +
+                (l.pop ? "hit" : "missed") + ", item–item " + (l.ii ? "hit" : "missed") + ".");
+      }
+    }
+
+    pl = A.player("#sp-bar", { step: step, reset: reset, render: render, fps: 8, unit: "user" });
+  })();
+})();
+</script>
+</body>
+</html>

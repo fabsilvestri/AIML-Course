@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 5 · Regularisation and the bias–variance trade-off — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 5 of Applications of Machine Learning: the bias–variance decomposition measured by resampling, learning and validation curves, and the geometry of ridge and lasso.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-05.html">Lecture 5 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 5 · Animations</p>
+  <h1>Regularisation and the bias–variance trade-off</h1>
+  <p>The decomposition from today, measured the only way it can be: by drawing
+  training set after training set from the same source and watching the fits
+  disagree. Then the two curves that diagnose a model, and the geometry that
+  makes lasso select and ridge merely shrink. Press <strong>Step</strong> to
+  advance one unit and read what happened; press <strong>Play</strong> to let
+  it run.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture. Being
+  synthetic, it has something the Titanic never will: a known truth
+  $f^{*}$, so bias and noise can be separated.</p>
+  <ul class="toc">
+    <li><a href="#bv">1 · Bias and variance, made visible</a></li>
+    <li><a href="#curves">2 · Learning and validation curves</a></li>
+    <li><a href="#penalty">3 · Ridge against lasso</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Bias and variance
+     ====================================================================== -->
+<section class="anim" id="bv">
+  <h2><span class="num">1</span>Bias and variance, made visible</h2>
+  <p class="lede">One truth $f^{*}(x) = \sin(1.5\pi x)$, plus noise of
+  standard deviation $\sigma = 0.3$. Each step draws a <strong>new training
+  set</strong> $D$ of $m$ points from that source and fits a polynomial of the
+  chosen degree to it by least squares. The thin curves are the fits
+  $\hat f_D$; the thick one is their average $\bar f$; the green one is the
+  truth. On the right, the three terms of the decomposition beside the test
+  error they add up to.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="bv-plots"></div>
+      <div id="bv-sweep"></div>
+      <div class="narrate" id="bv-say"></div>
+      <div class="toolbar" id="bv-bar"></div>
+    </div>
+    <aside class="side" id="bv-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>Fix a test point $x$ and write $\bar f(x) = \mathbb{E}_D[\hat f_D(x)]$.
+      Adding and subtracting $\bar f$ and then $f^{*}$, exactly as in the
+      deck, gives</p>
+      $$\begin{aligned}\mathbb{E}_{D,y}\bigl[(y - \hat f_D)^2\bigr] = {} & \underbrace{(f^{*} - \bar f)^2}_{\text{bias}^2} \\ & + \underbrace{\mathbb{E}_D\bigl[(\hat f_D - \bar f)^2\bigr]}_{\text{variance}} + \underbrace{\sigma^2}_{\text{noise}}.\end{aligned}$$
+      <p>Both cross terms vanish because $\mathbb{E}_D[\hat f_D - \bar f] = 0$
+      by the definition of $\bar f$, and $\mathbb{E}_y[y] = f^{*}$. Here the
+      label is $y = f^{*}(x) + \varepsilon$ with
+      $\operatorname{Var}(\varepsilon) = \sigma^2$, so
+      $\operatorname{Var}(y \mid x) = \sigma^2$. The widget averages each term
+      over 1,000 test points, which is legitimate because the identity holds
+      at every $x$ and is linear.</p>
+      <p>The expectation over $D$ is done by brute force: the average over the
+      training sets drawn so far. With one fixed label per test point, the
+      first step of the derivation is an exact identity about those averages,
+      and the side panel prints its residual. The two bars differ only by
+      the sampling error of the 1,000 test labels, whose squared noise does
+      not average to exactly $\sigma^2$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>At degree 1 every fit is nearly the same straight line, and
+        their average is far from the truth: small variance, large bias.</li>
+        <li>At degree 12 the average $\bar f$ sits almost on the truth while
+        the individual fits swing wildly at the edges: small bias, large
+        variance.</li>
+        <li>The stacked bar and the measured bar agree to within about four per
+        cent at every degree and every $m$. The decomposition is not a model of the error;
+        it is the error, rearranged.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Step through degrees 0 to 12 on the bottom plot. The total is
+        smallest at degree 3: an interior minimum, where falling bias and
+        rising variance cross.</li>
+        <li>Play to 200 sets at degree 9, then again with $m = 80$: the
+        variance falls more than tenfold. Do the same at degree 1: the bias²
+        reads 0.181 at both sizes. More data cures variance, not bias.</li>
+        <li>Step slowly at degree 3 and watch the variance in the readout. It
+        is an estimate from the sets drawn so far: about 0.0025 after two
+        sets, 0.015 after ten, 0.0175 after 200. A brute-force expectation
+        needs many draws.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · Learning and validation curves
+     ====================================================================== -->
+<section class="anim" id="curves">
+  <h2><span class="num">2</span>Learning and validation curves</h2>
+  <p class="lede">The same kind of source, now with noise $\sigma = 0.5$, so the
+  floor no model can beat is $\sigma^2 = 0.25$. Each step gives the model
+  five more training rows. The left-hand plot is the
+  <strong>learning curve</strong>: error against the number of rows, for the
+  chosen degree. The right-hand one is the <strong>validation curve</strong>:
+  error against degree, at the current number of rows. Below them, the first
+  training set and its fit. Every point on the curves is an
+  average over 40 independent training sets; validation error is measured on
+  2,000 fresh points.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="lc-plots"></div>
+      <div id="lc-data"></div>
+      <div class="narrate" id="lc-say"></div>
+      <div class="toolbar" id="lc-bar"></div>
+    </div>
+    <aside class="side" id="lc-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The validation error estimates the left-hand side of the
+      decomposition,
+      $\text{bias}^2 + \text{variance} + \sigma^2$. The training error is
+      measured on the rows that were fitted, so the fit has already bent
+      towards their noise and the variance term barely shows in it. Hence the
+      reading the deck gives:</p>
+      $$\underbrace{\text{validation} - \sigma^2}_{\text{excess over the floor}}
+        \approx \text{bias}^2 + \text{variance},$$
+      <p>while the gap, validation minus training, tracks the variance.</p>
+      <p>More rows shrink the variance of a least-squares fit and leave its
+      bias where it is, because $\bar f$ — the best the family can do on
+      average — does not depend on how many rows you have once there are
+      enough of them.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li><strong>Degree 1:</strong> the two curves meet by about 75 rows
+        and stay together, both about 0.18 above the floor. That is bias;
+        more rows change nothing.</li>
+        <li><strong>Degree 12:</strong> the validation curve starts off the
+        top of the scale and is still falling at 150 rows, with a gap still
+        open. That is variance; more rows would help.</li>
+        <li>On the validation curve, the right-hand side flattens as rows
+        arrive: high degree costs less when there is more data to pin it
+        down.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Play to 150 rows at degree 1, then switch to degree 12 and play
+        again. Compare the two diagnoses in the narration.</li>
+        <li>At 15 rows, read the validation curve: its minimum is at degree 3
+        and everything from degree 8 up is off the scale. Play to 150 and
+        read it again.</li>
+        <li>Degree 3 is close to the floor at 150 rows: its validation error
+        is less than $0.01$ above $\sigma^2$. That is all any model, of any
+        family, could still win on this source.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     3 · Ridge against lasso
+     ====================================================================== -->
+<section class="anim" id="penalty">
+  <h2><span class="num">3</span>Ridge against lasso</h2>
+  <p class="lede">A linear model with two standardised features and no
+  intercept to worry about. The ellipses are contours of the
+  $\mathrm{MSE}$, centred on the unpenalised answer $\hat{\boldsymbol\theta}$
+  (green cross). Each step raises the penalty $\alpha$. The shaded region is
+  the set of coefficient vectors no larger than the current answer — a disc for
+  ridge, a diamond for lasso — and the answer is where the smallest contour
+  touches it. Below, the coefficient paths so far.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="pn-geo"></div>
+      <div class="viz-row" id="pn-paths"></div>
+      <div class="narrate" id="pn-say"></div>
+      <div class="toolbar" id="pn-bar"></div>
+    </div>
+    <aside class="side" id="pn-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The deck's two objectives, with columns standardised and $y$ centred
+      so that there is no bias term to exclude:</p>
+      $$\begin{aligned}J_{\text{ridge}} &= \mathrm{MSE}(\boldsymbol\theta) + \frac{\alpha}{m}\sum_j \theta_j^2,\\
+        J_{\text{lasso}} &= \mathrm{MSE}(\boldsymbol\theta) + 2\alpha\sum_j |\theta_j|.\end{aligned}$$
+      <p>Ridge has the closed form
+      $\boldsymbol\theta = (\mathbf X^{\intercal}\mathbf X + \alpha\mathbf I)^{-1}\mathbf X^{\intercal}y$.
+      Lasso is solved one coordinate at a time: with
+      $z_j = \tfrac1m\mathbf x_j^{\intercal}(y - \sum_{k\ne j}\theta_k\mathbf x_k)$
+      and $\tfrac1m\mathbf x_j^{\intercal}\mathbf x_j = 1$, setting the
+      subgradient to zero gives
+      $\theta_j = \operatorname{sign}(z_j)\max(|z_j| - \alpha, 0)$ — exactly
+      zero whenever the data's pull $|z_j|$ is at most $\alpha$.</p>
+      <p><strong>Why the picture is honest.</strong> If
+      $\boldsymbol\theta_\alpha$ minimises $\mathrm{MSE} + \alpha\,\Omega$, then
+      for every $\boldsymbol\theta$ with
+      $\Omega(\boldsymbol\theta) \le \Omega(\boldsymbol\theta_\alpha)$,
+      $\mathrm{MSE}(\boldsymbol\theta) \ge \mathrm{MSE}(\boldsymbol\theta_\alpha) + \alpha\bigl(\Omega(\boldsymbol\theta_\alpha) - \Omega(\boldsymbol\theta)\bigr) \ge \mathrm{MSE}(\boldsymbol\theta_\alpha)$.
+      So $\boldsymbol\theta_\alpha$ is the best point of the region
+      $\Omega \le \Omega(\boldsymbol\theta_\alpha)$: the region drawn.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The lasso answer runs into a <strong>corner</strong> of the
+        diamond and stays there while $\alpha$ grows: $\theta_2$ is exactly
+        zero from then on. A contour meets a corner far more easily than it
+        meets a point on a circle where one coordinate is zero.</li>
+        <li>Ridge never reaches zero. Its paths approach the axis and never
+        arrive, at any $\alpha$.</li>
+        <li>With correlated features ridge does not shrink each coefficient
+        on its own: $\theta_2$ first <em>grows</em> slightly while
+        $\lVert\boldsymbol\theta\rVert_2$ falls.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Switch to <em>uncorrelated</em> features. The contours become
+        circles; ridge now scales both coefficients by the same factor, and
+        lasso subtracts the same $\alpha$ from both.</li>
+        <li>Tick the gradient-descent path. It starts at
+        $\boldsymbol\theta = \mathbf 0$, the smallest model, and walks out to
+        $\hat{\boldsymbol\theta}$; stopping it early picks a point on the
+        way — early stopping is a penalty by another route.</li>
+        <li>Step until lasso's $\theta_2$ hits zero and read the narration:
+        the pull $|z_2|$ has just dropped below $\alpha$.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 5 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  // Polynomials are fitted in the Legendre basis on t = 2x - 1. It spans the
+  // same polynomials as 1, x, x^2, ..., so the fit is the same least-squares
+  // fit, but the normal equations stay well conditioned up to degree 12.
+  function basis(x, d) {
+    var t = 2 * x - 1, P = [1, t];
+    for (var k = 1; k < d; k++) P.push(((2 * k + 1) * t * P[k] - k * P[k - 1]) / (k + 1));
+    return P.slice(0, d + 1);
+  }
+  function polyfit(xs, ys, d) {
+    var p = d + 1, M = [], b = [], i, a, c;
+    for (a = 0; a < p; a++) { M.push(new Array(p).fill(0)); b.push(0); }
+    for (i = 0; i < xs.length; i++) {
+      var f = basis(xs[i], d);
+      for (a = 0; a < p; a++) { b[a] += f[a] * ys[i]; for (c = 0; c < p; c++) M[a][c] += f[a] * f[c]; }
+    }
+    return A.solve(M, b);
+  }
+  function polyval(th, x) { return A.dot(basis(x, th.length - 1), th); }
+
+  /* ======================================================================
+     1 · Bias and variance, made visible
+     ====================================================================== */
+  (function () {
+    var SIG = 0.3, NSETS = 200, NT = 1000, DMAX = 12;
+    var fstar = function (x) { return Math.sin(1.5 * Math.PI * x); };
+    // The test set: 1,000 points spread evenly over [0, 1], one label each.
+    var tx = A.range(NT).map(function (j) { return (j + 0.5) / NT; });
+    var R0 = A.rng(501), ty = tx.map(function (x) { return fstar(x) + R0.n(0, SIG); });
+    var S = { d: 3, m: 20 }, st, pl, sweep = null;
+
+    // Training set s: m points, one in each of m equal slices of [0, 1]
+    // (a jittered grid), and noisy labels. Set s is the same set whatever the
+    // degree, so the live bars converge to the bottom plot's value.
+    function trainingSet(s, m) {
+      var R = A.rng(10000 + 7919 * s + m), xs = [], ys = [];
+      for (var i = 0; i < m; i++) { var x = (i + R.u()) / m; xs.push(x); ys.push(fstar(x) + R.n(0, SIG)); }
+      return { x: xs, y: ys };
+    }
+    function predictAll(th) { return tx.map(function (x) { return polyval(th, x); }); }
+
+    // The three terms from a stack of predictions P (sets x test points).
+    function decompose(P) {
+      var n = P.length, b2 = 0, v = 0, tot = 0, ypb = 0;
+      for (var j = 0; j < NT; j++) {
+        var mu = 0, s;
+        for (s = 0; s < n; s++) mu += P[s][j];
+        mu /= n;
+        var vj = 0, tj = 0;
+        for (s = 0; s < n; s++) {
+          vj += (P[s][j] - mu) * (P[s][j] - mu);
+          tj += (ty[j] - P[s][j]) * (ty[j] - P[s][j]);
+        }
+        b2 += (fstar(tx[j]) - mu) * (fstar(tx[j]) - mu);
+        v += vj / n; tot += tj / n;
+        ypb += (ty[j] - mu) * (ty[j] - mu);
+      }
+      b2 /= NT; v /= NT; tot /= NT; ypb /= NT;
+      // tot = ypb + v exactly (step 2 of the derivation, with y held fixed);
+      // ypb is bias^2 + noise, which only a known truth can split.
+      return { b2: b2, v: v, noise: SIG * SIG, sum: b2 + v + SIG * SIG, tot: tot, resid: tot - (ypb + v) };
+    }
+
+    function buildSweep() {
+      sweep = [];
+      for (var d = 0; d <= DMAX; d++) {
+        var P = [];
+        for (var s = 0; s < NSETS; s++) {
+          var D = trainingSet(s, S.m);
+          P.push(predictAll(polyfit(D.x, D.y, d)));
+        }
+        sweep.push(decompose(P));
+      }
+    }
+
+    // --- layout
+    var plots = A.$("#bv-plots");
+    var pFit = A.plot(plots, { x: [0, 1], y: [-2.2, 2.2], w: 420, h: 330, xlabel: "x", ylabel: "y",
+                               caption: "Fits from every training set drawn so far" });
+    var bars = A.canvas(plots, { w: 420, h: 330, caption: "The three terms, against the measured test error" });
+    var sweepHost = A.$("#bv-sweep");
+    var pSw = A.plot(sweepHost, { x: [-0.5, DMAX + 0.5], y: [-4, 1], w: 860, h: 230,
+                                  xlabel: "polynomial degree", ylabel: "error (log scale)",
+                                  xticks: A.range(DMAX + 1), yticks: [-4, -3, -2, -1, 0, 1], yfmt: A.pow10,
+                                  caption: "All thirteen degrees, 200 training sets each" });
+
+    var side = A.$("#bv-side");
+    var sD = A.slider(side, { label: "Polynomial degree", min: 0, max: DMAX, step: 1, value: S.d,
+                              fmt: function (v) { return String(Math.round(v)); },
+                              onInput: function (v) { S.d = Math.round(v); pl.restart(true); } });
+    A.seg(side, { label: "Rows per training set $m$", value: 20,
+                  options: [[20, "20"], [40, "40"], [80, "80"]],
+                  onChange: function (v) { S.m = v; buildSweep(); drawSweep(); pl.restart(true); } });
+    var ro = A.readout(side, [["s", "training sets drawn"], ["b2", "bias²"], ["v", "variance"],
+                              ["n", "noise $\\sigma^2$"], ["sum", "sum of the three"],
+                              ["tot", "measured test error"], ["res", "identity residual"]]);
+    A.legend(side, [{ line: "line ok", label: "truth $f^{*}$" },
+                    { line: "line thin muted", label: "one fit $\\hat f_D$" },
+                    { line: "line", label: "average fit $\\bar f$" },
+                    { shape: "circle", cls: "pt c0", label: "latest training set" },
+                    { swatch: "fill-primary", label: "bias²" }, { swatch: "fill-math", label: "variance" },
+                    { swatch: "fill-gold", label: "noise" }, { swatch: "fill-acc", label: "measured error" }]);
+    var say = A.narrate("#bv-say");
+
+    var PX = A.range(101).map(function (i) { return i / 100; });
+
+    function drawSweep() {
+      pSw.clear("over");
+      A.clear(pSw.layer("grid")); pSw.axes();
+      var L = function (k) { return sweep.map(function (q, d) { return [d, Math.log10(Math.max(q[k], 1e-4))]; }); };
+      pSw.path(L("b2"), "line", "grid");
+      pSw.path(L("v"), "line math", "grid");
+      pSw.path(sweep.map(function (q, d) { return [d, Math.log10(q.noise)]; }), "line gold dash thin", "grid");
+      pSw.path(L("sum"), "line acc thin", "grid");
+      sweep.forEach(function (q, d) {
+        pSw.dot(d, Math.log10(q.tot), { shape: "diamond", r: 3.6, cls: "pt fill-acc", layer: "grid" });
+      });
+      var best = 0;
+      sweep.forEach(function (q, d) { if (q.tot < sweep[best].tot) best = d; });
+      pSw.text(DMAX + 0.4, Math.log10(sweep[DMAX].v), "variance", { anchor: "end", dy: -6, cls: "lbl-sm", layer: "grid" });
+      pSw.text(0.1, Math.log10(sweep[0].b2), "bias²", { dy: -6, cls: "lbl-sm", layer: "grid" });
+      pSw.text(DMAX + 0.4, Math.log10(SIG * SIG), "noise σ²", { anchor: "end", dy: 13, cls: "lbl-sm", layer: "grid" });
+      pSw.text(best, Math.log10(sweep[best].tot), "lowest total", { anchor: "middle", dy: -9, cls: "lbl-sm", layer: "grid" });
+    }
+
+    function reset() {
+      st = { n: 0, P: [], curves: [], last: null };
+    }
+    function step() {
+      var D = trainingSet(st.n, S.m), th = polyfit(D.x, D.y, S.d);
+      st.P.push(predictAll(th));
+      st.curves.push(PX.map(function (x) { return [x, A.clamp(polyval(th, x), -9, 9)]; }));
+      st.last = D;
+      st.n++;
+      return st.n < NSETS;
+    }
+
+    function drawBars(q) {
+      bars.clear();
+      var g = bars.g, top = 34, bot = 282, H = bot - top;
+      var ymax = Math.max(q ? Math.max(q.sum, q.tot) : 0.2, 0.05) * 1.12;
+      var Y = function (v) { return bot - v / ymax * H; };
+      A.el("line", { x1: 40, x2: 400, y1: bot, y2: bot, class: "axis" }, g);
+      bars.text(130, 22, "bias² + variance + noise", "axis-label", "middle");
+      bars.text(310, 22, "measured test error", "axis-label", "middle");
+      if (!q) {
+        bars.text(210, 160, "no training sets yet", "lbl-sm", "middle");
+        return;
+      }
+      var y0 = bot, parts = [["b2", "fill-primary", "bias²"], ["v", "fill-math", "variance"], ["noise", "fill-gold", "noise"]];
+      parts.forEach(function (pp) {
+        var hgt = q[pp[0]] / ymax * H;
+        A.el("rect", { x: 85, y: y0 - hgt, width: 90, height: Math.max(hgt, 0), class: pp[1], opacity: 0.85 }, g);
+        if (hgt > 15) bars.text(180, y0 - hgt / 2 + 4, pp[2] + " " + fmt(q[pp[0]], 3), "lbl-sm", "start");
+        y0 -= hgt;
+      });
+      bars.text(130, Y(q.sum) - 6, fmt(q.sum, 3), "lbl mono", "middle");
+      A.el("rect", { x: 265, y: Y(q.tot), width: 90, height: bot - Y(q.tot), class: "fill-acc", opacity: 0.8 }, g);
+      bars.text(310, Y(q.tot) - 6, fmt(q.tot, 3), "lbl mono", "middle");
+      A.el("line", { x1: 175, x2: 265, y1: Y(q.sum), y2: Y(q.sum), class: "zero" }, g);
+      bars.text(210, bot + 22, "degree " + S.d + ", m = " + S.m + ", averaged over 1,000 test points", "lbl-sm", "middle");
+    }
+
+    function render() {
+      var q = st.n ? decompose(st.P) : null;
+      pFit.clear();
+      var n = st.curves.length;
+      st.curves.forEach(function (c, k) {
+        pFit.path(c, "line thin muted", "data", { opacity: k === n - 1 ? 0.9 : 0.28 });
+      });
+      pFit.path(PX.map(function (x) { return [x, fstar(x)]; }), "line ok");
+      if (n) {
+        var fbar = PX.map(function (x, i) {
+          var s = 0; st.curves.forEach(function (c) { s += c[i][1]; }); return [x, s / n];
+        });
+        pFit.path(fbar, "line");
+        st.last.x.forEach(function (x, i) { pFit.dot(x, st.last.y[i], { r: 3.6, cls: "pt c0" }); });
+      }
+      drawBars(q);
+      pSw.clear();
+      pSw.line(S.d, -4, S.d, 1, "line thin ink dash");
+
+      ro.set("s", String(st.n));
+      ro.set("b2", q ? sig(q.b2, 3) : "—");
+      ro.set("v", q ? sig(q.v, 3) : "—");
+      ro.set("n", sig(SIG * SIG, 3));
+      ro.set("sum", q ? sig(q.sum, 4) : "—");
+      ro.set("tot", q ? sig(q.tot, 4) : "—");
+      ro.set("res", q ? sig(Math.abs(q.resid), 2) : "—", q ? "good" : "");
+
+      var w = sweep[S.d];
+      if (!n) {
+        say.say("<span class='k'>Start.</span> The truth is green; no training set has been drawn yet. Each step draws " +
+                S.m + " noisy points from " + K("f^{*}") + " and fits a degree-" + S.d + " polynomial. Over all 200 sets, the bottom plot already shows where this degree ends up: bias² " +
+                sig(w.b2, 3) + ", variance " + sig(w.v, 3) + ", noise " + sig(SIG * SIG, 2) + ". Press <em>Step</em>.");
+      } else {
+        var big = q.b2 > q.v ? "bias² is the larger of the two terms a model can affect" : "variance is the larger of the two terms a model can affect";
+        say.say("<span class='k'>Training set " + n + ".</span> A new " + K("D") + " of " + S.m + " points, a new degree-" + S.d +
+                " fit. Averaged over the " + n + " fits so far and the 1,000 test points: " +
+                K("\\text{bias}^2 = " + fmt(q.b2, 4)) + ", " + K("\\text{variance} = " + fmt(q.v, 4)) + ", " +
+                K("\\sigma^2 = " + fmt(SIG * SIG, 2)) + ". Their sum is " + fmt(q.sum, 4) + "; the measured test error is " + fmt(q.tot, 4) +
+                ". Here " + big + "." +
+                (n === NSETS ? " <strong>All 200 sets drawn</strong> — these are the numbers on the bottom plot." : ""));
+      }
+    }
+
+    buildSweep();
+    drawSweep();
+    A.onTheme(function () { drawSweep(); render(); });
+    pl = A.player("#bv-bar", { step: step, reset: reset, render: render, fps: 6, unit: "training set" });
+  })();
+
+  /* ======================================================================
+     2 · Learning and validation curves
+     ====================================================================== */
+  (function () {
+    var SIG = 0.5, NPOOL = 40, MMAX = 150, M0 = 15, DMAX = 12, YTOP = 0.8;
+    var PHI = (Math.sqrt(5) - 1) / 2;
+    var fstar = function (x) { return Math.sin(1.5 * Math.PI * x); };
+    // 2,000 validation points, drawn once.
+    var RV = A.rng(99), vx = [], vy = [];
+    for (var i = 0; i < 2000; i++) { var x0 = RV.u(); vx.push(x0); vy.push(fstar(x0) + RV.n(0, SIG)); }
+    // 40 pools of 150 rows. The first m rows of a pool are its training set
+    // at size m, so the sets are nested as rows arrive. The x positions follow
+    // the golden-ratio sequence from a random start, which keeps every prefix
+    // spread over [0, 1].
+    var pools = A.range(NPOOL).map(function (r) {
+      var R = A.rng(700 + r), u0 = R.u(), xs = [], ys = [];
+      for (var i = 0; i < MMAX; i++) { var x = (u0 + i * PHI) % 1; xs.push(x); ys.push(fstar(x) + R.n(0, SIG)); }
+      return { x: xs, y: ys };
+    });
+    var cache = {};
+    // Training and validation MSE for every degree at m rows, averaged over the pools.
+    function errorsAt(m) {
+      if (cache[m]) return cache[m];
+      var out = [];
+      for (var d = 0; d <= DMAX; d++) {
+        var tr = 0, va = 0;
+        pools.forEach(function (P) {
+          var X = P.x.slice(0, m), Y = P.y.slice(0, m), th = polyfit(X, Y, d), s = 0, j;
+          for (j = 0; j < m; j++) { var r = Y[j] - polyval(th, X[j]); s += r * r; }
+          tr += s / m;
+          s = 0;
+          for (j = 0; j < vx.length; j++) { var e = vy[j] - polyval(th, vx[j]); s += e * e; }
+          va += s / vx.length;
+        });
+        out.push({ tr: tr / NPOOL, va: va / NPOOL });
+      }
+      return (cache[m] = out);
+    }
+
+    var S = { d: 1 }, st, pl;
+    var plots = A.$("#lc-plots");
+    var pLC = A.plot(plots, { x: [0, MMAX], y: [0, YTOP], w: 420, h: 300, xlabel: "training rows m", ylabel: "MSE",
+                              xticks: [0, 25, 50, 75, 100, 125, 150],
+                              caption: "Learning curve: error against rows, at this degree" });
+    var pVC = A.plot(plots, { x: [-0.5, DMAX + 0.5], y: [0, YTOP], w: 420, h: 300, xlabel: "polynomial degree", ylabel: "MSE",
+                              xticks: A.range(DMAX + 1),
+                              caption: "Validation curve: error against degree, at these rows" });
+    var pData = A.plot("#lc-data", { x: [0, 1], y: [-2.5, 2.5], w: 860, h: 210, xlabel: "x", ylabel: "y",
+                                     caption: "The first of the 40 training sets, and the fit to it" });
+
+    var side = A.$("#lc-side");
+    A.seg(side, { label: "Degree of the model", value: 1,
+                  options: [[1, "1 · rigid"], [3, "3"], [12, "12 · flexible"]],
+                  onChange: function (v) { S.d = v; pl.restart(true); } });
+    var ro = A.readout(side, [["m", "training rows $m$"], ["tr", "training MSE"], ["va", "validation MSE"],
+                              ["gap", "gap"], ["ex", "excess over $\\sigma^2$"], ["best", "best degree at this $m$"]]);
+    A.legend(side, [{ line: "line dash", label: "training error" }, { line: "line acc", label: "validation error" },
+                    { line: "line ok dash thin", label: "noise floor $\\sigma^2 = 0.25$" },
+                    { line: "line ok", label: "truth $f^{*}$" }, { shape: "circle", cls: "pt c0", label: "training rows" }]);
+    var say = A.narrate("#lc-say");
+
+    function reset() { st = { m: M0, hist: [] }; st.hist.push({ m: M0, e: errorsAt(M0)[S.d] }); }
+    function step() {
+      st.m += 5;
+      st.hist.push({ m: st.m, e: errorsAt(st.m)[S.d] });
+      return st.m < MMAX;
+    }
+    var clip = function (v) { return Math.min(v, YTOP * 1.02); };
+
+    function render() {
+      var m = st.m, E = errorsAt(m), e = E[S.d], P = pools[0];
+      var th = polyfit(P.x.slice(0, m), P.y.slice(0, m), S.d);
+      pData.clear();
+      var xs = A.linspace(0, 1, 151);
+      pData.path(xs.map(function (x) { return [x, fstar(x)]; }), "line ok thin");
+      pData.path(xs.map(function (x) { return [x, A.clamp(polyval(th, x), -9, 9)]; }), "line");
+      for (var i = 0; i < m; i++) pData.dot(P.x[i], P.y[i], { r: 3, cls: "pt c0" });
+
+      pLC.clear();
+      pLC.line(0, SIG * SIG, MMAX, SIG * SIG, "line ok dash thin");
+      pLC.path(st.hist.map(function (h) { return [h.m, clip(h.e.tr)]; }), "line dash");
+      pLC.path(st.hist.map(function (h) { return [h.m, clip(h.e.va)]; }), "line acc");
+      pLC.dot(m, clip(e.va), { r: 4, cls: "pt fill-acc" });
+      if (e.va > YTOP) pLC.text(m, YTOP, "↑ " + sig(e.va, 3), { dx: 6, dy: 14, cls: "lbl-sm" });
+
+      pVC.clear();
+      pVC.line(-0.5, SIG * SIG, DMAX + 0.5, SIG * SIG, "line ok dash thin");
+      pVC.line(S.d, 0, S.d, YTOP, "line thin ink dash");
+      pVC.path(E.map(function (q, d) { return [d, clip(q.tr)]; }), "line dash");
+      pVC.path(E.map(function (q, d) { return [d, clip(q.va)]; }), "line acc");
+      E.forEach(function (q, d) { if (q.va <= YTOP) pVC.dot(d, q.va, { r: 3, cls: "pt fill-acc" }); });
+      var best = 0;
+      E.forEach(function (q, d) { if (q.va < E[best].va) best = d; });
+      pVC.dot(best, E[best].va, { r: 7, shape: "circle", cls: "halo", layer: "over" });
+
+      var gap = e.va - e.tr, ex = e.va - SIG * SIG;
+      ro.set("m", String(m));
+      ro.set("tr", sig(e.tr, 3));
+      ro.set("va", sig(e.va, 3));
+      ro.set("gap", sig(gap, 3));
+      ro.set("ex", sig(ex, 3));
+      ro.set("best", String(best));
+
+      var prev = st.hist.length > 5 ? st.hist[st.hist.length - 6] : null;
+      var drop = prev ? prev.e.va - e.va : null;
+      var reading;
+      if (ex < 0.02) {
+        reading = "Validation error is only " + sig(ex, 2) + " above the floor, so whatever its cause, there is little left for any model to win.";
+      } else if (Math.abs(gap) < 0.25 * ex) {
+        reading = "The curves are within " + sig(Math.abs(gap), 2) + " of each other while both sit " + sig(ex, 2) +
+                  " above the floor: the excess is <strong>not</strong> the gap. That is <strong>bias</strong>; more rows will not remove it.";
+      } else {
+        reading = "Validation sits " + sig(gap, 3) + " above training: the gap is open. That is <strong>variance</strong>" +
+                  (drop !== null && drop > 0 ? ", and rows are still paying: validation error fell by " + sig(drop, 2) + " over the last 25." : ".");
+      }
+      say.say("<span class='k'>" + m + " rows.</span> Degree " + S.d + ": training MSE " + sig(e.tr, 3) + ", validation MSE " +
+              sig(e.va, 3) + ", against a floor of " + K("\\sigma^2 = 0.25") + ". " + reading +
+              " On the validation curve, the best degree at " + m + " rows is " + best + ".");
+    }
+
+    pl = A.player("#lc-bar", { step: step, reset: reset, render: render, fps: 3, unit: "+5 rows" });
+  })();
+
+  /* ======================================================================
+     3 · Ridge against lasso
+     ====================================================================== */
+  (function () {
+    var m = 50, N = 60, TRUE = [2, 0.6];
+    var S = { r: 0.6, gd: false }, D, st, pl;
+
+    // Two standardised columns with sample correlation exactly r, and a
+    // centred target. Exactness comes from orthogonalising the raw draws.
+    function makeData(r) {
+      var R = A.rng(55), z1 = [], z2 = [], e = [], i;
+      for (i = 0; i < m; i++) { z1.push(R.n()); z2.push(R.n()); e.push(R.n(0, 1)); }
+      var std = function (v) { var mu = A.mean(v), sd = A.std(v); return v.map(function (a) { return (a - mu) / sd; }); };
+      z1 = std(z1);
+      var c = A.dot(z1, z2) / A.dot(z1, z1);
+      z2 = std(z2.map(function (v, k) { return v - c * z1[k]; }));
+      var x1 = z1, x2 = z1.map(function (v, k) { return r * v + Math.sqrt(1 - r * r) * z2[k]; });
+      var y = x1.map(function (v, k) { return TRUE[0] * v + TRUE[1] * x2[k] + e[k]; });
+      var my = A.mean(y); y = y.map(function (v) { return v - my; });
+      var G = [[A.dot(x1, x1), A.dot(x1, x2)], [A.dot(x2, x1), A.dot(x2, x2)]];
+      var b = [A.dot(x1, y), A.dot(x2, y)];
+      var ols = A.solve(G, b);
+      return { x1: x1, x2: x2, y: y, G: G, b: b, ols: ols, yy: A.dot(y, y) };
+    }
+    function mse(t) {
+      var G = D.G, b = D.b;
+      return (D.yy - 2 * (t[0] * b[0] + t[1] * b[1]) +
+              t[0] * t[0] * G[0][0] + 2 * t[0] * t[1] * G[0][1] + t[1] * t[1] * G[1][1]) / m;
+    }
+    function ridge(al) { return A.solve([[D.G[0][0] + al, D.G[0][1]], [D.G[1][0], D.G[1][1] + al]], D.b); }
+    var soft = function (z, a) { return z > a ? z - a : z < -a ? z + a : 0; };
+    // Coordinate descent; z_j is the data's pull on coordinate j.
+    function lasso(al) {
+      var t = [0, 0], z = [0, 0];
+      for (var it = 0; it < 400; it++) for (var j = 0; j < 2; j++) {
+        var k = 1 - j;
+        z[j] = (D.b[j] - D.G[j][k] * t[k]) / m;
+        t[j] = soft(z[j], al);
+      }
+      // The pull on each coordinate at the answer.
+      var pull = [0, 1].map(function (j) { return (D.b[j] - D.G[j][1 - j] * t[1 - j]) / m; });
+      return { t: t, pull: pull };
+    }
+    var aR = function (k) { return Math.pow(10, -1 + 5 * k / N); };     // ridge: 0.1 to 10^4
+    var aL = function (k) { return Math.pow(10, -2 + 2.5 * k / N); };   // lasso: 0.01 to 10^0.5
+    function paths() {
+      var pr = [], pls = [];
+      for (var k = 0; k <= N; k++) { pr.push(ridge(aR(k))); pls.push(lasso(aL(k)).t); }
+      return { r: pr, l: pls };
+    }
+    function gdPath() {
+      // Plain gradient descent on the MSE from theta = 0, eta = 0.1.
+      var t = [0, 0], out = [[0, 0]];
+      for (var it = 0; it < 400; it++) {
+        var g0 = 2 * (D.G[0][0] * t[0] + D.G[0][1] * t[1] - D.b[0]) / m;
+        var g1 = 2 * (D.G[1][0] * t[0] + D.G[1][1] * t[1] - D.b[1]) / m;
+        t = [t[0] - 0.1 * g0, t[1] - 0.1 * g1];
+        out.push(t.slice());
+      }
+      return out;
+    }
+
+    var geo = A.$("#pn-geo"), pth = A.$("#pn-paths");
+    var DOM = { x: [-0.5, 2.7], y: [-0.7, 1.5] };
+    var gR = A.plot(geo, { x: DOM.x, y: DOM.y, w: 420, h: 340, equal: true, xlabel: "θ₁", ylabel: "θ₂", zero: true,
+                           caption: "Ridge: the disc ‖θ‖₂ ≤ t" });
+    var gL = A.plot(geo, { x: DOM.x, y: DOM.y, w: 420, h: 340, equal: true, xlabel: "θ₁", ylabel: "θ₂", zero: true,
+                           caption: "Lasso: the diamond ‖θ‖₁ ≤ t" });
+    var cR = A.plot(pth, { x: [-1, 4], y: [-0.2, 2.2], w: 420, h: 190, xlabel: "log₁₀ α (ridge)", ylabel: "θⱼ", zero: true,
+                           caption: "Ridge coefficient paths" });
+    var cL = A.plot(pth, { x: [-2, 0.5], y: [-0.2, 2.2], w: 420, h: 190, xlabel: "log₁₀ α (lasso)", ylabel: "θⱼ", zero: true,
+                           caption: "Lasso coefficient paths" });
+
+    var side = A.$("#pn-side");
+    A.seg(side, { label: "Features", value: "corr",
+                  options: [["corr", "correlated (r = 0.6)"], ["unc", "uncorrelated"]],
+                  onChange: function (v) { S.r = v === "corr" ? 0.6 : 0; setup(); pl.restart(true); } });
+    A.check(side, { label: "Show the gradient-descent path from $\\mathbf 0$", value: false,
+                    onChange: function (v) { S.gd = v; render(); } });
+    var ro = A.readout(side, [["k", "step"], ["aR", "ridge $\\alpha$"], ["tR", "ridge $\\boldsymbol\\theta$"],
+                              ["aL", "lasso $\\alpha$"], ["tL", "lasso $\\boldsymbol\\theta$"],
+                              ["pull", "lasso pull $(|z_1|, |z_2|)$"], ["ols", "$\\hat{\\boldsymbol\\theta}$ (no penalty)"]]);
+    A.legend(side, [{ line: "line thin muted", label: "MSE contours" }, { line: "line acc", label: "contour through the answer" },
+                    { swatch: "fill-soft", label: "region $\\Omega \\le \\Omega(\\boldsymbol\\theta_\\alpha)$" },
+                    { shape: "circle", cls: "pt c0", label: "penalised answer $\\boldsymbol\\theta_\\alpha$" },
+                    { line: "line", label: "$\\theta_1$ path" }, { line: "line math", label: "$\\theta_2$ path" },
+                    { line: "line gold dot", label: "gradient descent from 0" }]);
+    var say = A.narrate("#pn-say");
+
+    var P;
+    function setup() { D = makeData(S.r); P = paths(); drawStatic(); }
+    function drawStatic() {
+      var base = mse(D.ols);
+      [gR, gL].forEach(function (g) {
+        A.clear(g.layer("grid")); g.axes({ zero: true });
+        [0.05, 0.2, 0.5, 1, 2, 3.5].forEach(function (lev) {
+          g.contour(function (a, b) { return mse([a, b]) - base; }, lev, "line thin muted", "grid", 80);
+        });
+        g.dot(D.ols[0], D.ols[1], { shape: "cross", r: 6, cls: "line ok", layer: "grid" });
+      });
+    }
+
+    function reset() { st = { k: 0 }; }
+    function step() { st.k++; return st.k < N; }
+
+    function render() {
+      var k = st.k, ar = aR(k), al = aL(k), tr = P.r[k], L = lasso(al), tl = L.t, base = mse(D.ols);
+      // Ridge: disc of radius ||theta||_2.
+      gR.clear();
+      var rad = Math.hypot(tr[0], tr[1]);
+      gR.poly(A.linspace(0, 2 * Math.PI, 121).map(function (u) { return [rad * Math.cos(u), rad * Math.sin(u)]; }), "fill-soft");
+      gR.path(A.linspace(0, 2 * Math.PI, 121).map(function (u) { return [rad * Math.cos(u), rad * Math.sin(u)]; }), "line thin ink");
+      gR.contour(function (a, b) { return mse([a, b]) - mse(tr); }, 0, "line acc thin", "data", 90);
+      gR.path(P.r, "line thin muted dash");
+      if (S.gd) gR.path(gdPath(), "line gold dot");
+      gR.dot(tr[0], tr[1], { r: 5.5, cls: "pt c0", layer: "over" });
+      // Lasso: diamond of l1 radius ||theta||_1.
+      gL.clear();
+      var t1 = Math.abs(tl[0]) + Math.abs(tl[1]);
+      var dia = [[t1, 0], [0, t1], [-t1, 0], [0, -t1]];
+      gL.poly(dia, "fill-soft");
+      gL.path(dia.concat([dia[0]]), "line thin ink");
+      if (t1 > 1e-9) gL.contour(function (a, b) { return mse([a, b]) - mse(tl); }, 0, "line acc thin", "data", 90);
+      gL.path(P.l, "line thin muted dash");
+      if (S.gd) gL.path(gdPath(), "line gold dot");
+      gL.dot(tl[0], tl[1], { r: 5.5, cls: "pt c0", layer: "over" });
+
+      // Paths so far.
+      var seg = function (arr, j, f) { return arr.slice(0, k + 1).map(function (t, i) { return [f(i), t[j]]; }); };
+      var xr = function (i) { return -1 + 5 * i / N; }, xl = function (i) { return -2 + 2.5 * i / N; };
+      cR.clear(); cL.clear();
+      cR.path(seg(P.r, 0, xr), "line"); cR.path(seg(P.r, 1, xr), "line math");
+      cL.path(seg(P.l, 0, xl), "line"); cL.path(seg(P.l, 1, xl), "line math");
+      cR.line(xr(k), -0.2, xr(k), 2.2, "line thin ink dash");
+      cL.line(xl(k), -0.2, xl(k), 2.2, "line thin ink dash");
+      cR.text(xr(k), tr[0], "θ₁", { dx: 6, dy: -4, cls: "lbl-sm" }); cR.text(xr(k), tr[1], "θ₂", { dx: 6, dy: 12, cls: "lbl-sm" });
+      cL.text(xl(k), tl[0], "θ₁", { dx: 6, dy: -4, cls: "lbl-sm" }); cL.text(xl(k), tl[1], "θ₂", { dx: 6, dy: 12, cls: "lbl-sm" });
+
+      var pair = function (t) { return "(" + fmt(t[0], 3) + ", " + fmt(t[1], 3) + ")"; };
+      ro.set("k", k + " / " + N);
+      ro.set("aR", sig(ar, 3));
+      ro.set("tR", pair(tr));
+      ro.set("aL", sig(al, 3));
+      ro.set("tL", pair(tl), tl[1] === 0 || tl[0] === 0 ? "good" : "");
+      ro.set("pull", "(" + fmt(Math.abs(L.pull[0]), 3) + ", " + fmt(Math.abs(L.pull[1]), 3) + ")");
+      ro.set("ols", pair(D.ols));
+
+      var zeros = (tl[0] === 0 ? 1 : 0) + (tl[1] === 0 ? 1 : 0);
+      var lassoTxt;
+      if (zeros === 2) lassoTxt = "Lasso is at the origin: both pulls, " + fmt(Math.abs(L.pull[0]), 3) + " and " + fmt(Math.abs(L.pull[1]), 3) +
+                                  ", are at most " + K("\\alpha = " + sig(al, 3)) + ", so both weights are held at exactly zero.";
+      else if (zeros === 1) {
+        var j = tl[1] === 0 ? 2 : 1;
+        lassoTxt = "Lasso sits on a <strong>corner</strong> of the diamond: " + K("\\theta_" + j + " = 0") + " exactly, because its pull " +
+                   K("|z_" + j + "| = " + fmt(Math.abs(L.pull[j - 1]), 3)) + " is below " + K("\\alpha = " + sig(al, 3)) + ".";
+      } else lassoTxt = "Lasso is on an edge of the diamond, both weights non-zero: each pull exceeds " + K("\\alpha = " + sig(al, 3)) +
+                        " and is shrunk by exactly that much.";
+      if (k === 0) {
+        say.say("<span class='k'>Start.</span> Both penalties are weak (ridge " + K("\\alpha = " + sig(ar, 2)) + ", lasso " + K("\\alpha = " + sig(al, 2)) +
+                "), so both answers sit almost on " + K("\\hat{\\boldsymbol\\theta} = " + pair(D.ols)) +
+                ". Each step multiplies ridge's " + K("\\alpha") + " by " + fmt(Math.pow(10, 5 / N), 3) + " and lasso's by " + fmt(Math.pow(10, 2.5 / N), 3) + ". Press <em>Step</em>.");
+      } else {
+        say.say("<span class='k'>Step " + k + ".</span> Ridge, " + K("\\alpha = " + sig(ar, 3)) + ": " + K("\\boldsymbol\\theta = " + pair(tr)) +
+                ", inside a disc of radius " + fmt(rad, 3) + "; MSE " + fmt(mse(tr), 3) + " against " + fmt(base, 3) +
+                " unpenalised. Neither weight is zero. " + lassoTxt + " Lasso MSE " + fmt(mse(tl), 3) + ".");
+      }
+    }
+
+    setup();
+    A.onTheme(function () { drawStatic(); render(); });
+    pl = A.player("#pn-bar", { step: step, reset: reset, render: render, fps: 5, unit: "step" });
+  })();
+})();
+</script>
+</body>
+</html>

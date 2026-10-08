@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 13 — Transfer learning</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Transfer learning</h1>
+  <p class="subtitle">Flowers102</p>
+  <p><span class="badge badge-lec">Lecture 13</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 12</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">The single largest number in the course moves today.
+  Make them predict it before you show it.</aside>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Lecture&nbsp;12 built a convolutional network for the
+  flower brief: weight sharing, so one filter is reused at every position;
+  equivariance, so the feature map follows a shift of the image; pooling,
+  which turns that into invariance; then an architecture, trained from scratch
+  and scored once on the test set. Rebuilt and retrained in this lecture&rsquo;s
+  notebook:</p>
+  <table class="smaller">
+    <tr><th>Model</th><th class="num">Test accuracy</th></tr>
+    <tr><td>Always the commonest species</td><td class="num">3.87%</td></tr>
+    <tr><td>Convolutional network from scratch, 4,807,494 parameters, 20 epochs</td><td class="num">9.82%</td></tr>
+    <tr><td>What the operator needs</td><td class="num fail">90%</td></tr>
+  </table>
+  <div class="panel panel-when">
+    <span class="panel-title">The condition</span>
+    We asked <strong>1,020 labelled images</strong> to pay for
+    <strong>4,807,494 parameters</strong>. Most of those parameters encode
+    facts about photographs in general — edges, textures, colour gradients —
+    rather than facts about flowers, and there is nowhere near enough labelled
+    data here to learn them.
+  </div>
+  <p class="small">Which suggests the repair: do not learn them. Somebody
+  already has.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>Why features transfer at all, and what that diagnoses about
+        Lecture&nbsp;12&rsquo;s network</li>
+    <li><strong>The method</strong> &mdash; a pretrained backbone, a frozen
+        probe, unfreezing the last block at its own learning rate, and
+        augmentation</li>
+    <li>A failure condition: one transform handed to two loaders</li>
+    <li>The scoreboard, and when transfer fails</li>
+  </ol>
+  <p class="small muted">No new derivation today &mdash; Lecture&nbsp;12&rsquo;s
+  parameter count is the whole argument, and this lecture is what you do about
+  it. <span class="scope scope-exam">examinable</span> the method, and the
+  conditions under which it fails.</p>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-13.ipynb">Open Lecture 13 in Colab</a>
+  </p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="What the backbone knows">
+  <h2>What a pretrained backbone has actually learned</h2>
+  <p class="small">Not &ldquo;flowers&rdquo;. A hierarchy, and only the bottom
+  of it is general:</p>
+  <table class="smaller">
+    <tr><th>Depth</th><th>What the filters respond to</th><th>Transfers?</th></tr>
+    <tr><td>first block</td><td>edges, colour opponency, simple gradients</td><td class="hit">to essentially anything</td></tr>
+    <tr><td>middle blocks</td><td>textures, repeated motifs, part-like shapes</td><td class="hit">to most natural images</td></tr>
+    <tr><td>last blocks</td><td>object-specific configurations</td><td class="miss">only to similar objects</td></tr>
+    <tr><td>the head</td><td>the 1,000 ImageNet classes</td><td class="miss">not at all — it is replaced</td></tr>
+  </table>
+  <p class="small">Which is the whole recipe: <strong>keep the bottom, adapt
+  the top, replace the head.</strong> Freezing is not a compromise forced by
+  compute — it is a statement that those layers already encode what you would
+  otherwise be trying to learn from 1,020 images.</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="The gap">
+  <h2>The measurement that names the problem</h2>
+  <table>
+    <tr><th></th><th class="num">Accuracy</th></tr>
+    <tr><td>Training set</td><td class="num">27.75%</td></tr>
+    <tr><td class="fail">Validation set</td><td class="num fail">11.67%</td></tr>
+    <tr><td class="fail">Gap</td><td class="num fail">16 points</td></tr>
+  </table>
+  <p class="lead">Lecture 5 gave this shape a name: a gap between the images
+  the network has seen and the ones it has not is <strong>variance</strong>.</p>
+  <p class="small">Not a capacity problem. Twenty epochs is a short run and the
+  training accuracy is still climbing when it stops &mdash; but it is already
+  16 points ahead of validation, and fitting harder widens that gap rather
+  than closing it.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 6 -->
+<section data-menu-title="The two cures">
+  <h2>Lecture 5&rsquo;s two cures for variance</h2>
+  <table>
+    <tr><th>Cure</th><th>Can we?</th></tr>
+    <tr><td>More training data</td><td class="fail">no &mdash; labelling is the whole cost</td></tr>
+    <tr><td>More constraint on the hypothesis space</td><td class="fix">yes, and we have already done it once</td></tr>
+  </table>
+  <p class="small">Weight sharing was a constraint, and it bought a factor of
+  5,478,275. The question is where the next constraint
+  comes from.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 7 -->
+<section class="figslide" data-menu-title="◆ A trained first layer">
+  <h2>1.28 million labels, spent on this</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l16-imagenet-filters.png"
+         alt="A montage of sixty-four seven-by-seven colour patches from the first layer of a ResNet-18 trained on ImageNet: oriented light and dark bars at many angles, and smooth opponent-colour blobs.">
+  </figure>
+  <p class="takeaway">The first layer of a ResNet-18 trained on ImageNet:
+  oriented edges and opponent-colour blobs. 9,408 numbers, and every one of
+  them is a fact about photographs rather than about the 1,000 classes they
+  were fitted on.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 8 -->
+<section data-menu-title="The diagnosis">
+  <h2>The diagnosis</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">One sentence</span>
+    We asked 1,020 labelled images to pay for
+    4,807,494 parameters, most of which encode facts about
+    photographs in general rather than facts about flowers.
+  </div>
+  <p>The repair is therefore not a better architecture, a longer run or a
+  cleverer schedule. It is <strong>starting from weights that already
+  work</strong>.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 9 -->
+<section data-menu-title="Choosing a backbone">
+  <h2>Which backbone?</h2>
+  <table class="smaller">
+    <tr><th>Family</th><th class="num">Params</th><th>Use it when</th></tr>
+    <tr><td>MobileNet / EfficientNet-B0</td><td class="num">~5 M</td><td>the budget is CPU, or inference has to be fast</td></tr>
+    <tr><td>ResNet-18 / ResNet-50</td><td class="num">11 / 25 M</td><td>the default; well understood and widely reproduced</td></tr>
+    <tr><td>ConvNeXt, ViT-B</td><td class="num">~88 M</td><td>plenty of data and plenty of compute</td></tr>
+  </table>
+  <div class="panel">
+    <span class="panel-title">The rule that matters more than the family</span>
+    A <strong>bigger backbone is not automatically better on a small corpus.</strong>
+    You are fitting a head on frozen features; more features means more
+    parameters in the head and more chance to overfit 1,020 images. Start small,
+    and grow it only if the validation curve says the features are the
+    bottleneck.
+  </div>
+  <p class="small muted"><span class="scope scope-eng">not examinable &mdash;
+  engineering</span> The names change every year. The trade-off does not.</p>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="Probe first, fine-tune second">
+  <h2>Two decisions, in this order</h2>
+  <ol class="tight">
+    <li><strong>Linear probe.</strong> Freeze everything, extract features once,
+        fit a linear classifier. Minutes, and it tells you whether the backbone
+        understands your images at all</li>
+    <li><strong>Fine-tune.</strong> Unfreeze the last block or two, small
+        learning rate, and only if the probe was promising</li>
+  </ol>
+  <div class="panel">
+    <span class="panel-title">Why the order is not arbitrary</span>
+    The probe is a <em>measurement of the features</em>, uncontaminated by
+    anything you do to them. If it barely beats the trivial baseline, the
+    features are wrong for this domain and fine-tuning is polishing the wrong
+    object. If it is already close, fine-tuning has little left to buy and may
+    cost you generalisation.
+  </div>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="The batch-norm trap, stated">
+  <h2>Freezing weights does not freeze a network</h2>
+  <p><code>requires_grad = False</code> stops the <em>gradients</em>. It does
+  not stop batch normalisation updating its running mean and variance, which
+  happens in the forward pass and has nothing to do with autograd.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">The condition</span>
+    A &ldquo;frozen&rdquo; backbone in <code>train()</code> mode keeps rewriting
+    its normalisation statistics from your batches. The weights are fixed and
+    the network still drifts &mdash; and it drifts towards a corpus of 1,020
+    images, which is the opposite of what you froze it for.
+  </div>
+  <p class="small">The fix is <code>model.eval()</code> on the frozen part
+  &mdash; the same call that switches dropout off for evaluation, and for the
+  same underlying reason: some modules behave differently in the two modes, and
+  the mode is not implied by anything else you have set.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="The recipe, in order">
+  <h2>The recipe</h2>
+  <ol class="tight small">
+    <li>Load a pretrained backbone and <strong>its</strong> preprocessing &mdash;
+        the normalisation constants are part of the weights</li>
+    <li>Freeze it, put it in <code>eval()</code> mode, extract features once</li>
+    <li>Fit a linear head. <strong>Measure.</strong> This is the number
+        everything else has to beat</li>
+    <li>Unfreeze the last block; learning rate an order of magnitude smaller
+        than the head&rsquo;s. Measure again</li>
+    <li>Add augmentation, one transform at a time, each justified by an
+        invariance you can state. Measure each</li>
+    <li>Report the ablation, not just the best number</li>
+  </ol>
+  <p class="small fail">Steps 3, 4 and 5 each end in <em>measure</em>. A recipe
+  without them is a ritual.</p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="The backbone">
+  <h2>The backbone we will use</h2>
+  <pre><code class="language-python" data-trim>
+from torchvision.models import resnet18, ResNet18_Weights
+
+weights = ResNet18_Weights.DEFAULT
+net = resnet18(weights=weights)
+  </code></pre>
+  <table>
+    <tr><th></th><th class="num">Value</th></tr>
+    <tr><td>Parameters</td><td class="num">11,689,512</td></tr>
+    <tr><td>Trained on</td><td class="num">ImageNet, 1,000 classes</td></tr>
+    <tr><td>Output before the classifier</td><td class="num">512 numbers</td></tr>
+  </table>
+  <p class="small muted">Residual networks are Chapter 12's own example
+  architecture. We use it; the residual connection itself is the book&rsquo;s, not
+  ours to re-derive.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Its preprocessing">
+  <h2>The weights come with their own preprocessing</h2>
+  <pre><code class="language-python" data-trim>
+&gt;&gt;&gt; ResNet18_Weights.DEFAULT.transforms()
+ImageClassification(
+    crop_size=[224]
+    resize_size=[256]
+    mean=[0.485, 0.456, 0.406]
+    std=[0.229, 0.224, 0.225]
+    interpolation=InterpolationMode.BILINEAR
+)
+  </code></pre>
+  <p class="fail small">Use these statistics, not ones computed from your own
+  training images. The network&rsquo;s first layer expects inputs on the scale it
+  was trained with, and substituting your own is a silent, uncrashing
+  degradation.</p>
+</section>
+
+<!-- 15 -->
+<section class="figslide" data-menu-title="◆ Freeze and train">
+  <h2>What is frozen and what moves</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-transfer.svg"
+         alt="Five boxes in a row: conv1 plus layer1, layer2 and layer3 marked frozen in grey; layer4 marked with learning rate 1e-4 in purple; and a new fully connected layer to 102 outputs marked with learning rate 1e-3 in green.">
+  </figure>
+  <p class="takeaway">2,782,784 parameters never move.
+  8,446,054 do.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 16 -->
+<section data-menu-title="Step 1 freeze">
+  <h2>Step 1 &middot; freeze everything, replace the head</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-8|1-2|4-5">for p in net.parameters():
+    p.requires_grad = False
+
+net.fc = nn.Linear(512, 102)      # a fresh module: requires_grad is True
+print(sum(p.numel() for p in net.parameters() if p.requires_grad))
+# 52326
+
+opt = torch.optim.Adam(net.fc.parameters(), lr=1e-3)
+  </code></pre>
+  <p class="small">Replacing <code>fc</code> after the loop is not an accident
+  of ordering &mdash; a newly constructed module has
+  <code>requires_grad=True</code>, so the head is trainable and nothing else
+  is.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="Extract once">
+  <h2>If nothing before the head is training, run it once</h2>
+  <pre><code class="language-python" data-trim>
+body = nn.Sequential(*list(net.children())[:-1]).eval()
+
+with torch.no_grad():
+    F_train = torch.cat([body(xb).flatten(1) for xb, _ in train_loader])
+
+# F_train is (1020, 512). Now train a linear model on a table.
+  </code></pre>
+  <p class="small">The 1,020 images pass through the backbone once
+  rather than once per epoch. 12 seconds for the
+  features, about two seconds for
+  60 epochs of the head &mdash; 15 in total.</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="The probe result">
+  <h2>The frozen backbone, measured</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
+    <tr><td>From scratch, 20 epochs</td><td class="num">9.82%</td><td class="num">38 s</td></tr>
+    <tr><td class="fix">Frozen backbone, linear head</td><td class="num hit">81.09%</td><td class="num hit">15 s</td></tr>
+  </table>
+  <p class="big-num good">2.6&times; faster</p>
+  <p class="lead">and 71.3 points better.</p>
+  <aside class="notes">Let this land before moving on. The room usually goes
+  quiet here; that silence is the whole lecture working.</aside>
+  <a class="anim-link" href="../animations/lecture-13.html#probe" target="_blank">Animation</a>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 19 -->
+<section data-menu-title="Why it works">
+  <h2>Why a linear model on somebody else&rsquo;s features beats your network</h2>
+  <ul class="tight small">
+    <li>The 52,326 trainable parameters are being fitted
+        with 1,020 examples &mdash; about
+        51 parameters per image, against
+        4713 before</li>
+    <li>The 11,176,512 frozen ones were fitted with 1.28 million
+        examples, by somebody else</li>
+  </ul>
+  <p class="lead">The variance problem was not solved. It was moved to a
+  dataset large enough to absorb it.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 20 -->
+<section data-menu-title="Step 2 unfreeze">
+  <h2>Step 2 &middot; let the last block move</h2>
+  <p>The early layers hold edges and colours, which are not about flowers. The
+  <em>late</em> layers hold parts and textures, which partly are.</p>
+  <pre><code class="language-python" data-trim>
+for p in net.layer4.parameters():
+    p.requires_grad = True
+
+opt = torch.optim.Adam([
+    {"params": net.layer4.parameters(), "lr": 1e-4},
+    {"params": net.fc.parameters(),     "lr": 1e-3},
+])
+  </code></pre>
+  <p class="small">One optimiser, two parameter groups, two learning rates.
+  That is all a &ldquo;differential learning rate&rdquo; is.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Why differential">
+  <h2>Why the two rates have to differ</h2>
+  <table>
+    <tr><th></th><th>Starting point</th><th>Rate</th></tr>
+    <tr><td>new head</td><td>random</td><td class="fix">large &mdash; it has everything to learn</td></tr>
+    <tr><td>pretrained block</td><td>already good</td><td class="fix">small &mdash; it has something to lose</td></tr>
+  </table>
+  <p class="fail small">Give the backbone the head&rsquo;s learning rate and the
+  first few batches &mdash; whose gradients come through a randomly initialised
+  head &mdash; will damage the representation you downloaded. It does not
+  crash; the accuracy simply comes out lower and you conclude that transfer
+  learning does not work.</p>
+  <a class="anim-link" href="../animations/lecture-13.html#finetune" target="_blank">Animation</a>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Catastrophic forgetting">
+  <h2>What a large learning rate destroys</h2>
+  <p>Fine-tune the whole backbone at the rate you would use to train from
+  scratch, and the first gradient step overwrites the features you came for.
+  The network then relearns them from 1,020 images, badly.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">The condition</span>
+    The pretrained weights are a <em>good</em> starting point, which is exactly
+    what makes them fragile: a step large enough to be useful on random weights
+    is far too large for weights that are already nearly right.
+  </div>
+  <p class="small">This is why differential learning rates exist, and why the
+  usual recipe warms up the new head first while everything else is frozen: the
+  head starts random, and its early gradients are large enough to damage
+  anything they reach.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="Batch norm trap">
+  <h2>The trap inside the frozen layers</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>net.train()
+for xb, yb in train_loader:
+    opt.zero_grad()
+    lossf(net(xb), yb).backward()
+    opt.step()
+  </code></pre>
+  <p class="lead">Every parameter in <code>layer1</code> is frozen. Something
+  in <code>layer1</code> changes anyway.</p>
+  <p class="small muted">Thirty seconds before the next slide.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="The running stats">
+  <h2>Batch-norm running statistics are not parameters</h2>
+  <ul class="tight small">
+    <li>They are buffers, updated in the <strong>forward</strong> pass whenever
+        the module is in training mode</li>
+    <li><code>requires_grad = False</code> does nothing to them &mdash; no
+        gradient is involved</li>
+    <li>So a frozen backbone in <code>train()</code> mode quietly replaces
+        ImageNet&rsquo;s statistics with the statistics of 1,020 flower
+        photographs, in batches of 32</li>
+  </ul>
+  <pre><code class="language-python" data-trim>
+net.train()
+for m in [net.bn1, net.layer1, net.layer2, net.layer3]:
+    m.eval()                       # freeze the buffers too
+  </code></pre>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Step 3 augmentation">
+  <h2>Step 3 &middot; manufacture more data</h2>
+  <p>We cannot buy labels. We can show the network a different view of the same
+  labelled image every epoch.</p>
+  <ul class="tight small">
+    <li><strong>Random resized crop</strong> &mdash; a random sub-rectangle,
+        scaled back to 224. Teaches scale and position tolerance</li>
+    <li><strong>Horizontal flip</strong> &mdash; a flower is still that species
+        mirrored</li>
+  </ul>
+  <p class="small">Each is a transformation the label is known to survive. That
+  is the entire criterion, and it is a modelling decision, not a library
+  call.</p>
+</section>
+
+<!-- 26 -->
+<section class="figslide" data-menu-title="◆ Augmented views">
+  <h2>One photograph, seven training examples</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l16-augment.png"
+         alt="Eight thumbnails of the same flower: the original followed by seven randomly cropped, rescaled and sometimes mirrored versions of it.">
+  </figure>
+  <p class="takeaway">The label is the same in all eight. That is the only
+  thing that makes this legitimate.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Augmentation code">
+  <h2>Applying it &mdash; and only where it belongs</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-13|8-13">train_tf = transforms.Compose([
+    transforms.RandomResizedCrop(224, scale=(0.55, 1.0)),
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(),
+    transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+])
+
+eval_tf = transforms.Compose([          # val AND test
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+])
+  </code></pre>
+  <p class="small">Two pipelines, deliberately. The evaluation one has no
+  randomness in it; later in the lecture we measure what it costs when it does.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Fine-tune result">
+  <h2>Fine-tuned, measured</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
+    <tr><td>From scratch</td><td class="num">9.82%</td><td class="num">38 s</td></tr>
+    <tr><td>Frozen backbone, linear head</td><td class="num">81.09%</td><td class="num">15 s</td></tr>
+    <tr><td class="fix">layer4 unfrozen + augmentation</td><td class="num hit">87.82%</td><td class="num">45 s</td></tr>
+  </table>
+  <p class="lead">9.82% to
+  87.82%. It is not cheaper than training from scratch
+  &mdash; 45 seconds against 38, two validation passes
+  per epoch included &mdash; it is better.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 29 -->
+<section class="figslide" data-menu-title="◆ Three runs">
+  <h2>Same data, same laptop, same labels</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l16-transfer.svg"
+         alt="Validation accuracy against wall-clock seconds for three runs: from scratch climbing slowly to 11.7 per cent, the frozen backbone jumping to 83 per cent within its first seconds of head training, and the fine-tuned run rising past it to 90.9 per cent.">
+  </figure>
+  <p class="takeaway">Read both axes. The probe is finished in 15 seconds;
+  within 45 the fine-tune passes it while the from-scratch run
+  is still climbing near the floor.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Ablation">
+  <h2>Which part of the repair did the work</h2>
+  <table>
+    <tr><th>Change</th><th class="num">Test accuracy</th><th class="num">Gain</th></tr>
+    <tr><td>from scratch</td><td class="num">9.82%</td><td class="num">&mdash;</td></tr>
+    <tr><td>+ pretrained backbone, frozen</td><td class="num">81.09%</td><td class="num fix">71.3 pts</td></tr>
+    <tr><td class="fix">+ layer4 unfrozen, and augmentation</td><td class="num hit">87.82%</td><td class="num">6.7 pts</td></tr>
+  </table>
+  <p class="small">Report the ablation, not just the final number. Almost all
+  of the gain is in one row, and saying which row is what makes the result
+  useful to somebody else.</p>
+  <p class="smaller muted">All three rows are single runs, and none is
+  replicated. The notebook unfreezes layer4 and augments in the same run, so it
+  cannot say how the 6.7 points divide between the two; that takes one more
+  fine-tune, without augmentation.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Augmentation has a scope">
+  <h2>Augmentation is a training-time transform</h2>
+  <p>It is easy to build one pipeline and hand it to both loaders. The
+  training loader wants random crops and flips; the evaluation loader must not
+  have them.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">The condition, and what it costs</span>
+    An augmented evaluation set makes the score a <strong>random variable</strong>
+    rather than a function of the weights. Score one fixed model twice and you
+    get two different numbers. Measured here: the reported accuracy is
+    <strong>1.87 points pessimistic</strong> and carries
+    <strong>2.16 points of noise</strong> — a third of the gain that fine-tuning
+    added on top of the frozen probe.
+  </div>
+  <p class="small">Nothing raises. The only symptom is that the number moves
+  when nothing else did.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Damage 1">
+  <h2>The score stops being a function of the weights</h2>
+  <p>Score one fixed set of weights &mdash; the fine-tuned model above &mdash;
+  on the augmented validation set, 10 times:</p>
+  <table>
+    <tr><th></th><th class="num">Accuracy</th></tr>
+    <tr><td>on the clean validation set</td><td class="num">90.88%</td></tr>
+    <tr><td class="fail">augmented, mean of 10</td><td class="num fail">89.01%</td></tr>
+    <tr><td class="fail">augmented, spread</td><td class="num fail">2.16 points</td></tr>
+  </table>
+  <p class="lead fail">The same weights, the same set,
+  2.16 points apart.</p>
+  <p class="small">A deterministic function of fixed weights and fixed data
+  does not wobble. When the score moves, something in its path is random.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 33 -->
+<section class="figslide" data-menu-title="◆ Two curves">
+  <h2>Does it select a different model?</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l16-aug-val.svg"
+         alt="Two validation-accuracy curves against epoch for the same eight-epoch fine-tune, the clean one and the augmented one, lying almost on top of each other; a dotted line marks epoch 8, where both peak.">
+  </figure>
+  <p class="takeaway">Not in this run: both curves are still rising and both
+  peak at the last epoch. Where a curve flattens, 2.16 points of noise is
+  enough to order two epochs by the evaluator&rsquo;s seed, and early stopping
+  then keeps the wrong checkpoint.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 34 -->
+<section data-menu-title="The two-line check">
+  <h2>The check, in two lines</h2>
+  <pre><code class="language-python" data-trim>
+a = evaluate(model, val_loader)
+b = evaluate(model, val_loader)
+assert a == b, f"evaluation is not deterministic: {a} vs {b}"
+  </code></pre>
+  <p>Run every evaluation twice. If the two disagree, something in the
+  evaluation path is random &mdash; augmentation, dropout still active, or a
+  shuffled loader whose batches are averaged rather than pooled.</p>
+  <div class="panel">
+    <span class="panel-title">Why an assert and not a comment</span>
+    A comment saying &ldquo;do not augment the validation set&rdquo; is read
+    once. This runs every time, costs two forward passes, and fails loudly at
+    the moment the mistake is made rather than three lectures later.
+  </div>
+  <p class="small muted"><span class="scope scope-exam">examinable</span> Name
+  three things that make an evaluation non-deterministic, and the check that
+  catches all three.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="The scoreboard">
+  <h2>The whole application, in one table</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Wall clock</th></tr>
+    <tr><td>Uniform guess</td><td class="num">0.98%</td><td class="num">&mdash;</td></tr>
+    <tr><td>Commonest species</td><td class="num">3.87%</td><td class="num">&mdash;</td></tr>
+    <tr><td>Convolutional net, from scratch</td><td class="num">9.82%</td><td class="num">38 s</td></tr>
+    <tr><td>Frozen backbone, linear head</td><td class="num">81.09%</td><td class="num">15 s</td></tr>
+    <tr><td class="fix">Fine-tuned + augmented</td><td class="num hit">87.82%</td><td class="num">45 s</td></tr>
+    <tr><td>Operator&rsquo;s requirement</td><td class="num">90%</td><td class="num">&mdash;</td></tr>
+  </table>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Be precise about cheaper">
+  <h2>Be precise about &ldquo;cheaper&rdquo;</h2>
+  <table>
+    <tr><th></th><th class="num">Wall clock</th><th class="num">Against from scratch</th></tr>
+    <tr><td>From scratch, 20 epochs</td><td class="num">38 s</td><td class="num">&mdash;</td></tr>
+    <tr><td class="fix">Frozen backbone</td><td class="num">15 s</td><td class="num hit">2.6&times; less</td></tr>
+    <tr><td>Fine-tuned at 224 &times; 224</td><td class="num">45 s</td><td class="num fail">1.2&times; more</td></tr>
+  </table>
+  <p class="small">The fine-tune is not faster at all: it runs a much larger
+  network on much larger images, and scores the validation set twice an epoch
+  while it does. The frozen probe is the one that is cheaper &mdash; and it is
+  also the one you should run first, every time.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="When transfer fails">
+  <h2>When this recipe does not work</h2>
+  <table>
+    <tr><th>Situation</th><th>Why</th></tr>
+    <tr><td>Your images are unlike the corpus &mdash; radar, spectrograms, microscopy</td><td>the learned features are about natural photographs</td></tr>
+    <tr><td>Your task is not classification</td><td>the backbone is trained to discard position</td></tr>
+    <tr><td class="fail">You have millions of labelled examples</td><td class="fail">then the constraint is costing you, not helping</td></tr>
+  </table>
+  <p class="small">Test it the same way: freeze, probe, and compare with the
+  from-scratch baseline. The frozen probe takes seconds, so there is never an
+  excuse for not knowing.</p>
+</section>
+
+<!-- 38 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-13.ipynb">Open Lecture 13 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> The backbone is small and mostly
+        frozen, which is exactly why this lecture is cheap and the last one was
+        not</li>
+    <li>Features extracted once and cached, then a linear head fitted on them
+        &mdash; the step that does most of the work</li>
+    <li>The comparison: from scratch, frozen probe, and fine-tuned with
+        augmentation, each measured on one machine</li>
+    <li>The augmented validation set scored ten times on fixed weights, and
+        the two-line check that rules it out</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Freeze <em>everything</em> including the final block, and refit. The
+    accuracy drops by a few points — which tells you how much of the gain came
+    from adapting the last block rather than from the backbone itself.
+  </div>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight small">
+    <li>Named the condition that made Lecture&nbsp;12&rsquo;s network fall short:
+        1,020 images paying for 4.8 million parameters, most of which encode
+        general facts about photographs</li>
+    <li>Reused a backbone trained on ImageNet with its own preprocessing, froze
+        it, and fitted a linear head on features extracted once &mdash; the
+        probe that every later step has to beat</li>
+    <li>Unfroze the last block at a learning rate ten times smaller than the
+        head&rsquo;s, and kept the frozen batch-norm layers in
+        <code>eval()</code>, because freezing weights does not freeze their
+        running statistics</li>
+    <li>Augmented the training set only, with transformations the label
+        survives, and measured what an augmented validation set costs</li>
+    <li>Read the ablation and the wall clocks, and named the conditions under
+        which transfer fails</li>
+  </ol>
+</section>
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 13">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 13</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 13">
+  <h2>Exercises &mdash; Lecture 13</h2>
+  <ul class="ex-list">
+    <li>State the order in which a pretrained network&rsquo;s head must be replaced and its body frozen, and what goes wrong in the other order. <span class="ex-marks">[4]</span></li>
+    <li>Fine-tuning uses $10^{-4}$ on the pretrained block and $10^{-3}$ on the new head. Justify the difference in one sentence. <span class="ex-marks">[4]</span></li>
+    <li>Freezing a batch-norm layer&rsquo;s weights does not freeze the layer. State what still changes, and the call that stops it. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 14&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 13 (2)">
+  <h2>Exercises &mdash; Lecture 13 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>An augmented validation loader is used to select the epoch to keep. State the two things this costs, and the one-line test that detects it. <span class="ex-marks">[5]</span></li>
+    <li>A frozen-backbone probe is both more accurate and faster than training from scratch on 1,020 images. Explain why both, and name the cost that must still be counted. <span class="ex-marks">[5]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 14&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 12">
+  <p class="kicker">The five set at the end of Lecture 12</p>
+  <h1>Solutions<br>Lecture 12</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 12">
+  <h2>Solutions &mdash; Lecture 12</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> A dense layer mapping a $3\times128\times128$ input to a $32\times128\times128$ output has&hellip;</p>
+      <p class="lead"><span class="fix">$32\times3\times7\times7 = 4{,}704$. Neither $H$ nor $W$ appears.</span></p>
+      <ul class="tight smaller">
+        <li>One kernel per output channel, reused at every position</li>
+        <li>The image size is genuinely absent &mdash; that is what weight sharing means</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> State the difference between equivariance and invariance, say which of the two pooling builds, and why a&hellip;</p>
+      <p class="lead"><span class="fix">Equivariance: $f(T x) = T f(x)$, the output moves with the input. Invariance: $f(T x) = f(x)$, the output does not move. Pooling builds invariance, and a classifier wants it because the species is the same wherever the flower is.</span></p>
+      <ul class="tight smaller">
+        <li>A max pool keeps the largest value in a window, so a shift that keeps that value inside its window changes nothing; four stages tolerate more, and a global pool tolerates every shift</li>
+        <li>The position is a nuisance variable for naming a species, so discarding it costs nothing; a task that must say <em>where</em> could not afford it</li>
+      </ul>
+    </div>
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Solutions · 12 (2)">
+  <h2>Solutions &mdash; Lecture 12 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> Convolution is equivariant to translation on the interior of an image but not at the border. Give the reason.</p>
+      <p class="lead"><span class="fix">Zero padding invents input that was not there, so a shift moves real content into invented content.</span></p>
+      <ul class="tight smaller">
+        <li>The identity assumes the operator sees the same neighbourhood before and after the shift</li>
+        <li>At the edge it does not, so the equality is an interior statement</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> Trained with Adam at its default learning rate of $10^{-3}$, the lecture&rsquo;s network neither diverges nor&hellip;</p>
+      <p class="lead"><span class="fix">It plateaus at or near chance, 0.98% on a split with ten images of every species. Two seeds at each rate, same schedule: 1.42% mean validation accuracy at $10^{-3}$ against 5.74% at $3\times10^{-4}$, 4.31 points.</span></p>
+      <ul class="tight smaller">
+        <li>Nothing flags it: no NaN, no divergence, just a low number</li>
+        <li>The gap is about twice the 2.25 points between two seeds of the good rate, so it is a finding rather than noise</li>
+      </ul>
+    </div>
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Solutions · 12 (3)">
+  <h2>Solutions &mdash; Lecture 12 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> Two runs of the same network, differing only in the seed, reach 6.86% and 4.61% validation accuracy. A change&hellip;</p>
+      <p class="lead"><span class="fix">Nothing: 1.5 points is inside the 2.25-point spread between two seeds. Report the spread beside the number, from several seeds of each condition.</span></p>
+      <ul class="tight smaller">
+        <li>A single run is one draw from the seed spread, and a comparison of two single runs is two draws</li>
+        <li>Two seeds only show that the spread exists; a mean worth reporting needs more runs</li>
+      </ul>
+    </div>
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 14 &middot; G&eacute;ron Ch. 12</p>
+  <h1>Detection and segmentation</h1>
+  <p class="small">
+    Where the object is, and how many: a detector returns a set of boxes<br>
+    Intersection over union, why it stops giving a gradient, and average precision<br>
+    Running a pretrained detector, choosing its threshold, non-maximum suppression<br>
+    Tracking in brief, and segmentation: a label for every pixel
+  </p>
+  <p class="clock">Run the Lecture 13 notebook first</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 13
+  <span class="sep">&middot;</span> Transfer learning
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 5 — Regularisation and the bias–variance trade-off</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section class="title-slide" data-menu-title="Title">
+  <h1>Regularisation and the<br>bias&ndash;variance trade-off</h1>
+  <p class="subtitle">Why more capacity stops helping, and what to do about it</p>
+  <p><span class="badge badge-lec">Lecture 5</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 4</span></p>
+  <p class="lead">One identity, three terms, and the one line that repairs an
+  ill-posed fit</p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year<br>
+    Worked example: the Titanic passenger manifest
+  </p>
+  <aside class="notes">Open with the degree sweep on screen. The whole lecture
+  is an answer to a question that table asks and cannot answer.</aside>
+</section>
+
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="smaller">Lecture 4 derived gradient descent &mdash; the gradient, the
+  update, the bound $\eta &lt; 2/\lambda_{\max}$, scaling through the condition
+  number, the one-row unbiased gradient &mdash; and used it to fit a logistic
+  regression to 712 Titanic passengers: log-odds, a log loss that is a proper
+  scoring rule, a rank-deficient design repaired, calibration, softmax. Then it
+  added polynomial capacity and recorded <strong>both</strong> curves:</p>
+  <table class="smaller">
+    <tr><th class="num">Degree</th><th class="num">Columns</th><th class="num">Training log loss</th><th class="num">Held-out log loss</th></tr>
+    <tr><td class="num">1</td><td class="num">22</td><td class="num">0.395</td><td class="num hit">0.468</td></tr>
+    <tr><td class="num">2</td><td class="num">32</td><td class="num">0.381</td><td class="num">0.471</td></tr>
+    <tr><td class="num">3</td><td class="num">52</td><td class="num">0.355</td><td class="num">0.539</td></tr>
+    <tr><td class="num">5</td><td class="num">143</td><td class="num">0.286</td><td class="num fail">1.952</td></tr>
+  </table>
+  <p class="small">One curve falls forever; the other turns and climbs. Two
+  questions it cannot answer: <strong>where does the gap between them come
+  from</strong>, and <strong>how far down could 0.468 ever go</strong>, against
+  an anchor of 0.666? They have opposite repairs.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ul class="tight small">
+    <li><strong>The mathematics</strong> &mdash; the bias&ndash;variance
+        decomposition: what a generalisation error is made of</li>
+    <li><strong>Measuring it</strong> &mdash; the noise floor, the three terms on
+        our own pipeline, learning and validation curves</li>
+    <li><strong>What went wrong at degree 5</strong> &mdash; three faults, and
+        what adding $\alpha\mathbf{I}$ does to each</li>
+    <li><strong>Regularisation</strong> &mdash; ridge, lasso, early stopping</li>
+    <li><strong>Choosing $\alpha$ honestly</strong>, and the test set once</li>
+  </ul>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-05.ipynb">Open Lecture 5 in Colab</a>
+  </p>
+  <p class="small"><span class="scope scope-exam">examinable</span>
+  The decomposition and what each expectation is over; reading a diagnosis off a
+  pair of curves; ridge and lasso and what each does to the coefficients.
+  <span class="scope scope-eng">not examinable</span>
+  Solver names, wall-clock timings, and the Titanic feature engineering.</p>
+</section>
+
+<section data-menu-title="First: what is random">
+  <h2>First: what is random here?</h2>
+  <p>Not the passenger. Fix one passenger $x$ and ask about them repeatedly.</p>
+  <ul class="tight small">
+    <li>The <strong>training set</strong> $D$ is random &mdash; you happened to
+        get these 712 rows out of the 891</li>
+    <li>The <strong>label</strong> $y$ of the passenger is random &mdash; two
+        people with identical recorded values did not both survive</li>
+  </ul>
+  <p class="small">Every expectation in this derivation is over those two
+  sources and nothing else. The model is deterministic given $D$.</p>
+  <aside class="notes">This slide is where the room splits. Ask explicitly:
+  &ldquo;when I write E, what am I averaging over?&rdquo; Someone will say
+  &ldquo;the test set&rdquo;. That is the answer to a different question.</aside>
+</section>
+
+<section data-menu-title="The quantity to decompose">
+  <h2>The quantity to decompose</h2>
+  <div class="eqn-box">
+    $$\mathbb{E}_{D,\,y}\!\left[\left(y - \hat{p}_D(x)\right)^{2}\right]$$
+  </div>
+  <p class="eqn-label">Expected squared error at one passenger</p>
+  <table class="smaller">
+    <tr><th>Symbol</th><th>Meaning</th><th>Observed?</th></tr>
+    <tr><td>$\hat{p}_D(x)$</td><td>what <em>your</em> model predicts, having seen $D$</td><td class="hit">yes</td></tr>
+    <tr><td>$\bar{p}(x) = \mathbb{E}_D[\hat{p}_D(x)]$</td><td>the average prediction over all training sets you could have drawn</td><td class="miss">no &mdash; estimated</td></tr>
+    <tr><td>$p^{*}(x)$</td><td>the true probability that this passenger survives</td><td class="miss">never</td></tr>
+  </table>
+  <p class="small">Averaged over passengers this is the <strong>Brier
+  score</strong> the previous lecture already reported. We decompose it at a
+  single $x$ and then average &mdash; nothing is lost by doing it one passenger
+  at a time.</p>
+</section>
+
+<section data-menu-title="The decomposition">
+  <h2>The decomposition</h2>
+  <div class="eqn-box">
+    $$\mathbb{E}\!\left[\left(y - \hat{p}_D\right)^{2}\right]
+      \;=\; \left(p^{*} - \bar{p}\right)^{2}
+      \;+\; \mathbb{E}_{D}\!\left[\left(\hat{p}_D - \bar{p}\right)^{2}\right]
+      \;+\; p^{*}\!\left(1 - p^{*}\right)$$
+  </div>
+  <table class="smaller">
+    <tr><th>Term</th><th>Means</th><th>Cured by</th></tr>
+    <tr><td>squared bias</td><td>wrong <em>on average</em> &mdash; the model family cannot reach the truth</td><td>more capacity</td></tr>
+    <tr><td>variance</td><td>unstable &mdash; a different sample gives a different answer</td><td>less capacity, or more data</td></tr>
+    <tr><td>noise</td><td>the label is not a function of the recorded columns</td><td class="fail">nothing</td></tr>
+  </table>
+  <p class="smaller">How it arises: inside the square, add and subtract
+  $\bar{p}$ and average over $D$; then add and subtract $p^{*}$ and average over
+  $y$. Both cross terms vanish, because $\bar{p} = \mathbb{E}_D[\hat{p}_D]$ and
+  $p^{*} = \mathbb{E}_y[y]$; the last term is $\operatorname{Var}(y)$ for a
+  Bernoulli label.</p>
+  <p class="small fail">The first two repairs point in opposite directions. That
+  is the whole difficulty, and it is why it is called a trade-off.</p>
+  <a class="anim-link" href="../animations/lecture-05.html#bv" target="_blank">Animation</a>
+</section>
+
+<section class="figslide" data-menu-title="◆ The decomposition">
+  <h2>The three terms, in one picture</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-biasvariance.svg"
+         alt="Several training sets D1, D2, D3 feed the same fitting procedure, producing a spread of predicted probabilities for one passenger; the spread's centre is p-bar, the truth p-star sits elsewhere on the axis, and the three labelled terms of the identity are written underneath.">
+  </figure>
+  <p class="takeaway muted">Bias is the distance from the centre of the spread
+  to the truth. Variance is the width of the spread. Neither is visible from one
+  training set.</p>
+</section>
+
+<section data-menu-title="Squared error, not log loss">
+  <h2>An honest caveat before we measure anything</h2>
+  <p class="small">The identity is exact for <strong>squared error</strong>. Our
+  headline metric is log loss, and log loss does <em>not</em> split into three
+  additive terms like this.</p>
+  <div class="panel panel-math">
+    <span class="panel-title">What we do about it</span>
+    The decomposition is measured on the <strong>Brier score</strong> &mdash;
+    which the previous lecture already reported alongside log loss, and which is
+    the squared error of a probability. The <em>shape</em> of the answer
+    transfers; the numbers are Brier numbers and are labelled as such.
+  </div>
+  <p class="small muted">Saying &ldquo;bias&ndash;variance&rdquo; about a log
+  loss curve is common and slightly wrong. Doing it knowingly, and saying which
+  metric you decomposed, is the difference.</p>
+</section>
+
+<section data-menu-title="What the derivation buys you">
+  <h2>What the derivation buys you</h2>
+  <table>
+    <tr><th>The result</th><th>What it lets you do</th></tr>
+    <tr><td>Three additive terms</td><td>ask <em>which</em> one is large before choosing a repair</td></tr>
+    <tr><td>Variance does not mention $p^{*}$</td><td>estimate it without knowing the truth &mdash; refit and look at the spread</td></tr>
+    <tr><td>Noise depends only on $x$</td><td>measure a <strong>floor</strong> that no model of these columns can beat</td></tr>
+    <tr><td class="fix">The gap between two curves</td><td class="fix">read a diagnosis off a plot in ten seconds</td></tr>
+  </table>
+  <p class="small fix">The rest of this lecture is that table, executed: measure
+  all three terms on the pipeline of the previous lecture, then repair the one
+  that turned out to be large.</p>
+</section>
+
+<section data-menu-title="The term you cannot fix">
+  <h2>Start with the term you cannot fix</h2>
+  <p class="small">$p^{*}$ is never observed &mdash; but where several passengers
+  share <em>exactly</em> the same recorded values, every model of those columns
+  must give them the same number. Whatever their outcomes do inside that cell is
+  a floor.</p>
+  <pre><code class="language-python" data-trim>
+keys  = ["Sex", "Pclass", "AgeBand", "FamBand", "Embarked"]
+cells = full.groupby(keys, observed=True)["Survived"].agg(["sum", "count"])
+
+# k(m-k)/(m(m-1)) is the unbiased estimator of p(1-p) from m Bernoulli draws
+multi = cells[cells["count"] >= 2]
+var   = multi["sum"] * (multi["count"] - multi["sum"]) / (
+        multi["count"] * (multi["count"] - 1))
+noise = (var * multi["count"]).sum() / multi["count"].sum()
+  </code></pre>
+  <p class="small">133 distinct cells; 102 of them hold at least two passengers,
+  covering 858 people.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="The floor">
+  <h2>The floor</h2>
+  <p class="big-num">0.121</p>
+  <p class="lead">Brier score. Measured, not assumed.</p>
+  <p class="small">56 of the 102 shared cells are <em>mixed</em> &mdash; 657
+  passengers sit in a cell where the outcome went both ways. That is 74% of
+  everyone on board, living inside a cell whose answer cannot be certain.</p>
+  <p class="small muted">It is an <em>under</em>-estimate of the true noise: two
+  passengers in the same cell may still differ in ways the manifest never
+  recorded. The real floor is at least this high.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; a model measured against zero error</span>
+    The irreducible noise here is 0.121 Brier, measured from passengers whose recorded values are identical and whose outcomes differ. A model judged against zero rather than against that floor will be tuned forever toward an error that no model of these columns can reach.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section class="figslide" data-menu-title="◆ Bias and variance">
+  <h2>The degree sweep, taken apart</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l06-bias-variance.svg"
+         alt="Stacked area chart against polynomial degree: a wide bias-squared-plus-noise band that grows slowly, and a variance band that grows fast from degree three onward, with the total drawn as a black line and a dashed horizontal line at the measured noise floor of 0.121.">
+  </figure>
+  <p class="takeaway">200 training sets of 400 rows drawn from the 712, each
+  scored on the same 179 held-out passengers. From degree 1 to 6 the variance is
+  multiplied by <strong>twelve</strong>; everything else is nearly flat.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Two shapes">
+  <h2>Two shapes, two diagnoses</h2>
+  <ul class="tight">
+    <li>Both curves plateau <strong>high and together</strong> &rarr; bias. The
+        model is too rigid; more data changes nothing</li>
+    <li>A gap that is <strong>still open</strong> at the last point &rarr;
+        variance. More data would help, and you may not be able to get any</li>
+  </ul>
+  <p class="small">These are the only two shapes, and telling them apart takes
+  ten seconds once you know what you are looking at.</p>
+  <a class="anim-link" href="../animations/lecture-05.html#curves" target="_blank">Animation</a>
+</section>
+
+<section class="figslide" data-menu-title="◆ Learning curves">
+  <h2>Degree 1 and degree 5, as the data grows</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l06-learning-curve.svg"
+         alt="Two panels sharing a y-axis: on the left, degree one, the training and held-out log loss converge to within 0.078 of each other by 640 passengers; on the right, degree five, the held-out curve starts near ten and is still 1.645 above the training curve at the last point.">
+  </figure>
+  <p class="takeaway">A <em>learning curve</em>: the $x$-axis is training rows.
+  Left: the curves have met. Right: they have not, and the gap is still falling &mdash; the model is starved of rows, not of capacity.</p>
+</section>
+
+<section data-menu-title="Validation curves">
+  <h2>The other curve: score against a <em>hyperparameter</em></h2>
+  <table class="smaller">
+    <tr><th>Curve</th><th>$x$-axis</th><th>Answers</th></tr>
+    <tr><td><strong>Learning</strong> curve</td><td>training-set size</td><td>would more <em>rows</em> help?</td></tr>
+    <tr><td><strong>Validation</strong> curve</td><td>one hyperparameter</td><td>which <em>setting</em> is right, and is the optimum interior?</td></tr>
+  </table>
+  <pre><code class="language-python" data-trim>
+from sklearn.model_selection import validation_curve
+
+train, valid = validation_curve(
+    pipeline(degree=5), X_train, y_train, cv=cv,
+    param_name="clf__C", param_range=np.logspace(-4, 4, 17),
+    scoring="neg_log_loss")
+  </code></pre>
+  <p class="small fail">Read the <em>ends</em> of a validation curve first. A
+  minimum sitting on the edge of the range means the range was too narrow and
+  the answer you read off it is an artefact of where you stopped looking.</p>
+</section>
+
+<section data-menu-title="The suspect">
+  <h2>What went wrong at degree 5: the suspect</h2>
+  <p class="big-num">1.952</p>
+  <p class="lead">Degree 5 is <strong>almost three times worse than saying
+  nothing at all</strong>.</p>
+  <p>Not worse than the best model. Worse than the anchor of 0.666 &mdash; worse
+  than a model that has learned only how many people died.</p>
+  <aside class="notes">Let this land. Almost nobody expects a more expressive
+  model to be beaten by a constant, and the number is large enough that they
+  cannot argue it is noise.</aside>
+</section>
+
+<section data-menu-title="Diagnosis 1 — variance">
+  <h2>Diagnosis 1 &middot; Variance, straight off the decomposition</h2>
+  <table class="smaller">
+    <tr><th></th><th class="num">Degree 1</th><th class="num">Degree 5</th></tr>
+    <tr><td>Columns</td><td class="num">22</td><td class="num fail">143</td></tr>
+    <tr><td>Training rows</td><td class="num">712</td><td class="num">712</td></tr>
+    <tr><td>Rows per weight</td><td class="num">32</td><td class="num fail">5</td></tr>
+    <tr><td>Variance term, Brier</td><td class="num">0.006</td><td class="num fail">0.068</td></tr>
+  </table>
+  <p>Five rows per weight. Move one passenger between folds and the fitted
+  surface moves with them.</p>
+  <p class="small muted">This is the diagnosis the derivation was built to
+  deliver, and it is not yet the whole story. Two more faults are underneath it.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Diagnosis 2 — no minimiser">
+  <h2>Diagnosis 2 &middot; The minimiser does not exist</h2>
+  <p class="small">Suppose that in the expanded feature space some
+  $\boldsymbol\theta$ separates the classes perfectly. Then</p>
+  <div class="eqn-box">
+    $$\sigma\!\left(c\,\boldsymbol\theta^{\intercal}\mathbf{x}\right)
+      \;\longrightarrow\; \begin{cases}1 & \text{if } \boldsymbol\theta^{\intercal}\mathbf{x} &gt; 0\\
+                                       0 & \text{if } \boldsymbol\theta^{\intercal}\mathbf{x} &lt; 0\end{cases}
+      \qquad \text{as } c \to \infty$$
+  </div>
+  <p class="small">so the training log loss falls monotonically towards zero as
+  $\lVert\boldsymbol\theta\rVert \to \infty$. The infimum is never attained.</p>
+  <table class="smaller">
+    <tr><th class="num">Degree</th><th class="num">1</th><th class="num">2</th><th class="num">3</th><th class="num">4</th><th class="num">5</th><th class="num">6</th></tr>
+    <tr><td>Converged</td><td class="num hit">yes</td><td class="num hit">yes</td><td class="num hit">yes</td><td class="num fail">no</td><td class="num fail">no</td><td class="num fail">no</td></tr>
+    <tr><td>Largest $|\theta_j|$</td><td class="num">4.87</td><td class="num">5.65</td><td class="num">6.51</td><td class="num fail">19.51</td><td class="num fail">8.20</td><td class="num">4.27</td></tr>
+  </table>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Diagnosis 3 — collinearity">
+  <h2>Diagnosis 3 &middot; The minimiser is not unique</h2>
+  <p class="small">Recall from the previous lecture that
+  <code>FamilySize = SibSp + Parch + 1</code> exactly, on every row. Standardise
+  the five numeric columns, form
+  $\mathbf{X}^{\intercal}\mathbf{X}$, and look at its spectrum:</p>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; np.linalg.eigvalsh(Z.T @ Z)
+array([5.59e-13, 4.29e+02, 5.43e+02, 7.90e+02, 1.80e+03])
+  </code></pre>
+  <p>The smallest eigenvalue is zero to the precision the arithmetic allows.
+  Four columns of information in five columns of data.</p>
+  <p class="fail small">Condition number about $2.82\times10^{15}$. A double carries
+  about $10^{16}$ of relative precision, so roughly <em>one</em> significant
+  digit survives the solve.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Adding alpha I">
+  <h2>What adding $\alpha\mathbf{I}$ does to that spectrum</h2>
+  <p class="derive-step">If $\mathbf{X}^{\intercal}\mathbf{X}\,\mathbf{v} = \lambda\mathbf{v}$, then</p>
+  <div class="eqn-box">
+    $$\left(\mathbf{X}^{\intercal}\mathbf{X} + \alpha\mathbf{I}\right)\mathbf{v}
+      \;=\; \left(\lambda + \alpha\right)\mathbf{v}$$
+  </div>
+  <ul class="tight small">
+    <li>Same eigenvectors; every eigenvalue moved up by exactly $\alpha$</li>
+    <li>$\mathbf{X}^{\intercal}\mathbf{X}$ is positive semi-definite, so
+        $\lambda \ge 0$, so $\lambda + \alpha \ge \alpha &gt; 0$</li>
+    <li>No eigenvalue is zero, so <strong>the matrix is invertible for every
+        $\alpha &gt; 0$</strong></li>
+  </ul>
+  <div class="panel panel-math">
+    <span class="panel-title">The normal equation, repaired</span>
+    Lecture 3 derived $\hat{\boldsymbol\theta} = (\mathbf{X}^{\intercal}\mathbf{X})^{-1}\mathbf{X}^{\intercal}y$
+    and showed that it fails when $\mathbf{X}^{\intercal}\mathbf{X}$ is singular.
+    <strong>Adding $\alpha\mathbf{I}$ makes it exist, for every
+    $\alpha &gt; 0$, whatever the columns do.</strong> Those three lines are the
+    proof.
+  </div>
+</section>
+
+<section data-menu-title="The condition bound">
+  <h2>and it bounds the conditioning</h2>
+  <div class="eqn-box">
+    $$\kappa\!\left(\mathbf{X}^{\intercal}\mathbf{X} + \alpha\mathbf{I}\right)
+      \;=\; \frac{\lambda_{\max} + \alpha}{\lambda_{\min} + \alpha}
+      \;\le\; \frac{\lambda_{\max} + \alpha}{\alpha}$$
+  </div>
+  <p class="small">The bound on the right does not mention $\lambda_{\min}$ at
+  all. Whatever the data do &mdash; exact collinearity included &mdash; the
+  conditioning is controlled by a number you choose.</p>
+  <p class="fix">At $\alpha = 1$ the condition number of our singular matrix
+  falls from $2.82\times10^{15}$ to 1798.</p>
+  <p class="small muted">And $\kappa$ is what set the step count for gradient
+  descent in the previous lecture. The penalty is not only a statistical device;
+  it is what makes the optimisation tractable.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section class="figslide" data-menu-title="◆ Conditioning">
+  <h2>Condition number against $\alpha$</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l06-condition.svg"
+         alt="Log-log plot of the condition number of X-transpose-X plus alpha-I against alpha, falling from about ten to the fifteen at tiny alpha, just under a dashed line marking the alpha-zero value of 2.8 times ten to the fifteen, along a straight line of slope minus one, with the value at alpha equal to one marked at 1798.">
+  </figure>
+  <p class="takeaway">A straight line of slope $-1$ over twelve decades: in this
+  regime the condition number is simply $\lambda_{\max}/\alpha$. The dependence
+  in the data is not repaired &mdash; it is <em>dominated</em>.</p>
+</section>
+
+<section data-menu-title="The idea">
+  <h2>The idea, in one sentence</h2>
+  <p class="lead">Stop asking for the best fit. Ask for the best fit
+  <em>among small models</em>.</p>
+  <div class="eqn-box">
+    $$J(\boldsymbol\theta) \;=\; \underbrace{L(\boldsymbol\theta)}_{\text{fit the data}}
+      \;+\; \underbrace{\alpha\,\Omega(\boldsymbol\theta)}_{\text{stay small}}$$
+  </div>
+  <p class="small">$\Omega$ penalises the size of the weights; $\alpha$ says how
+  much you care. Setting $\alpha = 0$ recovers exactly the previous lecture.</p>
+  <p class="fix small">Constraining the model is one of the two cures for
+  variance, and the only one available when the dataset is fixed at 891 rows.</p>
+</section>
+
+<section data-menu-title="Ridge">
+  <h2>Ridge &mdash; the $\ell_2$ penalty</h2>
+  <div class="eqn-box">
+    $$J(\boldsymbol\theta) \;=\; \mathrm{MSE}(\boldsymbol\theta)
+      \;+\; \frac{\alpha}{m}\sum_{j=1}^{n}\theta_j^{2}$$
+  </div>
+  <ul class="tight small">
+    <li>The sum starts at $j = 1$: <strong>the bias term $\theta_0$ is not
+        penalised</strong>. Shrinking the intercept would pull every prediction
+        towards zero rather than towards the mean</li>
+    <li>Equivalently $\Omega(\boldsymbol\theta) = \tfrac12\lVert\mathbf{w}\rVert_2^2$,
+        where $\mathbf{w}$ is $\boldsymbol\theta$ without the bias</li>
+  </ul>
+  <p class="small muted">Also called Tikhonov regularisation; the book gives
+  both names.</p>
+</section>
+
+<section data-menu-title="Lasso">
+  <h2>Lasso &mdash; the $\ell_1$ penalty</h2>
+  <div class="eqn-box">
+    $$J(\boldsymbol\theta) \;=\; \mathrm{MSE}(\boldsymbol\theta)
+      \;+\; 2\alpha\sum_{j=1}^{n}\left|\theta_j\right|$$
+  </div>
+  <p><em>Least Absolute Shrinkage and Selection Operator.</em> The word
+  <strong>selection</strong> is the point: lasso drives weights to exactly zero,
+  so it performs feature selection as a side effect of fitting.</p>
+  <p class="small muted">Ridge shrinks everything and eliminates nothing.</p>
+</section>
+
+<section data-menu-title="Why l1 gives zeros">
+  <h2>Why $\ell_1$ produces exact zeros and $\ell_2$ does not</h2>
+  <p class="small">Look at the gradient of the penalty near $\theta_j = 0$.</p>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>Ridge</strong></p>
+      <div class="eqn-box">$$\frac{\partial}{\partial\theta_j}\,\theta_j^{2} = 2\theta_j \;\to\; 0$$</div>
+      <p class="smaller">The push towards zero fades as you approach zero. You arrive only in the limit.</p>
+    </div>
+    <div>
+      <p class="small"><strong>Lasso</strong></p>
+      <div class="eqn-box">$$\frac{\partial}{\partial\theta_j}\,\left|\theta_j\right| = \pm 1$$</div>
+      <p class="smaller">The push keeps its size right up to zero. If the data pulls with less than $\alpha$, the weight reaches zero and stops.</p>
+    </div>
+  </div>
+  <p class="small">At $\theta_j = 0$ the absolute value is not differentiable;
+  the subgradient is the whole interval $[-1, 1]$, and any data pull inside that
+  interval is held at exactly zero.</p>
+  <a class="anim-link" href="../animations/lecture-05.html#penalty" target="_blank">Animation</a>
+</section>
+
+<section class="figslide" data-menu-title="◆ The penalty sweep">
+  <h2>What the penalty buys at degree 5</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l06-alpha-curve.svg"
+         alt="Cross-validated log loss against C on a log axis for ridge and lasso, each with its minimum marked; a black dashed line at 1.95 marks the unregularised degree-5 model and a green dotted line at 0.468 marks the best unregularised degree, degree 1.">
+  </figure>
+  <p class="takeaway">Both curves are far below the dashed line. Neither of them
+  reaches the dotted one.</p>
+</section>
+
+<section data-menu-title="The uncomfortable result">
+  <h2>And now the uncomfortable part</h2>
+  <table class="smaller">
+    <tr><th>Model</th><th class="num">Cross-validated log loss</th></tr>
+    <tr><td>Degree 5, lasso, tuned</td><td class="num">0.683</td></tr>
+    <tr><td>Degree 1, no penalty at all</td><td class="num hit">0.468</td></tr>
+    <tr><td>Degree 2, no penalty at all</td><td class="num hit">0.471</td></tr>
+  </table>
+  <p class="lead fail">The best regularised degree-5 model beats neither of the
+  plain low-degree models we already had.</p>
+  <p class="small muted">Degrees 1 and 2 differ by 0.003, inside a fold spread
+  of 0.13: they are tied, so both rows are marked.</p>
+  <p class="small">Regularisation repaired an over-complex model. It did not
+  turn it into a better one than the simple model, because there was never much
+  bias to buy back &mdash; the decomposition said so, and this is what that
+  sentence looks like in a table.</p>
+  <aside class="notes">Resist the urge to soften this. Regularisation is a
+  repair, not an upgrade, and choosing the right capacity beats penalising the
+  wrong one.</aside>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section class="figslide" data-menu-title="◆ Coefficient paths">
+  <h2>Ridge shrinks; lasso selects</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l06-paths.svg"
+         alt="Two panels of coefficient paths against C on a log axis: on the left the ridge paths fan out smoothly from zero without any reaching zero, on the right the lasso paths leave zero one at a time, with a green line showing the count of non-zero weights rising from 5 to 142.">
+  </figure>
+  <p class="takeaway">Left: every path approaches zero and none arrives. Right:
+  paths sit at exactly zero and leave one at a time as the penalty weakens.</p>
+</section>
+
+<section data-menu-title="Early stopping">
+  <h2>Early stopping &mdash; a penalty by another route</h2>
+  <p>Fit iteratively, and <strong>stop before the optimiser gets where it is
+  going</strong>.</p>
+  <ul class="tight small">
+    <li>Gradient descent starts at $\boldsymbol\theta = \mathbf{0}$ &mdash; the
+        smallest possible model</li>
+    <li>Each epoch moves the weights outward, fitting more of the training set</li>
+    <li>Held-out error falls, reaches a minimum, and then rises</li>
+  </ul>
+  <p class="fix small">G&eacute;ron calls it a &ldquo;beautiful free
+  lunch&rdquo;: no penalty term and no extra term in the objective &mdash; just
+  a stopping rule. The knob is the epoch count, and it is a hyperparameter like
+  any other.</p>
+</section>
+
+<section data-menu-title="Choosing a hyperparameter is choosing a model">
+  <h2>Choosing a hyperparameter is choosing a model</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>
+best_C, best_score = None, np.inf
+
+for C in np.logspace(-4, 4, 17):
+    m = pipeline(degree=3, C=C).fit(X_train, y_train)
+    score = log_loss(y_test, m.predict_proba(X_test)[:, 1])
+    if score &lt; best_score:
+        best_C, best_score = C, score
+  </code></pre>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; a hyperparameter chosen on the rows you then report</span>
+    <code>best_score</code> is a <strong>minimum over seventeen noisy
+    estimates</strong>, and the minimum of noisy estimates is biased downward
+    even when every estimate is individually unbiased. The code never writes to
+    the test set. It <em>reads</em> it seventeen times, and reading is enough.
+  </div>
+</section>
+
+<section data-menu-title="Measure the damage">
+  <h2>Measure it rather than asserting it</h2>
+  <p class="small">20 splits. On each: run the loop above, and also the honest
+  version that picks <code>C</code> by 5-fold cross-validation <em>inside</em>
+  the training part. Score both on the same held-out rows.</p>
+  <table class="smaller">
+    <tr><th>Reported number</th><th class="num">Log loss</th><th class="num">Spread over 20 splits</th></tr>
+    <tr><td>Chosen on the test set, scored on the test set</td><td class="num fail">0.451</td><td class="num">0.049</td></tr>
+    <tr><td>Chosen by cross-validation, scored on the test set</td><td class="num hit">0.470</td><td class="num">0.045</td></tr>
+  </table>
+  <p><strong>Optimism: 0.019 of log loss, about 4.1%.</strong> On 13 splits of
+  20 the first number is the flattering one, and the two procedures picked the
+  same <code>C</code> on 7 splits of 20.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="The correct procedure">
+  <h2>The procedure that does not have the problem</h2>
+  <pre><code class="language-python" data-trim>
+gs = GridSearchCV(pipeline(degree=3), {"clf__C": np.logspace(-4, 4, 17)},
+                  scoring="neg_log_loss", cv=cv).fit(X_train, y_train)
+
+print(-gs.best_score_)                                    # the honest estimate
+print(log_loss(y_test, gs.predict_proba(X_test)[:, 1]))   # the test set, once
+  </code></pre>
+  <p class="small">Same seventeen candidates, same runtime, <strong>two numbers
+  instead of one</strong>. Report both. The second is allowed to be worse than
+  the first, and if it is much worse that is itself the finding.</p>
+  <p class="small muted">The standing rule, extended by eleven words: nothing
+  derived from the test set may appear in the training path &mdash; including
+  the choice of any hyperparameter.</p>
+</section>
+
+<section data-menu-title="The final table">
+  <h2>The honest numbers</h2>
+  <p class="small">The 179 test passengers, untouched since the split; every
+  candidate&rsquo;s hyperparameters fixed by cross-validation before they were
+  scored.</p>
+  <table class="smaller">
+    <tr><th>Model</th><th class="num">Log loss</th><th class="num">Brier</th><th class="num">Accuracy</th></tr>
+    <tr><td>Degree 5, no penalty &mdash; where the sweep ended</td><td class="num fail">1.472</td><td class="num">0.182</td><td class="num">76.0%</td></tr>
+    <tr><td>Degree 5, ridge, tuned</td><td class="num">0.804</td><td class="num">0.173</td><td class="num">77.1%</td></tr>
+    <tr><td>Degree 5, lasso, tuned</td><td class="num">0.677</td><td class="num">0.244</td><td class="num">65.9%</td></tr>
+    <tr><td>Degree 1, scikit-learn defaults</td><td class="num hit">0.433</td><td class="num hit">0.134</td><td class="num hit">82.7%</td></tr>
+    <tr><td>Degree 2, no penalty &mdash; <strong>the winner</strong></td><td class="num hit">0.426</td><td class="num hit">0.134</td><td class="num hit">82.7%</td></tr>
+  </table>
+  <p class="small">The winner improves on the degree-5 model the previous
+  lecture finished with by <strong>1.046</strong> of log loss.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="The awkward winner">
+  <h2>The winner is a model with no repair in it</h2>
+  <p class="lead">Degree 2, no penalty: one of the two degrees tied at the
+  bottom of the held-out curve.</p>
+  <p class="small">Row four deserves as much attention:
+  <code>LogisticRegression()</code> with every default left alone &mdash; degree
+  1, <code>C=1.0</code>, <code>penalty="l2"</code> &mdash; scores 0.433.
+  Statistically it is the same model as the winner.</p>
+  <div class="panel">
+    <span class="panel-title">The result nobody wanted</span>
+    A whole lecture of penalties, and the best
+    system on the test set is a two-line model anyone could have written before
+    the previous lecture started.
+  </div>
+  <p class="small fix">Report it anyway. The alternative is choosing the
+  interesting model over the better one.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-05.ipynb">Open Lecture 5 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU</strong></li>
+    <li>It rebuilds the degree sweep from scratch, so you can reproduce 1.952
+        before repairing it &mdash; then measures the noise floor and the three
+        terms, and checks that they add up</li>
+    <li>Then the learning curves, the three faults at degree 5, the penalty
+        sweeps, the coefficient paths, and choosing $\alpha$ honestly with the
+        test set used once</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    In the penalty sweep, widen the saga grid <code>CS_SHORT</code> to
+    <code>np.logspace(-8, 4, 25)</code>. Does the lasso minimum move? If it
+    does, the minimum you read was an artefact of where the grid stopped
+    &mdash; read the <em>ends</em> of a validation curve first.
+  </div>
+</section>
+
+<section data-menu-title="Summary">
+  <h2>Summary</h2>
+  <ol class="tight smaller">
+    <li>Expected squared error splits exactly into squared bias, variance and
+        irreducible noise &mdash; over the training set and the label, not over
+        test points</li>
+    <li>A gap still open between training and held-out curves means variance;
+        curves plateauing together mean bias</li>
+    <li>The noise floor is measurable: 0.121 Brier, from passengers whose
+        recorded values are identical</li>
+    <li>Degree 5 failed three ways at once &mdash; high variance, no minimiser,
+        and no unique minimiser</li>
+    <li>Adding $\alpha\mathbf{I}$ makes $\mathbf{X}^{\intercal}\mathbf{X}$
+        invertible for every $\alpha &gt; 0$ and bounds its condition number</li>
+    <li>Ridge shrinks, lasso selects, early stopping keeps the weights small by
+        not arriving</li>
+    <li>None of them beat choosing the right capacity. A penalty is a repair,
+        not an upgrade</li>
+    <li>A hyperparameter chosen on the test set costs 0.019 of log loss here,
+        and the cost grows with the size of the search</li>
+  </ol>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 5">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 5</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 5">
+  <h2>Exercises &mdash; Lecture 5</h2>
+  <ul class="ex-list">
+    <li>Write the bias&ndash;variance decomposition of the expected squared error, and name the one term no model can reduce. <span class="ex-marks">[4]</span></li>
+    <li>A learning curve shows training and validation error both high and close together, and flat as data is added. Diagnose it, and say whether more data would help. <span class="ex-marks">[5]</span></li>
+    <li>Ridge adds $\alpha I$ to $X^{\mathsf T}X$ before inverting. Give the numerical consequence, in terms of the condition number. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 6&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 5 (2)">
+  <h2>Exercises &mdash; Lecture 5 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>Lasso sets some weights to exactly zero; ridge shrinks every weight but sets none to zero. Explain the difference from the gradient of each penalty near $\theta_j = 0$. <span class="ex-marks">[4]</span></li>
+    <li>You tune $\alpha$ over a grid of seventeen values by scoring each on the test set, then report the best test score as your estimate of future performance. Name the error, and quantify its direction. <span class="ex-marks">[5]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 6&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 4">
+  <p class="kicker">The five set at the end of Lecture 4</p>
+  <h1>Solutions<br>Lecture 4</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 4">
+  <h2>Solutions &mdash; Lecture 4</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> Gradient descent on the same data, with the features unscaled, takes many more steps to converge than on&hellip;</p>
+      <p class="lead"><span class="fix">Unscaled features make the contours elongated, so the gradient points across the valley rather than along it.</span></p>
+      <ul class="tight smaller">
+        <li>The Hessian is $X^{\mathsf T}X$, so the curvature along a feature goes as the <em>square</em> of its scale &mdash; multiply a column by ten and its curvature rises a hundredfold, which is how one column comes to dominate</li>
+        <li>The learning rate must then suit the steepest direction, which makes it far too small for the shallow one</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> On the Titanic manifest, your logistic regression on one-hot encoded columns produces coefficients that look&hellip;</p>
+      <p class="lead"><span class="fix">Five come from the encoder, one from you. The repair is both: drop one level per categorical, and delete the engineered column.</span></p>
+      <ul class="tight smaller">
+        <li>Each one-hot block sums to 1 in every row, and so does the intercept column &mdash; five categoricals, five exact dependencies</li>
+        <li>The sixth is <code>FamilySize = SibSp + Parch + 1</code>, an identity rather than a correlation. Dropping a level alone still leaves the rank one short of the column count, because the dependency you wrote yourself survives it</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 4 (2)">
+  <h2>Solutions &mdash; Lecture 4 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> A model reaches 0.80 accuracy and is badly calibrated. Explain what that means, and name a decision it would&hellip;</p>
+      <p class="lead"><span class="fix">Its predicted probabilities do not match observed frequencies; any decision using a cost-weighted threshold is then wrong.</span></p>
+      <ul class="tight smaller">
+        <li>Accuracy reads only the arg-max, so it is blind to the probability that produced it</li>
+        <li>Choosing a threshold from expected cost requires the probability to mean what it says</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> In a logistic regression with first class as the reference level, the coefficient on Pclass_3 is $-1.169$.&hellip;</p>
+      <p class="lead"><span class="fix">It multiplies the <em>odds</em> of survival by $e^{-1.169} = 0.31$, relative to first class, holding the other features fixed.</span></p>
+      <ul class="tight smaller">
+        <li>The linear part predicts the log-odds, so adding 1 to an indicator adds its coefficient to the log-odds and multiplies the odds by its exponential</li>
+        <li>The probability moves by an amount that depends on where it started: odds of 1 times 0.31 give $p = 0.24$, while $p = 0.9$ becomes 0.74</li>
+      </ul>
+    </div>
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Solutions · 4 (3)">
+  <h2>Solutions &mdash; Lecture 4 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> State the update rule for batch gradient descent, and say what changes in it for stochastic gradient descent&hellip;</p>
+      <p class="lead"><span class="fix">$\theta \leftarrow \theta - \eta\nabla J$. Only the set the gradient is computed over changes; the rule does not.</span></p>
+      <ul class="tight smaller">
+        <li>SGD estimates the same gradient from one instance rather than all of them</li>
+        <li>The estimate is unbiased &mdash; averaged over a uniformly drawn row it is exactly the batch gradient &mdash; but noisy, and it costs $O(n)$ per step instead of $O(mn)$</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Next lecture</p>
+  <h1>Decision trees</h1>
+  <p class="small">A model that is not linear in anything and needs no scaling
+  &mdash; whose capacity is controlled not by a penalty but by limiting its depth
+  and its leaves: today&rsquo;s trade-off, with a different dial</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 5
+  <span class="sep">&middot;</span> Regularisation and the bias&ndash;variance trade-off
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

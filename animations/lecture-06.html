@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 6 · Decision trees — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 6 of Applications of Machine Learning: CART growing split by split, with the threshold scan behind every split under Gini and under entropy.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-06.html">Lecture 6 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 6 · Animations</p>
+  <h1>Decision trees</h1>
+  <p>CART, one split at a time. Every split you see is the result of scanning
+  every threshold on every feature and keeping the one with the smallest
+  weighted impurity — the scan is drawn too, under Gini and under entropy.
+  Press <strong>Step</strong> to advance one unit
+  and read what happened; press <strong>Play</strong> to let it run.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#cart">1 · CART, split by split</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · CART
+     ====================================================================== -->
+<section class="anim" id="cart">
+  <h2><span class="num">1</span>CART, split by split</h2>
+  <p class="lede">Ninety points of three classes in the plane. Each step takes
+  the next node in breadth-first order and splits it with the question
+  $x_k \le t_k$ that minimises the weighted impurity $J(k, t_k)$. Below the
+  data, the scan that chose it: $J$ against every candidate threshold, on each
+  feature, divided by the node's own impurity so that Gini and entropy share an
+  axis. On the right, the tree so far; a left branch means the answer was
+  yes.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="ct-plots"></div>
+      <div class="viz-row" id="ct-scan"></div>
+      <div class="narrate" id="ct-say"></div>
+      <div class="toolbar" id="ct-bar"></div>
+    </div>
+    <aside class="side" id="ct-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>With $p_k$ the share of class $k$ in a node,</p>
+      $$\begin{aligned}G(\mathbf p) &= 1 - \sum_k p_k^2,\\ H(\mathbf p) &= -\sum_k p_k \log_2 p_k .\end{aligned}$$
+      <p>A candidate split sends $m_{\text{L}}$ of the node's $m$ instances
+      left and $m_{\text{R}}$ right, and costs</p>
+      $$J(k, t_k) = \frac{m_{\text{L}}}{m}\,I_{\text{L}} + \frac{m_{\text{R}}}{m}\,I_{\text{R}}.$$
+      <p>Candidates are the midpoints between adjacent distinct values of
+      $x_k$ in the node. The scan plots $J / I_{\text{parent}}$: dividing by a
+      number that is the same for every candidate changes no ranking, and puts
+      both criteria on $[0, 1]$. The impurity decrease is
+      $\Delta I = I_{\text{parent}} - J$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>Every boundary is a horizontal or vertical segment, and every
+        region is a rectangle: one question about one feature per node.</li>
+        <li>The root's scan runs over 82 candidates on each feature. Late splits
+        are made on nodes of a dozen instances or fewer: the scan shrinks to a
+        short, jagged curve, and the winner is decided by a handful of
+        points.</li>
+        <li>The solid and dashed minima usually sit at the same threshold —
+        Gini and entropy choosing the same split. The readout counts how often
+        they did.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Raise the maximum depth to 12 and play to the end. Training
+        accuracy reaches 100%: nothing stopped it.</li>
+        <li>Then set the minimum leaf size to 10. Fewer, larger leaves; the
+        stray points in the wrong region are left alone.</li>
+        <li>At depth 8, play to the end under each criterion and compare.
+        The first 19 splits are identical; the two part at split 20, on a
+        node of only 11 instances.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 6 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+  var SUB = ["₁", "₂"];
+
+  /* ----------------------------------------------------------------------
+     CART, shared by every widget. X is an array of feature vectors, y the
+     targets (class indices, or numbers for regression). Nodes are grown in
+     breadth-first order, one split per call to step().
+     ---------------------------------------------------------------------- */
+  function impurity(counts, m, crit) {
+    var s = 0;
+    for (var k = 0; k < counts.length; k++) {
+      var p = counts[k] / m;
+      if (crit === "gini") s += p * p;
+      else if (p > 0) s -= p * Math.log2(p);
+    }
+    return crit === "gini" ? 1 - s : s;
+  }
+  function CART(X, y, o) {
+    var reg = o.task === "reg", K = o.K || 0, d = X[0].length;
+    var crits = reg ? ["mse"] : ["gini", "entropy"];
+    var nodes = [], queue = [];
+    function stats(idx) {
+      if (reg) {
+        var s = 0, q = 0;
+        idx.forEach(function (i) { s += y[i]; q += y[i] * y[i]; });
+        var mu = s / idx.length;
+        return { mean: mu, imp: { mse: Math.max(q / idx.length - mu * mu, 0) } };
+      }
+      var c = new Array(K).fill(0);
+      idx.forEach(function (i) { c[y[i]]++; });
+      return { counts: c, major: A.argmax(c),
+               imp: { gini: impurity(c, idx.length, "gini"), entropy: impurity(c, idx.length, "entropy") } };
+    }
+    function make(idx, depth, box, parent) {
+      var n = Object.assign({ id: nodes.length, idx: idx, m: idx.length, depth: depth, box: box,
+                              parent: parent, split: null, left: null, right: null, leaf: false }, stats(idx));
+      nodes.push(n); queue.push(n);
+      return n;
+    }
+    // Every candidate threshold on every feature, with J under each criterion.
+    function scan(n) {
+      var out = { feats: [], best: {} };
+      crits.forEach(function (c) { out.best[c] = null; });
+      for (var f = 0; f < d; f++) {
+        var srt = n.idx.slice().sort(function (a, b) { return X[a][f] - X[b][f]; });
+        var m = srt.length, cand = [];
+        var cl = reg ? null : new Array(K).fill(0), sl = 0, ql = 0, sT = 0, qT = 0;
+        if (reg) srt.forEach(function (i) { sT += y[i]; qT += y[i] * y[i]; });
+        for (var j = 0; j < m - 1; j++) {
+          var i = srt[j];
+          if (reg) { sl += y[i]; ql += y[i] * y[i]; } else cl[y[i]]++;
+          var a = X[i][f], b = X[srt[j + 1]][f];
+          if (a === b) continue;
+          var mL = j + 1, mR = m - mL, c = { t: (a + b) / 2, mL: mL, mR: mR, J: {},
+                                              ok: mL >= o.minLeaf && mR >= o.minLeaf };
+          if (reg) {
+            var vL = Math.max(ql / mL - (sl / mL) * (sl / mL), 0);
+            var sr = sT - sl, qr = qT - ql, vR = Math.max(qr / mR - (sr / mR) * (sr / mR), 0);
+            c.J.mse = (mL * vL + mR * vR) / m;
+          } else {
+            var cr = n.counts.map(function (v, k) { return v - cl[k]; });
+            crits.forEach(function (cc) {
+              c.J[cc] = (mL * impurity(cl, mL, cc) + mR * impurity(cr, mR, cc)) / m;
+            });
+          }
+          cand.push(c);
+          if (c.ok) crits.forEach(function (cc) {
+            var B = out.best[cc];
+            if (!B || c.J[cc] < B.J - 1e-12) out.best[cc] = { f: f, t: c.t, J: c.J[cc], mL: mL, mR: mR };
+          });
+        }
+        out.feats.push(cand);
+      }
+      return out;
+    }
+    function splittable(n) {
+      if (n.imp[o.crit] < 1e-12) return "pure";
+      if (n.depth >= o.maxDepth) return "the depth limit, " + o.maxDepth;
+      if (n.m < 2 * o.minLeaf) return "too few instances to split";
+      return null;
+    }
+    var api = {
+      nodes: nodes, root: null, done: false, crit: o.crit,
+      /** Split the next node that can be split; returns {node, sc, made: [leaves]} or null. */
+      step: function () {
+        var made = [];
+        while (queue.length) {
+          var n = queue.shift(), why = splittable(n);
+          if (!why) {
+            var sc = scan(n), B = sc.best[o.crit];
+            if (B && n.imp[o.crit] - B.J > 1e-12) {
+              n.split = { f: B.f, t: B.t, J: B.J, dI: n.imp[o.crit] - B.J };
+              n.sc = sc;
+              var L = n.idx.filter(function (i) { return X[i][B.f] <= B.t; });
+              var R = n.idx.filter(function (i) { return X[i][B.f] > B.t; });
+              var bl = n.box.map(function (r) { return r.slice(); }), br = n.box.map(function (r) { return r.slice(); });
+              bl[B.f][1] = B.t; br[B.f][0] = B.t;
+              n.left = make(L, n.depth + 1, bl, n);
+              n.right = make(R, n.depth + 1, br, n);
+              return { node: n, sc: sc, made: made };
+            }
+            why = B ? "no split lowers the impurity" : "no split respects the minimum leaf size";
+          }
+          n.leaf = true; n.why = why; made.push(n);
+        }
+        api.done = true;
+        return made.length ? { node: null, made: made } : null;
+      },
+      grow: function () { while (!api.done) api.step(); return api; },
+      leafOf: function (x) {
+        var n = api.root;
+        while (n.split) n = x[n.split.f] <= n.split.t ? n.left : n.right;
+        return n;
+      },
+      predict: function (x) { var n = api.leafOf(x); return reg ? n.mean : n.major; },
+      leaves: function () { return nodes.filter(function (n) { return !n.split; }); },
+      depth: function () { return nodes.reduce(function (a, n) { return Math.max(a, n.split ? n.depth + 1 : n.depth); }, 0); },
+      scan: scan
+    };
+    var all = A.range(X.length);
+    var box = A.range(d).map(function () { return [-Infinity, Infinity]; });
+    api.root = make(all, 0, box, null);
+    return api;
+  }
+
+  // The class-coloured shading of a fitted classification tree.
+  function shadeTree(p, T, alpha) {
+    var cs = [A.rgb("c0"), A.rgb("c1"), A.rgb("c2"), A.rgb("c3")];
+    p.field(function (a, b) { var c = cs[T.predict([a, b])]; return [c[0], c[1], c[2], alpha]; }, { res: 90 });
+  }
+  // The split segments of a tree, each clipped to its node's rectangle.
+  function drawSplits(p, T, dom, cls) {
+    T.nodes.forEach(function (n) {
+      if (!n.split) return;
+      var bx = n.box.map(function (r, f) { return [Math.max(r[0], dom[f][0]), Math.min(r[1], dom[f][1])]; });
+      if (n.split.f === 0) p.line(n.split.t, bx[1][0], n.split.t, bx[1][1], cls);
+      else p.line(bx[0][0], n.split.t, bx[0][1], n.split.t, cls);
+    });
+  }
+
+  /* ======================================================================
+     1 · CART, split by split
+     ====================================================================== */
+  (function () {
+    var R = A.rng(61), X = [], y = [];
+    var centres = [[-1.0, -0.7], [1.0, -0.5], [0.1, 1.1]];
+    centres.forEach(function (c, k) {
+      for (var i = 0; i < 30; i++) { X.push([+R.n(c[0], 0.75).toFixed(2), +R.n(c[1], 0.75).toFixed(2)]); y.push(k); }
+    });
+    var DOM = [[-3, 3], [-3, 3]];
+    var S = { crit: "gini", maxDepth: 4, minLeaf: 1 }, T, st, pl;
+
+    var plots = A.$("#ct-plots"), scanHost = A.$("#ct-scan");
+    var pX = A.plot(plots, { x: DOM[0], y: DOM[1], w: 420, h: 390, xlabel: "x₁", ylabel: "x₂",
+                             caption: "Regions so far; the dashed box is the node just split" });
+    var tree = A.canvas(plots, { w: 420, h: 390, caption: "The tree so far (left branch: yes)" });
+    var pS = [0, 1].map(function (f) {
+      return A.plot(scanHost, { x: DOM[f], y: [0, 1.08], w: 420, h: 200, xlabel: "threshold t on x" + SUB[f],
+                                ylabel: "J / I(parent)", yticks: [0, 0.5, 1],
+                                caption: "Scan over feature x" + SUB[f] });
+    });
+
+    var side = A.$("#ct-side");
+    A.seg(side, { label: "Criterion", value: "gini", options: [["gini", "Gini"], ["entropy", "entropy"]],
+                  onChange: function (v) { S.crit = v; pl.restart(true); } });
+    A.slider(side, { label: "Maximum depth", min: 1, max: 12, step: 1, value: S.maxDepth,
+                     fmt: function (v) { return String(Math.round(v)); },
+                     onInput: function (v) { S.maxDepth = Math.round(v); pl.restart(true); } });
+    A.slider(side, { label: "Minimum leaf size", min: 1, max: 15, step: 1, value: S.minLeaf,
+                     fmt: function (v) { return String(Math.round(v)); },
+                     onInput: function (v) { S.minLeaf = Math.round(v); pl.restart(true); } });
+    var ro = A.readout(side, [["n", "splits"], ["leaves", "leaves"], ["depth", "depth"], ["acc", "training accuracy"],
+                              ["node", "node just split"], ["q", "question"], ["dI", "$\\Delta I$"],
+                              ["agree", "Gini and entropy agreed"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "class 0" }, { shape: "tri", cls: "pt c1", label: "class 1" },
+                    { shape: "sq", cls: "pt c2", label: "class 2" }, { shape: "circle", cls: "pt c0 wrong", label: "misclassified" },
+                    { line: "line", label: "$J$, criterion in use" }, { line: "line math dash", label: "$J$, the other criterion" }]);
+    var say = A.narrate("#ct-say");
+
+    function reset() {
+      T = CART(X, y, { task: "clf", K: 3, crit: S.crit, maxDepth: S.maxDepth, minLeaf: S.minLeaf });
+      st = { last: null, splits: 0, agree: 0, made: [] };
+    }
+    function step() {
+      var r = T.step();
+      st.made = r ? r.made : [];
+      if (r && r.node) {
+        st.last = r.node; st.splits++;
+        var other = S.crit === "gini" ? "entropy" : "gini", a = r.sc.best[S.crit], b = r.sc.best[other];
+        r.node.agree = !!(b && a.f === b.f && a.t === b.t);
+        if (r.node.agree) st.agree++;
+        r.node.otherBest = b;
+      }
+      return !T.done;
+    }
+
+    function drawTree() {
+      tree.clear();
+      var g = tree.g, W = tree.W, leaves = [];
+      (function walk(n) { if (n.split) { walk(n.left); walk(n.right); } else leaves.push(n); })(T.root);
+      var D = Math.max(1, T.depth()), rowH = Math.min(95, (tree.H - 70) / D);
+      var pos = {};
+      leaves.forEach(function (n, i) { pos[n.id] = [20 + (i + 0.5) * (W - 40) / leaves.length, 28 + n.depth * rowH]; });
+      (function place(n) {
+        if (!n.split) return pos[n.id];
+        var a = place(n.left), b = place(n.right);
+        return (pos[n.id] = [(a[0] + b[0]) / 2, 28 + n.depth * rowH]);
+      })(T.root);
+      T.nodes.forEach(function (n) {
+        if (!n.split) return;
+        [n.left, n.right].forEach(function (c) {
+          A.el("line", { x1: pos[n.id][0], y1: pos[n.id][1], x2: pos[c.id][0], y2: pos[c.id][1], class: "axis" }, g);
+        });
+      });
+      T.nodes.forEach(function (n) {
+        var q = pos[n.id];
+        tree.marker(q[0], q[1], A.SHAPES[n.major], n.split ? 6 : 5.5, "pt c" + n.major + (n.split || n.leaf ? "" : " hollow"));
+        if (n === st.last) tree.marker(q[0], q[1], "circle", 11, "halo");
+        if (n.split) {
+          var span = Math.abs(pos[n.right.id][0] - pos[n.left.id][0]);
+          if (span > 70 || n === st.last)
+            tree.text(q[0], q[1] - 11, "x" + SUB[n.split.f] + " ≤ " + fmt(n.split.t, 2), "lbl-sm", "middle");
+        } else if (leaves.length <= 16) tree.text(q[0], q[1] + 18, String(n.m), "lbl-sm", "middle");
+      });
+      if (leaves.length <= 16) tree.text(W / 2, tree.H - 6, "numbers under the leaves: training instances in each", "lbl-sm", "middle");
+    }
+
+    function render() {
+      shadeTree(pX, T, 0.16);
+      pX.clear();
+      drawSplits(pX, T, DOM, "line thin ink");
+      var n = st.last;
+      if (n) {
+        var bx = n.box.map(function (r, f) { return [Math.max(r[0], DOM[f][0]), Math.min(r[1], DOM[f][1])]; });
+        pX.rect(bx[0][0], bx[1][0], bx[0][1], bx[1][1], "line acc thin dash", "over", { fill: "none" });
+      }
+      var correct = 0;
+      X.forEach(function (x, i) {
+        var ok = T.predict(x) === y[i];
+        if (ok) correct++;
+        pX.dot(x[0], x[1], { shape: A.SHAPES[y[i]], r: 4, cls: "pt c" + y[i] + (ok || !st.splits ? "" : " wrong") });
+      });
+      drawTree();
+
+      // The scan for the node just split; before the first step, the root's.
+      var shown = n || T.root, sc = n ? n.sc : T.scan(T.root), other = S.crit === "gini" ? "entropy" : "gini";
+      pS.forEach(function (p, f) {
+        p.clear();
+        var cand = sc.feats[f].filter(function (c) { return c.ok; });
+        var line = function (c) { return cand.map(function (q) { return [q.t, q.J[c] / shown.imp[c]]; }); };
+        p.path(line(other), "line math dash thin");
+        p.path(line(S.crit), "line");
+        cand.forEach(function (q) { p.dot(q.t, q.J[S.crit] / shown.imp[S.crit], { r: 1.8, cls: "fill-primary" }); });
+        var B = sc.best[S.crit], O = sc.best[other];
+        if (O && O.f === f) p.dot(O.t, O.J / shown.imp[other], { shape: "diamond", r: 6, cls: "pt c2 hollow", layer: "over" });
+        if (B && B.f === f) {
+          p.line(B.t, 0, B.t, 1.08, "line ok thin dash");
+          p.dot(B.t, B.J / shown.imp[S.crit], { shape: "cross", r: 6, cls: "line ok", layer: "over" });
+        }
+      });
+
+      var acc = X.filter(function (x, i) { return T.predict(x) === y[i]; }).length / X.length;
+      ro.set("n", String(st.splits));
+      ro.set("leaves", String(T.leaves().length));
+      ro.set("depth", String(T.depth()));
+      ro.set("acc", A.pct(acc, 1), acc === 1 ? "good" : "");
+      ro.set("node", n ? "m = " + n.m + ", " + (S.crit === "gini" ? "G" : "H") + " = " + fmt(n.imp[S.crit], 3) : "—");
+      ro.set("q", n ? "x" + SUB[n.split.f] + " ≤ " + fmt(n.split.t, 3) : "—");
+      ro.set("dI", n ? fmt(n.split.dI, 3) : "—");
+      ro.set("agree", st.splits ? st.agree + " of " + st.splits : "—");
+
+      var name = S.crit === "gini" ? "Gini" : "entropy", oname = S.crit === "gini" ? "entropy" : "Gini";
+      var I = S.crit === "gini" ? "G" : "H";
+      var madeTxt = st.made.length ? " Made leaves on the way: " + st.made.map(function (q) { return "a node of " + q.m + " (" + q.why + ")"; }).join("; ") + "." : "";
+      if (!n) {
+        say.say("<span class='k'>Start.</span> One node holding all 90 points, 30 of each class, so " +
+                K("G = 1 - 3\\cdot(1/3)^2 = 0.667") + " and " + K("H = \\log_2 3 = 1.585") +
+                ". The scan below is the root's: " + sc.feats[0].length + " candidate thresholds on " + K("x_1") + ", " + sc.feats[1].length +
+                " on " + K("x_2") + ". The green cross is the one " + name + " will choose. Press <em>Step</em>.");
+      } else {
+        var B = n.split, O = n.otherBest;
+        say.say("<span class='k'>Split " + st.splits + ".</span> A node of " + n.m + " instances (" + n.counts.join(" / ") + " by class), " +
+                K(I + " = " + fmt(n.imp[S.crit], 3)) + ". Best of " + (n.sc.feats[0].length + n.sc.feats[1].length) + " candidates: " +
+                K("x_" + (B.f + 1) + " \\le " + fmt(B.t, 3)) + ", sending " + n.left.m + " left and " + n.right.m + " right, " +
+                K("J = " + fmt(B.J, 3)) + ", so " + K("\\Delta I = " + fmt(B.dI, 3)) + ". " +
+                (n.agree ? oname + " would have chosen the same split." :
+                  "<strong>" + oname + " would have chosen differently</strong>: " + (O ? K("x_" + (O.f + 1) + " \\le " + fmt(O.t, 3)) : "no split") + ".") +
+                madeTxt + (T.done ? " <strong>Finished</strong>: no node left that may be split." : ""));
+      }
+    }
+    A.onTheme(render);
+    pl = A.player("#ct-bar", { step: step, reset: reset, render: render, fps: 1.5, unit: "split" });
+  })();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 18 — Attention and transformers</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Attention and transformers</h1>
+  <p class="subtitle">IMDb</p>
+  <p><span class="badge badge-lec">Lecture 18</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 14&ndash;15</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+</section>
+
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Lecture&nbsp;17 classified IMDb reviews: words and subword
+  tokens, an embedding table, and a bidirectional GRU trained on logits with
+  cross-entropy &mdash; which lost to a bag-of-words anchor. However well it is
+  trained, a recurrent model carries three limits:</p>
+  <ul class="tight small">
+    <li>The computation is <strong>sequential</strong> along the sequence</li>
+    <li>Everything remembered must fit through <strong>one fixed-width state</strong></li>
+    <li>Position 400 is four hundred steps from position 2, however good the gates</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">One change removes all three</span>
+    Let every position compute a weighted sum over <em>every</em> position
+    directly, with the weights learned from the content. No recurrence, no
+    single state, and every pair of positions one step apart.
+  </div>
+</section>
+
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol class="tight">
+    <li><strong>The mathematics</strong> &mdash; scaled dot-product attention,
+        why the scores are divided by $\sqrt{d_k}$, and why position has to be
+        added</li>
+    <li><strong>The architecture</strong> &mdash; one block, the causal mask,
+        attention in code, and its quadratic cost</li>
+    <li><strong>The task</strong> &mdash; fine-tune a pretrained transformer on
+        the reviews, against a bag of words and Lecture&nbsp;17&rsquo;s GRU</li>
+    <li><strong>Beyond classification</strong> &mdash; search and grouping from
+        sentence embeddings</li>
+    <li><strong>Two leaks</strong> &mdash; a vectoriser fitted before the split,
+        and the same document on both sides of it</li>
+  </ol>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-18.ipynb">Open Lecture 18 in Colab</a>
+  </p>
+</section>
+
+<section data-menu-title="The question">
+  <h2>The question</h2>
+  <p class="lead">Every position needs a summary of the whole sequence, weighted
+  by <em>relevance</em> &mdash; and relevance has to be learned, not designed.</p>
+  <div class="panel">
+    <span class="panel-title">The shape of the answer</span>
+    Output at position $i$ is $\sum_j w_{ij}\mathbf{v}_j$: a weighted sum of
+    values, one per position. Everything below is about where $w_{ij}$ comes
+    from and why it takes the form it does.
+  </div>
+  <p class="small muted">Note what is already gone: there is no recurrence in
+  that expression, so nothing forces the positions to be computed in order.</p>
+</section>
+
+<section data-menu-title="Queries, keys and values">
+  <h2>Queries, keys and values</h2>
+  <ol class="derivation">
+    <li><div>Project each position three ways, with learned matrices:
+        $\mathbf{q}_i = \mathbf{W}_Q\mathbf{x}_i$,
+        $\mathbf{k}_j = \mathbf{W}_K\mathbf{x}_j$,
+        $\mathbf{v}_j = \mathbf{W}_V\mathbf{x}_j$.
+        <span class="why">A query is what this position is looking for; a key is what that position offers; a value is what it contributes if chosen</span></div></li>
+    <li><div>Score every pair by how well the query matches the key:
+        $s_{ij} = \mathbf{q}_i^{\mathsf T}\mathbf{k}_j$.
+        <span class="why">A dot product, because it is the cheapest similarity that a matrix multiply computes for all pairs at once</span></div></li>
+    <li><div>Turn the scores into weights that sum to one:
+        $w_{ij} = \mathrm{softmax}_j(s_{ij})$.
+        <span class="why">Lecture 17's softmax, applied along the sequence rather than across classes</span></div></li>
+    <li class="result"><div>And take the weighted sum:
+        $\mathbf{z}_i = \sum_j w_{ij}\mathbf{v}_j$.
+        <span class="why">In matrix form for all positions at once: $\mathrm{softmax}(\mathbf{Q}\mathbf{K}^{\mathsf T})\mathbf{V}$</span></div></li>
+  </ol>
+  <a class="anim-link" href="../animations/lecture-18.html#attn" target="_blank">Animation</a>
+</section>
+
+<section data-menu-title="Why divide by √d_k">
+  <h2>Why divide by $\sqrt{d_k}$</h2>
+  <p class="small">Take $\mathbf{q}$ and $\mathbf{k}$ to have independent
+  components with mean 0 and variance 1. Then</p>
+  <ol class="derivation" style="counter-reset: dstep 4">
+    <li><div>$s = \mathbf{q}^{\mathsf T}\mathbf{k} = \sum_{d=1}^{d_k} q_d k_d$
+        is a sum of $d_k$ independent zero-mean terms.
+        <span class="why">Each term has variance $\mathrm{Var}(q_d)\mathrm{Var}(k_d) = 1$</span></div></li>
+    <li><div>So $\mathrm{Var}(s) = d_k$, and $s$ has standard deviation $\sqrt{d_k}$.
+        <span class="why">The scores grow with the dimension &mdash; for $d_k = 64$, typical scores are already of order 8</span></div></li>
+    <li class="result"><div>Softmax of scores that large saturates &mdash; one
+        weight near 1, its gradient near 0 &mdash; so divide by $\sqrt{d_k}$, and
+        the variance is 1 whatever the dimension:
+        $\mathrm{softmax}\!\left(\mathbf{Q}\mathbf{K}^{\mathsf T}/\sqrt{d_k}\right)\mathbf{V}$.
+        <span class="why">The scale is not a hyperparameter &mdash; it is the number that makes the score distribution independent of $d_k$</span></div></li>
+  </ol>
+  <p class="small muted"><span class="scope scope-exam">examinable</span> Derive
+  the variance of the score and state what the division fixes.</p>
+</section>
+
+<section data-menu-title="Positional encoding">
+  <h2>Positional encoding</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">The problem attention creates</span>
+    $\mathrm{softmax}(\mathbf{Q}\mathbf{K}^{\mathsf T})\mathbf{V}$ is
+    <strong>permutation equivariant</strong>: shuffle the input positions and
+    the outputs shuffle with them, unchanged. So the model literally cannot tell
+    <em>&ldquo;the film was not good&rdquo;</em> from <em>&ldquo;good, the film was not&rdquo;</em>.
+  </div>
+  <p class="small">Recurrence got order for free, because it processed the
+  sequence in order. Attention has to be <em>told</em>: add a position-dependent
+  vector to each embedding before the first layer.</p>
+  <ul class="tight small">
+    <li><strong>Sinusoidal</strong> &mdash; fixed, and extends to lengths never
+        seen in training</li>
+    <li><strong>Learned</strong> &mdash; an embedding table indexed by position;
+        simpler, and bounded by the longest training sequence</li>
+    <li><strong>Relative</strong> &mdash; encode the <em>distance</em> between
+        two positions in the score, which is what most current models do</li>
+  </ul>
+  <a class="anim-link" href="../animations/lecture-18.html#pos" target="_blank">Animation</a>
+</section>
+
+<section data-menu-title="One block">
+  <h2>One block</h2>
+  <p class="small">A transformer block is attention plus a small feed-forward
+  network, each wrapped the same way:</p>
+  <ol class="tight small">
+    <li>Self-attention over the whole sequence</li>
+    <li>Add the input back (a residual connection) and normalise</li>
+    <li>A position-wise feed-forward network &mdash; the same two-layer MLP
+        applied at every position independently</li>
+    <li>Add and normalise again</li>
+  </ol>
+  <div class="panel">
+    <span class="panel-title">Why the residual, and why the norm</span>
+    Both are Lecture&nbsp;11, unchanged. The residual gives the gradient an
+    additive path through depth &mdash; the same argument as an LSTM gate, one
+    level up. The layer normalisation keeps the variance from drifting as blocks
+    stack. A transformer is deep, and it is deep only because of these two.
+  </div>
+</section>
+
+<section data-menu-title="Masking, and why the decoder needs it">
+  <h2>Masking, and why the decoder needs it</h2>
+  <p class="small">A decoder generating text must not look at what it has not
+  written yet. So set $s_{ij} = -\infty$ for $j > i$ before the softmax.</p>
+  <div class="eqn-box compact">
+    $$w_{ij} = \mathrm{softmax}_j\!\left(\frac{s_{ij}}{\sqrt{d_k}} + m_{ij}\right),
+    \quad m_{ij} = \begin{cases}0 & j \le i\\ -\infty & j > i\end{cases}$$
+  </div>
+  <p class="small">$e^{-\infty} = 0$, so those positions get exactly zero
+  weight and contribute nothing &mdash; and, crucially, no gradient either.</p>
+  <p class="small fail">This is Lecture&nbsp;15&rsquo;s causality condition
+  again, enforced in the architecture rather than in the data split. An
+  unmasked decoder is a model that has read the answer.</p>
+</section>
+
+<section data-menu-title="Attention in ten lines">
+  <h2>Attention in ten lines</h2>
+  <pre><code class="language-python" data-trim>
+def attention(Q, K, V, mask=None):
+    d_k = Q.shape[-1]
+    scores = Q @ K.transpose(-2, -1) / math.sqrt(d_k)   # the derivation
+    if mask is not None:
+        scores = scores.masked_fill(mask, float("-inf"))
+    w = scores.softmax(dim=-1)
+    return w @ V, w
+  </code></pre>
+  <p class="small">Six lines, and every one of them is a step of the
+  derivation. The rest of a transformer &mdash; the residuals, the
+  feed-forward, the normalisation &mdash; is arrangement around this function.</p>
+  <p class="small muted">Which is worth saying plainly: the architecture that
+  changed the field is, at its centre, a similarity, a softmax and a weighted
+  average.</p>
+</section>
+
+<section data-menu-title="The quadratic cost, and what is done about it">
+  <h2>The quadratic cost, and what is done about it</h2>
+  <p class="small">$\mathbf{Q}\mathbf{K}^{\mathsf T}$ is $T \times T$. At
+  $T = 512$ that is 262,144 scores; at $T = 8{,}192$ it is
+  67 million.</p>
+  <ul class="tight small">
+    <li><strong>Sparse patterns</strong> &mdash; attend to a local window plus a
+        few global positions, making the cost linear</li>
+    <li><strong>Low-rank or kernel approximations</strong> &mdash; approximate
+        the softmax so the product never has to be formed</li>
+    <li><strong>Better implementations</strong> &mdash; the exact same
+        computation, tiled so it never writes the $T \times T$ matrix to memory.
+        This is what most systems actually use</li>
+  </ul>
+  <p class="small fail">Note which of those changes the mathematics and which
+  does not. The third is an engineering result, and it moved the practical limit
+  further than either of the first two.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; a context length that runs out of memory</span>
+    Attention is quadratic in the sequence length, so doubling the context quadruples the score matrix. The failure arrives as an out-of-memory error at a length that worked on the previous run, and no accuracy number anywhere hints at how close you were.
+  </div>
+</section>
+
+<section data-menu-title="Reading an attention map, carefully">
+  <h2>Reading an attention map, carefully</h2>
+  <p class="small">Attention weights are easy to plot and easy to over-read.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">What they are not</span>
+    They are <strong>not an explanation</strong>. A weight says this value
+    contributed to that output, not that the model&rsquo;s decision depended on it:
+    the residual stream carries information around the attention, and different
+    weight patterns can give identical outputs.
+  </div>
+  <p class="small">Useful for forming a hypothesis; not evidence on its own. The
+  test is the same as everywhere else in this course &mdash; remove the thing
+  and measure whether the number moves.</p>
+</section>
+
+<section data-menu-title="The model we borrow">
+  <h2>The model we borrow</h2>
+  <table>
+    <tr><th>Property</th><th class="num">Value</th></tr>
+    <tr><td>Parameters</td><td class="num">66,955,010</td></tr>
+    <tr><td>Vocabulary &mdash; the same one we used last lecture</td><td class="num">30,522</td></tr>
+    <tr><td>Embedding width</td><td class="num">768</td></tr>
+    <tr><td>Pretraining task</td><td class="num">predict masked words</td></tr>
+  </table>
+  <p>Last lecture we took 30,522 &times; 768 numbers out of
+  this model and threw the rest away. The rest is where the language is.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Fine-tuning">
+  <h2>Fine-tuning, precisely</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-8|3-5|7-8">from transformers import AutoModelForSequenceClassification
+
+model = AutoModelForSequenceClassification.from_pretrained(
+    "distilbert-base-uncased", num_labels=2)
+# every weight is pretrained EXCEPT the classification head, which is random
+
+opt   = torch.optim.AdamW(model.parameters(), lr=2e-5)
+lossf = nn.CrossEntropyLoss()          # logits in, as always
+  </code></pre>
+  <ul class="tight small">
+    <li>A new linear head, randomly initialised, on top of a pretrained body</li>
+    <li>A learning rate fifty times smaller than we used from scratch
+        &mdash; large steps destroy what was pretrained</li>
+    <li>One pass over the data, not two</li>
+  </ul>
+</section>
+
+<section data-menu-title="The head is random">
+  <h2>How much is the head, and how much is the body?</h2>
+  <p>Run the same backbone with its untrained head and no fine-tuning at all:</p>
+  <table>
+    <tr><th>Model</th><th class="num">Test accuracy</th></tr>
+    <tr><td class="fail">Pretrained body, random head, no training</td><td class="num fail">49.9%</td></tr>
+    <tr><td>Always one class</td><td class="num">50.0%</td></tr>
+  </table>
+  <p class="small">Measured on 3,000 test reviews sampled at
+  random, 50.1% of them positive. Note it is
+  <em>no better</em> than the majority class: an untrained head is an arbitrary
+  hyperplane, and which side it puts each class on is a coin toss. The
+  pretraining on its own predicts nothing about sentiment, because nothing has
+  told it what the two output units mean.</p>
+  <p class="small muted">Everything that follows is what one pass of fine-tuning
+  does with a representation it did not have to build.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="The budget">
+  <h2>What it costs</h2>
+  <table>
+    <tr><th>Setting</th><th class="num">Value</th></tr>
+    <tr><td>Reviews used to fine-tune</td><td class="num">2,000</td></tr>
+    <tr><td>Epochs</td><td class="num">1</td></tr>
+    <tr><td>Batch size, learning rate</td><td class="num">16, 0.00002</td></tr>
+    <tr><td>Training wall clock</td><td class="num">16 s</td></tr>
+    <tr><td>Test reviews scored, sampled at random</td><td class="num">3,000</td></tr>
+  </table>
+  <p class="small">Measured on an Apple MPS backend, in <code>float32</code>,
+  and sized so that the notebook runs on a free CPU. One pass, fixed in
+  advance: with more budget the number of epochs is a hyperparameter, chosen on
+  the validation split &mdash; never on the test set.</p>
+</section>
+
+<section data-menu-title="Result">
+  <h2>The result</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Test accuracy</th></tr>
+    <tr><td>Always one class</td><td class="num">50.0%</td></tr>
+    <tr><td>tf-idf + logistic regression, the same 2,000 reviews</td><td class="num">84.9%</td></tr>
+    <tr><td>GRU from scratch</td><td class="num">63.0%</td></tr>
+    <tr><td class="fix">DistilBERT, fine-tuned</td><td class="num hit">85.9%</td></tr>
+  </table>
+  <p class="lead fix">22.90 points over the model you
+  built.</p>
+  <p class="small">And only 1.00 points over a bag of words fitted on the same
+  2,000 labels &mdash; which is the second result of the afternoon, and the
+  less comfortable one. Every row but the first is scored on the same 3,000
+  test reviews.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section class="figslide" data-menu-title="◆ Everything, side by side">
+  <h2>Everything, measured the same way</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-final.svg"
+         alt="Bar chart of test accuracy for five models: always positive at 50.0%, a bag of words fitted on 2,000 reviews at 84.9%, the GRU from scratch at 63.0%, DistilBERT with an untrained head at 49.9%, and DistilBERT fine-tuned at 85.9%.">
+  </figure>
+  <p class="takeaway">Four of the five bars are on the same 3,000 held-out
+  reviews, with the same metric, computed by the same function.</p>
+</section>
+
+<section data-menu-title="Count the errors">
+  <h2>Say it in errors, not in points</h2>
+  <table>
+    <tr><th>Model</th><th class="num">Reviews misclassified, out of 3,000</th></tr>
+    <tr><td>GRU from scratch</td><td class="num fail">1,109</td></tr>
+    <tr><td class="fix">DistilBERT, fine-tuned</td><td class="num hit">422</td></tr>
+  </table>
+  <p class="big-num good">62%</p>
+  <p class="small">of the mistakes removed. Percentage points flatter a model
+  near the top of the range; the error count is the number the desk actually
+  cares about, because each one is a review someone has to fix by hand.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Where it earns its place">
+  <h2>Where the pretrained model earns its place</h2>
+  <p class="small">Measured here at one label budget: 2,000 reviews for
+  each model, scored on the same 3,000 test reviews.</p>
+  <table>
+    <tr><th>Model, fitted on 2,000 labels</th><th class="num">Test accuracy</th></tr>
+    <tr><td>tf-idf + logistic regression</td><td class="num">84.9%</td></tr>
+    <tr><td class="fix">DistilBERT, fine-tuned</td><td class="num hit">85.9%</td></tr>
+  </table>
+  <p class="small">Pretraining is knowledge the labels do not have to supply.
+  So the expectation is that its lead <em>grows</em> as labels get scarcer and
+  shrinks as they arrive &mdash; and the situation every real feedback desk
+  starts in is the scarce one.</p>
+  <p class="small muted">This notebook measures one point on that curve, not the
+  curve.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Measuring the curve">
+  <h2>What it would take to measure the curve</h2>
+  <div class="panel">
+    <span class="panel-title">The experiment, not run here</span>
+    Repeat the comparison at several label budgets, from a couple of hundred
+    reviews to several thousand, on one fixed test sample drawn at random
+    &mdash; the corpus ships all the positives first.
+  </div>
+  <ul class="tight small">
+    <li>Choose each model&rsquo;s budget on the validation split <strong>at every
+        size</strong>: the number of optimisation steps for the transformer, the
+        regularisation strength for the linear model</li>
+    <li>Fixing the epochs instead starves the smallest run of steps; fixing the
+        steps undertrains the largest. The two protocols can disagree about the
+        <em>sign</em> of the gap</li>
+  </ul>
+  <p class="small fail">That is several fine-tunes, more than a free CPU runs
+  inside a lecture. Until it is run, &ldquo;the pretraining is worth thousands
+  of labels&rdquo; is a hypothesis &mdash; not yet the number to quote to
+  whoever is paying for the annotation.</p>
+</section>
+
+<section data-menu-title="What did the work">
+  <h2>What did the work</h2>
+  <table>
+    <tr><th>Changed</th><th>Unchanged</th></tr>
+    <tr><td>the whole model, not just the table</td><td>the corpus, the split, the metric</td></tr>
+    <tr><td>attention instead of recurrence</td><td>the loss &mdash; still logits in</td></tr>
+    <tr><td>a much smaller learning rate</td><td>the training loop, line for line</td></tr>
+    <tr><td>one epoch instead of two</td><td>the evaluation function</td></tr>
+  </table>
+  <p class="small">Every row on the right is a decision you do not have to
+  re-make when the model changes. That is what the discipline of Part I bought.</p>
+</section>
+
+<section data-menu-title="Sentence embeddings">
+  <h2>One vector for a whole review</h2>
+  <p class="small">The desk also wants &ldquo;find me the ones like this
+  one&rdquo; and &ldquo;what do people keep complaining about?&rdquo;. Neither
+  is classification; both start from one unit-length vector per review, so that
+  a dot product is a cosine.</p>
+  <pre><code class="language-python" data-trim data-line-numbers="1-9|6-8|9">m  = AutoModel.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+tk = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+
+enc  = tk(texts, truncation=True, max_length=256, padding=True,
+          return_tensors="pt")
+out  = m(**enc).last_hidden_state                  # (B, T, 384)
+mask = enc["attention_mask"].unsqueeze(-1).float()
+vec  = (out * mask).sum(1) / mask.sum(1)           # mean over REAL tokens
+vec  = torch.nn.functional.normalize(vec, dim=1)   # onto the unit sphere
+  </code></pre>
+  <p class="fail small">Line 8 is last lecture&rsquo;s padding bug in its other
+  costume. Divide by <code>out.shape[1]</code> instead of by
+  <code>mask.sum(1)</code> and every short review is scaled toward zero.</p>
+</section>
+
+<section data-menu-title="Search">
+  <h2>Semantic search, in two lines</h2>
+  <pre><code class="language-python" data-trim>
+sims = query_vec @ corpus_vecs.T          # (1, N) cosine similarities
+top  = np.argsort(-sims[0])[:3]
+  </code></pre>
+  <p>2,000 negative reviews, embedded once, 384 dimensions each. No
+  index, no training, no labels.</p>
+  <div class="panel">
+    <span class="panel-title">Compare with what it replaces</span>
+    A keyword search over the same corpus, using the tf-idf vectoriser from the
+    previous lecture. Same corpus, same queries, different notion of
+    &ldquo;similar&rdquo;.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Search measured">
+  <h2>One query, two searches</h2>
+  <p class="small"><strong>Query:</strong> <em>&ldquo;the acting was wooden and unconvincing&rdquo;</em></p>
+  <div class="panel panel-fix">
+    <span class="panel-title">Nearest by embedding &mdash; cosine 0.555</span>
+    <span class="small">Ed Wood rides again. The fact that this movie was made should give any young aspiring film maker hope&hellip;</span>
+  </div>
+  <p class="small"><strong>Nearest by keyword overlap</strong> &mdash; tf-idf
+  cosine 0.194:</p>
+  <p class="small">&ldquo;This film was sheer boredom from beginning to end. Ok, so i salute Boorman for raising the worldwide recognition of events in Burma, but that is all he achieves&hellip;&rdquo;</p>
+  <p class="small muted">Two different reviews, and neither opens with the
+  query&rsquo;s words. The scores are not comparable across the two methods
+  &mdash; different spaces &mdash; and nothing here says which list is
+  <em>better</em>: that takes labelled queries and a ranking metric, which is
+  where the next lecture starts.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Clustering">
+  <h2>&ldquo;What do people keep complaining about?&rdquo;</h2>
+  <p>Cluster the 2,000 negative reviews in the same embedding
+  space. This is Lecture 8, unchanged &mdash; k-means, and the choice of $k$ by
+  silhouette rather than by eye.</p>
+  <pre><code class="language-python" data-trim>
+for k in (3, 4, 5, 6, 8, 10):
+    km = KMeans(n_clusters=k, n_init=10, random_state=42).fit(V)
+    print(k, silhouette_score(V, km.labels_, sample_size=1500,
+                              random_state=42))
+  </code></pre>
+  <p class="small muted">The vectors are on the unit sphere, so Euclidean
+  k-means and cosine k-means order the same points the same way.</p>
+</section>
+
+<section class="figslide" data-menu-title="◆ The complaint groups">
+  <h2>The groups, and how many</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-clusters.svg"
+         alt="Two panels: silhouette score against the number of clusters from 3 to 10, highest at 8, and a horizontal bar chart of the eight cluster sizes, from 438 reviews down to 40, labelled by the terms most characteristic of each cluster.">
+  </figure>
+  <p class="takeaway">The silhouette is low in absolute terms &mdash; complaint
+  text does not fall into well-separated balls &mdash; and the largest group is
+  still legible.</p>
+</section>
+
+<section data-menu-title="Groups measured">
+  <h2>The three largest groups</h2>
+  <table>
+    <tr><th class="num">Reviews</th><th>Terms most characteristic of the group</th></tr>
+    <tr><td class="num">438</td><td>bad, worst, terrible, seen</td></tr>
+    <tr><td class="num">373</td><td>flynn, actor, ed, bishop</td></tr>
+    <tr><td class="num">346</td><td>horror, zombie, cave, zombies</td></tr>
+  </table>
+  <p class="small">The terms are not the cluster centres. They are the words
+  whose average tf-idf weight is highest <em>inside</em> the group relative to
+  outside it &mdash; a group is named by what makes it different, not by what is
+  common everywhere.</p>
+  <p class="small">The second group is named by proper nouns &mdash; a handful
+  of films reviewed many times. That is a <em>topic</em>, not a complaint:
+  grouping finds what recurs, and deciding which recurrences the desk cares
+  about is still a person&rsquo;s job.</p>
+  <p class="small muted">8 groups in total, chosen by a
+  silhouette of 0.0167.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="What the desk gets">
+  <h2>What the desk actually gets</h2>
+  <table>
+    <tr><th>They asked for</th><th>They get</th></tr>
+    <tr><td>a complaint flag</td><td>85.9% accurate: 422 errors in 3,000</td></tr>
+    <tr><td>&ldquo;find me ones like this&rdquo;</td><td>cosine search over 2,000 vectors</td></tr>
+    <tr><td>&ldquo;what recurs&rdquo;</td><td>8 groups, each named by its own words</td></tr>
+  </table>
+  <p class="small">Three deliverables, one pretrained representation, and one
+  afternoon. None of the three required a labelled example of the thing being
+  asked for except the first.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Where it is fitted">
+  <h2>Where is the vectoriser fitted?</h2>
+  <div class="panel">
+    <span class="panel-title">The task</span>
+    <em>&ldquo;Build a scikit-learn pipeline that vectorises the reviews with
+    tf-idf and classifies them with logistic regression, and report the test
+    accuracy.&rdquo;</em>
+  </div>
+  <p class="small">Stated like that, it is open in the same place as a scaler
+  fitted before the split (Lecture&nbsp;3), and this time the object being
+  fitted is not a scaler. Read the code and find where the vectoriser is
+  fitted, and on what.</p>
+</section>
+
+<section data-menu-title="The leaky code">
+  <h2>One way to write it</h2>
+  <pre><code class="language-python" data-trim data-line-numbers>vec = TfidfVectorizer(min_df=1, ngram_range=(1, 2))
+X   = vec.fit_transform(all_texts)            # every document
+y   = all_labels
+
+X_tr, X_te, y_tr, y_te = train_test_split(
+    X, y, test_size=0.25, random_state=42, stratify=y)
+
+clf = LogisticRegression(max_iter=2000, C=4.0).fit(X_tr, y_tr)
+print(f"accuracy {(clf.predict(X_te) == y_te).mean():.3f}")
+  </code></pre>
+  <p>It runs, it splits, it never fits the classifier on test rows, and it
+  reports a plausible number. But line 2 fits the vectoriser on every
+  document, the test rows included.</p>
+</section>
+
+<section data-menu-title="Measure it">
+  <h2>So measure it &mdash; twice</h2>
+  <p>The same experiment at two corpus sizes, because the answer depends on the
+  size and that is the lesson:</p>
+  <ul class="tight small">
+    <li><strong>25,000 documents</strong> &mdash; the whole
+        of IMDb, 3 seeds</li>
+    <li><strong>400 documents</strong> &mdash; the size
+        of a real feedback corpus in its first month,
+        20 seeds</li>
+  </ul>
+  <p class="small">Leaky and honest are run on identical splits with identical
+  seeds, so the difference is the leak and nothing else.</p>
+</section>
+
+<section class="figslide" data-menu-title="◆ The cost of the leak">
+  <h2>What the leak buys, per seed</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-leak.svg"
+         alt="Strip plot of the accuracy difference between the leaky and honest pipelines, one dot per seed, for a corpus of four hundred reviews and a corpus of twenty-five thousand, with the mean marked on each row.">
+  </figure>
+  <p class="takeaway">Read each row&rsquo;s spread before its mean. On 25,000
+  reviews the leak is small and steady; on 400 the seeds fall on both sides of
+  zero and the mean is lost inside that scatter &mdash; a null result.</p>
+</section>
+
+<section data-menu-title="Cost is not the argument">
+  <h2>Three leaks, and none of them loud</h2>
+  <p class="small">A scaler fitted before the split (Lecture&nbsp;3) raises no
+  error and makes the score optimistic by an amount the code does not tell you.
+  Lecture 10's per-batch mean was worth 0.15
+  accuracy points. Today&rsquo;s vectoriser leak is worth nothing you can measure.</p>
+  <div class="panel panel-fail">
+    <span class="panel-title">And that is not a reason to relax</span>
+    A leaked score and an honest score can be identical, so you cannot tell from
+    the number which one you are holding. The procedure is what separates them
+    &mdash; which is why the procedure is what gets checked in review, and why
+    the next slide matters more than this one.
+  </div>
+</section>
+
+<section data-menu-title="Duplicates">
+  <h2>The text leak that really is expensive</h2>
+  <p class="lead">The same document on both sides of the split.</p>
+  <p>No pipeline protects you from this: every object is fitted correctly, on
+  training rows only, and the test row is still one the model has memorised. On
+  scraped or user-submitted text it is the normal case, not the pathological
+  one &mdash; a resubmit button is enough.</p>
+  <pre><code class="language-python" data-trim>
+norm = lambda s: " ".join(s.lower().split())
+train_norm = set(norm(s) for s in train_x)
+dupes = sum(1 for s in test_x if norm(s) in train_norm)
+  </code></pre>
+</section>
+
+<section class="figslide" data-menu-title="◆ The duplicate leak">
+  <h2>The same pipeline, two splits</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l22-duplicates.svg"
+         alt="Two bars of reported accuracy with one-standard-deviation whiskers: a random split over rows, and a grouped split that keeps every copy of an entry on one side, the first visibly higher.">
+  </figure>
+  <p class="takeaway fail">A corpus where three reviews in ten were submitted
+  twice, and the same honest pipeline split two ways: at random over rows, and
+  grouped by entry so every copy stays on one side. Nothing was fitted on the
+  test set in either bar; the difference is entirely which rows the split
+  separated.</p>
+</section>
+
+<section data-menu-title="The catalogue">
+  <h2>The silent-failure catalogue so far</h2>
+  <table>
+    <tr><th>Failure</th><th>Diagnosed in</th><th class="num">Measured cost</th></tr>
+    <tr><td>Scaler fitted before the split</td><td>Lecture 3</td><td class="num">an optimistic score, and no error</td></tr>
+    <tr><td>Accuracy under class imbalance</td><td>Lecture 3</td><td class="num">a useless model above 90%</td></tr>
+    <tr><td>Missing <code>zero_grad()</code></td><td>Lecture 10</td><td class="num">66 points</td></tr>
+    <tr><td>Random split on a time series</td><td>Lecture 15</td><td class="num">an unreproducible score</td></tr>
+    <tr><td class="fail">Summarising at the padded last position</td><td class="fail">Lecture 17</td><td class="num fail">11.85 points</td></tr>
+    <tr><td>Softmax before the loss</td><td>Lecture 17</td><td class="num">the wrong gradient, and no error</td></tr>
+    <tr><td>Vectoriser fitted before the split</td><td>today</td><td class="num">0.30 points &mdash; not distinguishable from zero</td></tr>
+    <tr><td class="fail">Duplicate documents across the split</td><td class="fail">today</td><td class="num fail">7.83 points</td></tr>
+  </table>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Is that good">
+  <h2>Is 85.9% good?</h2>
+  <p class="small">Against the desk&rsquo;s own criterion: 422
+  reviews out of the 3,000 scored are routed wrongly, and nobody sees them
+  again. Whether that is acceptable depends on what happens to a missed
+  complaint, and we have not asked.</p>
+  <div class="panel panel-fix">
+    <span class="panel-title">What a defensible report says</span>
+    Quote the error count, not the percentage. Say which reviews are misread
+    &mdash; short ones, sarcastic ones, ones whose verdict is in the last
+    clause. Offer an abstain band around a probability of one half, and let the
+    desk choose how wide it is.
+  </div>
+  <p class="small muted">The model is not the deliverable. The routing decision
+  is.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-18.ipynb">Open Lecture 18 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> A small pretrained transformer, a
+        subsampled corpus, and a short fine-tune</li>
+    <li>Lecture&nbsp;17&rsquo;s GRU rebuilt, DistilBERT before and after one
+        pass of fine-tuning, and a bag of words on the same 2,000 labels, all
+        scored on the same 3,000 test reviews</li>
+    <li>Sentence embeddings for search and grouping; the vectoriser leak and the
+        duplicate leak measured</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Fine-tune at <code>lr=1e-3</code>, the from-scratch model&rsquo;s rate. The
+    loss rises within twenty steps and never recovers: a pretrained body is
+    destroyed in tens of steps, not thousands.
+  </div>
+</section>
+
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight smaller">
+    <li>Derived attention as three projections, a scaled dot product, a softmax
+        and a weighted sum &mdash; with no recurrence in it</li>
+    <li>Derived the $\sqrt{d_k}$: the score variance grows with the dimension,
+        a saturated softmax has no gradient, and the division is exactly the
+        correction</li>
+    <li>Saw that attention is permutation equivariant, so position has to be
+        supplied &mdash; and three ways to supply it</li>
+    <li>Read the block &mdash; attention, residual, normalise, feed-forward,
+        residual, normalise &mdash; the mask that makes a decoder causal, and the
+        cost quadratic in sequence length</li>
+    <li>Fine-tuned a pretrained transformer: 85.9%, against 63.0% for
+        Lecture&nbsp;17&rsquo;s GRU and 84.9% for a bag of words on the same
+        labels</li>
+    <li>Searched and grouped reviews with sentence embeddings, and measured two
+        leaks: the vectoriser, a null result, and duplicates, 7.83 points</li>
+  </ol>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; position never reaches the model</span>
+    Attention is permutation equivariant: shuffle the tokens and the output shuffles with them. A model given no positional signal trains perfectly well while being unable to represent order at all, and no loss curve shows it.
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 18">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 18</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 18">
+  <h2>Exercises &mdash; Lecture 18</h2>
+  <ul class="ex-list">
+    <li>Scaled dot-product attention divides by $\sqrt{d_k}$. State what the variance of the unscaled dot product is, and what the softmax does without the division. <span class="ex-marks">[5]</span></li>
+    <li>A decoder must not attend to positions after the one it is predicting. State the mechanism that enforces it, and what would leak without it. <span class="ex-marks">[5]</span></li>
+    <li>A pretrained body is fine-tuned at $10^{-3}$, the rate that worked for the from-scratch model. Predict what happens, and state the rate the lecture uses instead. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 19&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 18 (2)">
+  <h2>Exercises &mdash; Lecture 18 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>A tf-idf vectoriser is fitted on every document of a 400-review corpus, and the matrix is split afterwards. Measured, the leak is worth 0.30 points. Say where the vectoriser should be fitted, and why the small number is no reason to leave the code as it is. <span class="ex-marks">[4]</span></li>
+    <li>A corpus contains duplicate documents across the train/test split. State why no pipeline fixes it, and say how the split must assign the rows instead. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 19&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 17">
+  <p class="kicker">The five set at the end of Lecture 17</p>
+  <h1>Solutions<br>Lecture 17</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 17">
+  <h2>Solutions &mdash; Lecture 17</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> Swapping the embedding table moved validation accuracy from 64.4% (our words, random vectors) to 58.4% with&hellip;</p>
+      <p class="lead"><span class="fix">So that the measurement says which change did the work: the tokenizer alone was worth &minus;6.0 points, the tuned table +15.0. Frozen, the model stayed at chance, so the gain needs the 5,000 labels to adapt the pretrained vectors.</span></p>
+      <ul class="tight smaller">
+        <li>Changing both at once and reporting the total says nothing about either</li>
+        <li>Frozen against tuned is one boolean, and it separates what the vectors bring from what adapting them adds</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> State the gradient of cross-entropy with respect to the logits for a one-hot target, and what each row of&hellip;</p>
+      <p class="lead"><span class="fix">$\partial L/\partial \mathbf{z} = \mathbf{p} - \mathbf{y}$, prediction minus target; each row sums to zero.</span></p>
+      <ul class="tight smaller">
+        <li>Both the softmax output and the one-hot target sum to one</li>
+        <li>The deck checks it against autograd on one row of five classes</li>
+      </ul>
+    </div>
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Solutions · 17 (2)">
+  <h2>Solutions &mdash; Lecture 17 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> A classifier's forward ends in a softmax, and its output is passed to nn.CrossEntropyLoss. State what happens&hellip;</p>
+      <p class="lead"><span class="fix">Nothing raises and the model still trains, but the softmax is applied twice, so the gradient it trains on is not $\mathbf{p} - \mathbf{y}$. Return the logits and let the loss apply the softmax.</span></p>
+      <ul class="tight smaller">
+        <li><code>nn.CrossEntropyLoss</code> applies the softmax itself, so it expects logits</li>
+        <li>A failure that trains and reports a number is the kind no shape check catches</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> A padded batch is fed to a GRU without pack_padded_sequence. State what the returned state summarises for a&hellip;</p>
+      <p class="lead"><span class="fix">The review followed by its padding: the state after the zeros, not after the last word. Pad the same review two different ways and require the logits not to move.</span></p>
+      <ul class="tight smaller">
+        <li>Packing hands the recurrent layer only the real timesteps</li>
+        <li>An output-shape test cannot see this; an invariance test can</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 17 (3)">
+  <h2>Solutions &mdash; Lecture 17 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> Enlarging a word vocabulary drives the share of unseen distinct test words down, but even the full&hellip;</p>
+      <p class="lead"><span class="fix">A word vocabulary is closed and language is not. Subword tokenisation.</span></p>
+      <ul class="tight smaller">
+        <li>The next review can always contain a word nobody has written yet, and the unseen words are the rare, informative ones</li>
+        <li>Starting from characters covers every string by construction, so the floor is zero rather than 61.3%</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 19 &middot; Lecture notes</p>
+  <h1>Information retrieval:<br>the lexical foundation</h1>
+  <p class="small">
+    The retrieval problem: a query, a corpus, a ranking &mdash; and why it is
+    not classification<br>
+    BM25, built one correction at a time: term frequency, saturation, inverse
+    document frequency, length<br>
+    Evaluating a ranking: precision@k, reciprocal rank, average precision, NDCG<br>
+    Where the relevance judgements come from, on SciFact
+  </p>
+  <p class="clock">Part V begins &mdash; beyond the textbook, and examinable</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 18
+  <span class="sep">&middot;</span> Attention and transformers
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 6 — Decision trees</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section class="title-slide" data-menu-title="Title">
+  <h1>Decision trees</h1>
+  <p class="subtitle">Forest CoverType &middot; seven species from a contour map</p>
+  <p><span class="badge badge-lec">Lecture 6</span>
+     <span class="badge badge-ch">Géron Ch. 5</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">The first model in this course whose reasoning a person
+  can read end to end. The whole lecture is about what that readability costs,
+  and who gets to decide whether to pay it.</aside>
+</section>
+
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">The previous lecture took the error of a fitted model
+  apart:</p>
+  <ul class="tight small">
+    <li>Expected squared error is bias$^2$ + variance + noise, and the noise is a
+        floor that no model gets below</li>
+    <li>Learning curves and validation curves tell a high-bias model from a
+        high-variance one</li>
+    <li>A penalty &mdash; ridge, lasso, or early stopping &mdash; trades a little
+        bias for less variance, with its strength chosen by cross-validation and
+        the test set used once</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The standing constraint, unchanged</span>
+    Split before anything is fitted. All preprocessing inside a
+    <code>Pipeline</code> passed to cross-validation. Nothing derived from the
+    test set in the training path. Fixed seeds. Report the fold scores, not only
+    the mean.
+  </div>
+  <p class="small muted">Every model so far predicted with a weighted sum,
+  $\boldsymbol\theta^{\intercal}\mathbf{x}$. Today&rsquo;s is not a weighted sum
+  at all, but a sequence of yes/no questions &mdash; and the sequence
+  <em>is</em> the explanation.</p>
+</section>
+
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li><strong>The task</strong> &mdash; a forest-cover map whose every
+        prediction must come with a reason a person can check, and why that
+        requirement chooses the model family before the data does</li>
+    <li><strong>The mathematics</strong> &mdash; Gini impurity, entropy, the
+        objective CART minimises, and how far the two criteria can disagree</li>
+    <li><strong>The method</strong> &mdash; growing a tree, pricing the
+        requirement, tuning inside it, reading the tree and tracing one
+        prediction, and the per-class errors one accuracy hides</li>
+  </ol>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-06.ipynb">Open Lecture 6 in Colab</a>
+  </p>
+</section>
+
+<section data-menu-title="The scenario">
+  <h2>The setting</h2>
+  <p>An agency that manages a national forest has to publish a map of
+  <strong>forest cover type</strong> &mdash; which species dominates each 30 by
+  30 metre patch of ground &mdash; over an area far too large to survey on foot.</p>
+  <div class="panel">
+    <span class="panel-title">The task</span>
+    From cartographic measurements alone &mdash; elevation, slope, aspect,
+    distances to water, road and fire ignition points, hillshade, soil type
+    &mdash; predict which of <strong>seven</strong> tree species covers the
+    patch.
+  </div>
+  <p class="small muted">No satellite imagery, no remote sensing. Numbers a
+  surveyor could in principle read off a contour map.</p>
+</section>
+
+<section data-menu-title="What the output feeds">
+  <h2>What the output feeds</h2>
+  <p>The map is not an internal artefact. It goes into the public record, and it
+  is used to decide:</p>
+  <ul class="tight">
+    <li>where logging is permitted and where it is not</li>
+    <li>which parcels qualify for habitat protection</li>
+    <li>how fire risk is modelled for the whole district</li>
+  </ul>
+  <p class="fail">A landowner who is refused a permit is entitled to ask
+  <em>why</em>. So is a court.</p>
+  <aside class="notes">Ask the room what happens if the answer is &ldquo;a forest of
+  200 trees said so&rdquo;. Someone will say &ldquo;so what&rdquo;. Let them argue for a minute;
+  the next slide settles it.</aside>
+</section>
+
+<section data-menu-title="The requirement">
+  <h2>The requirement that decides the model</h2>
+  <div class="panel">
+    <span class="panel-title">Stated by the agency, before any data is seen</span>
+    Every individual prediction must be accompanied by a
+    <strong>human-readable justification</strong>: a statement, in terms of the
+    measured quantities, of why <em>this</em> patch was classified as
+    <em>that</em> species.
+  </div>
+  <p>Note the word <em>individual</em>. Not &ldquo;which variables matter in
+  general&rdquo;. Not &ldquo;the model is 88% accurate&rdquo;. This patch, this
+  answer, this reason.</p>
+  <p class="small muted">Requirements of this shape are ordinary in regulated
+  work &mdash; credit, insurance, medicine, planning. They are worth meeting
+  deliberately rather than discovering late.</p>
+</section>
+
+<section data-menu-title="Turning it into a spec">
+  <h2>Turn the requirement into a specification</h2>
+  <p class="small">&ldquo;Human-readable&rdquo; is not a testable condition.
+  Before writing any code, negotiate it into one. We asked, and this is what came
+  back:</p>
+  <table class="smaller">
+    <tr><th>Requirement</th><th>Testable form</th></tr>
+    <tr><td>Readable by a non-specialist</td><td>stated as conditions on the
+        measured columns, not on transformed ones</td></tr>
+    <tr><td>Short enough to check</td><td>at most <strong>8</strong> conditions
+        per prediction</td></tr>
+    <tr><td>Auditable</td><td>the same patch gives the same justification, and
+        the rule can be applied by hand</td></tr>
+  </table>
+  <p class="fix small">Eight is the number the agency chose. It is arbitrary
+  &mdash; and it is now a hyperparameter fixed by the brief rather than by
+  cross-validation. That is unusual and worth noticing.</p>
+</section>
+
+<section data-menu-title="The data">
+  <h2>The data</h2>
+  <p>The <strong>Forest CoverType</strong> survey: 581,012 patches of 30 by 30
+  metres in the Roosevelt National Forest, Colorado, each with 54 cartographic
+  measurements and a surveyed cover type.</p>
+  <table class="smaller">
+    <tr><th>Columns</th><th class="num">How many</th><th>Kind</th></tr>
+    <tr><td>Elevation, aspect, slope, hillshade, distances</td><td class="num">10</td><td>quantitative</td></tr>
+    <tr><td>Wilderness area</td><td class="num">4</td><td>already one-hot</td></tr>
+    <tr><td>Soil type</td><td class="num">40</td><td>already one-hot</td></tr>
+  </table>
+  <p class="small">No missing values, no text columns, nothing to impute. This
+  one arrives clean &mdash; so the difficulty is entirely elsewhere.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Split before you look">
+  <h2>Split before you look &mdash; still</h2>
+  <p class="small">We work on a stratified subsample of 60,000 of the 581,012
+  patches, split 48,000 / 12,000 &mdash; a compromise for speed, and a reported
+  one. The rule has not changed, and neither has the reason.</p>
+  <pre><code class="language-python" data-trim>
+assert len(X_train) == 48_000 and len(X_test) == 12_000
+assert set(X_train.index).isdisjoint(X_test.index)
+assert X_train.isna().sum().sum() == 0
+  </code></pre>
+  <p class="small">Three assertions, three seconds, and the shape of the rest
+  of this lecture is now guaranteed rather than hoped for.</p>
+  <p class="small muted">Stratifying on the label matters here: with one class at
+  0.5% of the data, an unstratified split can hand a fold almost none of it.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section class="figslide" data-menu-title="◆ Class balance">
+  <h2>Seven classes, and two of them are most of the forest</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l07-class-balance.svg"
+         alt="Bar chart of the seven cover types by share of the training set, from Lodgepole Pine at 48.8 per cent down to Cottonwood/Willow at 0.5 per cent, with the largest bar drawn in red.">
+  </figure>
+  <p class="takeaway fail">Two species are 85% of the ground. Whatever we build
+  has to be judged against the model that always says &ldquo;Lodgepole
+  Pine&rdquo;.</p>
+</section>
+
+<section data-menu-title="Metric and baseline">
+  <h2>Metric before model, and the anchor beside it</h2>
+  <p class="small">Seven classes, no natural ordering, no asymmetric cost stated
+  by the agency. The default is <strong>accuracy</strong> &mdash; reported, as
+  always, beside the number that says what <em>nothing</em> scores.</p>
+  <pre><code class="language-python" data-trim>
+from sklearn.dummy import DummyClassifier
+
+dummy = DummyClassifier(strategy="most_frequent").fit(X_train, y_train)
+print(f"{dummy.score(X_test, y_test):.1%}")     # 48.8%
+  </code></pre>
+  <table class="smaller">
+    <tr><th>Model</th><th class="num">Test accuracy</th><th class="num">Species it can ever predict</th></tr>
+    <tr><td>Always &ldquo;Lodgepole Pine&rdquo;</td><td class="num">48.8%</td><td class="num fail">1 of 7</td></tr>
+  </table>
+  <p class="fix">Anything below 48.8% is worse than a constant. The distance
+  above it is the only part you actually earned.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="The question">
+  <h2>The question</h2>
+  <p class="lead">You called <code>DecisionTreeClassifier().fit()</code>.</p>
+  <p class="lead">It chose one feature and one threshold at every node. Chose
+  them to <em>minimise what</em>?</p>
+  <div class="panel panel-math">
+    <span class="panel-title">Why you need the answer</span>
+    Scikit-Learn offers two answers &mdash; <code>criterion="gini"</code> and
+    <code>criterion="entropy"</code>. Deciding whether that switch is worth
+    touching requires knowing what the two quantities are and how they differ,
+    and the answer also explains why a tree ignores a rare class.
+  </div>
+</section>
+
+<section data-menu-title="Gini">
+  <h2>Gini impurity</h2>
+  <p class="small">A node holds some training instances. Write $p_k$ for the
+  fraction of them in class $k$, for $k = 1, \dots, K$ ($K = 7$ here), and
+  $\mathbf{p} = (p_1, \dots, p_K)$ for the node&rsquo;s class distribution. A node
+  is <strong>pure</strong> when some $p_k = 1$.</p>
+  <div class="eqn-box">
+    $$G(\mathbf{p}) \;=\; \sum_{k=1}^{K} p_k(1-p_k) \;=\; 1 - \sum_{k=1}^{K} p_k^{\,2}$$
+  </div>
+  <p class="eqn-label">Gini impurity &mdash; Scikit-Learn&rsquo;s default</p>
+  <div class="panel panel-math">
+    <span class="panel-title">What it measures</span>
+    Draw two of the node&rsquo;s instances independently, with replacement.
+    $\sum_k p_k^2$ is the probability that they are the <em>same</em> class, so
+    $G$ is the probability that they are <strong>different</strong>. A pure node
+    never disagrees with itself.
+  </div>
+</section>
+
+<section data-menu-title="Entropy">
+  <h2>Entropy</h2>
+  <p class="small">The same class distribution $\mathbf{p}$, scored a different
+  way, with $0 \log_2 0 = 0$ by the limit $p\log p \to 0$:</p>
+  <div class="eqn-box">
+    $$H(\mathbf{p}) \;=\; -\sum_{k=1}^{K} p_k \log_2 p_k$$
+  </div>
+  <p class="eqn-label">Shannon entropy, in bits</p>
+  <div class="panel panel-math">
+    <span class="panel-title">What it measures</span>
+    The average number of <strong>bits</strong> needed to transmit the class of
+    an instance drawn from the node, under the best possible code. A pure node
+    needs none, because the receiver already knows the answer.
+  </div>
+</section>
+
+<section data-menu-title="The CART objective">
+  <h2>The objective CART minimises</h2>
+  <p class="small">A node of $m$ instances is split by a question $x_k \le t_k$,
+  which sends $m_{\text{L}}$ instances left and $m_{\text{R}}$ right. Its cost
+  is the impurity $I$ &mdash; Gini or entropy &mdash; of the two children,
+  weighted by their size:</p>
+  <div class="eqn-box">
+    $$J(k, t_k) \;=\; \frac{m_{\text{L}}}{m}\,I_{\text{L}}
+                 \;+\; \frac{m_{\text{R}}}{m}\,I_{\text{R}}$$
+  </div>
+  <p class="eqn-label">searched over every feature $k$ and every threshold $t_k$</p>
+  <p class="derive-step">Equivalently, maximise the <strong>impurity
+  decrease</strong> $\Delta I = I_{\text{parent}} - J(k,t_k)$. The parent term is
+  the same for every candidate at this node, so the two are the same search.</p>
+  <a class="anim-link" href="../animations/lecture-06.html#cart" target="_blank">Animation</a>
+</section>
+
+<section data-menu-title="Where they can disagree">
+  <h2>Where Gini and entropy can disagree</h2>
+  <p class="small">Both are zero at a pure node and grow as the classes mix, so
+  they usually rank candidate splits the same way. How far can they part? On a
+  two-class node with $p_1 = p$,</p>
+  <div class="eqn-box compact">
+    $$\begin{aligned}G(p) &= 2p(1-p)\\ H(p) &= -p\log_2 p - (1-p)\log_2(1-p)\end{aligned}$$
+  </div>
+  <p class="small">$H$ has maximum 1 and $G$ has maximum $1/2$, so compare $H/2$
+  with $G$. Both are then $0$ at $p\in\{0,1\}$ and $1/2$ at $p = 1/2$: they
+  agree at three points, and the largest gap between them anywhere else is
+  <strong>0.055</strong>, at $p \approx 0.10$ and again at $p \approx 0.90$.</p>
+  <p class="small fix">So two candidates whose weighted impurities differ by more
+  than 0.055 are ranked identically by both criteria. Disagreement needs a close
+  call.</p>
+</section>
+
+<section class="figslide" data-menu-title="◆ Gini vs entropy">
+  <h2>Does the choice matter? Twenty resamples, both criteria</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l08-criteria.svg"
+         alt="Left: test accuracy per resample for gini and entropy, the gini line above the entropy line on most resamples. Right: a histogram of the paired difference, centred at minus 0.44 percentage points with a standard deviation of 0.39.">
+  </figure>
+  <p class="takeaway">Both criteria on the same twenty 80% resamples, at depth 8.
+  Gini is above entropy on 17 of them, by under half a point: real, and not
+  worth tuning.</p>
+</section>
+
+<section data-menu-title="What a tree is">
+  <h2>What a decision tree is</h2>
+  <p>A binary tree. Each internal node asks one question about one feature; each
+  leaf carries a prediction.</p>
+  <ul class="tight small">
+    <li>A question is always of the form $x_k \le t_k$ &mdash; one feature, one
+        threshold</li>
+    <li>Prediction: start at the root, answer the question, go left or right,
+        repeat until a leaf</li>
+    <li>The leaf predicts the <strong>majority class of the training instances
+        that reached it</strong> &mdash; the $\arg\max_k p_k$ of that
+        node&rsquo;s class distribution</li>
+  </ul>
+  <table class="smaller">
+    <tr><th>Operation</th><th>Cost</th><th>Why</th></tr>
+    <tr><td>Predict one instance</td><td>$O(\log_2 m)$</td><td>one root-to-leaf path of a roughly balanced tree</td></tr>
+    <tr><td>Train</td><td>$O(n \times m \log_2 m)$</td><td>at every node, sort and scan all $n$ features</td></tr>
+  </table>
+  <p class="small fix">Prediction does not depend on $n$, which is why reading a
+  prediction costs the same as making it. That is what makes the justification
+  free.</p>
+</section>
+
+<section data-menu-title="First tree">
+  <h2>Fit one, with no constraints at all</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.tree import DecisionTreeClassifier
+
+free = DecisionTreeClassifier(random_state=42)      # no depth limit
+free.fit(X_train, y_train)
+
+print(f"depth          {free.get_depth()}")
+print(f"leaves         {free.get_n_leaves():,}")
+print(f"train accuracy {free.score(X_train, y_train):.1%}")
+  </code></pre>
+  <pre><code class="language-text" data-trim>
+depth          33
+leaves         5,699
+train accuracy 100.0%
+  </code></pre>
+  <p class="fail small">100.0%. A tree with 5,699 leaves and 48,000 training
+  patches has eight patches per leaf on average. Of course it is perfect on its
+  own data.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Measure it honestly">
+  <h2>Measure it honestly</h2>
+  <table class="smaller">
+    <tr><th>Unconstrained tree</th><th class="num">Accuracy</th></tr>
+    <tr><td>On the training set</td><td class="num fail">100.0%</td></tr>
+    <tr><td>5-fold cross-validated, on the training set</td><td class="num">82.1%</td></tr>
+    <tr><td>On the test set (looked at once, at the end)</td><td class="num">82.6%</td></tr>
+  </table>
+  <p class="small">82% is a real number and it is far above the 48.8% baseline,
+  so the tree family works on this problem.</p>
+  <p class="small fail">But count what a prediction rests on. The tree is 33
+  levels deep, and the requirement allows eight conditions.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Sweep the depth">
+  <h2>What does depth actually buy?</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.model_selection import StratifiedKFold, cross_validate
+
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+for d in range(1, 19):
+    clf = DecisionTreeClassifier(max_depth=d, random_state=42)
+    scores = cross_validate(clf, X_train, y_train, cv=cv,
+                            return_train_score=True, n_jobs=-1)
+  </code></pre>
+  <p class="small muted">Cross-validated, on the training set. The test set is
+  not consulted to choose anything &mdash; that rule survives from Lecture 2 and
+  will survive to the last lecture.</p>
+</section>
+
+<section class="figslide" data-menu-title="◆ Depth">
+  <h2>Accuracy against depth, and the price of reading it</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l07-depth.svg"
+         alt="Two panels sharing a max_depth axis: on the left, training and five-fold cross-validated accuracy both rising from 63 per cent, with a dashed line at depth 8; on the right, the number of leaves on a logarithmic scale rising from 2 to over 3,000, with 206 leaves marked at depth 8.">
+  </figure>
+  <p class="takeaway">Cross-validated accuracy is still climbing at depth 18:
+  8.0 points above depth 8, the price of the brief. Every one of them is bought
+  with more rules than anyone will read.</p>
+</section>
+
+<section data-menu-title="Tune inside the constraint">
+  <h2>Tune what is left, inside the constraint</h2>
+  <p class="small">A path of depth 8 applies at most eight conditions, so the
+  brief fixes <code>max_depth=8</code> and cross-validation gets no vote on it.
+  What is left is <code>min_samples_leaf</code>: a split that would leave a
+  child with fewer training instances than this is rejected.</p>
+  <pre><code class="language-python" data-trim>
+from sklearn.model_selection import GridSearchCV
+
+grid = {"max_depth": [4, 6, 8, 10, 12, None],
+        "min_samples_leaf": [1, 5, 20, 50, 200]}
+
+search = GridSearchCV(DecisionTreeClassifier(random_state=42), grid,
+                      cv=cv, n_jobs=-1).fit(X_train, y_train)
+# 30 combinations x 5 folds = 150 fits
+  </code></pre>
+  <p class="small">We search the whole grid anyway &mdash; including the depths
+  we are not allowed to use &mdash; because the rows we cannot pick are exactly
+  what tells the agency what its requirement costs.</p>
+</section>
+
+<section class="figslide" data-menu-title="◆ The grid">
+  <h2>Thirty combinations, and only one row is available to us</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l07-grid.svg"
+         alt="Heatmap of five-fold accuracy over max_depth by min_samples_leaf; the best cell, unlimited depth with min_samples_leaf 1 at 82.1 per cent, is outlined in red, and the depth-8 row is outlined in dashed green.">
+  </figure>
+  <p class="takeaway">The red cell is the best model. The green row is the set of
+  models we are allowed to ship.</p>
+</section>
+
+<section data-menu-title="Overruling the grid">
+  <h2>Why we ship <code>min_samples_leaf=20</code></h2>
+  <p class="small">The model states its justification as &ldquo;91% of the 463
+  training patches in this leaf&rdquo;. At <code>min_samples_leaf=1</code> that
+  becomes <em>&ldquo;100% of the 1&rdquo;</em> &mdash; a single surveyed patch
+  wearing the grammar of evidence. The brief requires a justification that can be
+  audited; that is not one.</p>
+  <table class="smaller">
+    <tr><th></th><th class="num">leaf</th><th class="num">CV accuracy</th></tr>
+    <tr><td>what cross-validation prefers</td><td class="num">1</td><td class="num">73.75%</td></tr>
+    <tr><td>what the brief requires</td><td class="num hit">20</td><td class="num">73.35%</td></tr>
+    <tr class="fix"><td>price of auditability</td><td class="num">&mdash;</td><td class="num">0.40 points</td></tr>
+  </table>
+  <p class="fix">As with depth: <strong>when the brief constrains the model,
+  the grid does not get a vote.</strong> And that 0.40 goes to the agency &mdash; a constraint that overrules a measurement has to
+  show the measurement it overruled.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="The tuned tree">
+  <h2>The model we are going to ship</h2>
+  <pre><code class="language-python" data-trim>
+tree = DecisionTreeClassifier(max_depth=8, min_samples_leaf=20,
+                              random_state=42).fit(X_train, y_train)
+  </code></pre>
+  <table class="smaller">
+    <tr><th></th><th class="num">Unconstrained</th><th class="num">Depth 8, leaf 20</th></tr>
+    <tr><td>Leaves</td><td class="num">5,699</td><td class="num hit">163</td></tr>
+    <tr><td>Columns consulted, of 54</td><td class="num">47</td><td class="num hit">24</td></tr>
+    <tr><td>Mean conditions per justification</td><td class="num fail">17.88</td><td class="num hit">7.97</td></tr>
+    <tr><td>Smallest leaf</td><td class="num fail">1</td><td class="num hit">20</td></tr>
+    <tr><td>Training accuracy</td><td class="num">100.0%</td><td class="num">74.4%</td></tr>
+    <tr><td>Cross-validated accuracy</td><td class="num">82.1%</td><td class="num">73.4%</td></tr>
+  </table>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section class="figslide" data-menu-title="◆ The tree">
+  <h2>The top three levels of the model</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l07-tree.svg"
+         alt="The top three levels of the depth-8 decision tree: the root splits on elevation at 3,046 metres, both children split on elevation again or on wilderness area and soil type, and each node shows its share of the training set and its majority class.">
+  </figure>
+  <p class="takeaway">The first three questions the model asks about any patch in
+  Colorado. Two of them are about elevation.</p>
+</section>
+
+<section data-menu-title="The tree as text">
+  <h2>The same thing, as text</h2>
+  <pre><code class="language-text" data-trim>
+&gt;&gt;&gt; print(export_text(tree, feature_names=names, max_depth=2, decimals=0))
+|--- Elevation &lt;= 3046
+|   |--- Elevation &lt;= 2510
+|   |   |--- Wild_0 &lt;= 0
+|   |   |   |--- truncated branch of depth 6
+|   |   |--- Wild_0 &gt;  0
+|   |   |   |--- truncated branch of depth 2
+|   |--- Elevation &gt;  2510
+|   |   |--- Soil_3 &lt;= 0
+|   |   |   |--- truncated branch of depth 6
+  </code></pre>
+  <p class="small"><code>export_text</code> needs no plotting library at all, and
+  it is what you paste into an email. For a model whose selling point is that a
+  person can read it, that matters.</p>
+</section>
+
+<section data-menu-title="Reading a node">
+  <h2>Reading one node</h2>
+  <table class="smaller">
+    <tr><th>Field</th><th>Meaning</th></tr>
+    <tr><td><code>Elevation &lt;= 3046.5</code></td><td>the question; go left if true</td></tr>
+    <tr><td><code>gini = 0.65</code></td><td>the Gini impurity $G$ at this node &mdash; 0 would be a single species</td></tr>
+    <tr><td><code>samples = 48,000</code></td><td>training patches that reached this node</td></tr>
+    <tr><td><code>value = [0.36, 0.49, ...]</code></td><td>their class distribution $\mathbf{p}$, seven entries</td></tr>
+    <tr><td><code>class = Lodgepole Pine</code></td><td>the majority &mdash; what a leaf here would predict</td></tr>
+  </table>
+  <p class="small">The threshold is 3,046.5 rather than 3,046 because CART puts
+  the split <strong>midway between two adjacent observed values</strong>. Nothing
+  in the data sits at 3,046.5 metres.</p>
+  <p class="small muted">Trees need no feature scaling at all: $x_k \le t_k$ is
+  invariant under any strictly increasing transformation of $x_k$, so
+  standardising a column changes its thresholds and nothing else.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Trace a prediction">
+  <h2>Trace one prediction, all the way down</h2>
+  <pre><code class="language-python" data-trim>
+def justify(tree, x, names):
+    t, node, out = tree.tree_, 0, []
+    while t.children_left[node] != -1:
+        f, thr = t.feature[node], t.threshold[node]
+        left = x[f] &lt;= thr
+        out.append((names[f], "&lt;=" if left else "&gt;", thr, x[f]))
+        node = t.children_left[node] if left else t.children_right[node]
+    return out, node
+  </code></pre>
+  <p class="small">Nine lines, no library beyond what is already imported. The
+  entire justification mechanism is <code>tree_.children_left</code>,
+  <code>tree_.feature</code> and <code>tree_.threshold</code>.</p>
+</section>
+
+<section class="figslide" data-menu-title="◆ The justification">
+  <h2>What the agency actually receives</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-justify.svg"
+         alt="A patch enters the tree, passes through eight conditions on elevation, wilderness area, soil type and hillshade, arrives at a leaf of training patches that is 90 per cent Krummholz, and the path is rewritten as a sentence.">
+  </figure>
+  <p class="takeaway fix">The path <em>is</em> the justification. No extra
+  machinery, no approximation, no second model explaining the first.</p>
+</section>
+
+<section data-menu-title="What the leaf says">
+  <h2>Read the leaf carefully</h2>
+  <p class="lead">91% of the 463 training patches in that leaf were Krummholz.</p>
+  <ul class="tight small">
+    <li>That is a statement about <strong>463 training patches</strong>, not a
+        probability that this patch is Krummholz</li>
+    <li><code>predict_proba</code> returns exactly those leaf proportions &mdash;
+        so a tree&rsquo;s &ldquo;probabilities&rdquo; are piecewise constant and
+        identical for every patch reaching the same leaf</li>
+    <li>Across the 163 leaves of this tree the smallest holds 20 patches and
+        the largest several thousand. Those deserve very different amounts of
+        trust, and the count belongs in the justification</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">The honest sentence</span>
+    &ldquo;Of the training patches that satisfied these eight conditions, 91%
+    were Krummholz.&rdquo; Not &ldquo;this patch is 91% likely to be
+    Krummholz.&rdquo;
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section class="figslide" data-menu-title="◆ Confusion">
+  <h2>Where the errors actually are</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/l07-confusion.svg"
+         alt="Row-normalised confusion matrix of the depth-8 tree on the test set; the diagonal is strong for Lodgepole Pine and Ponderosa Pine, and the Aspen row sends 94 per cent of its patches to Lodgepole Pine.">
+  </figure>
+  <p class="takeaway fail">Each row: where one true species&rsquo; test patches
+  went. Aspen&rsquo;s went almost entirely to Lodgepole Pine.</p>
+</section>
+
+<section data-menu-title="Per-class recall">
+  <h2>The same matrix, as one column of numbers</h2>
+  <table class="smaller">
+    <tr><th>Cover type</th><th class="num">Share of the data</th><th class="num">Recall</th></tr>
+    <tr><td>Lodgepole Pine</td><td class="num">48.8%</td><td class="num hit">82.0%</td></tr>
+    <tr><td>Ponderosa Pine</td><td class="num">6.2%</td><td class="num hit">80.8%</td></tr>
+    <tr><td>Spruce/Fir</td><td class="num">36.5%</td><td class="num">69.6%</td></tr>
+    <tr><td>Krummholz</td><td class="num">3.5%</td><td class="num">56.4%</td></tr>
+    <tr><td>Cottonwood/Willow</td><td class="num">0.5%</td><td class="num">56.1%</td></tr>
+    <tr><td>Douglas-fir</td><td class="num">3.0%</td><td class="num fail">12.8%</td></tr>
+    <tr><td>Aspen</td><td class="num">1.6%</td><td class="num fail">2.6%</td></tr>
+  </table>
+  <p class="small fail">Overall test accuracy is 73.0%. The model finds fewer
+  than 3 Aspen patches in every hundred, and in that one number it costs 1.6
+  points and is invisible.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Class weighting">
+  <h2>What reweighting buys, and what it costs</h2>
+  <p class="small">The cause is $J$ itself: it weights each child by how many
+  instances it holds, so a split that isolates a class at 1.6% of a node barely
+  moves it. <code>class_weight="balanced"</code> multiplies each
+  instance&rsquo;s contribution to $J$ by the inverse of its class frequency, so
+  every class carries the same total weight.</p>
+  <ul class="tight small">
+    <li>Aspen recall rises from 2.6% to most of the class &mdash; the split that
+        isolates it is now worth choosing</li>
+    <li>Overall accuracy falls sharply, because the two species that are 85% of
+        the ground now carry 2/7 of the weight instead of 85% of it</li>
+    <li>The notebook fits both and prints the pair. Predict the direction of each
+        before you run it</li>
+  </ul>
+  <p class="fix small">A different model answering a different question. Which
+  one the agency wants is not a machine learning decision &mdash; but quoting
+  either number without the other is an argument rather than a measurement.</p>
+</section>
+
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-06.ipynb">Open Lecture 6 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> The download is about 11 MB</li>
+    <li>Everything on today&rsquo;s slides, computed on the same rows with the
+        same seed: the split, the baseline, the two impurity curves and the
+        largest gap between them, the paired criterion comparison, the depth
+        sweep, the grid, the shipped tree, the traced prediction, the confusion
+        matrix and the reweighted tree</li>
+    <li>Run it top to bottom first; every cell below the split depends on
+        <code>X_train</code> and <code>X_test</code></li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change before the next lecture</span>
+    Raise <code>max_depth</code> from 8 to 12 in the cell that ships the tree,
+    and re-run the trace. The justification grows to up to twelve conditions
+    where the brief allows eight; the depth sweep says what that buys in
+    accuracy, and that pair is the trade.
+  </div>
+</section>
+
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight smaller">
+    <li>Chose the model family from the <em>shape</em> of the answer the agency
+        needed &mdash; a per-prediction justification in at most eight
+        conditions &mdash; before looking at the data</li>
+    <li>Defined the two impurities: Gini is the probability that two draws from
+        a node differ, entropy the bits needed to transmit a class</li>
+    <li>Wrote down what CART minimises &mdash;
+        $J = \frac{m_{\text{L}}}{m}I_{\text{L}} + \frac{m_{\text{R}}}{m}I_{\text{R}}$
+        &mdash; and showed the two criteria part by at most 0.055 on a two-class
+        node; measured, Gini wins 17 of 20 paired resamples by under half a
+        point. Real, and not worth tuning</li>
+    <li>Grew an unconstrained tree &mdash; 100.0% on its own data, 82.1%
+        cross-validated, 33 levels deep &mdash; and priced the eight-condition
+        requirement at 8.0 points of accuracy</li>
+    <li>Shipped depth 8 with a minimum leaf of 20 against the grid&rsquo;s
+        preference, because a leaf of one is not auditable, and reported the 0.40
+        points that cost</li>
+    <li>Traced one prediction to eight readable conditions and a leaf of 463
+        patches &mdash; a statement about training patches, not a
+        probability</li>
+    <li>73.0% overall and 2.6% recall on Aspen &mdash; a consequence of the
+        weighted average in $J$, not a bug &mdash; so never ship the first number
+        without the second</li>
+  </ol>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="References">
+  <h2>In the book</h2>
+  <table>
+    <tr><th>Topic</th><th>Chapter</th></tr>
+    <tr><td>Training, visualising and reading a decision tree</td><td>5</td></tr>
+    <tr><td>Gini impurity, entropy, and choosing between them</td><td>5</td></tr>
+    <tr><td>The CART cost function</td><td>5</td></tr>
+    <tr><td>Computational complexity of trees</td><td>5</td></tr>
+    <tr><td>Regularisation hyperparameters</td><td>5</td></tr>
+    <tr><td>Multiclass classification, confusion matrices, recall</td><td>3</td></tr>
+    <tr><td>Cross-validation and grid search</td><td>2</td></tr>
+  </table>
+</section>
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 6">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 6</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 6">
+  <h2>Exercises &mdash; Lecture 6</h2>
+  <ul class="ex-list">
+    <li>A node holds 100 training patches: 50 of one species, 30 of a second and 20 of a third. Compute its Gini impurity, and give the value a pure node would have. <span class="ex-marks">[3]</span></li>
+    <li>On a two-class problem, entropy halved and Gini never differ by more than 0.055 at any node. Two candidate splits of the same node have weighted Gini impurities 0.30 and 0.38. Can entropy rank them the other way round? Answer, with a reason. <span class="ex-marks">[4]</span></li>
+    <li>An unconstrained tree with 5,699 leaves scores 100.0% on its 48,000 training patches. Explain why that number says nothing about new patches, and name the number to report instead. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 7&rsquo;s deck.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section data-menu-title="Exercises · 6 (2)">
+  <h2>Exercises &mdash; Lecture 6 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>Under the depth-8 cap the grid prefers <code>min_samples_leaf=1</code> (73.75% cross-validated) to 20 (73.35%). Give the reason to ship 20 anyway, and say what must be reported with it. <span class="ex-marks">[4]</span></li>
+    <li>Per-class recall shows one class far below the rest. Give two responses that do not involve changing the model, and say which you would try first. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 7&rsquo;s deck.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 5">
+  <p class="kicker">The five set at the end of Lecture 5</p>
+  <h1>Solutions<br>Lecture 5</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 5">
+  <h2>Solutions &mdash; Lecture 5</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> Write the bias&ndash;variance decomposition of the expected squared error, and name the one term no model can&hellip;</p>
+      <p class="lead"><span class="fix">$\mathbb{E}[(y-\hat f)^2] = \text{bias}^2 + \text{variance} + \operatorname{Var}(y \mid x)$; the noise $\operatorname{Var}(y \mid x)$ cannot be reduced.</span></p>
+      <ul class="tight smaller">
+        <li>Two passengers with identical features and different outcomes put a floor under any predictor</li>
+        <li>A model reporting error below that floor has been measured wrongly</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> A learning curve shows training and validation error both high and close together, and flat as data is added.&hellip;</p>
+      <p class="lead"><span class="fix">High bias. More data would not help.</span></p>
+      <ul class="tight smaller">
+        <li>The two curves have already met, so the gap &mdash; the variance &mdash; is small</li>
+        <li>The remaining error is the model&rsquo;s inability to represent the function, which more rows do not change</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 5 (2)">
+  <h2>Solutions &mdash; Lecture 5 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> Ridge adds $\alpha I$ to $X^{\mathsf T}X$ before inverting. Give the numerical consequence, in terms of the&hellip;</p>
+      <p class="lead"><span class="fix">It raises every eigenvalue by $\alpha$, so the condition number falls and the inverse is stable.</span></p>
+      <ul class="tight smaller">
+        <li>Near-collinear columns give eigenvalues near zero, which the inverse amplifies</li>
+        <li>The bound on the solution&rsquo;s sensitivity improves as $\alpha$ grows &mdash; at the cost of bias</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> Lasso sets some weights to exactly zero; ridge shrinks every weight but sets none to zero. Explain the&hellip;</p>
+      <p class="lead"><span class="fix">Ridge&rsquo;s push towards zero fades as the weight approaches zero; lasso&rsquo;s keeps its full size right up to zero.</span></p>
+      <ul class="tight smaller">
+        <li>$\partial\theta_j^2/\partial\theta_j = 2\theta_j \to 0$, so a ridge weight reaches zero only in the limit</li>
+        <li>$\partial|\theta_j|/\partial\theta_j = \pm 1$, and at zero the subgradient is $[-1, 1]$: a data pull weaker than $\alpha$ is held at exactly zero</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 5 (3)">
+  <h2>Solutions &mdash; Lecture 5 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> You tune $\alpha$ over a grid of seventeen values by scoring each on the test set, then report the best test&hellip;</p>
+      <p class="lead"><span class="fix">The best-of-grid score is optimistic: it is a minimum over seventeen noisy estimates on the same rows used to choose.</span></p>
+      <ul class="tight smaller">
+        <li>The minimum of noisy estimates is biased downward even when each one is unbiased; on the Titanic it flattered by 0.019 of log loss, on 13 splits of 20</li>
+        <li>The honest number comes from choosing on cross-validation folds and scoring the test set once &mdash; and the bias grows with the size of the search</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 7 &middot; G&eacute;ron Ch. 6</p>
+  <h1>Ensembles and<br>random forests</h1>
+  <p class="small">
+    The variance of an average of correlated predictors &mdash; one result
+    that explains bagging, feature subsampling and random thresholds<br>
+    Out-of-bag evaluation, random forests, feature importance, boosting and
+    stacking<br>
+    And what averaging costs: the justification you spent today earning
+  </p>
+  <p class="clock">Run the Lecture 6 notebook first</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 6
+  <span class="sep">&middot;</span> Decision trees
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

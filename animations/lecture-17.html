@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 17 · Text — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 17 of Applications of Machine Learning: softmax and its shift invariance, cross-entropy and its gradient with respect to the logits, why the loss takes logits in float32, and byte-pair encoding.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-17.html">Lecture 17 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 17 · Animations</p>
+  <h1>Text</h1>
+  <p>How byte-pair encoding builds a subword vocabulary one merge at a time,
+  and why the vocabulary it builds cannot miss.
+  Press <strong>Step</strong> to advance one merge and read what happened;
+  press <strong>Play</strong> to let it run.</p>
+  <p class="note">All data on this page is synthetic: the corpus is a made-up
+  list of sixteen review words. <em>Reset</em> always gives back the same
+  picture.</p>
+  <ul class="toc">
+    <li><a href="#bpe">1 · Byte-pair encoding</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Byte-pair encoding
+     ====================================================================== -->
+<section class="anim" id="bpe">
+  <h2><span class="num">1</span>Byte-pair encoding, one merge at a time</h2>
+  <p class="lede">A tiny training corpus of sixteen words, each with how often
+  it occurs. Every word starts as single characters. Each step counts every
+  adjacent pair of tokens across the corpus (weighted by the word's count),
+  merges the commonest pair everywhere, and adds the result to the vocabulary.
+  On the right, the pair counts the next step will choose from. At the bottom,
+  four words that are <em>not</em> in the corpus, split with the merges learned
+  so far.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="bp-plots"></div>
+      <div id="bp-bottom"></div>
+      <div class="narrate" id="bp-say"></div>
+      <div class="toolbar" id="bp-bar"></div>
+    </div>
+    <aside class="side" id="bp-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>For a corpus of words $w$ with counts $n_w$, the count of an
+      adjacent pair $(a, b)$ is</p>
+      $$\text{count}(a, b) = \sum_{w} n_w \, m_w(a, b),$$
+      <p>where $m_w(a, b)$ is the number of places in $w$ where token $a$ is
+      directly followed by token $b$.</p>
+      <p>Each merge picks the pair with the largest count (ties go to the pair
+      met first in the corpus list), replaces every occurrence of $a\,b$ by the
+      new token $ab$, and adds $ab$ to the vocabulary. A merge of a pair with
+      count $n$ removes exactly $n$ tokens from the corpus. New text is split
+      by replaying the merges in the order they were learned. Training stops
+      here when no pair occurs twice.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The first four merges build <code>watch</code> letter by letter:
+        it is the commonest stem in the corpus.</li>
+        <li>After merge 18, the unseen word <code>unwatchable</code> splits as
+        <code>un</code> + <code>watch</code> + <code>able</code>: three pieces
+        the model has vectors for, and the negation survives.</li>
+        <li>Merge 36 produces <code>uncle</code>, from <code>unclear</code>: a
+        merge is chosen by counting, and knows nothing about meaning.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Step to merge 18 and read the token count in the side panel: each
+        merge removed exactly as many tokens as its pair count.</li>
+        <li>Play to the end. Every corpus word becomes a single token, but
+        the unseen words never do: they stay as pieces, and nothing is ever
+        out of vocabulary, because the single characters are never removed.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 17 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, K = A.k;
+
+  /* ======================================================================
+     1 · Byte-pair encoding
+     ====================================================================== */
+  (function () {
+    var CORPUS = [["watch", 6], ["watched", 5], ["watching", 4], ["rewatch", 2], ["watchable", 3],
+                  ["enjoy", 4], ["enjoyed", 3], ["enjoyable", 3], ["unfunny", 2], ["unclear", 2],
+                  ["unseen", 2], ["boring", 5], ["bored", 3], ["film", 6], ["films", 3], ["readable", 2]];
+    var TESTS = ["unwatchable", "rewatching", "unenjoyable", "filming"];
+    var chars = {};
+    CORPUS.forEach(function (w) { w[0].split("").forEach(function (c) { chars[c] = 1; }); });
+    var ALPHA = Object.keys(chars).sort();
+    var st, pl;
+
+    function applyMerge(seg, a, b) {
+      var out = [];
+      for (var i = 0; i < seg.length; i++) {
+        if (i + 1 < seg.length && seg[i] === a && seg[i + 1] === b) { out.push(a + b); i++; }
+        else out.push(seg[i]);
+      }
+      return out;
+    }
+    function encode(word) {
+      var s = word.split("");
+      st.merges.forEach(function (m) { s = applyMerge(s, m[0], m[1]); });
+      return s;
+    }
+    function pairCounts() {
+      var counts = {}, order = [];
+      CORPUS.forEach(function (w, i) {
+        var s = st.seg[i];
+        for (var j = 0; j + 1 < s.length; j++) {
+          var key = s[j] + "\u0000" + s[j + 1];
+          if (!(key in counts)) { counts[key] = 0; order.push(key); }
+          counts[key] += w[1];
+        }
+      });
+      return order.map(function (k, i) { var ab = k.split("\u0000"); return { a: ab[0], b: ab[1], n: counts[k], first: i }; })
+                  .sort(function (p, q) { return q.n - p.n || p.first - q.first; });
+    }
+    function tokens() { var t = 0; CORPUS.forEach(function (w, i) { t += w[1] * st.seg[i].length; }); return t; }
+
+    var plots = A.$("#bp-plots");
+    var cv = A.canvas(plots, { w: 900, h: 300, caption: "Left: the corpus, count × current segmentation. Right: the pair counts the next merge chooses from." });
+    var pc = cv, PX = 600;
+    var bot = A.canvas("#bp-bottom", { w: 900, h: 190 });
+
+    var side = A.$("#bp-side");
+    var ro = A.readout(side, [["m", "merges learned"], ["v", "vocabulary size"], ["t", "tokens in the corpus"],
+                              ["w", "pieces per word (weighted)"], ["next", "next merge"]]);
+    A.legend(side, [{ swatch: "box", label: "a token" }, { swatch: "box on", label: "made by the last merge" },
+                    { swatch: "c0", label: "pair count" }, { swatch: "c1", label: "the pair the next step merges" }]);
+    var say = A.narrate("#bp-say");
+
+    function reset() {
+      st = { seg: CORPUS.map(function (w) { return w[0].split(""); }), merges: [], last: null, before: 0 };
+      st.before = tokens();
+    }
+    function step() {
+      var pcs = pairCounts();
+      if (!pcs.length || pcs[0].n < 2) return false;
+      var best = pcs[0], before = tokens();
+      st.merges.push([best.a, best.b]);
+      st.seg = st.seg.map(function (s) { return applyMerge(s, best.a, best.b); });
+      st.last = { a: best.a, b: best.b, n: best.n, before: before, after: tokens() };
+      var nx = pairCounts();
+      return nx.length > 0 && nx[0].n >= 2;
+    }
+
+    function chips(g, x, y, pieces, hot) {
+      pieces.forEach(function (p) {
+        var w = 8 + 8.2 * p.length;
+        A.el("rect", { x: x, y: y - 14, width: w, height: 20, rx: 3, class: "box" + (hot && p === hot ? " on" : "") }, g);
+        A.el("text", { x: x + w / 2, y: y, "text-anchor": "middle", class: "mono", text: p }, g);
+        x += w + 3;
+      });
+      return x;
+    }
+
+    function render() {
+      var hot = st.last ? st.last.a + st.last.b : null;
+      cv.clear();
+      CORPUS.forEach(function (w, i) {
+        var col = i < 8 ? 0 : 1, r = i % 8, x = 8 + col * 290, yy = 26 + r * 35;
+        cv.text(x + 22, yy, "×" + w[1], "lbl-sm", "end");
+        chips(cv.g, x + 30, yy, st.seg[i], hot);
+      });
+
+      A.el("line", { x1: PX - 12, x2: PX - 12, y1: 6, y2: 294, class: "axis" }, cv.g);
+      var pcs = pairCounts().slice(0, 10), nmax = pcs.length ? pcs[0].n : 1;
+      pc.text(PX, 16, "pair", "axis-label");
+      pc.text(PX + 292, 16, "count", "axis-label", "end");
+      pcs.forEach(function (p, i) {
+        var yy = 42 + i * 25, w = 140 * p.n / Math.max(nmax, 1);
+        pc.text(PX, yy, p.a + " + " + p.b, "mono");
+        A.el("rect", { x: PX + 118, y: yy - 12, width: w, height: 15, class: i === 0 && p.n >= 2 ? "c1" : "c0", opacity: 0.8 }, pc.g);
+        pc.text(PX + 122 + w, yy, String(p.n), "lbl mono");
+      });
+      if (!pcs.length) pc.text(PX + 150, 60, "no pairs left", "lbl-sm", "middle");
+
+      bot.clear();
+      bot.text(8, 18, "Unseen words, split by replaying the merges:", "axis-label");
+      TESTS.forEach(function (w, i) {
+        var col = i % 2, r = Math.floor(i / 2), x = 8 + col * 450, yy = 50 + r * 34;
+        bot.text(x, yy, w, "lbl");
+        chips(bot.g, x + 120, yy, encode(w), null);
+      });
+      bot.text(8, 130, "Tokens added by merging, in order:", "axis-label");
+      var x = 8, yy = 158;
+      if (!st.merges.length) bot.text(8, yy, "none yet — the vocabulary is the " + ALPHA.length + " single characters", "lbl-sm");
+      st.merges.forEach(function (m) {
+        var t = m[0] + m[1], w = 8 + 7.4 * t.length;
+        if (x + w > 892) { x = 8; yy += 24; }
+        A.el("rect", { x: x, y: yy - 14, width: w, height: 19, rx: 3, class: "box" + (t === hot ? " on" : "") }, bot.g);
+        A.el("text", { x: x + w / 2, y: yy, "text-anchor": "middle", class: "mono", style: "font-size:11px", text: t }, bot.g);
+        x += w + 3;
+      });
+      var need = yy + 14;
+      bot.svg.setAttribute("viewBox", "0 0 900 " + Math.max(190, need));
+
+      var T = tokens(), words = 0;
+      CORPUS.forEach(function (w) { words += w[1]; });
+      ro.set("m", String(st.merges.length));
+      ro.set("v", String(ALPHA.length + st.merges.length) + " = " + ALPHA.length + " + " + st.merges.length);
+      ro.set("t", String(T));
+      ro.set("w", fmt(T / words, 2));
+      var nx = pairCounts();
+      ro.set("next", nx.length && nx[0].n >= 2 ? nx[0].a + " + " + nx[0].b + " (" + nx[0].n + ")" : "none — done", nx.length && nx[0].n >= 2 ? "" : "good");
+
+      if (!st.last) {
+        say.say("<span class='k'>Start.</span> The vocabulary is the " + ALPHA.length + " characters that occur, and the corpus is " +
+                T + " tokens long — one per letter. The commonest adjacent pair is " + K("(\\texttt{" + nx[0].a + "},\\ \\texttt{" + nx[0].b + "})") +
+                ", with count " + nx[0].n + ". Press <em>Step</em> to merge it.");
+      } else {
+        var L = st.last;
+        say.say("<span class='k'>Merge " + st.merges.length + ".</span> The pair " + K("(\\texttt{" + L.a + "},\\ \\texttt{" + L.b + "})") +
+                " had the largest count, " + L.n + ", so every occurrence became the single token " + K("\\texttt{" + L.a + L.b + "}") +
+                ". The corpus went from " + L.before + " to " + L.after + " tokens: " + L.n + " fewer. " +
+                "<code>unwatchable</code> is now " + encode("unwatchable").join(" + ") + "." +
+                (!(nx.length && nx[0].n >= 2) ? " <strong>Done</strong>: no pair occurs twice." : ""));
+      }
+    }
+
+    pl = A.player("#bp-bar", { step: step, reset: reset, render: render, fps: 2, unit: "merge" });
+  })();
+})();
+</script>
+</body>
+</html>

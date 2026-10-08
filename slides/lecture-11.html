@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 11 — Training deep networks</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Training deep networks</h1>
+  <p class="subtitle">CIFAR-10</p>
+  <p><span class="badge badge-lec">Lecture 11</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 11</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">The instrumented gradient measurement is the best thing
+  in this lecture. Everything before it exists to make it worth looking at.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Lecture&nbsp;10 took the training loop out of
+  <code>fit()</code> and gave it to you:</p>
+  <ul class="tight small">
+    <li>backpropagation is reverse-mode automatic differentiation &mdash; one
+        sweep for every partial derivative of a scalar loss</li>
+    <li>tensors, <code>requires_grad</code>, and the five-line loop:
+        <code>zero_grad</code>, forward, loss, <code>backward</code>,
+        <code>step</code></li>
+    <li>two bugs that raise nothing &mdash; a missing <code>zero_grad()</code>
+        and a missing <code>model.eval()</code> &mdash; and a metric averaged
+        per batch</li>
+    <li><code>DataLoader</code>, a custom <code>Module</code>, Optuna, and a
+        checkpoint that reloads to the same function</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; a network that trains without learning</span>
+    Build a deep one &mdash; twenty hidden layers on CIFAR-10 &mdash; and train
+    it with exactly that loop. The loss barely moves, nothing raises, nothing is
+    NaN. Today we measure what goes wrong, derive why, and repair it.
+  </div>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>The failure, <strong>instrumented</strong> &mdash; per-layer activation
+        and gradient statistics</li>
+    <li><strong>The mathematics</strong> &mdash; the variance recursion, and
+        the initialisations of Glorot and He that follow from it</li>
+    <li><strong>The method</strong> &mdash; six repairs: initialisation,
+        activation, normalisation, clipping, optimiser, schedule</li>
+    <li>The ablation: which repair actually paid</li>
+  </ol>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-11.ipynb">Open Lecture 11 in Colab</a>
+  </p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="The specification">
+  <h2>The specification</h2>
+  <div class="panel">
+    <span class="panel-title">What we are asking for</span>
+    A fully connected classifier: 3,072 inputs,
+    <strong>20 hidden layers</strong> of
+    100 units, a logistic activation on each, and a linear head
+    of 10 outputs. Cross-entropy loss, Adam at
+    0.001, batches of 128,
+    20 epochs.
+  </div>
+  <p class="small">Read that again and note what it does <strong>not</strong>
+  say: nothing about how the weights start out. That is not something we are
+  hiding &mdash; it is the ordinary case. Almost no specification mentions it.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 5 -->
+<section data-menu-title="The stack">
+  <h2>The stack</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-9|4-6|8">def make_net(depth=20, width=100, n_in=3072, n_out=10):
+    layers, prev = [], n_in
+    for _ in range(depth):
+        layers += [nn.Linear(prev, width), nn.Sigmoid()]
+        prev = width
+    layers.append(nn.Linear(prev, n_out))
+    return nn.Sequential(*layers)
+
+net = make_net()
+  </code></pre>
+  <p class="small">Nine lines: one <code>nn.Sequential</code>, a
+  linear layer and a logistic, with the middle repeated
+  20 times.</p>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="Run it">
+  <h2>Run it</h2>
+  <table>
+    <tr><th></th><th class="num">Training loss</th></tr>
+    <tr><td>A model that has learned nothing, $\ln 10$</td><td class="num">2.3026</td></tr>
+    <tr><td>Epoch 1</td><td class="num">2.3091</td></tr>
+    <tr><td>Epoch 20</td><td class="num fail">2.3036</td></tr>
+  </table>
+  <p class="lead">8 seconds on
+  mps, 20 epochs,
+  500,210 parameters.</p>
+  <p class="small">The loss moved by
+  0.0055 in 20 epochs.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 7 -->
+<section class="figslide" data-menu-title="◆ The loss">
+  <h2>Same data, same optimiser, same twenty epochs</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l13-loss-flat.svg"
+         alt="Training loss against epoch for a twenty-layer network and a two-layer network; the two-layer curve falls steadily while the twenty-layer curve sits flat on a dotted line labelled ln 10.">
+  </figure>
+  <p class="takeaway fail">The red curve is not noisy, or slow, or plateauing
+  early. It has not started.</p>
+</section>
+
+<!-- 8 -->
+<section class="figslide" data-menu-title="◆ Depth sweep">
+  <h2>Change one thing: the depth</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l13-depth-sweep.svg"
+         alt="Bar chart of test accuracy for networks with one, two, five, ten and twenty hidden layers; the bars fall as depth increases and the twenty-layer bar sits on the ten per cent baseline.">
+  </figure>
+  <p class="takeaway fail">1, 2, 5, 10 and 20 hidden layers; same data, seed,
+  optimiser and epochs. Adding layers made it worse, and past a point made it
+  useless. That is not what capacity is supposed to do.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="What we know">
+  <h2>What we know so far</h2>
+  <ul class="tight small">
+    <li>The loop is correct &mdash; it memorises 200 images on demand</li>
+    <li>The data is correct &mdash; a two-layer network on the same data
+        reaches 39.2%</li>
+    <li>The metric is correct &mdash; counted over the set, in evaluation
+        mode</li>
+    <li class="fail">The <strong>depth</strong> is the variable, and we have no
+        account of why</li>
+  </ul>
+  <p class="lead">Which is where owning the training loop pays off.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 10 -->
+<section data-menu-title="What we can log">
+  <h2>What we can do now, and could not before</h2>
+  <p>Backpropagation computes 500,210 partial derivatives on every
+  batch. Under <code>MLPClassifier.fit()</code> every one of them was
+  discarded.</p>
+  <p class="lead">They are all still here, in <code>p.grad</code>, and we can
+  look at any of them.</p>
+  <ul class="tight small">
+    <li><strong>Forward</strong> &mdash; what does each layer output?</li>
+    <li><strong>Backward</strong> &mdash; what does each weight matrix
+        receive?</li>
+  </ul>
+  <p class="small muted">Two probes, about ten lines each. Without them the
+  diagnosis today is &ldquo;it does not train&rdquo; and there is no next step.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 11 -->
+<section data-menu-title="Probe 1">
+  <h2>Probe 1 &middot; the forward pass</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-11|4-6|8-10">@torch.no_grad()
+def activation_stats(net, X, n=512):
+    net.eval()
+    h, rows = X[:n], []
+    for m in net:
+        h = m(h)
+        if isinstance(m, nn.Sigmoid):
+            rows.append({"mean": float(h.mean()),
+                         "sd":   float(h.std()),
+                         "sat":  float(((h - .5).abs() &gt; .45)
+                                       .float().mean())})
+    return rows
+  </code></pre>
+  <p class="small">Running the modules by hand instead of calling
+  <code>net(X)</code>. That is legal because a <code>Sequential</code> is an
+  iterable of modules, and it is the cheapest possible instrumentation.</p>
+</section>
+
+<!-- 12 -->
+<section class="figslide" data-menu-title="◆ Activations">
+  <h2>The probe says the forward signal is fine</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l13-act-by-depth.svg"
+         alt="Two panels: activation mean and standard deviation against hidden layer, both flat after the first layer; and standard deviation relative to layer one, settling at a constant.">
+  </figure>
+  <p class="takeaway">Mean near a half, spread near 0.071, flat for twenty
+  layers. <strong>Hold that conclusion for one slide.</strong></p>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="The probe was wrong">
+  <h2>The probe measured the wrong thing</h2>
+  <p class="small"><code>h.std()</code> spans the <em>whole tensor</em>, so it is dominated by the spread of the layer&rsquo;s random <strong>biases across units</strong> &mdash; which does not change with depth. It would read 0.07 in a network that had stopped computing entirely.</p>
+  <p class="small">What carries information is the spread <strong>down the batch</strong> &mdash; how much a unit moves when the <em>input</em> does.</p>
+  <table class="smaller">
+    <tr><th>Hidden layer</th><th class="num">1</th><th class="num">5</th><th class="num">10</th><th class="num">20</th></tr>
+    <tr><td><code>h.std()</code> &mdash; what we plotted</td><td class="num">0.131</td><td class="num">0.077</td><td class="num">0.073</td><td class="num">0.071</td></tr>
+    <tr class="fail"><td><code>h.std(dim=0).mean()</code> &mdash; the signal</td><td class="num">1.3e&minus;01</td><td class="num">5.9e&minus;05</td><td class="num">3.0e&minus;09</td><td class="num">2.4e&minus;17</td></tr>
+  </table>
+  <p class="fail">Sixteen orders of magnitude. <strong>The forward signal does
+  die</strong> &mdash; by a factor of <strong>0.148</strong> per layer, which is
+  the number the derivation predicts from the fan-in and the same rate the gradient
+  vanishes at. By layer 20 the network is no longer a function of its input.</p>
+  <p class="small fail">And probe&nbsp;1&rsquo;s <code>sat</code> statistic was no better. It asks whether
+  $|h - \tfrac12| > 0.45$, in a band whose sd is <strong>0.071</strong>
+  &mdash; a threshold <strong>6.3 standard deviations</strong> away, and 3.4
+  even at layer 1. <em>Nothing could ever have exceeded it.</em> It read 0.000 at
+  every depth, and that was arithmetic, not evidence.</p>
+  <aside class="notes">One flat line and one cliff, from the same activations. A
+  probe that cannot fail is not instrumentation, and this one was promoted to
+  standing instrumentation before anyone checked which axis it reduced
+  over.</aside>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Probe 2">
+  <h2>Probe 2 &middot; the backward pass</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-9|5|7-8">lins = [m for m in net if isinstance(m, nn.Linear)]
+
+for _ in range(8):                       # 8 batches, not 1
+    net.zero_grad()
+    lossf(net(xb), yb).backward()
+    acc += np.array([float(m.weight.grad.norm()) for m in lins])
+
+profile = acc / 8
+  </code></pre>
+  <p class="small">Eight batches rather than one, because a single batch of
+  128 is a noisy estimate of anything and a course that says so
+  should not then quote one.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 15 -->
+<section class="figslide" data-menu-title="◆ THE FIGURE">
+  <h2>Gradient norm per weight matrix, at initialisation</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l13-grad-by-depth.svg"
+         alt="Gradient norm per weight matrix against layer index on a logarithmic vertical axis: a straight line rising from about ten to the minus seventeen at layer one to about one tenth at layer twenty, annotated with the ratio between the two ends.">
+  </figure>
+  <p class="takeaway fail">Read the axis. Each gridline is a factor of ten, and
+  the line crosses about 15 of them.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="The per-layer factor">
+  <h2>The one number to take away</h2>
+  <p class="big-num bad">0.1593</p>
+  <p class="small">The line is <strong>straight</strong> on a log axis, so it
+  is a geometric sequence: not one bad layer, but the <em>same factor at every
+  layer</em>. That factor, $\rho$, is the geometric mean of the ratio between
+  neighbouring layers, over 19 steps.</p>
+  <table>
+    <tr><td>Per layer, descending</td><td class="num">&times; 0.1593</td></tr>
+    <tr><td>Over 19 layers</td><td class="num fail">&times; 6.91e-16</td></tr>
+    <tr><td>Which is one part in</td><td class="num fail">1.45e+15</td></tr>
+  </table>
+  <p class="small">Keep both numbers in view. The mathematics below derives
+  the first from the shapes of the weight matrices, and the second
+  follows.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 17 -->
+<section data-menu-title="Does training rescue it">
+  <h2>Does training rescue it?</h2>
+  <p>A fair question: perhaps the first layers are merely slow to start, and
+  the profile flattens as the network learns. We logged the per-layer norms at
+  every epoch, so this is a lookup and not a guess.</p>
+  <table>
+    <tr><th>Gradient at layer 1</th><th class="num">‖∂L/∂W‖</th></tr>
+    <tr><td>Epoch 1</td><td class="num fail">6.660e-17</td></tr>
+    <tr><td>Epoch 20</td><td class="num fail">4.610e-17</td></tr>
+  </table>
+  <p class="small">20 epochs of Adam did not move the first
+  layer&rsquo;s gradient into a range where a learning rate of
+  0.001 could do anything with it.</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="Why Adam does not save it">
+  <h2>Why Adam does not rescue this</h2>
+  <p>Adam divides by a running estimate of the gradient&rsquo;s own magnitude,
+  so it is tempting to think a small gradient is automatically compensated.</p>
+  <ul class="tight small">
+    <li>It rescales, so the <em>direction</em> is what matters &mdash; and at
+        $10^{-17}$ the direction is dominated by batch-to-batch noise</li>
+    <li>The $\varepsilon$ in the denominator, default $10^{-8}$, is larger than
+        the gradients themselves at the bottom of the stack</li>
+  </ul>
+  <div class="panel panel-fail">
+    An optimiser can compensate for a badly scaled gradient. It cannot
+    manufacture information that the backward pass did not deliver.
+  </div>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; an optimiser asked to supply missing information</span>
+    An adaptive optimiser can rescale a badly conditioned gradient. It cannot manufacture information the backward pass never delivered, so a network whose gradient has been attenuated to nothing trains no better under Adam &mdash; and the loss curve looks the same either way.
+  </div>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="The diagnosis">
+  <h2>The diagnosis, as far as we can take it</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">What we measured</span>
+    The gradient is attenuated by a constant factor of about
+    0.159 at every layer, so by the time it reaches
+    the bottom of a 20-layer stack it has been multiplied by
+    1.4e+15. The layers nearest the data never learn anything.
+  </div>
+  <p class="lead">What we cannot yet say: <strong>why that factor is
+  0.159 and not 1.</strong></p>
+  <p class="small muted">That is a question about the weight matrices
+  themselves, and it has an exact answer.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 20 -->
+<section data-menu-title="The recursion">
+  <h2>The one recursion</h2>
+  <p class="small">One layer, activation dropped: $z_i = \sum_{j=1}^{n_{\text{in}}} w_{ij}\,a_j$,
+  where $n_{\text{in}}$ is the fan-in &mdash; 100 on our hidden layers,
+  3,072 on the first. Three assumptions, stated so they can be checked:</p>
+  <ol class="tight smaller">
+    <li>the weights are drawn independently, with mean zero and variance $\operatorname{Var}(w)$</li>
+    <li>the weights are independent of the inputs &mdash; true at initialisation</li>
+    <li>the inputs have mean zero and are uncorrelated with each other</li>
+  </ol>
+  <p class="small">Then each term $w_{ij}a_j$ has mean zero, the terms are
+  uncorrelated, and the variances add:</p>
+  <div class="eqn-box">
+    $$\operatorname{Var}(z) \;=\; n_{\text{in}} \cdot \operatorname{Var}(w)
+      \cdot \operatorname{Var}(a)$$
+    <span class="eqn-label">the forward variance recursion</span>
+  </div>
+  <p class="small muted">The input variance is <em>multiplied</em> by a
+  factor at every layer. That is what makes depth dangerous.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Glorot">
+  <h2>Two demands, and Glorot&rsquo;s compromise</h2>
+  <table class="small">
+    <tr><th>To preserve&hellip;</th><th>the recursion sums over</th><th>so it asks for</th></tr>
+    <tr><td>the forward signal</td><td>the fan-in, $n_{\text{in}}$</td><td>$\operatorname{Var}(w) = 1/n_{\text{in}}$</td></tr>
+    <tr><td>the backward gradient, $\bar a = W^{\mathsf T}\bar z$</td><td>the fan-out, $n_{\text{out}}$</td><td>$\operatorname{Var}(w) = 1/n_{\text{out}}$</td></tr>
+  </table>
+  <p class="small">The two agree only when $n_{\text{in}} = n_{\text{out}}$
+  &mdash; never on our first layer, 3,072 into 100. So do not choose: take
+  the <strong>harmonic mean</strong> of the two demands.</p>
+  <div class="eqn-box">
+    $$\operatorname{Var}(w) \;=\;
+      \frac{2}{n_{\text{in}} + n_{\text{out}}}$$
+    <span class="eqn-label">Glorot (Xavier) initialisation</span>
+  </div>
+  <p class="small muted">A small error in both directions rather than a large
+  one in either. On a square layer it is exact, and reduces to $1/n$.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 22 -->
+<section data-menu-title="He">
+  <h2>He&rsquo;s adjustment</h2>
+  <p class="small">With the activation $\varphi$ put back, the per-layer factor
+  on the backward signal &mdash; the $\rho$ we measured &mdash; is<br>
+  $\rho = \sqrt{n_{\text{out}}\operatorname{Var}(w)\,\mathbb{E}[\varphi'(z)^2]}$.
+  ReLU&rsquo;s derivative is 1 half the time and 0 the other half, so
+  $\mathbb{E}[\operatorname{ReLU}'(z)^2] = \tfrac12$: it discards half the
+  variance. Pay for it by doubling the weight variance:</p>
+  <div class="eqn-box">
+    $$\operatorname{Var}(w) \;=\; \frac{2}{n_{\text{in}}}$$
+    <span class="eqn-label">He initialisation, for ReLU</span>
+  </div>
+  <p class="small">On our hidden layers, $\operatorname{Var}(w) =$
+  0.0200 and $\operatorname{sd}(w) =$
+  0.1414 &mdash; against Glorot&rsquo;s
+  0.1000 and the default&rsquo;s
+  0.0577.</p>
+  <p class="lead fix">Then $\rho = \sqrt{n_{\text{out}}\cdot
+  \tfrac{2}{n_{\text{in}}}\cdot\tfrac12} = \sqrt{n_{\text{out}}/n_{\text{in}}}$
+  &mdash; which is 1 exactly when the fans are equal.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 23 -->
+<section data-menu-title="Repair 1 code">
+  <h2>Repair 1 &middot; initialisation</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-8|4-5|7-8">for m in net:
+    if not isinstance(m, nn.Linear):
+        continue
+    nn.init.xavier_normal_(m.weight)     # Var = 2/(fan_in + fan_out)
+    nn.init.zeros_(m.bias)
+
+    # or, for ReLU:
+    nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
+  </code></pre>
+  <p class="small">Two lines. <code>kaiming_normal_</code> is He; the argument
+  <code>nonlinearity</code> is what selects the factor of two, and its default
+  is <code>"leaky_relu"</code> with slope 0.01 &mdash; near enough, but say
+  what you mean.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Glorot alone">
+  <h2>Glorot alone, measured</h2>
+  <table>
+    <tr><th></th><th class="num">$\rho$</th><th class="num">End to end</th><th class="num">Test accuracy</th></tr>
+    <tr><td class="fail">Default, logistic</td><td class="num fail">0.1593</td><td class="num fail">1.4e+15</td><td class="num fail">10.0%</td></tr>
+    <tr><td>Glorot, logistic</td><td class="num">0.2531</td><td class="num">2.2e+11</td><td class="num">10.0%</td></tr>
+  </table>
+  <p class="lead fail">Nearly four orders of magnitude better, and still
+  eleven orders of attenuation &mdash; which is hopeless.</p>
+  <p class="small">Because the logistic&rsquo;s derivative,
+  $\sigma'(z) = \sigma(z)\bigl(1-\sigma(z)\bigr)$, is at most $\tfrac14$
+  for every $z$. With the weight scale neutralised, $\rho$ can be no larger
+  than that: the measured $\rho$ is now
+  0.253 &mdash; which is
+  0.25, the logistic&rsquo;s own ceiling. <strong>You cannot initialise your way out of the
+  activation function.</strong></p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Repair 2">
+  <h2>Repair 2 &middot; the activation function</h2>
+  <p>Every requirement on $\varphi$ comes from the derivation:</p>
+  <ul class="tight small">
+    <li>$\varphi'$ should reach 1 somewhere, and not be bounded below it</li>
+    <li>$\varphi$ should not saturate on both sides, or gradients die where it
+        does</li>
+    <li>Output roughly centred on zero, so assumption 3 holds at the next
+        layer</li>
+  </ul>
+  <p class="lead fix">ReLU satisfies the first two and fails the third. It is
+  still the right default.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="ReLU's problem">
+  <h2>ReLU&rsquo;s own failure mode</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Dying units</span>
+    A unit whose pre-activation is negative for every input in the dataset has
+    gradient exactly zero, forever. It never comes back.
+  </div>
+  <p>The repairs are all the same idea &mdash; give the negative side a
+  non-zero slope:</p>
+  <table class="small">
+    <tr><th>Variant</th><th>Negative side</th><th>Cost</th></tr>
+    <tr><td>Leaky ReLU</td><td>$\alpha z$, $\alpha \approx 0.01$</td><td>none</td></tr>
+    <tr><td>ELU</td><td>$\alpha(e^{z} - 1)$</td><td>an exponential per unit</td></tr>
+    <tr><td>SELU</td><td>ELU, scaled to self-normalise</td><td>strict conditions on the architecture</td></tr>
+  </table>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Failure condition &middot; a unit that is dead for every input">
+  <h2>A unit that is dead for every input</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition</span>
+    A ReLU whose pre-activation is negative for every row in the dataset has gradient exactly zero forever: it cannot recover, because nothing can move it. The network trains around it and reports a number, with part of its capacity permanently switched off.
+  </div>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Activations measured">
+  <h2>Six activations, measured</h2>
+  <table class="small">
+    <tr><th>Activation</th><th>Initialisation</th><th class="num">Test accuracy</th></tr>
+    <tr><td>logistic</td><td>Glorot</td><td class="num">40.4%</td></tr>
+    <tr><td>tanh</td><td>Glorot</td><td class="num">40.2%</td></tr>
+    <tr><td>ReLU</td><td>He</td><td class="num">37.6%</td></tr>
+    <tr><td>Leaky ReLU</td><td>He</td><td class="num">35.4%</td></tr>
+    <tr><td class="fix">ELU</td><td>He</td><td class="num hit">43.3%</td></tr>
+    <tr><td>SELU</td><td>Glorot</td><td class="num">41.8%</td></tr>
+  </table>
+  <p class="lead">Spread: 8.0% points &mdash; and the
+  logistic is not last.</p>
+  <p class="small">All six <strong>with batch normalisation</strong>, which is
+  why the logistic survives: normalisation puts the pre-activations back where
+  its derivative is largest, at every step. Without normalisation, moving off
+  the logistic was worth 30.7% points. With it, the choice
+  of activation is worth 8.0%.</p>
+  <aside class="notes">This is the slide that most needs saying out loud: the
+  size of an effect depends on what else is in the system. Nobody can rank
+  these six repairs in the abstract, which is exactly why the ablation table
+  exists.</aside>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Repair 3">
+  <h2>Repair 3 &middot; batch normalisation</h2>
+  <p>Initialisation gets $\rho$ right once. Normalisation makes it right at
+  every step, by standardising each layer&rsquo;s inputs and then learning what
+  scale they should have had.</p>
+  <div class="eqn-box">
+    $$\hat z = \frac{z - \mu_B}{\sqrt{\sigma_B^2 + \varepsilon}},
+      \qquad
+      y = \gamma \hat z + \beta$$
+  </div>
+  <p class="small">$\mu_B$ and $\sigma_B$ are computed <strong>over the
+  batch</strong>; $\gamma$ and $\beta$ are learned. The second step is what
+  stops it from being a straitjacket: the network can undo the normalisation if
+  it needs to.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="BN train vs eval">
+  <h2>The bill for batch normalisation</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Its statistics depend on the other images in the batch</span>
+    At training time the prediction for one image depends on which images
+    happened to be batched with it. At evaluation time it uses running averages
+    instead. Those are <strong>two different functions</strong>.
+  </div>
+  <p class="small">Which is Lecture 10's <code>model.eval()</code> failure
+  again &mdash; and it is now much harder to catch. Dropout wobbles between
+  calls, so running the evaluation twice exposes it. Batch normalisation in
+  training mode is <em>deterministic</em> for a fixed batch, so the same trick
+  finds nothing.</p>
+  <p class="fail small">One more question to ask: if there is a normalisation
+  layer, was <code>eval()</code> called? Running it twice will not tell you.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Norms measured">
+  <h2>Normalisation, measured</h2>
+  <table>
+    <tr><th>On the ReLU + He network</th><th class="num">Test accuracy</th><th class="num">Parameters</th><th class="num">Seconds, 3 epochs</th></tr>
+    <tr><td class="fix">No normalisation</td><td class="num hit">40.7%</td><td class="num">500,210</td><td class="num">5.24</td></tr>
+    <tr><td class="fail">Batch normalisation</td><td class="num fail">37.6%</td><td class="num">504,210</td><td class="num fail">11.30</td></tr>
+    <tr><td class="fix">Layer normalisation</td><td class="num hit">41.9%</td><td class="num">504,210</td><td class="num">9.49</td></tr>
+  </table>
+  <p class="lead fail">Batch normalisation made it <strong>worse</strong>, by
+  -3.2% accuracy points.</p>
+  <p class="small">The timing is the <em>minimum</em> of
+  3 repeats: these figures were generated on a shared
+  machine, contention can only make a run slower, so the smallest reading is
+  the closest to the true cost. Batch normalisation costs
+  2.16&times; the epoch.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Repair 4">
+  <h2>Repair 4 &middot; gradient clipping</h2>
+  <pre><code class="language-python" data-trim>
+loss.backward()
+torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+opt.step()
+  </code></pre>
+  <p>Rescale the whole gradient vector when its norm exceeds a threshold. It
+  preserves the direction and bounds the length.</p>
+  <p class="fail small">This is a defence against $\rho &gt; 1$. We have
+  $\rho &lt; 1$. Look at the distribution of norms before choosing a threshold
+  &mdash; a clip below the median silently turns your optimiser into
+  something else.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="Clipping measured">
+  <h2>What clipping bought, and what it did not</h2>
+  <table>
+    <tr><th>Gradient clipping at 1.0</th><th class="num">Test accuracy</th></tr>
+    <tr><td class="fail">applied alone to the failing network</td><td class="num fail">10.0% &mdash; nothing</td></tr>
+    <tr><td class="fix">added to the repaired network</td><td class="num hit">36.6% &rarr; 41.0%</td></tr>
+  </table>
+  <p class="small">Alone it cannot help: you cannot bound your way out of a
+  gradient that is 1e+15 times too <em>small</em>. On the
+  repaired network the step norms have a median of 3.12 under He, so a
+  threshold of 1.0 sits below it and acts as a step-size limiter
+  rather than a safety net, and here that was worth
+  +4.4% points.</p>
+  <p class="fail small">Which is a useful effect obtained for the wrong reason.
+  If you want a smaller step, set a smaller learning rate and say so.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 34 -->
+<section data-menu-title="Repair 5">
+  <h2>Repair 5 &middot; faster optimisers</h2>
+  <p>Now that the gradient reaches every layer, the optimiser has something to
+  work with. Comparing them on the broken network would have measured
+  nothing.</p>
+  <table class="small">
+    <tr><th>Optimiser</th><th>Idea</th><th class="num">Test accuracy</th></tr>
+    <tr><td>SGD</td><td>step along the gradient</td><td class="num">27.1%</td></tr>
+    <tr><td>Momentum</td><td>accumulate a velocity</td><td class="num">33.5%</td></tr>
+    <tr><td>Nesterov</td><td>measure the gradient ahead of the step</td><td class="num">33.8%</td></tr>
+    <tr><td>RMSProp</td><td>divide by a running gradient scale</td><td class="num">35.7%</td></tr>
+    <tr><td class="fix">Adam</td><td>momentum and RMSProp together</td><td class="num hit">37.6%</td></tr>
+    <tr><td>AdamW</td><td>Adam, with the weight decay decoupled</td><td class="num">37.4%</td></tr>
+  </table>
+  <p class="small">SGD, momentum and Nesterov at
+  0.01; the adaptive three at
+  0.001 &mdash; the same learning rate would not be a fair
+  comparison.</p>
+  <a class="anim-link" href="../animations/lecture-11.html#optim" target="_blank">Animation</a>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 35 -->
+<section class="figslide" data-menu-title="◆ Optimisers">
+  <h2>Six optimisers on the repaired network</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-optims.svg"
+         alt="Training loss against epoch for SGD, momentum, Nesterov, RMSProp, Adam and AdamW, with the test accuracy of each in the legend.">
+  </figure>
+  <p class="takeaway">The spread between the best and the worst optimiser here
+  is far smaller than the effect of the initialisation. Order your effort by
+  the measurement, not by the novelty.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Repair 6">
+  <h2>Repair 6 &middot; learning-rate schedules</h2>
+  <p>One step size cannot suit both the start of training and the end. The book
+  gives five schedules; three are worth having.</p>
+  <ul class="tight small">
+    <li><strong>Exponential</strong> &mdash; multiply by a constant each epoch</li>
+    <li><strong>Cosine</strong> &mdash; anneal smoothly to zero over the run</li>
+    <li><strong>1-cycle</strong> &mdash; rise to a peak, then fall well below
+        the starting value</li>
+  </ul>
+  <p class="small">All three need to know how long the run is, which is why
+  they take <code>total_steps</code> and why changing the epoch count silently
+  changes the schedule.</p>
+  <a class="anim-link" href="../animations/lecture-11.html#sched" target="_blank">Animation</a>
+</section>
+
+<!-- 37 -->
+<section class="figslide" data-menu-title="◆ Schedules">
+  <h2>What a schedule does, and what it buys</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-schedules.svg"
+         alt="Left panel: learning rate against epoch for a constant, cosine and one-cycle schedule. Right panel: validation accuracy against epoch for the same three runs.">
+  </figure>
+  <p class="takeaway">Constant 40.0%, cosine 39.9%, 1-cycle 41.2% &mdash; on a
+  twenty-epoch run, one seed each. In the ablation the same schedule is worth
+  -0.4 points against a five-seed spread of
+  &plusmn;2.40, so read this panel as a shape, not a ranking.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 38 -->
+<section data-menu-title="★ THE ABLATION TABLE">
+  <h2>Each row adds one change to the row above</h2>
+  <table class="small">
+    <tr><th>Configuration</th><th class="num">Test accuracy</th><th class="num">sd over 5 seeds</th><th class="num">Change</th><th class="num">Final training loss</th></tr>
+    <tr><td class="fail">the failing network, unchanged</td><td class="num">10.0%</td><td class="num">&plusmn;0.00</td><td class="num">&mdash;</td><td class="num">2.3035</td></tr>
+    <tr><td>+ Glorot initialisation</td><td class="num">10.0%</td><td class="num">&plusmn;0.00</td><td class="num">+0.0 <span class="muted">(noise)</span></td><td class="num">2.3062</td></tr>
+    <tr><td class="fix">+ ReLU and He initialisation</td><td class="num">41.2%</td><td class="num">&plusmn;0.41</td><td class="num hit">+31.2</td><td class="num">1.1324</td></tr>
+    <tr><td>+ batch normalisation</td><td class="num">36.6%</td><td class="num">&plusmn;0.92</td><td class="num fail">-4.6</td><td class="num">1.5458</td></tr>
+    <tr><td class="fix">+ gradient clipping</td><td class="num">41.0%</td><td class="num">&plusmn;0.65</td><td class="num hit">+4.4</td><td class="num">1.1075</td></tr>
+    <tr><td>+ a 1-cycle schedule</td><td class="num">40.6%</td><td class="num">&plusmn;2.40</td><td class="num">-0.4 <span class="muted">(noise)</span></td><td class="num">1.2781</td></tr>
+    <tr><td>+ dropout 0.1</td><td class="num">34.1%</td><td class="num">&plusmn;0.62</td><td class="num fail">-6.5</td><td class="num">1.6252</td></tr>
+  </table>
+  <p class="small">Five seeds a row; typical spread
+  <strong>0.72 points</strong>. One step is worth <strong>+31.2</strong>, forty
+  times that. <strong>The 1-cycle schedule does not</strong> clear the noise
+  &mdash; -0.4 against &plusmn;2.40. The last row is dropout, the layer from
+  Lecture&nbsp;10 that zeroes a random fraction of units in training: a
+  regulariser, added to a network that is not overfitting.</p>
+  <aside class="notes">There is deliberately no wall-clock column: these
+  figures were generated on a heavily shared machine and the per-run times were
+  not comparable with one another. The normalisation slide carries a timing
+  that was measured properly, as a minimum over repeats. Say that out loud
+  rather than printing a number that measures the neighbours.</aside>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 39 -->
+<section class="figslide" data-menu-title="◆ The ladder">
+  <h2>The same table, as a picture</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l14-ladder.svg"
+         alt="Horizontal bar chart of test accuracy for each cumulative configuration, from the unchanged failing network at the baseline to the fully repaired network, each bar labelled with its value and the change from the row above.">
+  </figure>
+  <p class="takeaway fix">One row moves the number further than the whole
+  journey, and it is the row the mathematics pointed at.</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="Where the gain came from">
+  <h2>Where the gain came from</h2>
+  <table>
+    <tr><th></th><th class="num">Accuracy points</th></tr>
+    <tr><td class="fix">The largest single step &mdash; ReLU with He</td><td class="num hit">+31.2%</td></tr>
+    <tr><td class="fix">Best configuration, against the start</td><td class="num hit">+31.2%</td></tr>
+    <tr><td class="fail">The worst single step</td><td class="num fail">-6.5%</td></tr>
+    <tr><td>The last row, against the start</td><td class="num">+24.1%</td></tr>
+  </table>
+  <p class="lead">One change is worth more than the whole ladder.</p>
+  <p class="small">Which is the answer to &ldquo;should I add batch
+  normalisation, or dropout, or a schedule?&rdquo; &mdash; the question is
+  malformed until you know which failure you have. Ours was
+  $\rho \ne 1$, and only the repairs that address $\rho$ paid.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 41 -->
+<section data-menu-title="The catalogue">
+  <h2>The silent-failure catalogue so far</h2>
+  <table class="small">
+    <tr><th>Failure</th><th>Diagnosed in</th><th class="num">Measured cost</th></tr>
+    <tr><td>Missing <code>optimizer.zero_grad()</code></td><td>Lecture 10</td><td class="num">66 points</td></tr>
+    <tr><td>Metric averaged per batch</td><td>Lecture 10</td><td class="num">0.15 points</td></tr>
+    <tr><td class="fail">A deep stack on default initialisation</td><td class="fail">today</td><td class="num fail">31.2% points</td></tr>
+  </table>
+  <p class="small muted">Every one of them ran to completion and printed a
+  plausible number. The last is the first in which no line of code is
+  wrong.</p>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+
+<!-- 42 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-11.ipynb">Open Lecture 11 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> CIFAR-10 is subsampled and the stack
+        is narrow; the point is the <em>shape</em> of the gradient curve, which
+        survives the shrink</li>
+    <li>The instrumentation: per-layer activation and gradient statistics,
+        logged and plotted</li>
+    <li>Each repair applied on its own, so the ablation is something you ran
+        rather than something you read</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Set the initialisation back to the default and re-run the gradient probe.
+    The straight line on a log axis comes back, and its slope is the per-layer
+    factor the derivation predicts.
+  </div>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight smaller">
+    <li>Instrumented a network that would not train, and found the gradients
+        shrinking by a constant factor per layer &mdash; a straight line on a
+        log axis</li>
+    <li>Derived why: one layer multiplies the variance by
+        $n\cdot\operatorname{Var}(w)$ &mdash; forwards with the fan-in,
+        backwards with the fan-out &mdash; so the factor compounds over the
+        depth, and only $\rho = 1$ survives it</li>
+    <li>Saw Glorot&rsquo;s compromise between the two fans, and He&rsquo;s
+        adjustment &mdash; doubling $\operatorname{Var}(w)$ because ReLU
+        discards half of it</li>
+    <li>Applied six repairs &mdash; initialisation, activation, normalisation,
+        clipping, optimiser, schedule &mdash; and measured each</li>
+    <li>Read the ablation, and found that one change, ReLU with He, did more
+        than the whole ladder</li>
+  </ol>
+</section>
+
+<!-- 44 -->
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 11">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 11</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 11">
+  <h2>Exercises &mdash; Lecture 11</h2>
+  <ul class="ex-list">
+    <li>One layer multiplies the standard deviation of the backward signal by $\rho = \sqrt{n_{\text{out}}\operatorname{Var}(w)\,\mathbb{E}[\varphi'^2]}$. State what $L$ layers do to it, and why only $\rho = 1$ survives depth. <span class="ex-marks">[5]</span></li>
+    <li>Preserving the forward signal asks for $\operatorname{Var}(w) = 1/n_{\text{in}}$ and preserving the gradient asks for $1/n_{\text{out}}$. State when the two agree, and what Glorot does when they do not. <span class="ex-marks">[4]</span></li>
+    <li>He initialisation doubles the weight variance for ReLU. Derive the factor of two in one line. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 12&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 11 (2)">
+  <h2>Exercises &mdash; Lecture 11 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>A gradient profile that is a straight line on a log axis tells you something a curved one does not. State what, and why it identifies the cause. <span class="ex-marks">[4]</span></li>
+    <li>Gradient clipping is applied to a network whose gradients are fifteen orders of magnitude too small. Predict the effect, and say what the attempt reveals about the diagnosis. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 12&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 10">
+  <p class="kicker">The five set at the end of Lecture 10</p>
+  <h1>Solutions<br>Lecture 10</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 10">
+  <h2>Solutions &mdash; Lecture 10</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> Reverse-mode automatic differentiation costs one sweep for all partial derivatives; forward mode costs one&hellip;</p>
+      <p class="lead"><span class="fix">Many inputs, one output &mdash; which is exactly a loss.</span></p>
+      <ul class="tight smaller">
+        <li>Forward mode&rsquo;s cost scales with the number of inputs, reverse mode&rsquo;s with the number of outputs</li>
+        <li>A neural network has millions of parameters and one scalar loss</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> Test accuracy on 10,000 images is computed as the plain mean of the per-batch accuracies, in batches of 384.&hellip;</p>
+      <p class="lead"><span class="fix">The last batch holds 16 images but is weighted as heavily as a full batch of 384. Count the hits over the whole set, or weight each batch by its size.</span></p>
+      <ul class="tight smaller">
+        <li>10,000 = 26 &times; 384 + 16, so there are 27 batches and the last is short</li>
+        <li>Measured, the error was 0.146 points &mdash; small here, but you cannot tell from the number whether it was</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 10 (2)">
+  <h2>Solutions &mdash; Lecture 10 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> The five lines of the training loop are reordered so that opt.step() comes before loss.backward(). State what&hellip;</p>
+      <p class="lead"><span class="fix">Nothing raises, and the training loss stays at its starting level: the parameters are never changed.</span></p>
+      <ul class="tight smaller">
+        <li>The step is taken with the gradients zeroed at the top of the iteration</li>
+        <li>The gradients computed afterwards are cleared before they are ever used</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> A network with dropout is evaluated without calling model.eval(). Describe the symptom precisely, and the&hellip;</p>
+      <p class="lead"><span class="fix">The score wobbles between identical calls. Evaluate twice and assert the two agree.</span></p>
+      <ul class="tight smaller">
+        <li>Dropout keeps sampling masks in training mode, so the metric is a random variable</li>
+        <li>A deterministic function of fixed weights and fixed data does not change between calls</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 10 (3)">
+  <h2>Solutions &mdash; Lecture 10 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> In the measured comparison the accelerator barely beat the CPU on the smallest network, and its lead grew as&hellip;</p>
+      <p class="lead"><span class="fix">Dispatch overhead: on a small matrix product much of each step is the cost of dispatching it, not the arithmetic. The crossover is set by how much arithmetic each batch carries &mdash; measured, near-parity at the smallest width and nearly four times faster at the widest.</span></p>
+      <ul class="tight smaller">
+        <li>A GPU is a machine for large matrix products, and a narrow layer at a batch of 128 is not a large one</li>
+        <li>The device pulls ahead once each batch carries enough arithmetic to cover the dispatch, and that grows with the layer widths</li>
+      </ul>
+    </div>
+  </div>
+  <!-- RUN-NOTE --><p class="run-note">Measured on one run of this lecture&rsquo;s notebook; hardware, library versions and random seeds can make a re-run differ slightly.</p><!-- /RUN-NOTE -->
+</section>
+<!-- END EXERCISES -->
+<!-- 51 -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 12 &middot; G&eacute;ron Ch. 12</p>
+  <h1>Convolutional networks</h1>
+  <p class="small">
+    Why a flattened image is the wrong representation<br>
+    Weight sharing and equivariance, derived<br>
+    Convolution, pooling, and a network built and trained from scratch
+  </p>
+  <p class="clock">Run the Lecture 11 notebook first</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 11
+  <span class="sep">&middot;</span> Training deep networks
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>
