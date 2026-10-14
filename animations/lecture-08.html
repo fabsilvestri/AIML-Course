@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 8 · Dimensionality reduction and unsupervised learning — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 8 of Applications of Machine Learning: k-means step by step, and DBSCAN on non-spherical clusters.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-08.html">Lecture 8 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 8 · Animations</p>
+  <h1>Dimensionality reduction and unsupervised learning</h1>
+  <p>Two of today's clustering methods, in two dimensions where you can see
+  everything. Press <strong>Step</strong> to advance one unit of the algorithm and read what
+  happened; press <strong>Play</strong> to let it run. Every number in the side
+  panel is recomputed at every step.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#kmeans">1 · k-means, one half-step at a time</a></li>
+    <li><a href="#dbscan">2 · DBSCAN on shapes k-means cannot cut</a></li>
+  </ul>
+</div>
+
+
+<!-- ======================================================================
+     1 · k-means
+     ====================================================================== -->
+<section class="anim" id="kmeans">
+  <h2><span class="num">1</span>k-means, one half-step at a time</h2>
+  <p class="lede">Lloyd's algorithm alternates two moves: <em>assign</em> every
+  point to its nearest centroid, then <em>update</em> every centroid to the mean
+  of its points. Each press of Step is one of the two. The shading is the
+  Voronoi diagram of the current centroids. On the right, the best inertia and
+  silhouette found for each $k$ from ten k-means++ starts; the ring is the run
+  in front of you.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="km-plots"></div>
+      <div id="km-curve"></div>
+      <div class="narrate" id="km-say"></div>
+      <div class="toolbar" id="km-bar"></div>
+    </div>
+    <aside class="side" id="km-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The inertia of an assignment $c$ and centroids $\boldsymbol\mu$:</p>
+      $$J = \sum_{i=1}^{m}\bigl\lVert\mathbf{x}^{(i)} - \boldsymbol\mu_{c(i)}\bigr\rVert_2^2.$$
+      <p><em>Assign</em> minimises $J$ over $c$ with $\boldsymbol\mu$ fixed —
+      each term is smallest at the nearest centroid. <em>Update</em> minimises
+      it over $\boldsymbol\mu$ with $c$ fixed, because for any points
+      $\sum_i\lVert\mathbf{x}^{(i)}-\boldsymbol\mu\rVert^2 = \sum_i\lVert\mathbf{x}^{(i)}-\bar{\mathbf{x}}\rVert^2 + n\lVert\bar{\mathbf{x}}-\boldsymbol\mu\rVert^2$,
+      smallest at the mean. So neither half-step can raise $J$.
+      The silhouette of point $i$ is $s_i = (b-a)/\max(a,b)$, with $a$ its
+      mean distance to its own cluster and $b$ to the nearest other one.</p>
+      <p>k-means++ picks the first centroid uniformly, then each next one
+      with probability proportional to its squared distance $D(\mathbf{x})^2$
+      from the nearest centroid already chosen.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The inertia curve under the plot only ever goes down, on both kinds
+        of half-step, and stops when an assign step changes nothing.</li>
+        <li>On the right, the best $J$ keeps falling as $k$ grows, past the four
+        groups that are really there. The silhouette peaks at $k = 4$.</li>
+        <li>Converged is not the same as best: a start can stop with a ring
+        well above the curve, two centroids sharing one group.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Choose <em>random</em> initialisation and press <em>New start</em>
+        once (start 2), then Play: two centroids end up splitting the large
+        group, and the final inertia is about twice the best.</li>
+        <li>Press <em>New start</em> ten times under each initialisation and
+        count the rings that stop well above the curve. Random starts end
+        badly more often — over 200 starts on this data, 62% against 34% for
+        k-means++ — and k-means++ still does sometimes, which is why
+        <code>n_init</code> exists.</li>
+        <li>Set $k = 5$ and read the curves on the right: the best inertia is
+        lower than at $k = 4$, and the silhouette is lower too.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · DBSCAN
+     ====================================================================== -->
+<section class="anim" id="dbscan">
+  <h2><span class="num">2</span>DBSCAN on shapes k-means cannot cut</h2>
+  <p class="lede">Two interleaved half-moons and a scatter of background points.
+  Large markers are <strong>core points</strong>: at least
+  <code>min_samples</code> points, counting themselves, within $\varepsilon$.
+  Each Step expands one core point — the dashed circle is its
+  $\varepsilon$-neighbourhood — and every unlabelled point inside joins its
+  cluster. What no cluster reaches is noise (×).</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="db-plots"></div>
+      <div class="narrate" id="db-say"></div>
+      <div class="toolbar" id="db-bar"></div>
+    </div>
+    <aside class="side" id="db-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>With $N_\varepsilon(\mathbf{x}) = \{\mathbf{x}' : \lVert\mathbf{x}'-\mathbf{x}\rVert \le \varepsilon\}$,
+      the deck's three definitions:</p>
+      <ul>
+        <li>$\mathbf{x}$ is core if $|N_\varepsilon(\mathbf{x})| \ge$ <code>min_samples</code>;</li>
+        <li>core points within $\varepsilon$ of each other share a cluster,
+        and so do the points in their neighbourhoods;</li>
+        <li>everything else is noise, label $-1$.</li>
+      </ul>
+      <p>A cluster is therefore the set reachable from one core point by hops
+      of length at most $\varepsilon$ through core points — a breadth-first
+      search, which is what Step performs. The score is the adjusted Rand
+      index, $\mathrm{ARI} = (\mathrm{RI}-\mathbb{E}[\mathrm{RI}])/(1-\mathbb{E}[\mathrm{RI}])$,
+      against the generating groups (moon, moon, background), with noise
+      counted as one more group.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>A cluster grows <em>along</em> its moon, around the bend, because
+        it only ever looks $\varepsilon$ ahead. Its shape is not constrained
+        at all.</li>
+        <li>Hollow markers are border points: in a cluster, but not core, so
+        the search does not continue through them.</li>
+        <li>Tick <em>k-means, k = 2</em>: its boundary is a straight line,
+        because two Voronoi cells are two half-planes, and it cuts both moons.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Set $\varepsilon = 0.12$ and press Play: the moons break into about
+        ten pieces and many points become noise.</li>
+        <li>Set $\varepsilon = 0.40$: the gap between the moons is now shorter
+        than one hop, and a single cluster swallows both of them.</li>
+        <li>At $\varepsilon = 0.25$, raise <code>min_samples</code> to 10: fewer
+        core points, more hollow border points and more noise, and the moons
+        now break into four clusters. Density is $\varepsilon$ and
+        <code>min_samples</code> together.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 8 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  function d2(a, b) { var dx = a[0] - b[0], dy = a[1] - b[1]; return dx * dx + dy * dy; }
+
+
+  /* ======================================================================
+     1 · k-means
+     ====================================================================== */
+  (function () {
+    // Four groups of unequal size: one large, three small.
+    var R = A.rng(81), pts = [];
+    [[-2.3, 1.0, 0.7, 45], [2.2, 2.0, 0.45, 18], [-0.3, -1.8, 0.45, 18], [2.6, -1.4, 0.45, 18]]
+      .forEach(function (c) { for (var i = 0; i < c[3]; i++) pts.push([R.n(c[0], c[2]), R.n(c[1], c[2])]); });
+    var m = pts.length, KMAX = 8;
+
+    var S = { k: 4, init: "pp", start: 1 }, st, pl;
+
+    function nearest(p, C) {
+      var best = 0, bd = Infinity;
+      for (var j = 0; j < C.length; j++) { var d = d2(p, C[j]); if (d < bd) { bd = d; best = j; } }
+      return best;
+    }
+    function inertia(a, C) { var s = 0; for (var i = 0; i < m; i++) s += d2(pts[i], C[a[i]]); return s; }
+    function means(a, C) {
+      return C.map(function (q, j) {
+        var sx = 0, sy = 0, n = 0;
+        for (var i = 0; i < m; i++) if (a[i] === j) { sx += pts[i][0]; sy += pts[i][1]; n++; }
+        return n ? [sx / n, sy / n] : q.slice();   // an empty cluster keeps its centroid
+      });
+    }
+    function initPP(k, r) {
+      var C = [pts[Math.floor(r.u() * m)].slice()];
+      while (C.length < k) {
+        var D = pts.map(function (p) { return d2(p, C[nearest(p, C)]); });
+        var u = r.u() * A.sum(D), i = 0;
+        while (i < m - 1 && u > D[i]) { u -= D[i]; i++; }
+        C.push(pts[i].slice());
+      }
+      return C;
+    }
+    function initRandom(k, r) { return r.shuffle(A.range(m)).slice(0, k).map(function (i) { return pts[i].slice(); }); }
+    function lloyd(C) {
+      var a = null;
+      for (var it = 0; it < 200; it++) {
+        var na = pts.map(function (p) { return nearest(p, C); });
+        if (a && na.every(function (v, i) { return v === a[i]; })) break;
+        a = na; C = means(a, C);
+      }
+      return { a: a, C: C, J: inertia(a, C) };
+    }
+    function silhouette(a, k) {
+      var s = 0;
+      for (var i = 0; i < m; i++) {
+        var sums = new Array(k).fill(0), cnt = new Array(k).fill(0);
+        for (var j = 0; j < m; j++) if (j !== i) { sums[a[j]] += Math.sqrt(d2(pts[i], pts[j])); cnt[a[j]]++; }
+        if (!cnt[a[i]]) continue;                       // a singleton scores 0
+        var ai = sums[a[i]] / cnt[a[i]], bi = Infinity;
+        for (var q = 0; q < k; q++) if (q !== a[i] && cnt[q]) bi = Math.min(bi, sums[q] / cnt[q]);
+        if (isFinite(bi)) s += (bi - ai) / Math.max(ai, bi);
+      }
+      return s / m;
+    }
+
+    // The reference curves: for each k, the best of ten k-means++ starts.
+    var best = [];
+    for (var kk = 1; kk <= KMAX; kk++) {
+      var b = null;
+      for (var s = 0; s < 10; s++) {
+        var r = lloyd(initPP(kk, A.rng(1000 * kk + s)));
+        if (!b || r.J < b.J) b = r;
+      }
+      best.push({ k: kk, J: b.J, s: kk > 1 ? silhouette(b.a, kk) : NaN });
+    }
+
+    var plots = A.$("#km-plots");
+    var pX = A.plot(plots, { x: [-4.8, 4.2], y: [-3.2, 3.6], w: 440, h: 380, equal: true,
+                             xlabel: "x₁", ylabel: "x₂", caption: "Points, centroids and their Voronoi cells" });
+    var right = A.h("figure", null, plots);
+    var pJ = A.plot(right, { x: [0.5, KMAX + 0.5], y: [0, 750], w: 380, h: 190, xticks: A.range(KMAX).map(function (i) { return i + 1; }),
+                             ylabel: "inertia J", margin: { l: 52, r: 16, t: 12, b: 26 } });
+    var pS = A.plot(right, { x: [0.5, KMAX + 0.5], y: [0, 0.8], w: 380, h: 190, xticks: A.range(KMAX).map(function (i) { return i + 1; }),
+                             yticks: [0, 0.2, 0.4, 0.6, 0.8], xlabel: "k", ylabel: "silhouette",
+                             margin: { l: 52, r: 16, t: 8, b: 40 } });
+    A.h("figcaption", { text: "Best of ten starts at each k (line), and this run (ring)" }, right);
+    var curve = A.curve("#km-curve", { y: [1, 3], log: true, ylabel: "inertia J", xlabel: "half-step", n: 12, h: 140 });
+
+    var side = A.$("#km-side");
+    A.slider(side, { label: "Number of clusters $k$", min: 2, max: 5, step: 1, value: S.k,
+                     fmt: function (v) { return String(Math.round(v)); },
+                     onInput: function (v) { S.k = Math.round(v); pl.restart(); } });
+    A.seg(side, { label: "Initialisation", value: S.init, options: [["pp", "k-means++"], ["random", "random"]],
+                  hint: "Random: $k$ data points chosen uniformly, without replacement.",
+                  onChange: function (v) { S.init = v; pl.restart(); } });
+    var ro = A.readout(side, [["start", "start"], ["phase", "next half-step"], ["J", "inertia $J$"],
+                              ["moved", "changed"], ["sil", "silhouette"], ["best", "best $J$ at this $k$"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "cluster 1" }, { shape: "tri", cls: "pt c1", label: "cluster 2" },
+                    { shape: "sq", cls: "pt c2", label: "cluster 3" }, { shape: "diamond", cls: "pt c3", label: "cluster 4" },
+                    { shape: "circle", cls: "pt halo", label: "centroid (large)" },
+                    { line: "arrow", label: "centroid's move" }]);
+    var say = A.narrate("#km-say");
+
+    function reset() {
+      var r = A.rng(S.start);
+      var C = S.init === "pp" ? initPP(S.k, r) : initRandom(S.k, r);
+      st = { C: C, a: null, phase: "assign", Js: [], last: null, prev: null, done: false };
+    }
+    function step() {
+      if (st.phase === "assign") {
+        var na = pts.map(function (p) { return nearest(p, st.C); });
+        var changed = st.a ? na.filter(function (v, i) { return v !== st.a[i]; }).length : m;
+        var before = st.Js.length ? st.Js[st.Js.length - 1] : null;
+        st.a = na;
+        var J = inertia(na, st.C);
+        st.Js.push(J);
+        st.last = { kind: "assign", changed: changed, before: before, after: J };
+        st.prev = null;
+        st.phase = "update";
+        if (before !== null && changed === 0) { st.done = true; return false; }
+        return true;
+      }
+      var old = st.C.map(function (q) { return q.slice(); });
+      st.C = means(st.a, st.C);
+      var moved = Math.max.apply(null, st.C.map(function (q, j) { return Math.sqrt(d2(q, old[j])); }));
+      var J2 = inertia(st.a, st.C);
+      st.last = { kind: "update", moved: moved, before: st.Js[st.Js.length - 1], after: J2 };
+      st.Js.push(J2);
+      st.prev = old;
+      st.phase = "assign";
+      return true;
+    }
+
+    function shade() {
+      var cs = A.range(5).map(function (j) { return A.rgb("c" + j); }), C = st.C;
+      pX.field(function (x, y) { var c = cs[nearest([x, y], C) % 5]; return [c[0], c[1], c[2], 0.13]; }, { res: 80 });
+    }
+    A.onTheme(function () { shade(); });
+
+    function render() {
+      shade();
+      pX.clear();
+      pts.forEach(function (p, i) {
+        if (!st.a) pX.dot(p[0], p[1], { r: 3.6, cls: "line thin muted" });
+        else pX.dot(p[0], p[1], { r: 3.8, shape: A.SHAPES[st.a[i]], cls: "pt c" + st.a[i] });
+      });
+      if (st.prev) st.prev.forEach(function (q, j) {
+        pX.arrow(q[0], q[1], st.C[j][0], st.C[j][1], { cls: "arrow" });
+      });
+      st.C.forEach(function (q, j) {
+        pX.dot(q[0], q[1], { r: 12, cls: "pt halo", layer: "over" });
+        pX.dot(q[0], q[1], { r: 8, shape: A.SHAPES[j], cls: "pt c" + j, layer: "over" });
+      });
+
+      // Right: best inertia and silhouette over k, this run as a ring.
+      pJ.clear(); pS.clear();
+      pJ.path(best.map(function (b) { return [b.k, b.J]; }), "line ok");
+      best.forEach(function (b) { pJ.dot(b.k, b.J, { r: 3, cls: "fill-ok" }); });
+      var sb = best.filter(function (b) { return b.k > 1; });
+      pS.path(sb.map(function (b) { return [b.k, b.s]; }), "line ok");
+      sb.forEach(function (b) { pS.dot(b.k, b.s, { r: 3, cls: "fill-ok" }); });
+      pJ.line(S.k, 0, S.k, 750, "line muted dot");
+      pS.line(S.k, 0, S.k, 0.8, "line muted dot");
+      var J = st.Js.length ? st.Js[st.Js.length - 1] : null, sil = st.a ? silhouette(st.a, S.k) : null;
+      if (J !== null) pJ.dot(S.k, J, { r: 7, cls: "pt halo" });
+      if (sil !== null) pS.dot(S.k, sil, { r: 7, cls: "pt halo" });
+
+      curve.draw([{ values: st.Js, cls: "line acc" }], [{ y: best[S.k - 1].J, label: "best of ten starts" }]);
+
+      var bJ = best[S.k - 1].J;
+      ro.set("start", String(S.start) + (S.init === "pp" ? " (k-means++)" : " (random)"));
+      ro.set("phase", st.done ? "converged" : st.phase, st.done ? "good" : "");
+      ro.set("J", J === null ? "—" : sig(J, 4), J !== null && st.done ? (J > 1.05 * bJ ? "bad" : "good") : "");
+      ro.set("moved", !st.last ? "—" : st.last.kind === "assign" ? st.last.changed + " points" : "max " + fmt(st.last.moved, 3));
+      ro.set("sil", sil === null ? "—" : fmt(sil, 3));
+      ro.set("best", sig(bJ, 4));
+
+      var L = st.last;
+      if (!L) {
+        say.say("<span class='k'>Start " + S.start + ".</span> " + S.k + " centroids placed by " +
+                (S.init === "pp" ? "k-means++ (each new one drawn with probability " + K("\\propto D(\\mathbf x)^2") + ")"
+                                 : "picking " + S.k + " data points at random") +
+                ". No point is assigned yet, so there is no inertia. Press <em>Step</em> to assign.");
+      } else if (L.kind === "assign") {
+        say.say("<span class='k'>Assign.</span> Every point goes to its nearest centroid: " +
+                (L.before === null ? "all " + m + " assigned" : L.changed + " changed cluster") +
+                ". Inertia " + (L.before === null ? "" : sig(L.before, 4) + " → ") + sig(L.after, 4) + "." +
+                (st.done ? " <strong>Converged</strong>: nothing changed, so the next update would not move any centroid. " +
+                           (L.after > 1.05 * bJ ? "But " + K("J = " + sig(L.after, 4)) + " is " + fmt(L.after / bJ, 2) +
+                              "× the best of ten starts: a <strong>local</strong> minimum."
+                            : "This is the best inertia found at " + K("k = " + S.k) + ".")
+                         : " Next: move each centroid to its points' mean."));
+      } else {
+        say.say("<span class='k'>Update.</span> Each centroid moves to the mean of its points; the largest move is " +
+                fmt(L.moved, 3) + ". Inertia " + sig(L.before, 4) + " → " + sig(L.after, 4) +
+                ". Next: reassign, since some points may now be nearer another centroid.");
+      }
+    }
+
+    pl = A.player("#km-bar", { step: step, reset: reset, render: render, fps: 3, unit: "half-step" });
+    A.button("#km-bar", "New start", function () { S.start++; pl.restart(); });
+  })();
+
+  /* ======================================================================
+     2 · DBSCAN
+     ====================================================================== */
+  (function () {
+    var R = A.rng(71), pts = [], truth = [];
+    for (var i = 0; i < 75; i++) {
+      var t = Math.PI * R.u();
+      pts.push([Math.cos(t) + R.n(0, 0.07), Math.sin(t) + R.n(0, 0.07)]); truth.push(0);
+    }
+    for (i = 0; i < 75; i++) {
+      t = Math.PI * R.u();
+      pts.push([1 - Math.cos(t) + R.n(0, 0.07), 0.5 - Math.sin(t) + R.n(0, 0.07)]); truth.push(1);
+    }
+    for (i = 0; i < 10; i++) { pts.push([R.uniform(-1.4, 2.4), R.uniform(-1.0, 1.5)]); truth.push(2); }
+    var m = pts.length;
+
+    function ari(a, b) {
+      var ct = {}, ra = {}, rb = {}, c2 = function (x) { return x * (x - 1) / 2; };
+      for (var i = 0; i < a.length; i++) {
+        var key = a[i] + "|" + b[i];
+        ct[key] = (ct[key] || 0) + 1; ra[a[i]] = (ra[a[i]] || 0) + 1; rb[b[i]] = (rb[b[i]] || 0) + 1;
+      }
+      var s = 0, sa = 0, sb = 0, k;
+      for (k in ct) s += c2(ct[k]);
+      for (k in ra) sa += c2(ra[k]);
+      for (k in rb) sb += c2(rb[k]);
+      var e = sa * sb / c2(a.length), mx = (sa + sb) / 2;
+      return mx === e ? 0 : (s - e) / (mx - e);
+    }
+
+    // k-means with k = 2, for comparison: Lloyd from one point of each moon.
+    var KM = (function () {
+      var C = [pts[0].slice(), pts[100].slice()], a;
+      for (var it = 0; it < 100; it++) {
+        a = pts.map(function (p) { return d2(p, C[0]) <= d2(p, C[1]) ? 0 : 1; });
+        C = [0, 1].map(function (j) {
+          var q = pts.filter(function (_, i) { return a[i] === j; });
+          return [A.mean(q.map(function (p) { return p[0]; })), A.mean(q.map(function (p) { return p[1]; }))];
+        });
+      }
+      return { C: C, a: a, ari: ari(a, truth) };
+    })();
+
+    var S = { eps: 0.25, minPts: 5, km: false }, st, pl, nb, core;
+
+    var plots = A.$("#db-plots");
+    var pX = A.plot(plots, { x: [-1.6, 2.6], y: [-1.15, 1.65], w: 760, h: 470, equal: true,
+                             xlabel: "x₁", ylabel: "x₂", caption: "Clusters grown from core points" });
+
+    var side = A.$("#db-side");
+    A.slider(side, { label: "Radius $\\varepsilon$ (<code>eps</code>)", min: 0.05, max: 0.6, step: 0.01, value: S.eps,
+                     fmt: function (v) { return fmt(v, 2); },
+                     onInput: function (v) { S.eps = v; pl.restart(); } });
+    A.slider(side, { label: "<code>min_samples</code>", min: 2, max: 12, step: 1, value: S.minPts,
+                     fmt: function (v) { return String(Math.round(v)); },
+                     onInput: function (v) { S.minPts = Math.round(v); pl.restart(); } });
+    A.check(side, { label: "show k-means, $k = 2$", value: false, onChange: function (v) { S.km = v; render(); } });
+    var ro = A.readout(side, [["core", "core points"], ["clu", "clusters so far"], ["lab", "labelled"],
+                              ["noise", "noise"], ["ari", "ARI, DBSCAN"], ["kari", "ARI, k-means"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "core point (filled, large)" },
+                    { shape: "circle", cls: "pt c0 hollow", label: "border point (hollow)" },
+                    { shape: "cross", cls: "line thin muted", label: "noise" },
+                    { shape: "circle", cls: "line thin muted", label: "not yet reached" },
+                    { line: "line math dash thin", label: "ε-neighbourhood being expanded" },
+                    { line: "line ink dash", label: "k-means boundary" }]);
+    var say = A.narrate("#db-say");
+
+    function reset() {
+      nb = pts.map(function (p) {
+        var out = [];
+        for (var j = 0; j < m; j++) if (d2(p, pts[j]) <= S.eps * S.eps) out.push(j);
+        return out;
+      });
+      core = nb.map(function (n) { return n.length >= S.minPts; });
+      st = { L: new Array(m).fill(null), queue: [], c: -1, scan: 0, cur: null, added: 0, done: false, fresh: false };
+    }
+    function expand(j) {
+      var added = 0;
+      nb[j].forEach(function (q) {
+        if (st.L[q] === null) { st.L[q] = st.c; added++; if (core[q]) st.queue.push(q); }
+      });
+      st.cur = j; st.added = added;
+    }
+    function step() {
+      st.fresh = false;
+      if (!st.queue.length) {
+        while (st.scan < m && !(core[st.scan] && st.L[st.scan] === null)) st.scan++;
+        if (st.scan >= m) {
+          for (var i = 0; i < m; i++) if (st.L[i] === null) st.L[i] = -1;
+          st.cur = null; st.done = true;
+          return false;
+        }
+        st.c++; st.L[st.scan] = st.c; st.fresh = true;
+        expand(st.scan);
+        return true;
+      }
+      expand(st.queue.shift());
+      return true;
+    }
+
+    function render() {
+      pX.clear();
+      if (S.km) {
+        // The perpendicular bisector of the two centroids: the whole k-means boundary.
+        var C = KM.C, mx = (C[0][0] + C[1][0]) / 2, my = (C[0][1] + C[1][1]) / 2;
+        pX.boundary(-((C[1][0] - C[0][0]) * mx + (C[1][1] - C[0][1]) * my), C[1][0] - C[0][0], C[1][1] - C[0][1], "line ink dash");
+        C.forEach(function (q) { pX.dot(q[0], q[1], { shape: "cross", r: 6, cls: "line ink" }); });
+      }
+      if (st.cur !== null) {
+        var p = pts[st.cur];
+        pX.path(A.linspace(0, 2 * Math.PI, 61).map(function (a) {
+          return [p[0] + S.eps * Math.cos(a), p[1] + S.eps * Math.sin(a)];
+        }), "line math dash thin");
+      }
+      pts.forEach(function (p, i) {
+        var L = st.L[i], big = core[i] ? 4.6 : 3.2;
+        if (L === null) pX.dot(p[0], p[1], { r: big, cls: "line thin muted" });
+        else if (L === -1) pX.dot(p[0], p[1], { shape: "cross", r: 3.5, cls: "line thin muted" });
+        else pX.dot(p[0], p[1], { r: big, shape: A.SHAPES[L % 4], cls: "pt c" + (L % 5) + (core[i] ? "" : " hollow") });
+      });
+      if (st.cur !== null) pX.dot(pts[st.cur][0], pts[st.cur][1], { r: 8, cls: "pt halo", layer: "over" });
+
+      var nCore = core.filter(Boolean).length, lab = st.L.filter(function (v) { return v !== null && v >= 0; }).length;
+      var noise = st.L.filter(function (v) { return v === -1; }).length;
+      ro.set("core", nCore + " of " + m);
+      ro.set("clu", String(st.c + 1));
+      ro.set("lab", String(lab));
+      ro.set("noise", st.done ? String(noise) : "—");
+      ro.set("ari", st.done ? fmt(ari(st.L, truth), 3) : "—", st.done && ari(st.L, truth) > KM.ari ? "good" : "");
+      ro.set("kari", fmt(KM.ari, 3));
+
+      if (st.c < 0 && !st.done) {
+        say.say("<span class='k'>Start.</span> With " + K("\\varepsilon = " + fmt(S.eps, 2)) + " and <code>min_samples</code> = " +
+                S.minPts + ", " + nCore + " of the " + m + " points are core (large markers). Nothing is labelled yet. " +
+                "Press <em>Step</em> to start a cluster from the first unlabelled core point.");
+      } else if (st.done) {
+        say.say("<span class='k'>Done.</span> No unlabelled core point is left. " + (st.c + 1) + " cluster" + (st.c ? "s" : "") +
+                ", and " + noise + " point" + (noise === 1 ? "" : "s") + " that no cluster reached " + (noise === 1 ? "is" : "are") +
+                " noise. ARI against the generating groups " + fmt(ari(st.L, truth), 3) + "; k-means with " + K("k = 2") +
+                " scores " + fmt(KM.ari, 3) + ".");
+      } else {
+        say.say("<span class='k'>" + (st.fresh ? "New cluster " + (st.c + 1) + "." : "Cluster " + (st.c + 1) + " grows.") + "</span> " +
+                "Expanding a core point: " + nb[st.cur].length + " points lie within " + K("\\varepsilon") + " of it, " +
+                st.added + " of them new to the cluster. " + st.queue.length + " core point" + (st.queue.length === 1 ? "" : "s") +
+                " still waiting to be expanded.");
+      }
+    }
+
+    pl = A.player("#db-bar", { step: step, reset: reset, render: render, fps: 12, unit: "expansion" });
+  })();
+
+})();
+</script>
+</body>
+</html>

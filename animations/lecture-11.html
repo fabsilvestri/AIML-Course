@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 11 · Training deep networks — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 11 of Applications of Machine Learning: variance propagation through a deep stack, optimisers on an ill-conditioned surface, and learning-rate schedules against gradient noise.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-11.html">Lecture 11 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 11 · Animations</p>
+  <h1>Training deep networks</h1>
+  <p>Two widgets for today's thread. The first races five optimisers on the
+  same surface. The second shows why a learning rate has to come down at the
+  end of a noisy run.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#optim">1 · Five optimisers on one surface</a></li>
+    <li><a href="#sched">2 · Learning-rate schedules and the noise floor</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Optimisers
+     ====================================================================== -->
+<section class="anim" id="optim">
+  <h2><span class="num">1</span>Five optimisers on one surface</h2>
+  <p class="lede">Five optimisers start from the same point on the same cost
+  $J(\boldsymbol\theta)$, and each step advances all five by one iteration.
+  The default surface is a long, narrow valley, 75 times more curved across
+  than along. The cross marks the minimum. Below the plot is $J$ against
+  iteration, on a log scale. SGD, momentum and Nesterov share one learning
+  rate. RMSProp and Adam have their own, as in the lecture's comparison.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div id="op-plot"></div>
+      <div id="op-cost"></div>
+      <div class="narrate" id="op-say"></div>
+      <div class="toolbar" id="op-bar"></div>
+    </div>
+    <aside class="side" id="op-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>With $g = \nabla J(\boldsymbol\theta)$, $\beta = 0.9$, and products and
+      square roots taken coordinate by coordinate:</p>
+      <ul>
+        <li>SGD: $\boldsymbol\theta \leftarrow \boldsymbol\theta - \eta\, g$</li>
+        <li>Momentum: $\mathbf v \leftarrow \beta\mathbf v - \eta\, g$, then
+        $\boldsymbol\theta \leftarrow \boldsymbol\theta + \mathbf v$</li>
+        <li>Nesterov: the same, with $g$ evaluated at $\boldsymbol\theta + \beta\mathbf v$</li>
+        <li>RMSProp: $\mathbf s \leftarrow \beta\mathbf s + (1-\beta)\, g^2$, then
+        $\boldsymbol\theta \leftarrow \boldsymbol\theta - \eta\, g/(\sqrt{\mathbf s} + \varepsilon)$</li>
+        <li>Adam: $\mathbf m \leftarrow \beta_1\mathbf m + (1-\beta_1) g$ and
+        $\mathbf s \leftarrow \beta_2\mathbf s + (1-\beta_2) g^2$, divided by
+        $1-\beta_1^t$ and $1-\beta_2^t$ to remove the bias of starting at zero,
+        then $\boldsymbol\theta \leftarrow \boldsymbol\theta - \eta\,\hat{\mathbf m}/(\sqrt{\hat{\mathbf s}}+\varepsilon)$,
+        with $\beta_1 = 0.9$ and $\beta_2 = 0.999$.</li>
+      </ul>
+      <p>On the valley $J = \tfrac12(0.02\,\theta_1^2 + 1.5\,\theta_2^2)$ the
+      Hessian's eigenvalues are $\lambda_{\min} = 0.02$ and $\lambda_{\max} = 1.5$.
+      SGD multiplies the error along each eigenvector by $1 - \eta\lambda$, so it
+      is stable only for $\eta < 2/\lambda_{\max} = 1.33$. The same analysis of
+      the two-term recursions gives $\eta\lambda_{\max} &lt; 2(1+\beta)$ for momentum
+      and $\eta\lambda_{\max} &lt; 2(1+\beta)/(1+2\beta)$ for Nesterov. AdamW
+      differs from Adam only through weight decay, and this surface has none,
+      so it is not drawn separately.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>SGD crosses the valley quickly and then crawls along its floor. Each
+        step keeps a fraction $1 - 0.02\eta = 0.984$ of the distance left along
+        $\theta_1$, and it needs about 200 iterations to reach $J &lt; 10^{-3}$.</li>
+        <li>Momentum builds up speed along the floor, overshoots the minimum and
+        swings back, and still arrives about five times sooner. Nesterov looks
+        ahead before it steps, so it brakes earlier and overshoots less.</li>
+        <li>The adaptive methods divide each coordinate by its own gradient
+        scale, so their first steps are diagonal: equal moves in $\theta_1$ and
+        $\theta_2$, whatever the slope. With a constant $\eta$, RMSProp never
+        settles. It ends rattling between $\pm\eta/2$ in each coordinate, about
+        $\pm 0.1$ here. Adam's $\mathbf s$ still remembers the large early
+        gradients, so its late steps shrink and it converges.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Raise $\eta$ to 1.0. Nesterov diverges, because 1.0 is above its
+        bound of 0.905, while SGD and momentum still converge. Past 1.33 SGD
+        diverges too, slowly at first, because just above the bound
+        $|1-\eta\lambda_{\max}|$ is barely more than 1. Momentum survives until 2.53.</li>
+        <li>Halve the adaptive rate. RMSProp's rattle halves with it, which is
+        how you can tell the rattle comes from $\eta$ and not from the surface.</li>
+        <li>Switch to the <em>curved valley</em>. Its floor bends, so the best
+        direction keeps changing. Watch which methods follow the bend and which
+        cut across it.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · Schedules
+     ====================================================================== -->
+<section class="anim" id="sched">
+  <h2><span class="num">2</span>Learning-rate schedules and the noise floor</h2>
+  <p class="lede">Thirty independent SGD runs on the bowl
+  $J = \tfrac12(0.5\,\theta_1^2 + 2\,\theta_2^2)$. Each run's gradient carries
+  noise, as a mini-batch gradient does. On the left, each run's current
+  $\boldsymbol\theta$: blue for the chosen schedule, gold triangles for a
+  constant rate. Both clouds use the same noise. On the right, the schedule
+  itself. Below, the cost averaged over the thirty runs, with the floor a
+  constant rate cannot go below.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="sc-plots"></div>
+      <div id="sc-cost"></div>
+      <div class="narrate" id="sc-say"></div>
+      <div class="toolbar" id="sc-bar"></div>
+    </div>
+    <aside class="side" id="sc-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>Along a direction with curvature $\lambda$, a noisy step is
+      $\theta_{t+1} = \theta_t - \eta(\lambda\theta_t + \sigma\xi_t)$ with
+      $\xi_t \sim N(0,1)$ independent of $\theta_t$. Since
+      $\operatorname{Var}(aX + bY) = a^2\operatorname{Var}X + b^2\operatorname{Var}Y$
+      for independent $X, Y$,</p>
+      $$\operatorname{Var}\theta_{t+1} = (1-\eta\lambda)^2\operatorname{Var}\theta_t + \eta^2\sigma^2.$$
+      <p>With $\eta$ held fixed, this settles where both sides are equal, at
+      $\eta\sigma^2/\bigl(\lambda(2-\eta\lambda)\bigr)$. The expected cost then
+      stops falling at
+      $\tfrac12\lambda\operatorname{Var}\theta = \eta\sigma^2/\bigl(2(2-\eta\lambda)\bigr)$
+      for each direction. For small $\eta$ this floor is nearly
+      proportional to $\eta$, and only a smaller $\eta$ lowers it. Here $\sigma = 1$, and the schedules over a
+      run of $T$ steps are:</p>
+      <ul>
+        <li>exponential: $\eta_t = \eta_0\cdot 0.01^{\,t/T}$, a fixed factor per step</li>
+        <li>cosine: $\eta_t = \tfrac12\eta_0\bigl(1 + \cos(\pi t/T)\bigr)$</li>
+        <li>1-cycle: a half-cosine rise from $\eta_0/25$ to $\eta_0$ over the first
+        30% of the run, then a half-cosine fall to $\eta_0/(25\cdot 10^4)$. These
+        are PyTorch's <code>OneCycleLR</code> defaults.</li>
+      </ul>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The constant-rate cloud stops shrinking. Its average cost levels
+        off at the dashed floor, about 0.28 for $\eta_0 = 0.4$, and fluctuates
+        around it for the rest of the run.</li>
+        <li>As the schedule's $\eta_t$ falls, the blue cloud contracts and its
+        cost drops well below the floor. By the end of a cosine run it is
+        about ten times lower.</li>
+        <li>1-cycle starts with a small rate, peaks at $\eta_0$ 30% of the
+        way through, and is then no better than the constant rate: at that
+        point its cloud is as wide as the gold one. Only the fall that follows
+        takes it below the floor.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Lower $\eta_0$ to 0.2. The floor falls from 0.278 to 0.115, but
+        the constant run takes longer to reach it: a constant rate trades speed
+        against precision. Raise $\eta_0$ to 0.8 and the floor jumps to 1.25,
+        more than four times higher, because the factor $1/(2-\eta\lambda)$
+        grows quickly as $\eta$ nears the stability limit $2/\lambda_{\max} = 1$.</li>
+        <li>Change the run length $T$ and look at the right-hand plot. Every
+        schedule is drawn against $t/T$, so a different epoch count gives a
+        different schedule. This is why each one has to be told
+        <code>total_steps</code>.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 11 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  /* ======================================================================
+     1 · Five optimisers on one surface
+     ====================================================================== */
+  (function () {
+    var SURF = {
+      valley: {
+        J: function (x, y) { return 0.5 * (0.02 * x * x + 1.5 * y * y); },
+        g: function (x, y) { return [0.02 * x, 1.5 * y]; },
+        start: [-9, 2], opt: [0, 0], x: [-10, 2], y: [-2.6, 2.6], eta: 0.8, etaA: 0.2,
+        levels: [0.01, 0.05, 0.2, 0.5, 1, 2, 3.5, 5],
+        xlabel: "θ₁ (shallow)", ylabel: "θ₂ (steep)"
+      },
+      banana: {
+        J: function (x, y) { var u = y - x * x; return (1 - x) * (1 - x) + 5 * u * u; },
+        g: function (x, y) { var u = y - x * x; return [-2 * (1 - x) - 20 * x * u, 10 * u]; },
+        start: [-1.5, 2.2], opt: [1, 1], x: [-2, 2], y: [-1, 3], eta: 0.02, etaA: 0.05,
+        levels: [0.05, 0.25, 1, 2.5, 5, 10, 20, 40],
+        xlabel: "θ₁", ylabel: "θ₂"
+      }
+    };
+    var OPTS = [
+      { k: "sgd",  name: "SGD",      line: "line thin ink",  dot: "pt halo", shape: "circle" },
+      { k: "mom",  name: "Momentum", line: "line thin",      dot: "pt c0",   shape: "circle" },
+      { k: "nag",  name: "Nesterov", line: "line thin teal", dot: "pt c3",   shape: "diamond" },
+      { k: "rms",  name: "RMSProp",  line: "line thin gold", dot: "pt c1",   shape: "tri" },
+      { k: "adam", name: "Adam",     line: "line thin math", dot: "pt c2",   shape: "sq" }
+    ];
+    var BETA = 0.9, B1 = 0.9, B2 = 0.999, EPS = 1e-8, MAXIT = 400;
+    var S = { surf: "valley", eta: SURF.valley.eta, etaA: SURF.valley.etaA }, st, pl, pS, sEta, sEtaA;
+
+    var host = A.$("#op-plot");
+    var curve = A.curve("#op-cost", { y: [-12, 2], log: true, ylabel: "cost J", n: 100,
+                                      yticks: [-12, -9, -6, -3, 0] });
+
+    var side = A.$("#op-side");
+    A.seg(side, { label: "Surface", value: "valley", options: [["valley", "narrow valley"], ["banana", "curved valley"]],
+                  hint: "Curved: $J = (1-\\theta_1)^2 + 5(\\theta_2 - \\theta_1^2)^2$, minimum at $(1, 1)$.",
+                  onChange: function (v) {
+                    S.surf = v; S.eta = SURF[v].eta; S.etaA = SURF[v].etaA;
+                    sEta.value = S.eta; sEtaA.value = S.etaA;
+                    build(); pl.restart(true);
+                  } });
+    sEta = A.slider(side, { label: "$\\eta$ for SGD, momentum, Nesterov", min: 0.002, max: 3, step: 0.002, value: S.eta,
+                            fmt: function (v) { return sig(v, 3); },
+                            hint: "Valley: stable below 0.905 (Nesterov), 1.33 (SGD), 2.53 (momentum).",
+                            onInput: function (v) { S.eta = v; pl.restart(true); } });
+    sEtaA = A.slider(side, { label: "$\\eta$ for RMSProp, Adam", min: 0.005, max: 1, step: 0.005, value: S.etaA,
+                             fmt: function (v) { return sig(v, 3); },
+                             onInput: function (v) { S.etaA = v; pl.restart(true); } });
+    var ro = A.readout(side, [["k", "iteration"], ["head", "optimiser"]].concat(OPTS.map(function (o) { return [o.k, o.name]; })));
+    ro.set("head", "J now · first < 10⁻³");
+    A.legend(side, OPTS.map(function (o) { return { shape: o.shape, cls: o.dot, label: o.name }; })
+                    .concat([{ shape: "cross", cls: "line ok", label: "minimum" }]));
+    var say = A.narrate("#op-say");
+
+    function build() {
+      var s = SURF[S.surf];
+      A.clear(host);
+      pS = A.plot(host, { x: s.x, y: s.y, w: 860, h: S.surf === "valley" ? 330 : 400, xlabel: s.xlabel, ylabel: s.ylabel,
+                          caption: "Contours of J and the five paths" });
+      drawSurface();
+    }
+    function drawSurface() {
+      var s = SURF[S.surf], ink = A.rgb("primary");
+      var top = Math.log(1 + s.levels[s.levels.length - 1]);
+      pS.field(function (a, b) {
+        var t = A.clamp(1 - Math.log(1 + s.J(a, b)) / top, 0, 1);
+        return [ink[0], ink[1], ink[2], 0.03 + 0.25 * t * t];
+      });
+      A.clear(pS.layer("grid"));
+      pS.axes();
+      s.levels.forEach(function (lev) { pS.contour(function (a, b) { return s.J(a, b); }, lev, "line thin muted", "grid", 90); });
+      pS.dot(s.opt[0], s.opt[1], { shape: "cross", r: 6, cls: "line ok", layer: "grid" });
+    }
+    A.onTheme(drawSurface);
+
+    function reset() {
+      var s = SURF[S.surf];
+      st = { k: 0, runs: {} };
+      OPTS.forEach(function (o) {
+        st.runs[o.k] = { th: s.start.slice(), v: [0, 0], m: [0, 0], s: [0, 0], path: [s.start.slice()],
+                         J: [s.J(s.start[0], s.start[1])], hit: null, dead: false, lastStep: [0, 0], lastG: [0, 0] };
+      });
+    }
+    function advance(o, r) {
+      var s = SURF[S.surf], th = r.th, g, nt, i;
+      if (o.k === "sgd") { g = s.g(th[0], th[1]); nt = [th[0] - S.eta * g[0], th[1] - S.eta * g[1]]; }
+      else if (o.k === "mom") {
+        g = s.g(th[0], th[1]);
+        r.v = [BETA * r.v[0] - S.eta * g[0], BETA * r.v[1] - S.eta * g[1]];
+        nt = [th[0] + r.v[0], th[1] + r.v[1]];
+      } else if (o.k === "nag") {
+        g = s.g(th[0] + BETA * r.v[0], th[1] + BETA * r.v[1]);
+        r.v = [BETA * r.v[0] - S.eta * g[0], BETA * r.v[1] - S.eta * g[1]];
+        nt = [th[0] + r.v[0], th[1] + r.v[1]];
+      } else if (o.k === "rms") {
+        g = s.g(th[0], th[1]); nt = [];
+        for (i = 0; i < 2; i++) {
+          r.s[i] = BETA * r.s[i] + (1 - BETA) * g[i] * g[i];
+          nt.push(th[i] - S.etaA * g[i] / (Math.sqrt(r.s[i]) + EPS));
+        }
+      } else {
+        g = s.g(th[0], th[1]); nt = [];
+        var t = st.k + 1;
+        for (i = 0; i < 2; i++) {
+          r.m[i] = B1 * r.m[i] + (1 - B1) * g[i];
+          r.s[i] = B2 * r.s[i] + (1 - B2) * g[i] * g[i];
+          var mh = r.m[i] / (1 - Math.pow(B1, t)), sh = r.s[i] / (1 - Math.pow(B2, t));
+          nt.push(th[i] - S.etaA * mh / (Math.sqrt(sh) + EPS));
+        }
+      }
+      r.lastStep = [nt[0] - th[0], nt[1] - th[1]];
+      r.lastG = g;
+      r.th = nt;
+      var J = s.J(nt[0], nt[1]);
+      if (!isFinite(J) || J > 1e6) { r.dead = true; return; }
+      r.path.push(nt.slice());
+      r.J.push(J);
+      if (r.hit === null && J < 1e-3) r.hit = st.k + 1;
+    }
+    function step() {
+      OPTS.forEach(function (o) { var r = st.runs[o.k]; if (!r.dead) advance(o, r); });
+      st.k++;
+      return st.k < MAXIT;
+    }
+
+    function render() {
+      var s = SURF[S.surf];
+      pS.clear();
+      OPTS.forEach(function (o) {
+        var r = st.runs[o.k];
+        pS.path(r.path, o.line);
+        if (!r.dead) {
+          var q = r.path[r.path.length - 1];
+          pS.dot(q[0], q[1], { shape: o.shape, cls: o.dot, r: 5.5, layer: "over" });
+        }
+      });
+      curve.draw(OPTS.map(function (o) { return { values: st.runs[o.k].J, cls: o.line.replace("thin", "") }; }));
+
+      ro.set("k", String(st.k));
+      var best = null;
+      OPTS.forEach(function (o) {
+        var r = st.runs[o.k], J = r.J[r.J.length - 1];
+        if (r.dead) { ro.set(o.k, "diverged", "bad"); return; }
+        ro.set(o.k, sig(J, 3) + " · " + (r.hit !== null ? r.hit : "—"), J < 1e-3 ? "good" : "");
+        if (!best || J < best.J) best = { o: o, J: J };
+      });
+
+      var J0 = s.J(s.start[0], s.start[1]);
+      if (st.k === 0) {
+        say.say("<span class='k'>Start.</span> All five begin at " + K("\\boldsymbol\\theta = (" + fmt(s.start[0], 1) + ",\\ " + fmt(s.start[1], 1) + ")") +
+                ", cost " + sig(J0, 3) + "." +
+                (S.surf === "valley" ? " The valley is " + K("\\kappa = \\lambda_{\\max}/\\lambda_{\\min} = 1.5/0.02 = 75") +
+                  " times more curved across than along, so the gradient points almost straight across it, not towards the minimum." :
+                  " The floor of this valley is the parabola " + K("\\theta_2 = \\theta_1^2") + ", and the minimum is at its far end.") +
+                " Press <em>Step</em>.");
+        return;
+      }
+      var dead = OPTS.filter(function (o) { return st.runs[o.k].dead; }).map(function (o) { return o.name; });
+      var ad = st.runs.adam, g = ad.lastG, d = ad.lastStep;
+      var txt = "<span class='k'>Iteration " + st.k + ".</span> " +
+                (best ? "Lowest cost: " + best.o.name + ", " + K("J = " + sig(best.J, 3)) + ". " : "") +
+                (dead.length ? "<strong>Diverged:</strong> " + dead.join(", ") + ". " : "");
+      if (!ad.dead) {
+        txt += "Adam's last step was " + K("\\Delta\\boldsymbol\\theta = (" + sig(d[0], 2) + ",\\ " + sig(d[1], 2) + ")") +
+               " for a gradient " + K("(" + sig(g[0], 2) + ",\\ " + sig(g[1], 2) + ")") +
+               (function () {
+                 var rs = Math.abs(d[0]) / Math.abs(d[1]), rg = Math.abs(g[0]) / Math.abs(g[1]);
+                 var big = function (r) { return Math.max(r, 1 / r); };
+                 return big(rg) > 5 && big(rs) < 3
+                   ? ": the slopes differ by a factor " + sig(big(rg), 2) + ", the moves by only " + sig(big(rs), 2) +
+                     ". Each coordinate is divided by its own running scale."
+                   : ".";
+               })();
+      }
+      var rm = st.runs.rms;
+      if (!rm.dead && st.k > 60 && S.surf === "valley") {
+        txt += " RMSProp sits at " + K("(" + fmt(rm.th[0], 3) + ",\\ " + fmt(rm.th[1], 3) + ")") + " and keeps jumping by about " +
+               K("\\eta = " + sig(S.etaA, 2)) + ": with a constant rate it cannot settle.";
+      }
+      say.say(txt);
+    }
+
+    build();
+    pl = A.player("#op-bar", { step: step, reset: reset, render: render, fps: 10, unit: "iteration" });
+  })();
+
+  /* ======================================================================
+     2 · Learning-rate schedules against gradient noise
+     ====================================================================== */
+  (function () {
+    var LAM = [0.5, 2], SIGMA = 1, M = 30, START = [6, 3];
+    var S = { kind: "cos", eta0: 0.4, T: 200 }, st, pl;
+    var SCH = {
+      cnst: { name: "constant", f: function (t, T, e) { return e; } },
+      exp:  { name: "exponential", f: function (t, T, e) { return e * Math.pow(0.01, t / T); } },
+      cos:  { name: "cosine", f: function (t, T, e) { return 0.5 * e * (1 + Math.cos(Math.PI * t / T)); } },
+      one:  { name: "1-cycle", f: function (t, T, e) {
+                var p = 0.3 * T, lo = e / 25, fin = lo / 1e4;
+                return t < p ? lo + (e - lo) * 0.5 * (1 - Math.cos(Math.PI * t / p))
+                             : fin + (e - fin) * 0.5 * (1 + Math.cos(Math.PI * (t - p) / (T - p)));
+              } }
+    };
+    function J(th) { return 0.5 * (LAM[0] * th[0] * th[0] + LAM[1] * th[1] * th[1]); }
+    function floor(e) { return e * SIGMA * SIGMA / 2 * (1 / (2 - e * LAM[0]) + 1 / (2 - e * LAM[1])); }
+
+    var plots = A.$("#sc-plots");
+    var pX = A.plot(plots, { x: [-7, 7], y: [-4.5, 4.5], w: 420, h: 330, xlabel: "θ₁", ylabel: "θ₂",
+                             caption: "Thirty runs, where they are now" });
+    var pE = A.plot(plots, { x: [0, 1], y: [0, 1.1], w: 420, h: 330, xlabel: "t / T", ylabel: "ηₜ / η₀",
+                             xticks: [0, 0.25, 0.5, 0.75, 1], yticks: [0, 0.25, 0.5, 0.75, 1],
+                             caption: "The schedule (bold: the one chosen)" });
+    var curve = A.curve("#sc-cost", { y: [-3, 2], log: true, ylabel: "mean cost J", n: 100 });
+
+    [0.1, 0.5, 1.5, 4, 10, 20].forEach(function (lev) { pX.contour(J, lev, "line thin muted", "grid", 70); });
+    pX.dot(0, 0, { shape: "cross", r: 6, cls: "line ok", layer: "grid" });
+
+    var side = A.$("#sc-side");
+    A.seg(side, { label: "Schedule", value: S.kind,
+                  options: [["cnst", "constant"], ["exp", "exponential"], ["cos", "cosine"], ["one", "1-cycle"]],
+                  onChange: function (v) { S.kind = v; pl.restart(true); } });
+    A.slider(side, { label: "Peak rate $\\eta_0$", min: 0.05, max: 0.9, step: 0.05, value: S.eta0,
+                     fmt: function (v) { return fmt(v, 2); },
+                     hint: "Stable while $\\eta_0\\lambda_{\\max} = 2\\eta_0 &lt; 2$.",
+                     onInput: function (v) { S.eta0 = v; pl.restart(true); } });
+    A.slider(side, { label: "Run length $T$", min: 50, max: 400, step: 10, value: S.T,
+                     fmt: function (v) { return String(Math.round(v)); },
+                     onInput: function (v) { S.T = Math.round(v); pl.restart(true); } });
+    var ro = A.readout(side, [["t", "step $t$"], ["eta", "$\\eta_t$"], ["Jc", "mean $J$, constant"],
+                              ["Js", "mean $J$, schedule"], ["fl", "floor at $\\eta_0$"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "a run, chosen schedule" },
+                    { shape: "tri", cls: "pt c1 hollow", label: "a run, constant η₀" },
+                    { line: "line acc", label: "mean cost, schedule" },
+                    { line: "line muted", label: "mean cost, constant" },
+                    { line: "line ok dash thin", label: "constant-rate floor" }]);
+    var say = A.narrate("#sc-say");
+
+    function cloud() { var c = []; for (var i = 0; i < M; i++) c.push(START.slice()); return c; }
+    function meanJ(c) { return A.mean(c.map(J)); }
+    function reset() {
+      st = { t: 0, cs: cloud(), cc: cloud(), Js: [], Jc: [], R: A.rng(23) };
+      st.Js.push(meanJ(st.cs)); st.Jc.push(meanJ(st.cc));
+    }
+    function step() {
+      var e = SCH[S.kind].f(st.t, S.T, S.eta0);
+      for (var i = 0; i < M; i++) {
+        for (var d = 0; d < 2; d++) {
+          // Common random numbers: both clouds see the same noise draw.
+          var xi = st.R.n();
+          var a = st.cs[i], b = st.cc[i];
+          a[d] = a[d] - e * (LAM[d] * a[d] + SIGMA * xi);
+          b[d] = b[d] - S.eta0 * (LAM[d] * b[d] + SIGMA * xi);
+        }
+      }
+      st.t++;
+      st.Js.push(meanJ(st.cs)); st.Jc.push(meanJ(st.cc));
+      return st.t < S.T;
+    }
+
+    function render() {
+      pX.clear();
+      var same = S.kind === "cnst";
+      if (!same) st.cc.forEach(function (q) { pX.dot(q[0], q[1], { shape: "tri", cls: "pt c1 hollow", r: 4 }); });
+      st.cs.forEach(function (q) { pX.dot(q[0], q[1], { cls: "pt c0", r: 3.8 }); });
+
+      pE.clear();
+      var xs = A.linspace(0, 1, 121);
+      Object.keys(SCH).forEach(function (kk) {
+        if (kk === S.kind) return;
+        pE.path(xs.map(function (u) { return [u, SCH[kk].f(u * S.T, S.T, 1)]; }), "line thin muted");
+      });
+      pE.path(xs.map(function (u) { return [u, SCH[S.kind].f(u * S.T, S.T, 1)]; }), "line");
+      var u = st.t / S.T, ecur = SCH[S.kind].f(Math.min(st.t, S.T), S.T, S.eta0);
+      pE.line(u, 0, u, 1, "line thin math dash");
+      pE.dot(u, ecur / S.eta0, { cls: "pt c0", r: 5 });
+      ["cnst", "exp", "cos", "one"].forEach(function (kk, j) {
+        var lab = SCH[kk].name, yy = [1.0, 0.08, 0.5, 0.92][j], xx = [0.98, 0.98, 0.52, 0.32][j];
+        pE.text(xx, yy, lab, { anchor: xx > 0.9 ? "end" : "start", dy: -4, cls: kk === S.kind ? "lbl" : "lbl-sm" });
+      });
+
+      var fl = floor(S.eta0);
+      curve.draw((same ? [] : [{ values: st.Jc, cls: "line muted" }]).concat([{ values: st.Js, cls: "line acc" }]),
+                 [{ y: fl, label: "constant-rate floor " + sig(fl, 3) }]);
+
+      var n = st.Js.length, Js = st.Js[n - 1], Jc = st.Jc[n - 1];
+      ro.set("t", st.t + " / " + S.T);
+      ro.set("eta", sig(ecur, 3));
+      ro.set("Jc", sig(Jc, 3));
+      ro.set("Js", sig(Js, 3), !same && Js < fl / 3 ? "good" : "");
+      ro.set("fl", sig(fl, 3));
+
+      if (st.t === 0) {
+        say.say("<span class='k'>Start.</span> Thirty runs at " + K("\\boldsymbol\\theta = (6, 3)") + ", cost " + sig(Js, 3) +
+                ". Every gradient carries noise of standard deviation " + K("\\sigma = 1") + ". With the rate held at " +
+                K("\\eta_0 = " + fmt(S.eta0, 2)) + ", the expected cost cannot go below " + K(sig(fl, 3)) + ". Press <em>Play</em>.");
+      } else {
+        var last = st.t >= S.T;
+        say.say("<span class='k'>Step " + st.t + " of " + S.T + ".</span> " + K("\\eta_t = " + sig(ecur, 3)) +
+                (same ? "" : " (" + SCH[S.kind].name + ")") + ". Mean cost over the thirty runs: " +
+                (same ? sig(Js, 3) : "constant " + sig(Jc, 3) + ", " + SCH[S.kind].name + " " + sig(Js, 3)) +
+                ", against the constant-rate floor " + sig(fl, 3) + "." +
+                (last && !same ? " <strong>End of the run.</strong> The schedule finishes " + sig(Jc / Js, 2) +
+                  " times below the constant rate: once the noise dominates, only a smaller step gets closer." : ""));
+      }
+    }
+
+    pl = A.player("#sc-bar", { step: step, reset: reset, render: render, fps: 20, unit: "step" });
+  })();
+})();
+</script>
+</body>
+</html>

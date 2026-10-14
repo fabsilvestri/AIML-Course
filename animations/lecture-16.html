@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 16 · Recurrent networks — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 16 of Applications of Machine Learning: the gradient through time as a power of one matrix, and an LSTM cell gate by gate.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-16.html">Lecture 16 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 16 · Animations</p>
+  <h1>Recurrent networks</h1>
+  <p>Two looks inside a recurrent cell. The backward pass: what happens to a
+  gradient carried back through 56 copies of the same matrix. And an LSTM
+  cell holding a value across twenty steps, gate by gate. Press
+  <strong>Step</strong> to advance one unit and read what happened.</p>
+  <p class="note">Every input on this page is synthetic, generated in your
+  browser from a fixed seed, and every weight is <strong>set by hand</strong>,
+  not trained. The point is to watch the mechanism, so the weights are chosen
+  to make it visible.</p>
+  <ul class="toc">
+    <li><a href="#bptt">1 · The gradient through time</a></li>
+    <li><a href="#lstm">2 · An LSTM cell, gate by gate</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · BPTT
+     ====================================================================== -->
+<section class="anim" id="bptt">
+  <h2><span class="num">1</span>The gradient through time</h2>
+  <p class="lede">A two-unit cell is run forward for $T = 56$ steps, the
+  deck's window. Then each <strong>Step</strong> carries the gradient one
+  step further back, multiplying in one more Jacobian. The left plot is the
+  size of $\partial\mathbf h_T/\partial\mathbf h_t$ against the distance
+  $n = T - t$, on a log scale, next to $\rho^n$. The right plot shows the
+  $\tanh'$ factor the backward pass meets at each step.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="bp-plots"></div>
+      <div class="narrate" id="bp-say"></div>
+      <div class="toolbar" id="bp-bar"></div>
+    </div>
+    <aside class="side" id="bp-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>By the chain rule, with $\mathbf a_k$ the pre-activation at step $k$,</p>
+      $$\frac{\partial\mathbf h_T}{\partial\mathbf h_t} = \prod_{k=t+1}^{T}\operatorname{diag}\bigl(\phi'(\mathbf a_k)\bigr)\,\mathbf W_h^{\intercal},$$
+      <p>the deck's one-step Jacobian, multiplied $n = T - t$ times, with the
+      latest step on the left. Here $\mathbf W_h = \rho\,\mathbf Q$ with
+      $\mathbf Q$ a rotation by 0.6 rad. Its eigenvalues are $\rho e^{\pm 0.6i}$,
+      so its spectral radius is $\rho$, and since $\mathbf Q$ is orthogonal,
+      $\lVert(\mathbf W_h^{\intercal})^n\rVert = \rho^n$ exactly.</p>
+      <p>$\lVert\cdot\rVert$ is the spectral norm, the largest singular value.
+      For a $2\times 2$ matrix with entries $a, b, c, d$ it is
+      $\sqrt{\bigl(s + \sqrt{s^2 - 4\det^2}\bigr)/2}$ with
+      $s = a^2 + b^2 + c^2 + d^2$. It is submultiplicative,
+      $\lVert\mathbf A\mathbf B\rVert \le \lVert\mathbf A\rVert\,\lVert\mathbf B\rVert$.
+      Since $\tanh' = 1 - \tanh^2 \in (0, 1]$, every $\operatorname{diag}$ factor
+      has norm at most 1, so with $\tanh$ the product is at most $\rho^n$.</p>
+      <p>The inputs are $x_t \sim \mathcal N(0, 0.2^2)$, with
+      $\mathbf W_x^{\intercal}x_t = x_t\,(0.8, -0.5)$ and $\mathbf b = \mathbf 0$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>With $\phi(a) = a$ the norm sits exactly on $\rho^n$: a straight line
+        on the log scale, falling for $\rho &lt; 1$ and rising for $\rho &gt; 1$.
+        At $\rho = 0.9$ it is about $0.003$ after 55 steps.</li>
+        <li>With $\tanh$ it never rises above the dashed line, as the bound
+        says, and saturated steps ($\tanh'$ well below 1) pull it further down.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Linear, $\rho = 1.1$: after 55 steps the gradient is 190 times larger
+        than at the start. Then $\rho = 0.9$: about 300 times smaller. A 10%
+        change in one number moves the result by nearly five orders of magnitude.</li>
+        <li>Switch to $\tanh$ with $\rho = 1.3$. The state saturates, $\tanh'$ drops,
+        and the norm ends near 6 rather than the $\rho^{55} \approx 2\times 10^{6}$
+        of the linear cell. That is the bounded activation keeping the product
+        from exploding.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · LSTM
+     ====================================================================== -->
+<section class="anim" id="lstm">
+  <h2><span class="num">2</span>An LSTM cell, gate by gate</h2>
+  <p class="lede">A one-unit LSTM given a memory task. At the <em>write</em>
+  step it must store the value then on its input, then ignore twenty steps of
+  distracting inputs. At the <em>read</em> step it must output what it
+  stored. Each <strong>Step</strong> runs one time step. The plots show the
+  inputs, the three gates, and the cell state $c_t$ next to the output $h_t$.
+  The weights are set by hand so that every gate reads only the two flags.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div id="ls-in"></div>
+      <div id="ls-gates"></div>
+      <div id="ls-state"></div>
+      <div class="narrate" id="ls-say"></div>
+      <div class="toolbar" id="ls-bar"></div>
+    </div>
+    <aside class="side" id="ls-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>An LSTM step, with each gate a sigmoid of $(\mathbf x_t, \mathbf h_{t-1})$:</p>
+      $$\mathbf f_t = \sigma(\mathbf W_{xf}^{\intercal}\mathbf x_t + \mathbf W_{hf}^{\intercal}\mathbf h_{t-1} + \mathbf b_f),$$
+      <p>and likewise $\mathbf i_t$ and $\mathbf o_t$ with their own weights,
+      and $\tilde{\mathbf c}_t$ with $\tanh$ in place of $\sigma$. Then</p>
+      $$\mathbf c_t = \mathbf f_t\odot\mathbf c_{t-1} + \mathbf i_t\odot\tilde{\mathbf c}_t,$$
+      $$\mathbf h_t = \mathbf o_t\odot\tanh(\mathbf c_t).$$
+      <p>The input is $\mathbf x_t = (v_t, w_t, r_t)$: a value, a write flag and
+      a read flag. Hand-set, with every $\mathbf W_{h\cdot} = \mathbf 0$:</p>
+      $$f_t = \sigma(b_f - 14w_t),\quad i_t = \sigma(14w_t - 7),$$
+      $$o_t = \sigma(14r_t - 7),\quad \tilde c_t = \tanh(v_t).$$
+      <p>So the gates depend on $\mathbf x_t$ alone, and
+      $\partial c_t/\partial c_{t-1} = f_t$ exactly. Across the whole wait,
+      $\partial c_{t}/\partial c_{t_w} = \prod_{k=t_w+1}^{t} f_k$, which the
+      side panel reports.</p>
+      <p>$\sigma(z) = 1/(1 + e^{-z})$, so $\sigma(7) \approx 0.99909$ and
+      $\sigma(-7) \approx 0.00091$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>At the write step, $f \approx 0$ clears the old state and $i \approx 1$
+        writes $\tilde c = \tanh(v)$. On every other step, $f \approx 0.999$ and
+        $i \approx 0.001$, so $c$ barely moves while the input jumps about.</li>
+        <li>$h_t$ stays near 0 until the read step, because $o \approx 0$. The
+        memory is in $c$, which is not exposed until the output gate opens.</li>
+        <li>The cell-state update is a sum, not a squashing. Twenty steps of
+        $f \approx 0.999$ multiply the gradient along $c$ by about 0.98: it
+        arrives almost intact.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Lower the forget bias $b_f$ to 2, so $f \approx 0.88$ while
+        waiting. After 20 steps only $0.88^{20} \approx 0.08$ of the stored
+        value is left, and the read returns almost nothing. Remembering is
+        the forget gate staying open.</li>
+        <li>Move the read step earlier or later with $b_f = 7$. The output
+        hardly depends on how long the cell waited.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 16 animations. Synthetic inputs and hand-set weights; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+  function vec(v, d) { return "(" + v.map(function (q) { return fmt(q, d === undefined ? 3 : d); }).join(",\\ ") + ")"; }
+
+  /* ======================================================================
+     1 · The gradient through time
+     ====================================================================== */
+  (function () {
+    var T = 56, TH = 0.6, WX = [0.8, -0.5];
+    var R = A.rng(16), XS = A.range(T).map(function () { return R.n(0, 1); });
+    var S = { rho: 0.9, act: "tanh" }, fw, st, pl;
+
+    function norm2(M) {
+      var a = M[0][0], b = M[0][1], c = M[1][0], d = M[1][1];
+      var s = a * a + b * b + c * c + d * d, det = a * d - b * c;
+      return Math.sqrt((s + Math.sqrt(Math.max(0, s * s - 4 * det * det))) / 2);
+    }
+    function forward() {
+      var W = [[S.rho * Math.cos(TH), -S.rho * Math.sin(TH)], [S.rho * Math.sin(TH), S.rho * Math.cos(TH)]];
+      var WT = A.transpose(W), h = [0, 0], D = [null];
+      for (var t = 1; t <= T; t++) {
+        var x = 0.2 * XS[t - 1];
+        var a = [WX[0] * x + WT[0][0] * h[0] + WT[0][1] * h[1], WX[1] * x + WT[1][0] * h[0] + WT[1][1] * h[1]];
+        h = S.act === "tanh" ? a.map(Math.tanh) : a;
+        D.push(S.act === "tanh" ? h.map(function (v) { return 1 - v * v; }) : [1, 1]);
+      }
+      fw = { WT: WT, D: D };
+    }
+
+    var plots = A.$("#bp-plots");
+    var pN = A.plot(plots, { x: [0, T - 1], y: [-10, 10], w: 420, h: 320, xlabel: "steps back n = T − t",
+                             ylabel: "‖∂h_T/∂h_t‖", yticks: [-10, -5, 0, 5, 10], yfmt: A.pow10,
+                             caption: "Size of the gradient carried back n steps (log scale)" });
+    var pD = A.plot(plots, { x: [0.5, T + 0.5], y: [0, 1.05], w: 420, h: 320, xlabel: "time step k",
+                             ylabel: "tanh′(a_k)", xticks: [1, 14, 28, 42, 56], yticks: [0, 0.25, 0.5, 0.75, 1],
+                             caption: "The diag factor at each step (shaded: already multiplied in)" });
+
+    var side = A.$("#bp-side");
+    A.seg(side, { label: "Activation φ", value: S.act, options: [["lin", "linear, φ(a) = a"], ["tanh", "tanh"]],
+                  onChange: function (v) { S.act = v; forward(); pl.restart(); } });
+    A.slider(side, { label: "Spectral radius $\\rho$ of $\\mathbf W_h$", min: 0.5, max: 1.5, step: 0.01, value: S.rho,
+                     fmt: function (v) { return fmt(v, 2); },
+                     onInput: function (v) { S.rho = Math.round(v * 100) / 100; forward(); pl.restart(); } });
+    var ro = A.readout(side, [["n", "steps back $n$"], ["norm", "$\\lVert\\partial\\mathbf h_T/\\partial\\mathbf h_t\\rVert$"],
+                              ["bound", "$\\rho^n$"], ["ratio", "norm ÷ $\\rho^n$"], ["d", "$\\tanh'$ at this step"]]);
+    A.legend(side, [{ line: "line acc", label: "the actual norm" }, { line: "line math dash thin", label: "ρⁿ" },
+                    { swatch: "fill-primary", label: "first unit's factor" }, { swatch: "fill-gold", label: "second unit's factor" }]);
+    var say = A.narrate("#bp-say");
+
+    function reset() { st = { n: 0, P: [[1, 0], [0, 1]], norms: [1] }; }
+    function step() {
+      var k = T - st.n, d = fw.D[k], WT = fw.WT;
+      var J = [[d[0] * WT[0][0], d[0] * WT[0][1]], [d[1] * WT[1][0], d[1] * WT[1][1]]];
+      st.P = A.matmul(st.P, J);
+      st.n++;
+      st.norms.push(norm2(st.P));
+      return st.n < T - 1;
+    }
+    // A number for KaTeX: three significant figures, exponent form when tiny or huge.
+    function texNum(v) {
+      if (v !== 0 && (Math.abs(v) >= 1e5 || Math.abs(v) < 1e-3)) {
+        var e = v.toExponential(2).split("e");
+        return e[0] + "\\times 10^{" + parseInt(e[1], 10) + "}";
+      }
+      return sig(v, 3).replace("−", "-");
+    }
+    function lg(v) { return v > 0 ? A.clamp(Math.log10(v), -10, 10) : -10; }
+
+    function render() {
+      var n = st.n;
+      pN.clear();
+      pN.line(0, 0, T - 1, 0, "zero");
+      pN.path(A.range(T).map(function (i) { return [i, lg(Math.pow(S.rho, i))]; }), "line math dash thin");
+      pN.path(st.norms.map(function (v, i) { return [i, lg(v)]; }), "line acc");
+      pN.dot(n, lg(st.norms[n]), { r: 4.5, cls: "pt c0", layer: "over" });
+
+      pD.clear();
+      if (n) pD.rect(T - n + 0.5, 0, T + 0.5, 1.05, "fill-soft");
+      for (var k = 1; k <= T; k++) {
+        var d = fw.D[k], on = k > T - n;
+        pD.rect(k - 0.42, 0, k, d[0], "fill-primary", "data", { opacity: on ? 0.9 : 0.3 });
+        pD.rect(k, 0, k + 0.42, d[1], "fill-gold", "data", { opacity: on ? 0.9 : 0.3 });
+      }
+
+      var nm = st.norms[n], bd = Math.pow(S.rho, n);
+      ro.set("n", String(n));
+      ro.set("norm", sig(nm, 3));
+      ro.set("bound", sig(bd, 3));
+      ro.set("ratio", sig(nm / bd, 3));
+      ro.set("d", n ? "(" + fmt(fw.D[T - n + 1][0], 3) + ", " + fmt(fw.D[T - n + 1][1], 3) + ")" : "—");
+
+      if (n === 0) {
+        say.say("<span class='k'>Forward pass done.</span> " + T + " steps with " + K("\\phi = " + (S.act === "tanh" ? "\\tanh" : "\\text{identity}")) +
+                " and " + K("\\rho = " + fmt(S.rho, 2)) + ". At " + K("n = 0") + ", " + K("\\partial\\mathbf h_T/\\partial\\mathbf h_T = \\mathbf I") +
+                ", norm 1. Press <em>Step</em> to carry the gradient one step back.");
+      } else {
+        var dd = fw.D[T - n + 1];
+        say.say("<span class='k'>n = " + n + ".</span> Multiplied in the Jacobian of step " + (T - n + 1) + ", " +
+                K("\\operatorname{diag}" + vec(dd) + "\\,\\mathbf W_h^{\\intercal}") + ". Now " +
+                K("\\lVert\\partial\\mathbf h_{" + T + "}/\\partial\\mathbf h_{" + (T - n) + "}\\rVert = " + texNum(nm)) +
+                ", against " + K("\\rho^{" + n + "}") + " = " + sig(bd, 3) + "." +
+                (S.act === "lin" ? " With a linear cell the two agree exactly." : " The ratio is " + sig(nm / bd, 3) + ": " +
+                  (nm / bd < 0.999 ? "the " + K("\\tanh'") + " factors have pulled it below the bound." : "still at the bound.")) +
+                (n === T - 1 ? " <strong>Reached step 1.</strong>" : ""));
+      }
+    }
+
+    forward();
+    pl = A.player("#bp-bar", { step: step, reset: reset, render: render, fps: 8, unit: "step back" });
+  })();
+
+  /* ======================================================================
+     2 · An LSTM cell, gate by gate
+     ====================================================================== */
+  (function () {
+    var T = 30, R = A.rng(16), V = A.range(T).map(function () { return R.uniform(-0.9, 0.9); });
+    var S = { bf: 7, tw: 4, tr: 24, val: 0.8 }, st, pl;
+
+    function input(t) { return { v: t === S.tw ? S.val : V[t - 1], w: t === S.tw ? 1 : 0, r: t === S.tr ? 1 : 0 }; }
+
+    var pIn = A.plot("#ls-in", { x: [0.5, T + 0.5], y: [-1, 1.25], w: 860, h: 150, xlabel: "", ylabel: "v_t",
+                                 yticks: [-1, 0, 1], zero: true, margin: { l: 52, r: 16, t: 10, b: 20 },
+                                 caption: "Inputs: the value v_t (bars), the write flag ▲ and the read flag ■" });
+    var pG = A.plot("#ls-gates", { x: [0.5, T + 0.5], y: [-0.05, 1.05], w: 860, h: 160, xlabel: "", ylabel: "gate",
+                                   yticks: [0, 0.5, 1], margin: { l: 52, r: 16, t: 10, b: 20 },
+                                   caption: "Forget f, input i and output o gates" });
+    var pC = A.plot("#ls-state", { x: [0.5, T + 0.5], y: [-1, 1], w: 860, h: 170, xlabel: "time step t", ylabel: "state",
+                                   yticks: [-1, -0.5, 0, 0.5, 1], zero: true,
+                                   caption: "Cell state c_t and output h_t" });
+
+    var side = A.$("#ls-side");
+    A.slider(side, { label: "Value to remember", min: -0.9, max: 0.9, step: 0.05, value: S.val,
+                     fmt: function (v) { return fmt(v, 2); }, onInput: function (v) { S.val = Math.round(v * 100) / 100; pl.restart(); } });
+    A.slider(side, { label: "Forget bias $b_f$", min: 0, max: 8, step: 0.5, value: S.bf, fmt: function (v) { return fmt(v, 1); },
+                     hint: "While waiting, f = σ(b_f).", onInput: function (v) { S.bf = v; pl.restart(); } });
+    A.slider(side, { label: "Read step", min: 8, max: 30, step: 1, value: S.tr, fmt: function (v) { return String(v); },
+                     onInput: function (v) { S.tr = Math.round(v); pl.restart(); } });
+    var ro = A.readout(side, [["t", "step $t$"], ["g", "$f_t,\\ i_t,\\ o_t$"], ["cc", "candidate $\\tilde c_t$"],
+                              ["c", "$c_t$"], ["h", "$h_t$"], ["pf", "$\\prod f$ since the write"], ["want", "stored, $\\tanh(v_{t_w})$"]]);
+    A.legend(side, [{ line: "line ok", label: "forget f" }, { line: "line gold dash", label: "input i" },
+                    { line: "line teal dot", label: "output o" }, { line: "line math", label: "cell state c" },
+                    { line: "line", label: "output h" }]);
+    var say = A.narrate("#ls-say");
+
+    function reset() { st = { t: 0, c: [0], h: [0], f: [null], i: [null], o: [null], cc: [null], pf: [1] }; }
+    function step() {
+      var t = st.t + 1, x = input(t);
+      var f = A.sigmoid(S.bf - 14 * x.w), i = A.sigmoid(14 * x.w - 7), o = A.sigmoid(14 * x.r - 7), cc = Math.tanh(x.v);
+      var c = f * st.c[t - 1] + i * cc, h = o * Math.tanh(c);
+      st.f.push(f); st.i.push(i); st.o.push(o); st.cc.push(cc); st.c.push(c); st.h.push(h);
+      st.pf.push(t > S.tw ? st.pf[t - 1] * f : 1);
+      st.t = t;
+      return t < T;
+    }
+
+    function render() {
+      var t = st.t;
+      pIn.clear();
+      for (var k = 1; k <= T; k++) {
+        var x = input(k);
+        pIn.rect(k - 0.3, 0, k + 0.3, x.v, k === S.tw ? "fill-primary" : "fill-soft", "data", { opacity: k === S.tw ? 0.9 : 1 });
+        pIn.rect(k - 0.3, 0, k + 0.3, x.v, "line thin muted", "data", { opacity: k === S.tw ? 0 : 0.6 });
+      }
+      pIn.dot(S.tw, 1.1, { shape: "tri", r: 6, cls: "pt c1" });
+      pIn.text(S.tw, 1.1, "write", { dx: 9, dy: 4, cls: "lbl-sm" });
+      pIn.dot(S.tr, 1.1, { shape: "sq", r: 5, cls: "pt c2" });
+      pIn.text(S.tr, 1.1, "read", { dx: 9, dy: 4, cls: "lbl-sm" });
+      if (t) pIn.line(t, -1, t, 1.25, "line thin muted dot");
+
+      pG.clear();
+      var ks = A.range(t).map(function (q) { return q + 1; });
+      pG.path(ks.map(function (k) { return [k, st.f[k]]; }), "line ok");
+      pG.path(ks.map(function (k) { return [k, st.i[k]]; }), "line gold dash");
+      pG.path(ks.map(function (k) { return [k, st.o[k]]; }), "line teal dot");
+      if (t) {
+        pG.dot(t, st.f[t], { r: 4, cls: "pt c4" });
+        pG.dot(t, st.i[t], { r: 4, cls: "pt c1", shape: "tri" });
+        pG.dot(t, st.o[t], { r: 4, cls: "pt c3", shape: "diamond" });
+      }
+
+      pC.clear();
+      pC.line(0.5, Math.tanh(S.val), T + 0.5, Math.tanh(S.val), "line ok dash thin");
+      pC.text(T + 0.5, Math.tanh(S.val), "tanh(v) written", { anchor: "end", dy: -5, cls: "lbl-sm" });
+      var all = A.range(t + 1);
+      pC.path(all.map(function (k) { return [k, st.c[k]]; }), "line math");
+      pC.path(all.map(function (k) { return [k, st.h[k]]; }), "line");
+      if (t) { pC.dot(t, st.c[t], { r: 4, cls: "pt c2", shape: "sq" }); pC.dot(t, st.h[t], { r: 4, cls: "pt c0" }); }
+
+      ro.set("t", t + " / " + T);
+      ro.set("g", t ? fmt(st.f[t], 3) + ", " + fmt(st.i[t], 3) + ", " + fmt(st.o[t], 3) : "—");
+      ro.set("cc", t ? fmt(st.cc[t], 3) : "—");
+      ro.set("c", fmt(st.c[t], 4));
+      ro.set("h", fmt(st.h[t], 4), t === S.tr ? "good" : "");
+      ro.set("pf", t > S.tw ? fmt(st.pf[t], 4) : "—");
+      ro.set("want", fmt(Math.tanh(S.val), 4));
+
+      if (t === 0) {
+        say.say("<span class='k'>Start.</span> " + K("c_0 = h_0 = 0") + ". The value " + K("v = " + fmt(S.val, 2)) + " arrives at step " + S.tw +
+                " with the write flag, the read flag comes at step " + S.tr + ", and every other input is a distractor. While waiting, " +
+                K("f = \\sigma(" + fmt(S.bf, 1) + ") = " + fmt(A.sigmoid(S.bf), 5)) + ". Press <em>Step</em>.");
+      } else {
+        var x = input(t), what = x.w ? "<strong>Write.</strong> " : x.r ? "<strong>Read.</strong> " : "";
+        say.say("<span class='k'>Step " + t + ".</span> " + what + K("v_{" + t + "} = " + fmt(x.v, 2)) + ". " +
+                K("f = " + fmt(st.f[t], 4) + ",\\ i = " + fmt(st.i[t], 4) + ",\\ \\tilde c = \\tanh(v) = " + fmt(st.cc[t], 3)) + ". " +
+                K("c_{" + t + "} = f\\,c_{" + (t - 1) + "} + i\\,\\tilde c = " + fmt(st.f[t], 4) + "\\cdot" + fmt(st.c[t - 1], 4) + " + " +
+                  fmt(st.i[t], 4) + "\\cdot" + fmt(st.cc[t], 3) + " = " + fmt(st.c[t], 4)) + ". " +
+                K("o = " + fmt(st.o[t], 4)) + ", so " + K("h_{" + t + "} = o\\tanh(c_{" + t + "}) = " + fmt(st.h[t], 4)) + "." +
+                (x.r ? " The stored " + K("\\tanh(v) = " + fmt(Math.tanh(S.val), 4)) + " has survived as " + K("c = " + fmt(st.c[t], 4)) +
+                       ", a fraction " + fmt(st.c[t] / Math.tanh(S.val), 3) + " of it; " + K("\\prod f = " + fmt(st.pf[t], 4)) + "." : ""));
+      }
+    }
+
+    pl = A.player("#ls-bar", { step: step, reset: reset, render: render, fps: 3, unit: "step" });
+  })();
+})();
+</script>
+</body>
+</html>

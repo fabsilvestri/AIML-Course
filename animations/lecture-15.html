@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 15 · Time series — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 15 of Applications of Machine Learning: naive and seasonal-naive forecasts against a linear model on lags, and rolling-origin backtesting against a random split.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-15.html">Lecture 15 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 15 · Animations</p>
+  <h1>Time series</h1>
+  <p>Two ideas from today, on daily series built to look like ridership:
+  a level that drifts and a strong seven-day cycle. First, the baselines
+  a model has to beat. Then, why a random split flatters a forecaster, and
+  what a rolling origin does instead. Press <strong>Step</strong> to advance
+  one unit and read what happened.</p>
+  <p class="note">Every series on this page is synthetic, generated in your
+  browser from a fixed seed, so <em>Reset</em> always gives back the same
+  picture. None of it is the Chicago data.</p>
+  <ul class="toc">
+    <li><a href="#naive">1 · The baselines to beat</a></li>
+    <li><a href="#backtest">2 · Rolling origin against a random split</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Baselines
+     ====================================================================== -->
+<section class="anim" id="naive">
+  <h2><span class="num">1</span>The baselines to beat</h2>
+  <p class="lede">Fifty-two weeks of a daily series. The first 40 weeks train a
+  linear model on the last $L$ days; the last 12 are forecast one day ahead,
+  one day per <strong>Step</strong>. Three forecasts are made each day: copy
+  yesterday, copy the same day last week, and the linear model. The middle
+  plot keeps the running mean absolute error of each. On the right are the
+  model's weights, one per lag.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div id="nv-series"></div>
+      <div class="viz-row" id="nv-plots"></div>
+      <div class="narrate" id="nv-say"></div>
+      <div class="toolbar" id="nv-bar"></div>
+    </div>
+    <aside class="side" id="nv-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>Forecasting day $t+1$ from days up to $t$:</p>
+      $$\hat y^{\text{naive}}_{t+1} = y_t,\qquad \hat y^{\text{seasonal}}_{t+1} = y_{t-6},$$
+      $$\hat y^{\text{linear}}_{t+1} = b + \sum_{k=0}^{L-1} w_k\, y_{t-k},$$
+      <p>which is the deck's model with $L$ lags; $w_6 = 1$ and every other
+      weight 0 is the seasonal naive forecast. The weights minimise the squared
+      error over the training days. They solve the normal equations
+      $\mathbf X^{\intercal}\mathbf X\,\boldsymbol\theta = \mathbf X^{\intercal}\mathbf y$,
+      with one row per training day and the same 252 training days for every $L$.
+      The score is $\mathrm{MAE} = \tfrac1m\sum_i|\hat y_i - y_i|$ over the test days.</p>
+      <p>The series is $y_t = \ell_t + c_t + \varepsilon_t$, with $\ell_t$ a slow
+      random walk ($\ell_t = \ell_{t-1} + \mathcal N(0, 0.25^2)$), a fixed weekly
+      pattern $c_t$, and noise $\mathcal N(0, 0.6^2)$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>Copying yesterday is nearly twice as bad as copying last week. It
+        misses badly every Saturday and every Monday, where the weekly cycle
+        jumps.</li>
+        <li>The weights at lags 7, 14, 21 and 28 are all positive, and the lag-1
+        weight is the largest of the rest. The model has found the week and
+        the recent level, and nobody told it either.</li>
+        <li>The weights sum to a little under 1, so the forecast is pulled
+        slightly towards the training mean.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Set $L = 1$. The model can only rescale yesterday, and it does no
+        better than copying it, far behind copying last week.</li>
+        <li>Set $L = 7$. Lag 7 is now available: the model gets about 8% ahead
+        of copying last week. At $L = 28$ it is about 15% ahead.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · Backtesting
+     ====================================================================== -->
+<section class="anim" id="backtest">
+  <h2><span class="num">2</span>Rolling origin against a random split</h2>
+  <p class="lede">The same model scored two ways, on 68 weeks of a daily
+  series. In each of eleven folds, a model is fitted on 140 rows and scored on
+  28. <em>Rolling origin</em> trains on the 140 days just before the origin and
+  forecasts the 28 after it. A <em>random split</em> draws both sets at random
+  from the whole record. Each <strong>Step</strong> is one fold. Every row's
+  error is divided by the error of copying last week on the same rows, which
+  cancels how hard those days happen to be.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div id="bt-timeline"></div>
+      <div class="viz-row" id="bt-plots"></div>
+      <div class="narrate" id="bt-say"></div>
+      <div class="toolbar" id="bt-bar"></div>
+    </div>
+    <aside class="side" id="bt-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>A row is a window: features $y_{t-13}, \dots, y_t$ and target $y_{t+1}$.
+      The <strong>linear</strong> model is the previous widget's with $L = 14$.
+      The <strong>nearest-windows</strong> model ($k$-NN, $k = 5$) finds the 5
+      training windows closest to the test window in Euclidean distance, and
+      predicts the mean of their targets. It can only interpolate between
+      rows it has seen.</p>
+      <p>The skill ratio of a protocol is</p>
+      $$\frac{\sum_{\text{folds}}\sum_{i\in\text{test}}|\hat y_i - y_i|}{\sum_{\text{folds}}\sum_{i\in\text{test}}|y_{i-7} - y_i|},$$
+      <p>model error over seasonal-naive error on the identical rows: the
+      deck's control for how hard the scored rows are. Both protocols also use
+      the same training size and the same test size, as the deck's controlled
+      comparison does.</p>
+      <p>The series is a slow random walk plus a weekly pattern plus noise
+      that is itself autocorrelated:
+      $u_t = 0.5\,u_{t-1} + \mathcal N(0, 0.5^2)$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>Under the random split, red training rows lie <em>after</em> test
+        rows: in about half of all (training, test) pairs the training row is the
+        later one. Under
+        the rolling origin, none do.</li>
+        <li>With nearest windows, the random split reports the model about 17%
+        better than copying last week; the rolling origin finds it about 4%
+        <em>worse</em>. The random split lets it copy the neighbours of the
+        test day, from both sides.</li>
+        <li>The linear model's two ratios are much closer: a model with 15
+        parameters cannot memorise neighbours. On this series the random split
+        still flatters it a little. On other seeds of the same generator the
+        gap is small and goes either way.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Play both protocols to the end with nearest windows, and compare
+        the two dashed lines. Then switch the model to linear.</li>
+        <li>Press <em>Another series</em> a few times. The nearest-windows
+        model is flattered by the random split on every one; the linear
+        model's gap changes sign. The deck's 9% for a linear model was
+        measured on real data, whose relationships drift over the years.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 15 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  // A fixed weekly pattern, working days high and the weekend low, mean zero.
+  var WEEK = [1.2, 1.4, 1.3, 1.1, 0.8, -2.4, -3.4];
+
+  // Least squares on lags: rows are target indices j, features y[j-1..j-L].
+  // Returns predict(j).
+  function fitLinear(y, rows, L) {
+    var p = L + 1, M = A.range(p).map(function () { return new Array(p).fill(0); }), v = new Array(p).fill(0);
+    rows.forEach(function (j) {
+      var x = [1];
+      for (var k = 1; k <= L; k++) x.push(y[j - k]);
+      for (var a = 0; a < p; a++) { v[a] += x[a] * y[j]; for (var b = 0; b < p; b++) M[a][b] += x[a] * x[b]; }
+    });
+    var w = A.solve(M, v) || new Array(p).fill(0);
+    var f = function (j) { var s = w[0]; for (var k = 1; k <= L; k++) s += w[k] * y[j - k]; return s; };
+    f.w = w;
+    return f;
+  }
+
+  /* ======================================================================
+     1 · The baselines to beat
+     ====================================================================== */
+  (function () {
+    var N = 364, NTR = 280, FIRST = 28, R = A.rng(15), y = [], lev = 10;
+    for (var t = 0; t < N; t++) { lev += R.n(0, 0.25); y.push(lev + WEEK[t % 7] + R.n(0, 0.6)); }
+    var trainRows = A.range(NTR - FIRST).map(function (i) { return FIRST + i; });
+    var test = A.range(N - NTR).map(function (i) { return NTR + i; });
+    var S = { L: 28 }, model, st, pl;
+    var X0 = NTR - 28;
+
+    var lo = Math.min.apply(null, y.slice(X0)), hi = Math.max.apply(null, y.slice(X0));
+    var pS = A.plot("#nv-series", { x: [X0, N], y: [lo - 0.6, hi + 0.6], w: 860, h: 250, xlabel: "day",
+                                    ylabel: "y", caption: "The last 4 training weeks (shaded) and the 12 test weeks" });
+    var plots = A.$("#nv-plots");
+    var pE = A.plot(plots, { x: [0, N - NTR], y: [0, 2.4], w: 420, h: 250, xlabel: "test days so far", ylabel: "running MAE",
+                             caption: "Mean absolute error so far" });
+    var pW = A.plot(plots, { x: [0.3, 28.7], y: [-0.4, 0.8], w: 420, h: 250, xlabel: "lag (days before the target)",
+                             ylabel: "weight", xticks: [1, 7, 14, 21, 28], zero: true,
+                             caption: "The linear model's weights" });
+
+    var side = A.$("#nv-side");
+    A.slider(side, { label: "Lags $L$", min: 1, max: 28, step: 1, value: S.L, fmt: function (v) { return String(v); },
+                     hint: "Refits the model on the same 252 training days.",
+                     onInput: function (v) { S.L = Math.round(v); fit(); pl.restart(); } });
+    var ro = A.readout(side, [["day", "test day"], ["mean", "MAE, training mean"], ["naive", "MAE, copy yesterday"],
+                              ["seas", "MAE, copy last week"], ["lin", "MAE, linear"], ["ratio", "linear ÷ last week"],
+                              ["sw", "$\\sum_k w_k$, $b$"]]);
+    A.legend(side, [{ line: "line ink thin", label: "the series" }, { shape: "tri", cls: "pt c1", label: "copy yesterday" },
+                    { shape: "sq", cls: "pt c2", label: "copy last week" }, { shape: "circle", cls: "pt c0", label: "linear model" }]);
+    var say = A.narrate("#nv-say");
+
+    var trMean = A.mean(y.slice(0, NTR));
+    function fit() { model = fitLinear(y, trainRows, S.L); }
+    function reset() { st = { i: 0, e: { mean: [], naive: [], seas: [], lin: [] } }; }
+    function step() {
+      var j = test[st.i];
+      st.e.mean.push(Math.abs(trMean - y[j]));
+      st.e.naive.push(Math.abs(y[j - 1] - y[j]));
+      st.e.seas.push(Math.abs(y[j - 7] - y[j]));
+      st.e.lin.push(Math.abs(model(j) - y[j]));
+      st.i++;
+      return st.i < test.length;
+    }
+    function running(a) { var s = 0; return a.map(function (v, i) { s += v; return s / (i + 1); }); }
+
+    function render() {
+      var n = st.i;
+      pS.clear();
+      pS.rect(X0, lo - 0.6, NTR, hi + 0.6, "fill-soft");
+      pS.path(A.range(N - X0).map(function (i) { return [X0 + i, y[X0 + i]]; }), "line ink thin");
+      for (var i = 0; i < n; i++) {
+        var j = test[i], cur = i === n - 1;
+        pS.dot(j, y[j - 1], { shape: "tri", r: cur ? 5 : 2.6, cls: "pt c1" });
+        pS.dot(j, y[j - 7], { shape: "sq", r: cur ? 5 : 2.4, cls: "pt c2" });
+        pS.dot(j, model(j), { r: cur ? 5 : 2.6, cls: "pt c0" });
+      }
+      if (n) {
+        var jc = test[n - 1];
+        pS.line(jc, lo - 0.6, jc, hi + 0.6, "line thin muted dot");
+        pS.line(jc, model(jc), jc, y[jc], "resid");
+      }
+
+      pE.clear();
+      [["naive", "line gold"], ["seas", "line math"], ["lin", "line"]].forEach(function (q) {
+        var rv = running(st.e[q[0]]);
+        pE.path(rv.map(function (v, i) { return [i + 1, Math.min(v, 2.4)]; }), q[1]);
+      });
+
+      pW.clear();
+      var w = model.w;
+      for (var k = 1; k <= S.L; k++) {
+        pW.rect(k - 0.36, 0, k + 0.36, A.clamp(w[k], -0.4, 0.8), k % 7 === 0 ? "fill-math" : "fill-primary", "data", { opacity: 0.85 });
+      }
+
+      var M = function (a) { return a.length ? A.mean(a) : NaN; };
+      var mae = { mean: M(st.e.mean), naive: M(st.e.naive), seas: M(st.e.seas), lin: M(st.e.lin) };
+      var sw = A.sum(w.slice(1));
+      ro.set("day", n + " / " + test.length);
+      ro.set("mean", n ? fmt(mae.mean, 3) : "—");
+      ro.set("naive", n ? fmt(mae.naive, 3) : "—");
+      ro.set("seas", n ? fmt(mae.seas, 3) : "—");
+      ro.set("lin", n ? fmt(mae.lin, 3) : "—", n && mae.lin < mae.seas ? "good" : "");
+      ro.set("ratio", n ? fmt(mae.lin / mae.seas, 3) : "—");
+      ro.set("sw", fmt(sw, 2) + ", " + fmt(w[0], 2));
+
+      if (n === 0) {
+        say.say("<span class='k'>Fitted.</span> The linear model on " + S.L + " lag" + (S.L > 1 ? "s" : "") + " was fitted on " +
+                trainRows.length + " training days; its weights are on the right. Nothing has been forecast yet. " +
+                "Press <em>Step</em> to forecast the first test day.");
+      } else {
+        var j = test[n - 1], e = st.e;
+        say.say("<span class='k'>Test day " + n + "</span> (day " + j + ", " + ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][j % 7] +
+                " in the pattern). Actual " + fmt(y[j], 2) + ". Copy yesterday " + fmt(y[j - 1], 2) + " (error " + fmt(e.naive[n - 1], 2) +
+                "), copy last week " + fmt(y[j - 7], 2) + " (" + fmt(e.seas[n - 1], 2) + "), linear " + fmt(model(j), 2) +
+                " (" + fmt(e.lin[n - 1], 2) + "). Running MAE: " + fmt(mae.naive, 3) + ", " + fmt(mae.seas, 3) + ", " + fmt(mae.lin, 3) + "." +
+                (n === test.length ? " <strong>All 84 days forecast.</strong> The linear model is " +
+                  (mae.lin < mae.seas ? fmt(100 * (1 - mae.lin / mae.seas), 1) + "% better than copying last week."
+                                      : fmt(100 * (mae.lin / mae.seas - 1), 1) + "% <em>worse</em> than copying last week.") : ""));
+      }
+    }
+
+    fit();
+    pl = A.player("#nv-bar", { step: step, reset: reset, render: render, fps: 6, unit: "day" });
+  })();
+
+  /* ======================================================================
+     2 · Rolling origin against a random split
+     ====================================================================== */
+  (function () {
+    var N = 476, L = 14, W = 140, H = 28, KNN = 5, SEEDS = [14, 10, 12, 16, 19, 11];
+    var S = { seed: 0, proto: "roll", model: "knn" }, y, res, st, pl;
+
+    function makeSeries(seed) {
+      var R = A.rng(seed), lev = 10, u = 0, out = [];
+      for (var t = 0; t < N; t++) { lev += R.n(0, 0.2); u = 0.5 * u + R.n(0, 0.5); out.push(lev + WEEK[t % 7] + u); }
+      return out;
+    }
+    function fitKnn(tr) {
+      return function (j) {
+        var d = tr.map(function (i) {
+          var s = 0;
+          for (var k = 1; k <= L; k++) { var e = y[j - k] - y[i - k]; s += e * e; }
+          return [s, i];
+        }).sort(function (a, b) { return a[0] - b[0]; }).slice(0, KNN);
+        return A.mean(d.map(function (q) { return y[q[1]]; }));
+      };
+    }
+    function folds(kind) {
+      var out = [];
+      if (kind === "roll") {
+        for (var o = L + W; o + H <= N; o += H) out.push({ tr: A.range(W).map(function (i) { return o - W + i; }), te: A.range(H).map(function (i) { return o + i; }) });
+      } else {
+        var R = A.rng(476), rows = A.range(N - L).map(function (i) { return i + L; });
+        for (var f = 0; f < 11; f++) {
+          var sh = R.shuffle(rows.slice());
+          var asc = function (a, b) { return a - b; };
+          out.push({ te: sh.slice(0, H).sort(asc), tr: sh.slice(H, H + W).sort(asc) });
+        }
+      }
+      return out;
+    }
+    function evaluate(kind) {
+      return folds(kind).map(function (f) {
+        var g = S.model === "knn" ? fitKnn(f.tr) : fitLinear(y, f.tr, L);
+        var em = 0, en = 0, later = 0, firstTest = f.te[0];
+        f.te.forEach(function (j) { em += Math.abs(g(j) - y[j]); en += Math.abs(y[j - 7] - y[j]); });
+        f.tr.forEach(function (i) { f.te.forEach(function (j) { if (i > j) later++; }); });
+        var fut = {};
+        f.tr.forEach(function (i) { if (i > firstTest) fut[i] = true; });
+        return { tr: f.tr, te: f.te, em: em / H, en: en / H, later: later / (f.tr.length * f.te.length), fut: fut };
+      });
+    }
+    function ratio(list) { return A.sum(list.map(function (q) { return q.em; })) / A.sum(list.map(function (q) { return q.en; })); }
+    function compute() {
+      y = makeSeries(SEEDS[S.seed]);
+      res = { roll: evaluate("roll"), rand: evaluate("rand") };
+    }
+
+    var host = A.$("#bt-timeline"), plots = A.$("#bt-plots"), pT, pF;
+    function layout() {
+      A.clear(host);
+      var lo = Math.min.apply(null, y), hi = Math.max.apply(null, y), span = hi - lo;
+      pT = A.plot(host, { x: [0, N], y: [lo - 0.42 * span, hi + 0.05 * span], w: 860, h: 270, xlabel: "day",
+                          ylabel: "y", yticks: A.niceTicks(lo, hi, 4),
+                          caption: "The series and the current fold's rows: blue train, gold test, red train rows later than a test row" });
+      pT.lanes = { tr: lo - 0.17 * span, te: lo - 0.32 * span };
+    }
+    pF = A.plot(plots, { x: [0.4, 11.6], y: [0.4, 1.6], w: 860, h: 210, xlabel: "fold", ylabel: "model ÷ naive",
+                         xticks: A.range(11).map(function (i) { return i + 1; }), yticks: [0.4, 0.6, 0.8, 1, 1.2, 1.4, 1.6],
+                         caption: "Each fold's error ratio; dashed lines: each protocol's ratio over all eleven folds" });
+
+    var side = A.$("#bt-side");
+    A.seg(side, { label: "Protocol", value: S.proto, options: [["roll", "rolling origin"], ["rand", "random split"]],
+                  onChange: function (v) { S.proto = v; pl.restart(); } });
+    A.seg(side, { label: "Model", value: S.model, options: [["knn", "nearest windows"], ["lin", "linear, 14 lags"]],
+                  onChange: function (v) { S.model = v; compute(); pl.restart(); } });
+    var ro = A.readout(side, [["f", "fold"], ["later", "pairs with training later"], ["fold", "this fold: model, naive MAE"],
+                              ["roll", "ratio, rolling origin"], ["rand", "ratio, random split"], ["series", "series"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "training row" }, { shape: "circle", cls: "pt c0 wrong", label: "training row after a test row" },
+                    { shape: "tri", cls: "pt c1", label: "test row" }, { line: "line ok dash thin", label: "ratio 1: no better than naive" }]);
+    var say = A.narrate("#bt-say");
+
+    function reset() { st = { f: 0 }; }
+    function step() { st.f++; return st.f < res[S.proto].length; }
+
+    function render() {
+      var list = res[S.proto], f = st.f, cur = f ? list[f - 1] : null;
+      pT.clear();
+      pT.path(y.map(function (v, i) { return [i, v]; }), "line thin");
+      pT.text(0, pT.lanes.tr, "train", { dx: 4, dy: -6, cls: "lbl-sm" });
+      pT.text(0, pT.lanes.te, "test", { dx: 4, dy: -6, cls: "lbl-sm" });
+      if (cur) {
+        cur.tr.forEach(function (i) { pT.dot(i, pT.lanes.tr, { r: 2.4, cls: "pt c0" + (cur.fut[i] ? " wrong" : "") }); });
+        cur.te.forEach(function (j) {
+          pT.dot(j, pT.lanes.te, { shape: "tri", r: 3, cls: "pt c1" });
+          pT.line(j, pT.lanes.te, j, y[j], "line thin gold", "data", { opacity: 0.35 });
+        });
+      }
+      pF.clear();
+      pF.line(0.4, 1, 11.6, 1, "line ok dash thin");
+      list.slice(0, f).forEach(function (q, i) {
+        pF.rect(i + 1 - 0.3, 1, i + 1 + 0.3, q.em / q.en, q.em < q.en ? "fill-primary" : "fill-acc", "data", { opacity: 0.8 });
+      });
+      ["roll", "rand"].forEach(function (k) {
+        var rr = ratio(res[k]);
+        pF.line(0.4, rr, 11.6, rr, k === S.proto ? "line dash" : "line muted dash thin");
+        pF.text(11.6, rr, (k === "roll" ? "rolling " : "random ") + fmt(rr, 3), { anchor: "end", dy: k === "roll" ? -5 : 13, cls: "lbl-sm" });
+      });
+
+      var rr = ratio(res.roll), rd = ratio(res.rand), sofar = f ? ratio(list.slice(0, f)) : NaN;
+      ro.set("f", f + " / " + list.length);
+      ro.set("later", cur ? A.pct(cur.later, 0) : "—", cur && cur.later > 0 ? "bad" : "");
+      ro.set("fold", cur ? fmt(cur.em, 3) + ", " + fmt(cur.en, 3) : "—");
+      ro.set("roll", fmt(rr, 3), S.proto === "roll" && f === list.length ? "good" : "");
+      ro.set("rand", fmt(rd, 3));
+      ro.set("series", (S.seed + 1) + " of " + SEEDS.length);
+
+      var mname = S.model === "knn" ? "nearest-windows model" : "linear model";
+      if (!cur) {
+        say.say("<span class='k'>Start.</span> " + (S.proto === "roll"
+                  ? "Rolling origin: each fold trains on the 140 days before an origin and forecasts the next 28, and the origin moves 28 days per fold."
+                  : "Random split: each fold draws 28 test rows and 140 training rows at random from the whole record, as a shuffled split does.") +
+                " Press <em>Step</em> for fold 1.");
+      } else {
+        say.say("<span class='k'>Fold " + f + ".</span> " + (S.proto === "roll"
+                  ? "Training days " + cur.tr[0] + "–" + cur.tr[cur.tr.length - 1] + ", test days " + cur.te[0] + "–" + cur.te[cur.te.length - 1] +
+                    ": every training row precedes every test row."
+                  : "Training rows from day " + cur.tr[0] + " to day " + cur.tr[cur.tr.length - 1] + ", test rows from " + cur.te[0] + " to " +
+                    cur.te[cur.te.length - 1] + ". In " + A.pct(cur.later, 0) + " of the (training, test) pairs the training row comes later.") +
+                " The " + mname + "'s MAE is " + fmt(cur.em, 3) + " against " + fmt(cur.en, 3) + " for copying last week on the same rows: ratio " +
+                fmt(cur.em / cur.en, 3) + ". Over the folds so far, " + fmt(sofar, 3) + "." +
+                (f === list.length ? " <strong>Done.</strong> Rolling origin " + fmt(rr, 3) + ", random split " + fmt(rd, 3) +
+                  ": the random split reports the model " + fmt(Math.abs(100 * (rr - rd) / rr), 1) + "% " + (rd < rr ? "more" : "less") + " skilful than forecasting forward does." : ""));
+      }
+    }
+
+    compute(); layout();
+    pl = A.player("#bt-bar", { step: step, reset: reset, render: render, fps: 2, unit: "fold" });
+    A.button("#bt-bar", "Another series", function () { S.seed = (S.seed + 1) % SEEDS.length; compute(); layout(); pl.restart(); });
+  })();
+})();
+</script>
+</body>
+</html>

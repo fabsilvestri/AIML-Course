@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 10 · PyTorch — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 10 of Applications of Machine Learning: the forward and reverse sweeps on a computational graph, and the training loop with and without zero_grad.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-10.html">Lecture 10 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 10 · Animations</p>
+  <h1>PyTorch</h1>
+  <p>Backpropagation is reverse-mode automatic differentiation, and the
+  training loop is five lines around it. Two pictures: the deck's worked
+  example swept forward and back one node at a time; and the loop itself, run one line at a time, with and
+  without <code>zero_grad()</code>. Press <strong>Step</strong> to advance one
+  unit and read what happened; press <strong>Play</strong> to let it run.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#autodiff">1 · The two sweeps on a graph</a></li>
+    <li><a href="#loop">2 · The training loop, one line at a time</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · The computational graph
+     ====================================================================== -->
+<section class="anim" id="autodiff">
+  <h2><span class="num">1</span>The two sweeps on a graph</h2>
+  <p class="lede">The deck's example, $L = w^2$ with $w = xy + \sin x$. Each
+  box is a node; each edge carries its <em>local</em> derivative. The forward
+  sweep fills in values left to right. Then the seed $\bar L = 1$ is placed at
+  the loss, and the reverse sweep fills in adjoints $\bar u = \partial L/\partial u$
+  right to left, each one a product of an adjoint already known and one local
+  derivative. Last, a finite-difference check.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="ad-graph"></div>
+      <div class="viz-row" id="ad-fd"></div>
+      <div class="narrate" id="ad-say"></div>
+      <div class="toolbar" id="ad-bar"></div>
+    </div>
+    <aside class="side" id="ad-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The local derivatives, each needing only the values of its own node:</p>
+      $$\frac{\partial u}{\partial x} = y,\ \ \frac{\partial u}{\partial y} = x,\ \ \frac{\partial s}{\partial x} = \cos x,$$
+      $$\frac{\partial w}{\partial u} = \frac{\partial w}{\partial s} = 1,\ \ \frac{\partial L}{\partial w} = 2w.$$
+      <p>The chain rule for a node $a$ whose value feeds nodes $c_1,\dots,c_k$:</p>
+      $$\bar a = \sum_{i=1}^{k} \bar c_i\,\frac{\partial c_i}{\partial a},$$
+      <p>a sum over outgoing edges — which is why $\bar x$ has two terms.
+      The check is the forward difference
+      $\bigl(L(x+h, y) - L(x, y)\bigr)/h = \partial L/\partial x + \tfrac{h}{2}\,\partial^2 L/\partial x^2(\xi)$
+      by Taylor's theorem, plus a rounding error of order $\epsilon L/h$
+      with $\epsilon \approx 1.1\times10^{-16}$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>Every value is computed once in the forward sweep and then
+        <em>used again</em> in the reverse one ($y$, $x$, $\cos x$, $2w$).
+        That is why the forward values must be kept.</li>
+        <li>$\bar x$ is filled in two steps: once through the product, once
+        through the sine. At the deck's point the two contributions are
+        $41.4558$ and $-5.7506$.</li>
+        <li>One reverse sweep gives both $\partial L/\partial x$ and
+        $\partial L/\partial y$. The finite difference needs a separate
+        evaluation of $L$ for each.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Play to the end at $x = 2$, $y = 3$ and compare with the deck:
+        $L = 47.7384$, $\bar x = 35.7052$, $\bar y = 27.6372$.</li>
+        <li>Move $h$ from $10^{-1}$ down to $10^{-13}$: the finite-difference
+        error falls in proportion to $h$ until about $10^{-7}$, then rises
+        again as cancellation takes over. No $h$ reaches the autodiff
+        answer's accuracy.</li>
+        <li>Set $x = 1.6$, where $\cos x \approx -0.03$: the edge through the
+        sine now carries almost nothing, and $\bar x$ is nearly the product
+        term alone.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · The training loop
+     ====================================================================== -->
+<section class="anim" id="loop">
+  <h2><span class="num">2</span>The training loop, one line at a time</h2>
+  <p class="lede">A model $\hat y = w x + b$ trained by plain SGD
+  (<code>torch.optim.SGD</code>) on 24 points in mini-batches of 6. Each Step
+  runs one line of the loop — the highlighted box — and the side panel shows
+  what it changed. Tick <em>skip</em> to delete <code>opt.zero_grad()</code>:
+  the loop still runs and the loss still goes down at first. The dashed line
+  and the green curve are the correct run, on the same batches.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="lp-plots"></div>
+      <div id="lp-curve"></div>
+      <div class="narrate" id="lp-say"></div>
+      <div class="toolbar" id="lp-bar"></div>
+    </div>
+    <aside class="side" id="lp-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>For a batch $B$ the loss is the mean squared error
+      $\ell = \frac{1}{|B|}\sum_{i\in B}(wx_i + b - y_i)^2$, with
+      $\partial\ell/\partial w = \frac{2}{|B|}\sum_i r_i x_i$ and
+      $\partial\ell/\partial b = \frac{2}{|B|}\sum_i r_i$, $r_i = wx_i+b-y_i$.
+      <code>backward()</code> <em>adds</em> these to <code>p.grad</code>;
+      <code>step()</code> sets $\boldsymbol\theta \leftarrow \boldsymbol\theta - \eta\,$<code>p.grad</code>.</p>
+      <p>Without <code>zero_grad()</code>, <code>p.grad</code> after step $t$ is
+      $\mathbf{G}_t = \sum_{s\le t}\mathbf{g}_s$, so</p>
+      $$\boldsymbol\theta_{t+1} - \boldsymbol\theta_t = (\boldsymbol\theta_t - \boldsymbol\theta_{t-1}) - \eta\,\mathbf{g}_t:$$
+      <p>momentum with coefficient 1, i.e. no friction. For a quadratic loss
+      with curvature $\lambda$ and full batches the error obeys
+      $e_{t+1} = (2-\eta\lambda)e_t - e_{t-1}$, whose two characteristic roots
+      have product 1; for $0 &lt; \eta\lambda &lt; 4$ both have modulus 1, so
+      the oscillation never decays. With mini-batches each batch's noise is
+      added to $\mathbf{G}_t$ and never removed, so the swings can grow.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>With <code>zero_grad()</code>, <code>p.grad</code> after
+        <code>backward()</code> is this batch's gradient and nothing else.
+        Without it the readout keeps the sum of every gradient so far.</li>
+        <li>Skipping it, the loss falls in the first iterations — at first
+        faster than the correct run — and then swings up and down for ever
+        instead of settling.</li>
+        <li>No line raises an error, and the loss is never <code>NaN</code>.
+        The only evidence is the comparison with the correct curve.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Step through one iteration line by line, then set <em>Each Step
+        runs</em> to <em>one iteration</em> and play to 100. The correct loss
+        settles near 0.05.</li>
+        <li>Tick <em>skip</em> and play again: the red curve keeps swinging,
+        and after 100 iterations it is still far above the green one.</li>
+        <li>With <em>skip</em> ticked, raise $\eta$ to 0.3 and play to
+        iteration 300: the swings grow until the loss is in the hundreds and
+        the line leaves the data — and still nothing raises. Lowering $\eta$
+        to 0.02 does not cure it either: the swings are slower, and they
+        persist.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 10 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  /* ======================================================================
+     1 · Forward and reverse sweep on L = (xy + sin x)^2
+     ====================================================================== */
+  (function () {
+    var S = { x: 2, y: 3, h: 1e-5 }, st, pl;
+    // Nodes, in topological order, with where they sit on the canvas.
+    var N = {
+      x: { at: [75, 64],   name: "x", expr: "input" },
+      y: { at: [75, 300],  name: "y", expr: "input" },
+      s: { at: [305, 64],  name: "s", expr: "sin x" },
+      u: { at: [305, 300], name: "u", expr: "x · y" },
+      w: { at: [515, 182], name: "w", expr: "u + s" },
+      L: { at: [700, 182], name: "L", expr: "w²" }
+    };
+    // Edges: from, to, the local derivative's formula and its value.
+    function edges(v) {
+      return [
+        { a: "x", b: "s", f: "∂s/∂x = cos x", d: Math.cos(v.x), at: [190, 30] },
+        { a: "x", b: "u", f: "∂u/∂x = y", d: v.y, at: [228, 170] },
+        { a: "y", b: "u", f: "∂u/∂y = x", d: v.x, at: [190, 266] },
+        { a: "s", b: "w", f: "∂w/∂s = 1", d: 1, at: [452, 96] },
+        { a: "u", b: "w", f: "∂w/∂u = 1", d: 1, at: [452, 282] },
+        { a: "w", b: "L", f: "∂L/∂w = 2w", d: 2 * v.w, at: [608, 120] }
+      ];
+    }
+    function values() {
+      var v = { x: S.x, y: S.y };
+      v.u = v.x * v.y; v.s = Math.sin(v.x); v.w = v.u + v.s; v.L = v.w * v.w;
+      return v;
+    }
+    function Lof(x, y) { var w = x * y + Math.sin(x); return w * w; }
+
+    // The script: what each step fills in.
+    var PLAN = [
+      { kind: "val", node: "u", uses: ["x", "y"] },
+      { kind: "val", node: "s", uses: ["x"] },
+      { kind: "val", node: "w", uses: ["u", "s"] },
+      { kind: "val", node: "L", uses: ["w"] },
+      { kind: "seed" },
+      { kind: "adj", node: "w", from: [["L", "w"]] },
+      { kind: "adj", node: "u", from: [["w", "u"]] },
+      { kind: "adj", node: "s", from: [["w", "s"]] },
+      { kind: "adj", node: "y", from: [["u", "y"]] },
+      { kind: "adj", node: "x", from: [["u", "x"]], partial: true },
+      { kind: "adj", node: "x", from: [["s", "x"]], add: true },
+      { kind: "check" }
+    ];
+
+    var plots = A.$("#ad-graph");
+    var G = A.canvas(plots, { w: 770, h: 345, caption: "Each node: its value, then its adjoint (purple). Blue edges carry values forward; purple ones carry adjoints back" });
+    var fdHost = A.$("#ad-fd");
+    var pE = A.plot(fdHost, { x: [-13, -1], y: [-10, 0], w: 880, h: 200, xticks: A.range(13).map(function (i) { return -13 + i; }),
+                              yticks: [-10, -8, -6, -4, -2, 0], xfmt: A.pow10, yfmt: A.pow10,
+                              xlabel: "step h", ylabel: "|error| in ∂L/∂x",
+                              caption: "Forward-difference error against h; the dot is the h in the side panel" });
+
+    var side = A.$("#ad-side");
+    A.slider(side, { label: "$x$", min: -3, max: 3, step: 0.1, value: S.x, fmt: function (v) { return fmt(v, 1); },
+                     onInput: function (v) { S.x = v; render(); } });
+    A.slider(side, { label: "$y$", min: -3, max: 3, step: 0.1, value: S.y, fmt: function (v) { return fmt(v, 1); },
+                     onInput: function (v) { S.y = v; render(); } });
+    A.slider(side, { label: "Finite-difference step $h$", min: 1e-13, max: 0.1, value: S.h, log: true,
+                     fmt: function (v) { return sig(v, 2); }, onInput: function (v) { S.h = v; render(); } });
+    var ro = A.readout(side, [["L", "$L$"], ["gx", "$\\bar x$, reverse sweep"], ["hx", "$2w(y+\\cos x)$, by hand"],
+                              ["gy", "$\\bar y$, reverse sweep"], ["hy", "$2wx$, by hand"],
+                              ["fd", "finite difference"], ["err", "its error"]]);
+    A.legend(side, [{ line: "line", label: "forward edge, carries a value" },
+                    { line: "arrow", label: "reverse edge, carries an adjoint" },
+                    { swatch: "box on", label: "the node this step fills" }]);
+    var say = A.narrate("#ad-say");
+
+    function reset() { st = { k: 0, xPart: null }; }
+    function step() { st.k++; return st.k < PLAN.length; }
+
+    function adjoints(v) {
+      var a = { L: 1 };
+      a.w = a.L * 2 * v.w; a.u = a.w; a.s = a.w; a.y = a.u * v.x;
+      a.xu = a.u * v.y; a.xs = a.s * Math.cos(v.x); a.x = a.xu + a.xs;
+      return a;
+    }
+
+    function render() {
+      var v = values(), adj = adjoints(v), E = edges(v), k = st.k;
+      var done = PLAN.slice(0, k), cur = k ? PLAN[k - 1] : null;
+      var hasVal = { x: true, y: true }, hasAdj = {}, xPartial = false;
+      done.forEach(function (p) {
+        if (p.kind === "val") hasVal[p.node] = true;
+        if (p.kind === "seed") hasAdj.L = true;
+        if (p.kind === "adj") { hasAdj[p.node] = true; if (p.partial) xPartial = true; if (p.add) xPartial = false; }
+      });
+      var usedEdges = {};
+      if (cur && cur.kind === "val") cur.uses.forEach(function (a) { usedEdges[a + cur.node] = "f"; });
+      if (cur && cur.kind === "adj") cur.from.forEach(function (q) { usedEdges[q[1] + q[0]] = "r"; });
+
+      G.clear();
+      var g = G.g, BW = 130, BH = 66;
+      E.forEach(function (e) {
+        var p = N[e.a].at, q = N[e.b].at;
+        var x1 = p[0] + BW / 2, y1 = p[1], x2 = q[0] - BW / 2, y2 = q[1];
+        var on = usedEdges[e.a + e.b];
+        if (hasAdj[e.b] && hasAdj[e.a] || on === "r") {
+          // The reverse edge, drawn under the forward one, from b back to a.
+          G.arrow(x2, y2 + 9, x1 + 4, y1 + 9, on === "r" ? "arrow" : "arrow faint");
+        }
+        G.arrow(x1, y1, x2 - 3, y2, on === "f" ? "line" : "line thin", 7);
+        // The local derivative: its formula, and its value once both ends are known.
+        G.text(e.at[0], e.at[1], e.f, on ? "lbl" : "lbl-sm", "middle");
+        if (hasVal[e.a] && hasVal[e.b]) G.text(e.at[0], e.at[1] + 15, "= " + fmt(e.d, 4), on ? "lbl mono" : "lbl-sm", "middle");
+      });
+      Object.keys(N).forEach(function (key) {
+        var n = N[key], x = n.at[0] - BW / 2, y = n.at[1] - BH / 2;
+        var isCur = cur && ((cur.kind === "val" || cur.kind === "adj") && cur.node === key || cur.kind === "seed" && key === "L");
+        A.el("rect", { x: x, y: y, width: BW, height: BH, rx: 6, class: "box" + (isCur ? " on" : "") }, g);
+        G.text(x + 8, y + 17, n.name + " = " + n.expr, "lbl-sm");
+        G.text(x + 8, y + 38, hasVal[key] ? n.name + " = " + fmt(v[key], 4) : n.name + " = ?", "lbl mono");
+        var a = key === "x" ? (hasAdj.x ? (xPartial ? adj.xu : adj.x) : null) : (hasAdj[key] ? adj[key] : null);
+        // n̄ = ∂L/∂n, the adjoint; "+ …" while x has only one of its two terms.
+        G.text(x + 8, y + 58, n.name + "\u0304 = " + (a === null ? "?" : fmt(a, 4) + (key === "x" && xPartial ? " + …" : "")),
+               a === null ? "lbl-sm" : "lbl-math");
+      });
+
+      // The finite-difference error curve, and the current h.
+      var exact = adj.x;
+      function err(h) { return Math.abs((Lof(S.x + h, S.y) - Lof(S.x, S.y)) / h - exact); }
+      pE.clear();
+      var pts = A.linspace(-13, -1, 121).map(function (e) { var r = err(Math.pow(10, e)); return [e, r > 0 ? Math.max(Math.log10(r), -10) : -10]; });
+      pE.path(pts, "line acc");
+      var eh = err(S.h);
+      pE.dot(Math.log10(S.h), eh > 0 ? Math.max(Math.log10(eh), -10) : -10, { r: 5.5, cls: "pt c0" });
+
+      var fd = (Lof(S.x + S.h, S.y) - Lof(S.x, S.y)) / S.h;
+      ro.set("L", hasVal.L ? fmt(v.L, 4) : "—");
+      ro.set("gx", hasAdj.x && !xPartial ? fmt(adj.x, 6) : "—", hasAdj.x && !xPartial ? "good" : "");
+      ro.set("hx", fmt(2 * v.w * (v.y + Math.cos(v.x)), 6));
+      ro.set("gy", hasAdj.y ? fmt(adj.y, 6) : "—", hasAdj.y ? "good" : "");
+      ro.set("hy", fmt(2 * v.w * v.x, 6));
+      ro.set("fd", fmt(fd, 6));
+      ro.set("err", sig(Math.abs(fd - exact), 2));
+
+      var msg;
+      if (!cur) {
+        msg = "<span class='k'>Start.</span> Only the inputs are known: " + K("x = " + fmt(v.x, 1) + ",\\ y = " + fmt(v.y, 1)) +
+              ". Press <em>Step</em> to evaluate the first node, in topological order.";
+      } else if (cur.kind === "val") {
+        var how = { u: K("u = xy = " + fmt(v.x, 1) + "\\times" + fmt(v.y, 1)), s: K("s = \\sin x = \\sin " + fmt(v.x, 1)),
+                    w: K("w = u + s = " + fmt(v.u, 4) + " + " + fmt(v.s, 4)), L: K("L = w^2 = " + fmt(v.w, 4) + "^2") }[cur.node];
+        msg = "<span class='k'>Forward: " + cur.node + ".</span> " + how + " = " + fmt(v[cur.node], 4) +
+              ". The value is stored in the node; the reverse sweep will need it." +
+              (cur.node === "L" ? " The forward sweep is complete: this is just running the model." : "");
+      } else if (cur.kind === "seed") {
+        msg = "<span class='k'>Seed.</span> " + K("\\bar L = \\partial L/\\partial L = 1") +
+              ". The loss is one number, so there is exactly one seed, and one reverse sweep will give every derivative.";
+      } else if (cur.kind === "adj") {
+        var q = cur.from[0], e = E.filter(function (r) { return r.a === q[1] && r.b === q[0]; })[0];
+        var up = adj[q[0]];
+        if (cur.node === "x" && cur.partial) {
+          msg = "<span class='k'>Reverse: x, first edge.</span> Through the product: " + K("\\bar u\\,\\partial u/\\partial x = " + fmt(up, 4) + "\\times" + fmt(v.y, 1) + " = " + fmt(adj.xu, 4)) +
+                ". But " + K("x") + " has a second outgoing edge, so this is not yet " + K("\\bar x") + ".";
+        } else if (cur.node === "x") {
+          msg = "<span class='k'>Reverse: x, second edge.</span> Through the sine: " + K("\\bar s\\cos x = " + fmt(up, 4) + "\\times" + fmt(Math.cos(v.x), 4) + " = " + fmt(adj.xs, 4)) +
+                ". Summed over both edges, " + K("\\bar x = " + fmt(adj.xu, 4) + (adj.xs < 0 ? " - " : " + ") + fmt(Math.abs(adj.xs), 4) + " = " + fmt(adj.x, 4)) + ".";
+        } else {
+          msg = "<span class='k'>Reverse: " + cur.node + ".</span> " +
+                K("\\bar " + cur.node + " = \\bar " + q[0] + "\\cdot " + e.f.split(" = ")[0].replace(/∂/g, "\\partial ") + " = " + fmt(up, 4) + "\\times " + fmt(e.d, 4) + " = " + fmt(adj[cur.node], 4)) +
+                ". One adjoint already known, times one local derivative.";
+        }
+      } else {
+        msg = "<span class='k'>Check.</span> Reverse sweep " + K("\\bar x = " + fmt(adj.x, 6)) + ", by hand " + fmt(2 * v.w * (v.y + Math.cos(v.x)), 6) +
+              "; " + K("\\bar y = " + fmt(adj.y, 6)) + ", by hand " + fmt(2 * v.w * v.x, 6) + ". The forward difference with h = " + sig(S.h, 2) +
+              " gives " + fmt(fd, 6) + ", off by " + sig(Math.abs(fd - exact), 2) + " — and it needed an extra evaluation of " + K("L") + " for " + K("x") + " alone.";
+      }
+      say.say(msg);
+    }
+
+    pl = A.player("#ad-bar", { step: step, reset: reset, render: render, fps: 1, unit: "step", max: PLAN.length });
+  })();
+
+  /* ======================================================================
+     2 · The training loop
+     ====================================================================== */
+  (function () {
+    var R = A.rng(10), m = 24, B = 6, X = [], Y = [];
+    for (var i = 0; i < m; i++) { var x = R.uniform(-1, 1); X.push(x); Y.push(2 * x - 0.5 + R.n(0, 0.3)); }
+    var NB = m / B;
+    function batch(t) {
+      var ep = Math.floor(t / NB), order = A.rng(500 + ep).shuffle(A.range(m));
+      return order.slice((t % NB) * B, (t % NB + 1) * B);
+    }
+    function fullLoss(w, b) { var s = 0; for (var i = 0; i < m; i++) { var r = w * X[i] + b - Y[i]; s += r * r; } return s / m; }
+    function batchGrad(w, b, idx) {
+      var gw = 0, gb = 0, l = 0;
+      idx.forEach(function (i) { var r = w * X[i] + b - Y[i]; l += r * r; gw += 2 * r * X[i]; gb += 2 * r; });
+      return { gw: gw / idx.length, gb: gb / idx.length, loss: l / idx.length };
+    }
+    var LINES = ["opt.zero_grad()", "out = model(xb)", "loss = lossf(out, yb)", "loss.backward()", "opt.step()"];
+
+    var S = { eta: 0.1, skip: false, unit: "line" }, st, pl;
+
+    var plots = A.$("#lp-plots");
+    var pD = A.plot(plots, { x: [-1.1, 1.1], y: [-3.2, 2.2], w: 420, h: 360, xlabel: "x", ylabel: "y",
+                             caption: "The data, this batch (filled), and the model's line" });
+    var C = A.canvas(plots, { w: 420, h: 360, caption: "The loop; the highlighted line runs next" });
+    var curve = A.curve("#lp-curve", { y: [-2, 3], log: true, ylabel: "training loss", xlabel: "iteration", n: 50, h: 140 });
+
+    var side = A.$("#lp-side");
+    A.check(side, { label: "skip <code>opt.zero_grad()</code>", value: false, onChange: function (v) { S.skip = v; pl.restart(); } });
+    A.seg(side, { label: "Each Step runs", value: S.unit, options: [["line", "one line"], ["iter", "one iteration"]],
+                  onChange: function (v) { S.unit = v; } });
+    A.slider(side, { label: "Learning rate $\\eta$", min: 0.02, max: 0.3, step: 0.01, value: S.eta, fmt: function (v) { return fmt(v, 2); },
+                     onInput: function (v) { S.eta = v; pl.restart(); } });
+    var ro = A.readout(side, [["it", "iteration (epoch)"], ["wb", "$(w, b)$"], ["gw", "<code>w.grad</code>"], ["gb", "<code>b.grad</code>"],
+                              ["gn", "|<code>p.grad</code>|"], ["bl", "batch loss"], ["tl", "training loss, all 24"], ["ref", "correct run's loss"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "in this batch" }, { shape: "circle", cls: "pt c0 hollow", label: "not in this batch" },
+                    { line: "line", label: "the model's line" }, { line: "line ok dash", label: "correct run (with zero_grad)" },
+                    { line: "line acc", label: "this run's training loss" }]);
+    var say = A.narrate("#lp-say");
+
+    function reset() {
+      st = { t: 0, line: 0, w: 0, b: 0, gw: 0, gb: 0, out: false, loss: null, graph: false, did: null,
+             ref: { w: 0, b: 0 }, hist: [fullLoss(0, 0)], refHist: [fullLoss(0, 0)] };
+    }
+    function runLine() {
+      var idx = batch(st.t), g;
+      switch (st.line) {
+        case 0:
+          if (!S.skip) { st.gw = 0; st.gb = 0; st.did = "zero"; } else st.did = "skipped";
+          break;
+        case 1: st.out = true; st.graph = true; st.did = "forward"; break;
+        case 2: st.loss = batchGrad(st.w, st.b, idx).loss; st.did = "loss"; break;
+        case 3:
+          g = batchGrad(st.w, st.b, idx);
+          st.last = { gw: g.gw, gb: g.gb };
+          st.gw += g.gw; st.gb += g.gb; st.graph = false; st.did = "backward";
+          break;
+        case 4:
+          st.w -= S.eta * st.gw; st.b -= S.eta * st.gb; st.did = "step";
+          // The correct run takes the same batch, with its gradient cleared first.
+          var gr = batchGrad(st.ref.w, st.ref.b, idx);
+          st.ref.w -= S.eta * gr.gw; st.ref.b -= S.eta * gr.gb;
+          st.hist.push(fullLoss(st.w, st.b)); st.refHist.push(fullLoss(st.ref.w, st.ref.b));
+          st.t++; st.out = false; st.loss = null;
+          break;
+      }
+      st.line = (st.line + 1) % 5;
+    }
+    function step() {
+      if (S.unit === "iter") { do runLine(); while (st.line !== 0); }
+      else runLine();
+      if (!isFinite(st.w) || Math.abs(st.w) > 1e6) { st.blown = true; return false; }
+      return st.t < 400;
+    }
+
+    function render() {
+      var idx = batch(st.t), inB = {};
+      idx.forEach(function (i) { inB[i] = true; });
+      pD.clear();
+      if (S.skip) pD.path([[-1.1, st.ref.b - 1.1 * st.ref.w], [1.1, st.ref.b + 1.1 * st.ref.w]], "line ok dash thin");
+      pD.path([[-1.1, st.b - 1.1 * st.w], [1.1, st.b + 1.1 * st.w]], "line");
+      X.forEach(function (x, i) { pD.dot(x, Y[i], { r: inB[i] ? 5 : 3.8, cls: "pt c0" + (inB[i] ? "" : " hollow") }); });
+      if (st.out) idx.forEach(function (i) { pD.line(X[i], Y[i], X[i], st.w * X[i] + st.b, "resid"); });
+
+      // The loop as code: five lines, the next one highlighted, and an arrow
+      // from the last back to the first.
+      C.clear();
+      var g = C.g, x0 = 40, top = 48, gap = 46;
+      C.text(20, 28, "for xb, yb in train_loader:", "lbl mono");
+      LINES.forEach(function (L, k) {
+        var y = top + k * gap, skipped = k === 0 && S.skip;
+        A.el("rect", { x: x0, y: y, width: 300, height: 32, rx: 5,
+                       class: "box" + (k === st.line ? (skipped ? " hot" : " on") : "") }, g);
+        C.text(x0 + 12, y + 21, L, "lbl mono");
+        C.text(x0 + 290, y + 21, String(k + 1), "lbl-sm", "end");
+        if (skipped) A.el("line", { x1: x0 + 8, x2: x0 + 170, y1: y + 16, y2: y + 16, class: "line thin acc" }, g);
+        if (k === st.line) C.arrow(x0 - 30, y + 16, x0 - 4, y + 16, skipped ? "line acc" : "line", 7);
+      });
+      var yb = top + 4 * gap + 16;
+      A.el("path", { d: "M" + (x0 + 300) + "," + yb + " H" + (x0 + 330) + " V" + (top + 16) + " H" + (x0 + 308),
+                     class: "line thin muted" }, g);
+      C.arrow(x0 + 316, top + 16, x0 + 302, top + 16, "line thin muted", 6);
+      C.text(x0 + 336, (top + yb) / 2, "next batch", "lbl-sm");
+      var y2 = top + 5 * gap + 22;
+      C.text(x0, y2, "w.grad = " + fmt(st.gw, 3) + "    b.grad = " + fmt(st.gb, 3), "lbl mono");
+      C.text(x0, y2 + 22, st.graph ? "graph: recorded, waiting for backward()" : "graph: none", "lbl-sm");
+
+      curve.draw([{ values: st.hist, cls: "line acc" }].concat(S.skip ? [{ values: st.refHist, cls: "line ok" }] : []),
+                 [{ y: fullLoss.apply(null, lsq()), label: "least-squares minimum" }]);
+
+      var gn = Math.hypot(st.gw, st.gb), tl = st.hist[st.hist.length - 1], rl = st.refHist[st.refHist.length - 1];
+      ro.set("it", st.t + " (" + (Math.floor(st.t / NB) + 1) + ")");
+      ro.set("wb", "(" + fmt(st.w, 3) + ", " + fmt(st.b, 3) + ")");
+      ro.set("gw", fmt(st.gw, 3));
+      ro.set("gb", fmt(st.gb, 3));
+      ro.set("gn", fmt(gn, 3));
+      ro.set("bl", st.loss === null ? "—" : fmt(st.loss, 4));
+      ro.set("tl", sig(tl, 3), S.skip && tl > 2 * rl ? "bad" : "");
+      ro.set("ref", sig(rl, 3), "good");
+
+      var msg, d = st.did;
+      if (st.blown) msg = "<span class='k'>Blown up.</span> The accumulated gradient has driven the parameters past " + K("10^6") + ". Still no exception.";
+      else if (!d) msg = "<span class='k'>Start.</span> " + K("w = b = 0") + ", and <code>p.grad</code> is zero. Training loss " + sig(tl, 3) +
+                         ". The highlighted box is the line that runs next: press <em>Step</em>.";
+      else if (d === "zero") msg = "<span class='k'>opt.zero_grad().</span> <code>p.grad</code> is cleared to 0, so the coming <code>backward()</code> leaves this batch's gradient alone in it.";
+      else if (d === "skipped") msg = "<span class='k'>opt.zero_grad() — deleted.</span> Nothing happens: <code>p.grad</code> still holds " +
+                                      K("(" + fmt(st.gw, 3) + ",\\ " + fmt(st.gb, 3) + ")") + ", the sum of every gradient so far.";
+      else if (d === "forward") msg = "<span class='k'>Forward.</span> The model computes " + K("\\hat y = wx + b") + " for the " + B +
+                                      " filled points (red: residuals), and autograd records the graph as it goes.";
+      else if (d === "loss") msg = "<span class='k'>Loss.</span> The " + B + " residuals are reduced to one number, the batch MSE " +
+                                   K("\\ell = " + fmt(st.loss, 4)) + " — one output, so one reverse sweep will do.";
+      else if (d === "backward") msg = "<span class='k'>Backward.</span> The reverse sweep gives this batch's gradient " +
+                                       K("(" + fmt(st.last.gw, 3) + ",\\ " + fmt(st.last.gb, 3) + ")") + " and <strong>adds</strong> it to <code>p.grad</code>, which is now " +
+                                       K("(" + fmt(st.gw, 3) + ",\\ " + fmt(st.gb, 3) + ")") + (S.skip && st.t > 0 ? " — not this batch's gradient at all." : ".") +
+                                       " The graph is freed.";
+      else msg = "<span class='k'>opt.step(), iteration " + st.t + ".</span> " + K("(w, b) \\leftarrow (w, b) - " + fmt(S.eta, 2) + "\\,\\texttt{p.grad}") +
+                 " = " + K("(" + fmt(st.w, 3) + ",\\ " + fmt(st.b, 3) + ")") + ". Training loss on all 24 points " + sig(tl, 3) +
+                 (S.skip ? "; the correct run is at " + sig(rl, 3) + "." : ".");
+      say.say(msg);
+    }
+    function lsq() {
+      var mx = A.mean(X), my = A.mean(Y), sxy = 0, sxx = 0;
+      for (var i = 0; i < m; i++) { sxy += (X[i] - mx) * (Y[i] - my); sxx += (X[i] - mx) * (X[i] - mx); }
+      var w = sxy / sxx; return [w, my - w * mx];
+    }
+
+    pl = A.player("#lp-bar", { step: step, reset: reset, render: render, fps: 4, unit: "step" });
+  })();
+})();
+</script>
+</body>
+</html>

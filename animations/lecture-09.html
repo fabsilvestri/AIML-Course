@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 9 · Neural networks — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 9 of Applications of Machine Learning: what one layer does to the plane.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-09.html">Lecture 9 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 9 · Animations</p>
+  <h1>Neural networks</h1>
+  <p>Today's lecture is one idea repeated: an affine map followed by a
+  non-linearity. Here is a single layer taken apart into its operations.
+  Press <strong>Step</strong> to advance one operation and read what happened; press <strong>Play</strong> to let it run.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#layer">1 · What one layer does to the plane</a></li>
+  </ul>
+</div>
+
+
+
+<!-- ======================================================================
+     1 · One layer
+     ====================================================================== -->
+<section class="anim" id="layer">
+  <h2><span class="num">1</span>What one layer does to the plane</h2>
+  <p class="lede">A layer $\mathbf{H} = \phi(\mathbf{X}\mathbf{W} + \mathbf{b})$
+  with two inputs and two units, applied to a grid of the plane and to a
+  mini-batch of four points (the rows of $\mathbf{X}$). Each Step performs one
+  operation: the matrix product, then the bias, then the activation. The faint
+  grid is the previous stage. Below, the same four rows as numbers, with every
+  shape written out.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="ly-plots"></div>
+      <div id="ly-mat"></div>
+      <div class="narrate" id="ly-say"></div>
+      <div class="toolbar" id="ly-bar"></div>
+    </div>
+    <aside class="side" id="ly-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The deck's layer, for a mini-batch of $m$ rows:</p>
+      $$\underbrace{\mathbf{X}}_{m\times d}\,\underbrace{\mathbf{W}}_{d\times n} + \underbrace{\mathbf{b}}_{1\times n}
+        \;=\; \underbrace{\mathbf{Z}}_{m\times n},$$
+      $$\mathbf{H} = \phi(\mathbf{Z})\quad (m\times n),$$
+      <p>with $\mathbf{b}$ added to every row (broadcast) and $\phi$ applied
+      entry by entry. Here $m = 4$, $d = n = 2$. The map
+      $\mathbf{x}^{\mathsf T} \mapsto \mathbf{x}^{\mathsf T}\mathbf{W} + \mathbf{b}$
+      is affine, and an affine map sends straight lines to straight lines and
+      parallel lines to parallel lines (the image of $\mathbf{p} + t\mathbf{v}$
+      is $\mathbf{p}'+ t\,\mathbf{v}'$). Only $\phi$ can bend.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>After the product and after the bias the grid is still made of
+        straight, parallel, equally spaced lines: squares become
+        parallelograms, nothing more.</li>
+        <li>The activation is where the picture changes character: tanh and
+        sigmoid squash the far grid lines together into a bounded square;
+        ReLU flattens every point with a negative coordinate onto an axis,
+        folding the grid.</li>
+        <li>The shape strip never changes: $(4\times 2)(2\times 2) + (1\times 2)
+        \to (4\times 2)$, and $\phi$ keeps it $(4\times 2)$.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>With ReLU, step to the end and count the points with a zero in
+        their row of $\mathbf{H}$: they all sit
+        on an axis of the plot.</li>
+        <li>Choose the singular $\mathbf{W}$: after the product the whole plane
+        lies on one line, and no later step can recover what was lost.</li>
+        <li>Choose <em>identity</em>: the last step changes nothing, which is
+        why a stack of such layers is one affine map.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 9 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  var ACT = {
+    relu:     { f: function (z) { return z > 0 ? z : 0; },  d: function (z) { return z > 0 ? 1 : 0; }, tex: "\\mathrm{ReLU}" },
+    tanh:     { f: Math.tanh, d: function (z) { var t = Math.tanh(z); return 1 - t * t; }, tex: "\\tanh" },
+    sigmoid:  { f: A.sigmoid, d: function (z) { var s = A.sigmoid(z); return s * (1 - s); }, tex: "\\sigma" },
+    identity: { f: function (z) { return z; }, d: function () { return 1; }, tex: "\\mathrm{id}" }
+  };
+  var ACT_OPTIONS = [["relu", "ReLU"], ["tanh", "tanh"], ["sigmoid", "sigmoid"], ["identity", "identity"]];
+
+
+
+  /* ======================================================================
+     1 · One layer, one operation at a time
+     ====================================================================== */
+  (function () {
+    var WS = {
+      mix:      { W: [[1.2, -0.5], [0.6, 1.0]], label: "rotate and stretch" },
+      shear:    { W: [[1.0, 0.0], [0.9, 1.0]], label: "shear" },
+      singular: { W: [[0.8, 0.4], [1.6, 0.8]], label: "singular (rank 1)" }
+    };
+    var X = [[1.5, 0.5], [-1.0, 1.5], [-1.5, -1.0], [0.5, -1.5]];
+    var S = { W: "mix", act: "relu", b: [0.5, -0.5] }, st, pl;
+    var STAGES = ["X", "XW", "XW + b", "φ(XW + b)"];
+
+    function apply(x, stage) {
+      var W = WS[S.W].W, f = ACT[S.act].f;
+      if (stage === 0) return x.slice();
+      var z = [x[0] * W[0][0] + x[1] * W[1][0], x[0] * W[0][1] + x[1] * W[1][1]];
+      if (stage === 1) return z;
+      z = [z[0] + S.b[0], z[1] + S.b[1]];
+      if (stage === 2) return z;
+      return [f(z[0]), f(z[1])];
+    }
+
+    var plots = A.$("#ly-plots");
+    var pP = A.plot(plots, { x: [-5, 5], y: [-5, 5], w: 620, h: 480, equal: true, xlabel: "first coordinate",
+                             ylabel: "second coordinate", zero: true, caption: "The grid of the plane, and the four rows of X, after the current stage" });
+    // The matrix strip: one small SVG per matrix, in a row that wraps on a
+    // narrow screen so the numbers stay legible.
+    var fig = A.h("figure", null, A.$("#ly-mat"));
+    var strip = A.h("div", { style: "display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:0.2rem 0.45rem" }, fig);
+    A.h("figcaption", { text: "b is added to every row (broadcast); φ acts entry by entry, so it changes no shape" }, fig);
+    function cell(cols, rows) {
+      var w = cols * 46 + 12, h = rows * 24 + 30, c = A.canvas(strip, { w: w, h: h });
+      c.svg.style.width = w + "px"; c.svg.style.flex = "0 0 auto";
+      return c;
+    }
+    function op(t) { A.h("span", { text: t, style: "font-size:1.1rem" }, strip); }
+    var cX = cell(2, 4); op("·"); var cW = cell(2, 2); op("+"); var cB = cell(2, 1); op("=");
+    var cZ = cell(2, 4); op("φ →"); var cH = cell(2, 4);
+
+    var side = A.$("#ly-side");
+    A.select(side, { label: "Weights $\\mathbf W$", value: S.W,
+                     options: Object.keys(WS).map(function (k) { return [k, WS[k].label]; }),
+                     onChange: function (v) { S.W = v; pl.restart(); } });
+    A.slider(side, { label: "Bias $b_1$", min: -1.5, max: 1.5, step: 0.1, value: S.b[0], fmt: function (v) { return fmt(v, 1); },
+                     onInput: function (v) { S.b[0] = v; render(); } });
+    A.slider(side, { label: "Bias $b_2$", min: -1.5, max: 1.5, step: 0.1, value: S.b[1], fmt: function (v) { return fmt(v, 1); },
+                     onInput: function (v) { S.b[1] = v; render(); } });
+    A.seg(side, { label: "Activation $\\phi$", value: S.act, options: ACT_OPTIONS,
+                  onChange: function (v) { S.act = v; render(); } });
+    var ro = A.readout(side, [["st", "stage"], ["shape", "shape of the result"], ["det", "$\\det\\mathbf W$"],
+                              ["zero", "zeros in $\\mathbf H$"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "row 1" }, { shape: "tri", cls: "pt c1", label: "row 2" },
+                    { shape: "sq", cls: "pt c2", label: "row 3" }, { shape: "diamond", cls: "pt c3", label: "row 4" },
+                    { line: "line thin", label: "grid, this stage" }, { line: "line thin muted", label: "grid, previous stage" }]);
+    var say = A.narrate("#ly-say");
+
+    function reset() { st = { stage: 0 }; }
+    function step() { st.stage++; return st.stage < 3; }
+
+    function grid(stage, cls, op) {
+      var ticks = A.linspace(-2, 2, 9), ss = A.linspace(-2, 2, 41);
+      ticks.forEach(function (c) {
+        pP.path(ss.map(function (s) { return apply([c, s], stage); }), cls, "data", { opacity: op });
+        pP.path(ss.map(function (s) { return apply([s, c], stage); }), cls, "data", { opacity: op });
+      });
+    }
+
+    function matrix(c, M, title, on, d) {
+      var x0 = 6, y0 = 24, cw = 46, rh = 24, rows = M.length, cols = M[0].length;
+      c.clear();
+      c.el("rect", { x: x0 - 4, y: y0 - 4, width: cols * cw + 8, height: rows * rh + 4, rx: 4, class: "box" + (on ? " on" : "") });
+      M.forEach(function (r, i) { r.forEach(function (v, j) {
+        c.text(x0 + j * cw + cw - 6, y0 + i * rh + 15, fmt(v, d === undefined ? 2 : d), "lbl mono", "end");
+      }); });
+      c.text(x0 + cols * cw / 2, 12, title, "lbl-sm", "middle");
+    }
+
+    function render() {
+      var s = st.stage, W = WS[S.W].W;
+      pP.clear();
+      if (s > 0) grid(s - 1, "line thin muted", 0.45);
+      grid(s, "line thin", 0.8);
+      X.forEach(function (x, i) {
+        var p = apply(x, s);
+        pP.dot(p[0], p[1], { r: 6, shape: A.SHAPES[i], cls: "pt c" + i, layer: "over" });
+      });
+
+      // The matrix strip: X W + b → Z → H, with shapes.
+      var Z = X.map(function (x) { return apply(x, 2); }), H = X.map(function (x) { return apply(x, 3); });
+      var XW = X.map(function (x) { return apply(x, 1); }), blank = X.map(function () { return [NaN, NaN]; });
+      matrix(cX, X, "X (4×2)", s === 0, 1);
+      matrix(cW, W, "W (2×2)", s === 1, 1);
+      matrix(cB, [S.b], "b (1×2)", s === 2, 1);
+      matrix(cZ, s >= 1 ? (s === 1 ? XW : Z) : blank, s === 1 ? "XW (4×2)" : "Z (4×2)", s === 1 || s === 2);
+      matrix(cH, s >= 3 ? H : blank, "H = φ(Z) (4×2)", s === 3);
+
+      var zeros = 0;
+      H.forEach(function (r) { r.forEach(function (v) { if (v === 0) zeros++; }); });
+      ro.set("st", (s + 1) + " of 4: " + STAGES[s]);
+      ro.set("shape", "(4×2)");
+      ro.set("det", fmt(W[0][0] * W[1][1] - W[0][1] * W[1][0], 2), Math.abs(W[0][0] * W[1][1] - W[0][1] * W[1][0]) < 1e-9 ? "bad" : "");
+      ro.set("zero", s === 3 ? String(zeros) : "—");
+
+      var msgs = [
+        "<span class='k'>Stage 1: X.</span> The input grid, " + K("[-2, 2]^2") + ", and four points as the rows of a " + K("4\\times 2") +
+          " matrix. Press <em>Step</em> to multiply by " + K("\\mathbf W") + ".",
+        "<span class='k'>Stage 2: XW.</span> " + K("(4\\times 2)(2\\times 2) \\to (4\\times 2)") + ". Every row is mapped by the same linear map; the grid's squares become " +
+          (Math.abs(W[0][0] * W[1][1] - W[0][1] * W[1][0]) < 1e-9 ? "segments of a single line — " + K("\\det\\mathbf W = 0") + ", so one direction is lost for good."
+                                                                  : "parallelograms of area " + K("|\\det \\mathbf W| = " + fmt(Math.abs(W[0][0] * W[1][1] - W[0][1] * W[1][0]), 2)) + " times the original."),
+        "<span class='k'>Stage 3: XW + b.</span> " + K("\\mathbf b = (" + fmt(S.b[0], 1) + ",\\ " + fmt(S.b[1], 1) + ")") +
+          " is added to all four rows. A translation: nothing bends, nothing changes size. Next, " + K("\\phi") + ".",
+        "<span class='k'>Stage 4: φ(XW + b).</span> " + K("\\phi = " + ACT[S.act].tex) + " applied to each of the 8 entries. " +
+          (S.act === "relu" ? "Every negative entry became 0 (" + zeros + " of 8 here): those points now sit on an axis, and the grid is folded."
+           : S.act === "identity" ? "Nothing changed: without a non-linearity the layer is the affine map of stage 3."
+           : "Large entries are squashed towards the limits of " + K(ACT[S.act].tex) + ", so the outer grid lines crowd together and bend.")
+      ];
+      say.say(msgs[s]);
+    }
+
+    pl = A.player("#ly-bar", { step: step, reset: reset, render: render, fps: 1, unit: "operation", max: 3 });
+  })();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 13 · Transfer learning — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 13 of Applications of Machine Learning: a frozen backbone against training from scratch, and differential learning rates.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-13.html">Lecture 13 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 13 · Animations</p>
+  <h1>Transfer learning</h1>
+  <p>Two toys for two of today's decisions: whether to train from scratch or
+  probe a pretrained backbone, and how fast to let pretrained weights move.
+  They are toys. The networks are small, the inputs are points in the plane,
+  and the "pretrained" backbone was
+  trained a moment ago, in your browser, on a related synthetic task. They show
+  the <em>mechanism</em> the lecture measured on Flowers102, not its numbers.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#probe">1 · A frozen backbone against training from scratch</a></li>
+    <li><a href="#finetune">2 · Unfreezing, and how fast</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Probe against scratch
+     ====================================================================== -->
+<section class="anim" id="probe">
+  <h2><span class="num">1</span>A frozen backbone against training from scratch</h2>
+  <p class="lede">The new task has three classes: which of three rings a point
+  lies in. There are only four labelled points per class (the large markers).
+  On the left, a linear head trained on the features of a frozen backbone.
+  That backbone, a $2\to 32\to 8$ ReLU network, was pretrained on 600 labelled
+  points of a different, 12-class task. On the right, the same architecture
+  trained from scratch on the same twelve points. Shading is each model's
+  predicted class; dashed circles are the true boundaries. Each step is one
+  epoch for both.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="pr-plots"></div>
+      <div id="pr-curve"></div>
+      <div class="narrate" id="pr-say"></div>
+      <div class="toolbar" id="pr-bar"></div>
+    </div>
+    <aside class="side" id="pr-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The backbone maps a point to features
+      $\mathbf h(\mathbf x) = \operatorname{ReLU}\bigl(W_2\operatorname{ReLU}(W_1\mathbf x + \mathbf b_1) + \mathbf b_2\bigr) \in \mathbb R^8$.
+      The probe fits only the head, scores $\mathbf t = V\mathbf h(\mathbf x) + \mathbf c$
+      and softmax, by minimising the cross-entropy on the labelled points.
+      The trainable parameters are</p>
+      $$\begin{aligned}\text{probe:}\quad & 8\cdot 3 + 3 = 27,\\ \text{scratch:}\quad & (2\cdot 32 + 32) + (32\cdot 8 + 8) + 27 = 387.\end{aligned}$$
+      <p>With $W_1, W_2$ frozen, $\mathbf h(\mathbf x)$ never changes, so it is
+      computed once per point. The probe is then softmax regression on a
+      table, and its loss is convex in $(V, \mathbf c)$. Both models use Adam
+      with $\eta = 0.05$ on full batches. The pretraining task is "which ring
+      and which quadrant", 12 classes. Its alternative, "which of 8 angular
+      sectors", never needs the distance from the centre.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The probe's regions are rings within a few dozen epochs, and its test
+        accuracy ends near 90%. The backbone already separates points by
+        radius, because its own task needed that, so twelve labels only have to
+        say which ring is which.</li>
+        <li>From scratch, training accuracy reaches 100% while test accuracy
+        stays near 50%. Twelve points pin down 387 parameters badly: the
+        boundaries pass the training points and wander everywhere else. That is
+        variance, in the sense of Lecture 5.</li>
+        <li>The probe never runs the backbone again. Its epochs cost a
+        $3\times 8$ product per point.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Switch the backbone to one pretrained on <em>angular sectors</em>.
+        Its features describe direction and discard distance, and the probe
+        falls to about 40%, below training from scratch. This is the lecture's
+        "when transfer fails": the probe tells you so in seconds.</li>
+        <li>Raise the labels to 32 per class. From scratch now reaches about
+        90%, close to the probe. Transfer pays most where labels are scarce.</li>
+        <li>Drop to 2 labels per class. Both models suffer, the probe less.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · Fine-tuning and differential learning rates
+     ====================================================================== -->
+<section class="anim" id="finetune">
+  <h2><span class="num">2</span>Unfreezing, and how fast</h2>
+  <p class="lede">The backbone from the first widget, now unfrozen, on the same
+  twelve labels. Three runs start from the same pretrained weights and the same
+  fresh head. The first keeps the backbone frozen. The second lets it move at a
+  tenth of the head's learning rate. The third lets it move at the head's own
+  rate. On the left, the regions of the run you choose. On the right, test
+  accuracy on the new task. Below, how well each backbone can still do the
+  <em>old</em> task, read through the old head kept aside.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="ft-plots"></div>
+      <div id="ft-curve"></div>
+      <div class="narrate" id="ft-say"></div>
+      <div class="toolbar" id="ft-bar"></div>
+    </div>
+    <aside class="side" id="ft-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>One optimiser, two parameter groups: the head moves with
+      $\eta_{\text{head}} = 0.05$ and the backbone with $\eta_{\text{body}}$,
+      which is $0$, $0.005$ or $0.05$. That is all a differential learning rate
+      is. How far the backbone has moved is measured as in Lecture 11:</p>
+      $$\text{drift} = \frac{\lVert W - W^{(0)}\rVert}{\lVert W^{(0)}\rVert},$$
+      <p>over both backbone weight matrices together. The old-task accuracy
+      runs the current backbone under the old 12-class head, which nobody
+      trains any more, on the 600 points it was pretrained on. While the
+      backbone is frozen, that accuracy cannot change.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>At the head's rate, the backbone drifts by more than half its own
+        size. Its old-task accuracy collapses, from about 100% to below 40%. The
+        features it came with have been overwritten, and its new-task accuracy
+        ends near 70%, well below the frozen run.</li>
+        <li>At a tenth of the rate, the drift stays near 5%, the old task
+        survives at close to 90%, and the new-task accuracy ends within two
+        points of the frozen run. It gets there sooner, but it does not end
+        higher.</li>
+        <li>By the end, nothing beats the frozen backbone. With four labels per
+        class that is the lecture's first row: probe only, because fine-tuning
+        has little left to buy and something to lose.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Show the <em>same rate</em> run's regions while it plays, and watch
+        the rings deform as the backbone bends its features towards twelve
+        points. Then replay with <em>rate ÷ 10</em>, whose rings hold.</li>
+        <li>Read the drift column at the end. The ranking of new-task accuracy
+        follows it in reverse.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 13 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  /* ======================================================================
+     Shared: points in a disk, the tasks, and a small ReLU network with Adam
+     ====================================================================== */
+  var RMAX = 3, R1 = 1.2, R2 = 2.2;
+  function sampleDisk(R, m) {
+    var pts = [];
+    while (pts.length < m) {
+      var x = [R.uniform(-RMAX, RMAX), R.uniform(-RMAX, RMAX)];
+      if (Math.hypot(x[0], x[1]) <= RMAX) pts.push(x);
+    }
+    return pts;
+  }
+  function ring(x) { var r = Math.hypot(x[0], x[1]); return r < R1 ? 0 : r < R2 ? 1 : 2; }
+  function quad(x) { return (x[0] >= 0 ? 0 : 1) + (x[1] >= 0 ? 0 : 2); }
+  function sector(x, n) { return Math.floor(((Math.atan2(x[1], x[0]) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI / n)); }
+  var SOURCES = {
+    rq:  { K: 12, f: function (x) { return ring(x) * 4 + quad(x); }, name: "rings × quadrants" },
+    sec: { K: 8,  f: function (x) { return sector(x, 8); }, name: "8 angular sectors" }
+  };
+  var TARGET = { K: 3, f: ring };
+
+  // A layer: W (nout × nin, row-major), b; He initialisation before a ReLU.
+  function layer(R, nin, nout, relu) {
+    var W = new Float64Array(nout * nin), sd = Math.sqrt((relu ? 2 : 1) / nin);
+    for (var i = 0; i < nout * nin; i++) W[i] = R.n(0, sd);
+    return { nin: nin, nout: nout, W: W, b: new Float64Array(nout), relu: relu };
+  }
+  function makeNet(R, sizes, K) {
+    var L = [];
+    for (var i = 0; i + 1 < sizes.length; i++) L.push(layer(R, sizes[i], sizes[i + 1], true));
+    L.push(layer(R, sizes[sizes.length - 1], K, false));
+    return L;
+  }
+  function cloneLayer(l) { return { nin: l.nin, nout: l.nout, W: new Float64Array(l.W), b: new Float64Array(l.b), relu: l.relu }; }
+  function forward(L, x, from) {
+    var hs = [x], zs = [], h = x;
+    for (var li = from || 0; li < L.length; li++) {
+      var l = L[li], z = new Float64Array(l.nout), hn = new Float64Array(l.nout);
+      for (var i = 0; i < l.nout; i++) {
+        var s = l.b[i], o = i * l.nin;
+        for (var j = 0; j < l.nin; j++) s += l.W[o + j] * h[j];
+        z[i] = s; hn[i] = l.relu ? (s > 0 ? s : 0) : s;
+      }
+      zs.push(z); hs.push(hn); h = hn;
+    }
+    return { hs: hs, zs: zs, out: h };
+  }
+  function predict(L, x) { return A.argmax(Array.prototype.slice.call(forward(L, x).out)); }
+  function accuracy(L, X, Y) { var s = 0; for (var i = 0; i < X.length; i++) if (predict(L, X[i]) === Y[i]) s++; return s / X.length; }
+  function adam(L) {
+    return { t: 0, m: L.map(function (l) { return { W: new Float64Array(l.W.length), b: new Float64Array(l.b.length) }; }),
+             v: L.map(function (l) { return { W: new Float64Array(l.W.length), b: new Float64Array(l.b.length) }; }) };
+  }
+  // One full-batch Adam step on the cross-entropy; lrs[i] = 0 freezes layer i.
+  function trainStep(L, O, X, Y, lrs) {
+    var m = X.length, G = L.map(function (l) { return { W: new Float64Array(l.W.length), b: new Float64Array(l.b.length) }; });
+    var lowest = 0; while (lrs[lowest] === 0) lowest++;
+    var loss = 0;
+    for (var n = 0; n < m; n++) {
+      var f = forward(L, X[n]), p = A.softmax(Array.prototype.slice.call(f.out));
+      loss -= Math.log(Math.max(p[Y[n]], 1e-300));
+      var d = p.map(function (q, k) { return (q - (k === Y[n] ? 1 : 0)) / m; });
+      for (var li = L.length - 1; li >= lowest; li--) {
+        var l = L[li], h = f.hs[li], g = G[li];
+        if (l.relu) d = d.map(function (v, i) { return f.zs[li][i] > 0 ? v : 0; });
+        for (var i = 0; i < l.nout; i++) {
+          if (!d[i]) continue;
+          g.b[i] += d[i];
+          var o = i * l.nin;
+          for (var j = 0; j < l.nin; j++) g.W[o + j] += d[i] * h[j];
+        }
+        if (li > lowest) {
+          var nd = new Array(l.nin).fill(0);
+          for (i = 0; i < l.nout; i++) {
+            if (!d[i]) continue;
+            o = i * l.nin;
+            for (j = 0; j < l.nin; j++) nd[j] += l.W[o + j] * d[i];
+          }
+          d = nd;
+        }
+      }
+    }
+    O.t++;
+    var c1 = 1 - Math.pow(0.9, O.t), c2 = 1 - Math.pow(0.999, O.t);
+    L.forEach(function (l, li) {
+      var lr = lrs[li];
+      if (!lr) return;
+      ["W", "b"].forEach(function (key) {
+        var P = l[key], M = O.m[li][key], V = O.v[li][key], g = G[li][key];
+        for (var i = 0; i < P.length; i++) {
+          M[i] = 0.9 * M[i] + 0.1 * g[i];
+          V[i] = 0.999 * V[i] + 0.001 * g[i] * g[i];
+          P[i] -= lr * (M[i] / c1) / (Math.sqrt(V[i] / c2) + 1e-8);
+        }
+      });
+    });
+    return loss / m;
+  }
+
+  // Pretraining, done once per source task and cached.
+  var PRE = {};
+  function pretrained(key) {
+    if (PRE[key]) return PRE[key];
+    var src = SOURCES[key], X = sampleDisk(A.rng(1), 600), Y = X.map(src.f);
+    var net = makeNet(A.rng(2), [2, 32, 8], src.K), O = adam(net);
+    for (var s = 0; s < 400; s++) trainStep(net, O, X, Y, [0.01, 0.01, 0.01]);
+    PRE[key] = { net: net, X: X, Y: Y, acc: accuracy(net, X, Y) };
+    return PRE[key];
+  }
+  function fewLabels(per) {
+    var pool = sampleDisk(A.rng(3), 5000), X = [], Y = [], cnt = [0, 0, 0];
+    pool.forEach(function (x) { var y = TARGET.f(x); if (cnt[y] < per) { cnt[y]++; X.push(x); Y.push(y); } });
+    return { X: X, Y: Y };
+  }
+  var TEST = (function () { var X = sampleDisk(A.rng(4), 800); return { X: X, Y: X.map(TARGET.f) }; })();
+  function freshHead() { return makeNet(A.rng(5), [8], TARGET.K)[0]; }
+
+  // Shading of a plane by a 3-class classifier, and the true ring boundaries.
+  function regionPlot(host, caption) {
+    var p = A.plot(host, { x: [-3.2, 3.2], y: [-3.2, 3.2], w: 400, h: 380, equal: true, xlabel: "x₁", ylabel: "x₂", caption: caption });
+    [R1, R2].forEach(function (r) {
+      p.path(A.linspace(0, 2 * Math.PI, 121).map(function (t) { return [r * Math.cos(t), r * Math.sin(t)]; }), "line ok dash thin", "grid");
+    });
+    return p;
+  }
+  function shadeBy(p, cls) {
+    var cs = [A.rgb("c0"), A.rgb("c1"), A.rgb("c2")];
+    p.field(function (a, b) {
+      if (Math.hypot(a, b) > RMAX) return [0, 0, 0, 0];
+      var c = cs[cls(a, b)]; return [c[0], c[1], c[2], 0.3];
+    }, { res: 64 });
+  }
+  function drawPoints(p, X, Y) {
+    X.forEach(function (x, i) { p.dot(x[0], x[1], { shape: A.SHAPES[Y[i]], cls: "pt c" + Y[i], r: 6 }); });
+  }
+
+  /* ======================================================================
+     1 · A frozen backbone against training from scratch
+     ====================================================================== */
+  (function () {
+    var S = { src: "rq", per: 4 }, st, pl, data, feats;
+    var plots = A.$("#pr-plots");
+    var pP = regionPlot(plots, "Frozen backbone + linear head (the probe)");
+    var pS = regionPlot(plots, "Same network, trained from scratch");
+    var curve = A.curve("#pr-curve", { y: [0, 1], ylabel: "accuracy", xlabel: "epoch", n: 50, yticks: [0, 0.25, 0.5, 0.75, 1],
+                                       yfmt: function (v) { return A.pct(v, 0); } });
+
+    var side = A.$("#pr-side");
+    A.seg(side, { label: "Backbone pretrained on", value: "rq", options: [["rq", "rings × quadrants"], ["sec", "angular sectors"]],
+                  onChange: function (v) { S.src = v; pl.restart(true); } });
+    A.seg(side, { label: "Labels per class", value: 4, options: [[2, "2"], [4, "4"], [8, "8"], [16, "16"], [32, "32"]],
+                  onChange: function (v) { S.per = v; pl.restart(true); } });
+    var ro = A.readout(side, [["ep", "epoch"], ["src", "backbone, own task"], ["n", "labelled points"],
+                              ["tp", "trainable: probe / scratch"], ["pa", "probe: train / test"], ["sa", "scratch: train / test"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "inner ring" }, { shape: "tri", cls: "pt c1", label: "middle ring" },
+                    { shape: "sq", cls: "pt c2", label: "outer ring" }, { line: "line ok dash thin", label: "true boundary" },
+                    { line: "line teal", label: "probe, test" }, { line: "line gold", label: "scratch, test" },
+                    { line: "line gold dot", label: "scratch, train" }]);
+    var say = A.narrate("#pr-say");
+
+    // The backbone's features on a grid, computed once per backbone.
+    function featGrid(net) {
+      var body = net.slice(0, 2), cache = {};
+      return function (a, b) {
+        var k = a.toFixed(4) + "," + b.toFixed(4);
+        if (!cache[k]) cache[k] = forward(body, [a, b]).out;
+        return cache[k];
+      };
+    }
+
+    function reset() {
+      var pre = pretrained(S.src);
+      data = fewLabels(S.per);
+      feats = featGrid(pre.net);
+      var probe = pre.net.slice(0, 2).map(cloneLayer).concat([freshHead()]);
+      var scratch = makeNet(A.rng(5), [2, 32, 8], TARGET.K);
+      st = { ep: 0, probe: probe, scratch: scratch, Op: adam(probe), Os: adam(scratch), pre: pre,
+             hp: [accuracy(probe, TEST.X, TEST.Y)], hs: [accuracy(scratch, TEST.X, TEST.Y)],
+             ts: [accuracy(scratch, data.X, data.Y)] };
+    }
+    function step() {
+      trainStep(st.probe, st.Op, data.X, data.Y, [0, 0, 0.05]);
+      trainStep(st.scratch, st.Os, data.X, data.Y, [0.05, 0.05, 0.05]);
+      st.ep++;
+      st.hp.push(accuracy(st.probe, TEST.X, TEST.Y));
+      st.hs.push(accuracy(st.scratch, TEST.X, TEST.Y));
+      st.ts.push(accuracy(st.scratch, data.X, data.Y));
+      return st.ep < 200;
+    }
+    function render() {
+      var head = st.probe[2];
+      shadeBy(pP, function (a, b) { return A.argmax(Array.prototype.slice.call(forward([head], feats(a, b)).out)); });
+      shadeBy(pS, function (a, b) { return predict(st.scratch, [a, b]); });
+      pP.clear(); pS.clear();
+      drawPoints(pP, data.X, data.Y); drawPoints(pS, data.X, data.Y);
+      curve.draw([{ values: st.hp, cls: "line teal" }, { values: st.hs, cls: "line gold" }, { values: st.ts, cls: "line gold dot" }]);
+
+      var n = st.hp.length - 1, pa = st.hp[n], sa = st.hs[n], ptr = accuracy(st.probe, data.X, data.Y), str = st.ts[n];
+      ro.set("ep", String(st.ep));
+      ro.set("src", A.pct(st.pre.acc, 1));
+      ro.set("n", String(data.X.length));
+      ro.set("tp", "27 / 387");
+      ro.set("pa", A.pct(ptr, 0) + " / " + A.pct(pa, 1), pa > sa ? "good" : "");
+      ro.set("sa", A.pct(str, 0) + " / " + A.pct(sa, 1), sa > pa ? "good" : "");
+
+      if (st.ep === 0) {
+        say.say("<span class='k'>Start.</span> The backbone was pretrained on " + SOURCES[S.src].name + " and fits that task to " +
+                A.pct(st.pre.acc, 1) + ". The new task has " + data.X.length + " labelled points. Both heads are random, so both models " +
+                "start near chance, " + K("\\tfrac13") + ". Press <em>Play</em>.");
+      } else {
+        say.say("<span class='k'>Epoch " + st.ep + ".</span> Probe: " + A.pct(ptr, 0) + " of the training points, " + A.pct(pa, 1) +
+                " of 800 test points. From scratch: " + A.pct(str, 0) + " of the training points, " + A.pct(sa, 1) + " of the test points." +
+                (str === 1 && sa < 0.7 ? " Scratch has <strong>memorised</strong> its " + data.X.length + " points and still misclassifies most of the plane." : "") +
+                (S.src === "sec" && st.ep > 30 && pa < 0.6 ? " This backbone's features describe direction, not distance, and no head on top of them can bring the distance back." : ""));
+      }
+    }
+    pl = A.player("#pr-bar", { step: step, reset: reset, render: render, fps: 10, unit: "epoch" });
+    A.onTheme(function () { if (st) render(); });
+  })();
+
+  /* ======================================================================
+     2 · Unfreezing, and how fast
+     ====================================================================== */
+  (function () {
+    var RUNS = [
+      { k: "frozen", name: "frozen", lrs: [0, 0, 0.05], line: "line teal" },
+      { k: "diff", name: "a tenth of the rate", lrs: [0.005, 0.005, 0.05], line: "line" },
+      { k: "same", name: "the head's rate", lrs: [0.05, 0.05, 0.05], line: "line acc" }
+    ];
+    var S = { show: "same" }, st, pl, data = fewLabels(4);
+    var plots = A.$("#ft-plots");
+    var pR = regionPlot(plots, "Regions of the run shown");
+    var pA = A.plot(plots, { x: [0, 300], y: [0, 1], w: 400, h: 380, xlabel: "epoch", ylabel: "test accuracy, new task",
+                             yticks: [0, 0.25, 0.5, 0.75, 1], yfmt: function (v) { return A.pct(v, 0); },
+                             caption: "New task: test accuracy" });
+    var curve = A.curve("#ft-curve", { y: [0, 1], ylabel: "old task", xlabel: "epoch", n: 300, yticks: [0, 0.5, 1],
+                                       yfmt: function (v) { return A.pct(v, 0); },
+                                       caption: "Old task: the backbone under its old head, on its 600 pretraining points" });
+    var side = A.$("#ft-side");
+    A.seg(side, { label: "Regions shown for", value: "same", options: [["frozen", "frozen"], ["diff", "rate ÷ 10"], ["same", "same rate"]],
+                  onChange: function (v) { S.show = v; render(); } });
+    var ro = A.readout(side, [["ep", "epoch"]].concat(RUNS.map(function (r) { return [r.k, r.name]; })));
+    ro.set("ep", "0");
+    A.h("span", { class: "hint", html: "Each row: new-task test accuracy · old-task accuracy · drift." }, A.h("div", { class: "ctl" }, side));
+    A.legend(side, RUNS.map(function (r) { return { line: r.line, label: r.name }; })
+                    .concat([{ shape: "circle", cls: "pt c0", label: "inner ring" }, { shape: "tri", cls: "pt c1", label: "middle ring" },
+                             { shape: "sq", cls: "pt c2", label: "outer ring" }]));
+    var say = A.narrate("#ft-say");
+
+    function drift(net, pre) {
+      var s = 0, s0 = 0;
+      for (var li = 0; li < 2; li++) for (var i = 0; i < net[li].W.length; i++) {
+        var d = net[li].W[i] - pre[li].W[i]; s += d * d; s0 += pre[li].W[i] * pre[li].W[i];
+      }
+      return Math.sqrt(s / s0);
+    }
+    function oldAcc(net, pre) { return accuracy([net[0], net[1], pre.net[2]], pre.X, pre.Y); }
+
+    function reset() {
+      var pre = pretrained("rq");
+      st = { ep: 0, pre: pre, runs: {} };
+      RUNS.forEach(function (r) {
+        var net = pre.net.slice(0, 2).map(cloneLayer).concat([freshHead()]);
+        st.runs[r.k] = { net: net, O: adam(net), te: [accuracy(net, TEST.X, TEST.Y)], old: [pre.acc], drift: 0 };
+      });
+    }
+    function step() {
+      RUNS.forEach(function (r) {
+        var R = st.runs[r.k];
+        trainStep(R.net, R.O, data.X, data.Y, r.lrs);
+        R.te.push(accuracy(R.net, TEST.X, TEST.Y));
+        R.old.push(r.k === "frozen" ? st.pre.acc : oldAcc(R.net, st.pre));
+        R.drift = drift(R.net, st.pre.net);
+      });
+      st.ep++;
+      return st.ep < 300;
+    }
+    function render() {
+      var R = st.runs[S.show];
+      shadeBy(pR, function (a, b) { return predict(R.net, [a, b]); });
+      pR.clear();
+      drawPoints(pR, data.X, data.Y);
+      pA.clear();
+      RUNS.forEach(function (r) { pA.path(st.runs[r.k].te.map(function (v, i) { return [i, v]; }), r.line); });
+      curve.draw(RUNS.map(function (r) { return { values: st.runs[r.k].old, cls: r.line }; }));
+
+      ro.set("ep", String(st.ep));
+      RUNS.forEach(function (r) {
+        var q = st.runs[r.k];
+        ro.set(r.k, A.pct(q.te[q.te.length - 1], 0) + " · " + A.pct(q.old[q.old.length - 1], 0) + " · " + A.pct(q.drift, 0));
+      });
+      var f = st.runs.frozen, d = st.runs.diff, s = st.runs.same, last = function (a) { return a[a.length - 1]; };
+      if (st.ep === 0) {
+        say.say("<span class='k'>Start.</span> Three copies of the pretrained backbone, each under the same fresh head. The backbone does its " +
+                "old task to " + A.pct(st.pre.acc, 1) + ". Showing the regions of the run at " + RUNS.filter(function (r) { return r.k === S.show; })[0].name +
+                ". Press <em>Play</em>.");
+      } else {
+        say.say("<span class='k'>Epoch " + st.ep + ".</span> New-task test accuracy: frozen " + A.pct(last(f.te), 1) + ", a tenth of the rate " +
+                A.pct(last(d.te), 1) + ", the head's rate " + A.pct(last(s.te), 1) + ". The backbone has drifted by " + A.pct(d.drift, 0) +
+                " and " + A.pct(s.drift, 0) + " respectively, and does its old task to " + A.pct(last(d.old), 0) + " and " + A.pct(last(s.old), 0) + "." +
+                (s.drift > 0.3 && last(s.old) < 0.5 ? " At the head's rate the pretrained features have been <strong>overwritten</strong>, to fit twelve points." : ""));
+      }
+    }
+    pl = A.player("#ft-bar", { step: step, reset: reset, render: render, fps: 15, unit: "epoch" });
+    A.onTheme(function () { if (st) render(); });
+  })();
+})();
+</script>
+</body>
+</html>
