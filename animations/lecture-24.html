@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 24 · Generation and retrieval-augmented systems — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 24 of Applications of Machine Learning: decoding a caption token by token with greedy search, beam search and sampling, and a retrieval-augmented pipeline with the failures that belong to the join.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-24.html">Lecture 24 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 24 · Animations</p>
+  <h1>Generation and retrieval-augmented systems</h1>
+  <p>One piece of today's lecture, taken apart: a retrieval-augmented
+  pipeline, one stage at a time, with the failures that belong to neither half
+  but to the join. Press <strong>Step</strong> to advance one unit and read
+  what happened.</p>
+  <p class="note">Everything here is a small invented example, generated in your
+  browser: a twelve-entry catalogue and a toy encoder. <em>Reset</em> always
+  gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#rag">1 · Retrieval-augmented generation, and its join</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · RAG
+     ====================================================================== -->
+<section class="anim" id="rag">
+  <h2><span class="num">1</span>Retrieval-augmented generation, and its join</h2>
+  <p class="lede">A twelve-entry catalogue and a question. Step 1 embeds the
+  question and scores every entry by cosine; step 2 keeps the top $k$; step 3
+  puts them into the prompt, in rank order, until the context budget runs out;
+  step 4 generates an answer that cites stock numbers; step 5 checks it. The
+  generator is a stand-in that reads perfectly — it recommends exactly the
+  entries a person judged relevant — so every failure you see belongs to the
+  join. Changing a control re-runs the whole pipeline.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="rg-diagram"></div>
+      <div class="narrate" id="rg-say"></div>
+      <div class="toolbar" id="rg-bar"></div>
+    </div>
+    <aside class="side" id="rg-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The toy encoder gives each word a fixed vector and a text the
+      normalised mean of its words' vectors (mean pooling; words like
+      <em>to</em> and <em>the</em> are dropped). The score is the cosine
+      $s_j = \mathbf{q}^{\top}\mathbf{e}_j$ of two unit vectors.</p>
+      <p>The retriever's recall at $k$ is a ceiling for the system: if no
+      relevant entry is in the top $k$, none reaches the generator, so for a question that has an answer</p>
+      $$\begin{aligned}\Pr(\text{correct}) &amp;\le \Pr(\text{a relevant entry}\\ &amp;\qquad\text{reaches the generator})\\ &amp;\le \text{recall@}k .\end{aligned}$$
+      <p>Grounding is the fraction of cited stock numbers that exist. It
+      measures whether an answer was built from the catalogue, not whether it is
+      right.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>A distractor that shares words with the question outranks the right
+        entry: <em>Rain gauge, logs every shower of rain</em> is first for
+        <em>something to keep the rain off</em>.</li>
+        <li>With a small budget, a long entry near the top fills the context and
+        the right entries are cut, although the retriever found them: recall@$k$
+        looks fine and the answer is wrong.</li>
+        <li>An answer citing a real but wrong entry scores 100% on grounding.
+        Grounding is not correctness.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Load <em>Distractor first, k = 1</em>, then raise $k$ to 2: the
+        umbrella enters the context and the answer becomes right.</li>
+        <li>Load <em>Context cut</em>: the retriever found the umbrella and the
+        jacket, and both were cut. Raise the budget to 11 words: the umbrella
+        fits, and the answer is right.</li>
+        <li>Load <em>Nothing to find</em> and switch the generator to <em>says
+        so</em>; then load <em>Closed book</em> and read the grounding.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 24 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  /* ======================================================================
+     1 · Retrieval-augmented generation
+     ====================================================================== */
+  (function () {
+    // The toy encoder: each word is a fixed random vector plus the vectors of
+    // the concepts it belongs to; a text is the normalised mean of its words.
+    var D = 48, R = A.rng(2424), OWN = 0.6;
+    function rv() { var z = A.range(D).map(function () { return R.n(); }), s = A.norm(z); return z.map(function (v) { return v / s; }); }
+    var STOP = "something to on in the a by for off keep of with set and is".split(" ");
+    var CON = { sit: ["sit", "seat", "seats", "bench", "chair", "chairs", "stool"], garden: ["garden", "outdoor", "patio"],
+                light: ["lamp", "light", "lamplight"], read: ["read", "reading", "book"], rain: ["rain", "waterproof", "umbrella", "wet"],
+                wear: ["jacket", "coat"], cat: ["cat", "kitten"], kitchen: ["kitchen", "casserole", "dish"],
+                wood: ["teak", "oak", "wood"], cover: ["cover", "covers"] };
+    var cv = {};
+    Object.keys(CON).forEach(function (k) { cv[k] = rv(); });
+    var own = {};
+    function wv(w) {
+      if (!own[w]) own[w] = rv();
+      var v = own[w].map(function (x) { return OWN * x; });
+      Object.keys(CON).forEach(function (k) { if (CON[k].indexOf(w) >= 0) for (var i = 0; i < D; i++) v[i] += cv[k][i]; });
+      return v;
+    }
+    function toks(t) { return t.toLowerCase().replace(/[^a-z ]/g, " ").split(/\s+/).filter(function (w) { return w && STOP.indexOf(w) < 0; }); }
+    function emb(t) {
+      var v = new Array(D).fill(0);
+      toks(t).forEach(function (w) { var x = wv(w); for (var i = 0; i < D; i++) v[i] += x[i]; });
+      var s = A.norm(v);
+      return v.map(function (x) { return x / s; });
+    }
+
+    var CAT = [
+      ["CAT-104233", "Teak garden bench, seats three"],
+      ["CAT-118790", "Garden chair covers, set of four, fit most chairs"],
+      ["CAT-120455", "Garden parasol, tilting"],
+      ["CAT-131902", "Oak kitchen stool"],
+      ["CAT-142118", "Brass desk lamp, adjustable arm"],
+      ["CAT-150336", "Clip-on book light"],
+      ["CAT-163574", "Paperback: Reading by Lamplight"],
+      ["CAT-171209", "Waterproof hiking jacket"],
+      ["CAT-185660", "Umbrella, wind-resistant"],
+      ["CAT-190847", "Rain gauge, logs every shower of rain"],
+      ["CAT-204391", "Framed print of a reading chair"],
+      ["CAT-215002", "Cast-iron casserole dish"]
+    ].map(function (q) { return { sku: q[0], title: q[1], words: 1 + q[1].split(/\s+/).length }; });
+    CAT.forEach(function (e) { e.v = emb(e.title); });
+    // The questions, each with the entries a person judged relevant, and the
+    // product a closed-book generator invents for it.
+    var QS = [
+      { q: "something to sit on in the garden", rel: ["CAT-104233"], fake: "Folding garden chair" },
+      { q: "a lamp to read by", rel: ["CAT-142118", "CAT-150336"], fake: "LED reading lamp" },
+      { q: "something to keep the rain off", rel: ["CAT-171209", "CAT-185660"], fake: "Packable rain poncho" },
+      { q: "a scratching post for a cat", rel: [], fake: "Sisal scratching post" }
+    ];
+    QS.forEach(function (Q, i) {
+      Q.v = emb(Q.q);
+      var fr = A.rng(500 + i), sku;
+      do { sku = "CAT-" + String(100000 + Math.floor(fr.u() * 900000)); } while (CAT.some(function (e) { return e.sku === sku; }));
+      Q.fakeSku = sku;
+    });
+    var SKUS = CAT.map(function (e) { return e.sku; });
+
+    var S = { qi: 1, k: 3, budget: 30, retrieval: true, gen: "anyway" }, st, pl;
+
+    // The whole pipeline for one question; every stage is kept for drawing.
+    function run(qi) {
+      var Q = QS[qi];
+      var ranked = CAT.map(function (e) { return { e: e, s: A.dot(Q.v, e.v), rel: Q.rel.indexOf(e.sku) >= 0 }; })
+                      .sort(function (a, b) { return b.s - a.s; });
+      ranked.forEach(function (r, i) { r.rank = i + 1; });
+      var top = S.retrieval ? ranked.slice(0, S.k) : [];
+      var used = 0, ctx = [], cut = [], full = false;
+      top.forEach(function (r) {
+        if (!full && used + r.e.words <= S.budget) { ctx.push(r); used += r.e.words; }
+        else { full = true; cut.push(r); }
+      });
+      var fit = ctx.filter(function (r) { return r.rel; }), ans;
+      if (!S.retrieval) ans = { kind: "invent", cites: [Q.fakeSku], names: [Q.fake] };
+      else if (fit.length) ans = { kind: "grounded", cites: fit.map(function (r) { return r.e.sku; }), names: fit.map(function (r) { return r.e.title; }) };
+      else if (S.gen === "says") ans = { kind: "abstain", cites: [], names: [] };
+      else if (ctx.length) ans = { kind: "anyway", cites: [ctx[0].e.sku], names: [ctx[0].e.title] };
+      else ans = { kind: "invent", cites: [Q.fakeSku], names: [Q.fake] };
+      var exist = ans.cites.filter(function (s) { return SKUS.indexOf(s) >= 0; }).length;
+      var relCited = ans.cites.filter(function (s) { return Q.rel.indexOf(s) >= 0; }).length;
+      var correct = Q.rel.length ? (relCited > 0 && relCited === ans.cites.length) : ans.kind === "abstain";
+      return { Q: Q, ranked: ranked, top: top, ctx: ctx, cut: cut, used: used, ans: ans, exist: exist,
+               relCited: relCited, correct: correct,
+               retrieved: top.some(function (r) { return r.rel; }), reached: fit.length > 0 };
+    }
+
+    var cvL = A.canvas("#rg-diagram", { w: 432, h: 470, caption: "Steps 1–2: the retriever ranks the catalogue" });
+    var cvR = A.canvas("#rg-diagram", { w: 412, h: 470, caption: "Steps 3–5: what the generator is given, what it says, and the check" });
+
+    var side = A.$("#rg-side");
+    var SCEN = {
+      works: { qi: 1, k: 3, budget: 30, retrieval: true },
+      kone: { qi: 2, k: 1, budget: 30, retrieval: true },
+      cut: { qi: 2, k: 3, budget: 10, retrieval: true },
+      none: { qi: 3, k: 3, budget: 30, retrieval: true },
+      closed: { qi: 1, k: 3, budget: 30, retrieval: true, closed: true }
+    };
+    var scen = A.select(side, { label: "Load a scenario", value: "works",
+      options: [["works", "It works"], ["kone", "Distractor first, k = 1"], ["cut", "Context cut"],
+                ["none", "Nothing to find"], ["closed", "Closed book"]],
+      onChange: function (v) {
+        var o = SCEN[v];
+        S.qi = o.qi; S.k = o.k; S.budget = o.budget; S.retrieval = !o.closed;
+        cQ.value = String(o.qi); cK.value = o.k; cB.value = o.budget; cR.value = S.retrieval;
+        rerun();
+      } });
+    var cQ = A.select(side, { label: "Question", value: "1",
+                              options: QS.map(function (Q, i) { return [String(i), "“" + Q.q + "”"]; }),
+                              onChange: function (v) { S.qi = +v; rerun(); } });
+    var cK = A.slider(side, { label: "Retrieve top $k$", min: 1, max: 12, step: 1, value: S.k,
+                              fmt: function (v) { return String(Math.round(v)); },
+                              onInput: function (v) { S.k = Math.round(v); rerun(); } });
+    var cB = A.slider(side, { label: "Context budget (words)", min: 4, max: 40, step: 1, value: S.budget,
+                              fmt: function (v) { return String(Math.round(v)); },
+                              hint: "A stock number counts as one word. An entry that does not fit whole is cut, with everything after it.",
+                              onInput: function (v) { S.budget = Math.round(v); rerun(); } });
+    var cR = A.check(side, { label: "Retrieval on (off: closed book)", value: true,
+                             onChange: function (v) { S.retrieval = v; rerun(); } });
+    A.select(side, { label: "When nothing fits, the generator", value: "anyway",
+                     options: [["anyway", "answers anyway"], ["says", "says so"]],
+                     onChange: function (v) { S.gen = v; rerun(); } });
+    A.h("span", { class: "lab", text: "All four questions, at these settings" }, A.h("div", { class: "ctl" }, side));
+    var ro = A.readout(side, [["rec", "relevant in top $k$"], ["reach", "relevant reach the generator"],
+                              ["corr", "answered correctly"], ["ground", "citations that exist"]]);
+    A.legend(side, [{ swatch: "c0", label: "cosine with the question" }, { shape: "diamond", cls: "fill-ok", label: "judged relevant" },
+                    { line: "line math dash", label: "the top-k cut" }, { line: "resid", label: "cut from the context" }]);
+    var say = A.narrate("#rg-say");
+
+    function rerun() { pl.reset(); for (var i = 0; i < 5; i++) pl.stepOnce(); }
+    function reset() { st = { stage: 0, r: run(S.qi) }; }
+    function step() { st.stage++; return st.stage < 5; }
+
+    // Wrap a sentence into lines of at most n characters.
+    function wrap(s, n) {
+      var out = [], line = "";
+      s.split(" ").forEach(function (w) {
+        if ((line + " " + w).trim().length > n) { out.push(line); line = w; } else line = (line + " " + w).trim();
+      });
+      if (line) out.push(line);
+      return out;
+    }
+    function clip(s, n) { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+
+    function render() {
+      var r = st.r, sg = st.stage, Q = r.Q, c = cvL, g = cvL.g;
+      cvL.clear(); cvR.clear();
+      // --- Left: the query and the ranking.
+      c.text(14, 22, "Question", "axis-label");
+      A.el("rect", { x: 10, y: 30, width: 410, height: 26, class: "box on", rx: 4 }, g);
+      c.text(20, 48, "“" + Q.q + "”", "lbl");
+      c.text(14, 82, sg >= 1 ? "1 · Retriever: cosine of every entry with the question" : "1 · Retriever (press Step)", "axis-label");
+      var y0 = 96, rh = 28;
+      if (sg >= 1) r.ranked.forEach(function (x, i) {
+        var y = y0 + i * rh + (S.retrieval && sg >= 2 && i >= S.k ? 18 : 0), inTop = S.retrieval && i < S.k, faded = sg >= 2 && !inTop;
+        var grp = A.el("g", { opacity: faded ? 0.38 : 1 }, g);
+        if (x.rel) A.marker(grp, 16, y + 11, "diamond", 4.5, "fill-ok");
+        c.text(28, y + 15, String(i + 1), "lbl-sm mono", "start", grp);
+        c.text(48, y + 15, x.e.sku, "lbl-sm mono", "start", grp);
+        c.text(124, y + 15, clip(x.e.title, 31), "lbl-sm", "start", grp);
+        var w = 62 * Math.max(0, x.s);
+        A.el("rect", { x: 318, y: y + 5, width: w, height: 12, class: "c0", opacity: 0.7 }, grp);
+        c.text(420, y + 15, fmt(x.s, 3), "lbl-sm mono", "end", grp);
+      });
+      if (sg >= 2 && S.retrieval) {
+        var yc = y0 + S.k * rh + 2;
+        A.el("line", { x1: 8, x2: 424, y1: yc, y2: yc, class: "line math dash thin" }, g);
+        c.text(424, yc + 13, S.k < 12 ? "2 · the top k = " + S.k + " go on; the rest are dropped" : "2 · top k = 12: everything goes on", "lbl-sm", "end");
+      } else if (sg >= 2) {
+        c.text(14, y0 + 12 * rh + 14, "2 · Retrieval is off: nothing is passed on", "lbl-sm");
+      }
+
+      // --- Right: the prompt, the answer, the check.
+      c = cvR; g = cvR.g;
+      var X = 6, W = 400;
+      c.text(X, 22, "3 · The prompt", "axis-label");
+      A.el("rect", { x: X, y: 30, width: W, height: 214, class: "box", rx: 4 }, g);
+      if (sg >= 3) {
+        c.text(X + 10, 50, "Question: “" + clip(Q.q, 40) + "”", "lbl-sm");
+        c.text(X + 10, 70, S.retrieval ? "Entries our search returned:" : "(no entries — closed book)", "lbl-sm");
+        var yy = 90;
+        r.ctx.concat(r.cut).slice(0, 7).forEach(function (x) {
+          var isCut = r.cut.indexOf(x) >= 0;
+          var t = c.text(X + 14, yy, "- " + x.e.sku + ": " + clip(x.e.title, 34), "lbl-sm mono");
+          if (isCut) {
+            t.setAttribute("opacity", "0.45");
+            A.el("line", { x1: X + 12, x2: X + W - 70, y1: yy - 4, y2: yy - 4, class: "resid" }, g);
+            c.text(X + W - 8, yy, "cut", "lbl-sm", "end");
+          } else c.text(X + W - 8, yy, x.e.words + " w", "lbl-sm", "end");
+          yy += 18;
+        });
+        if (r.top.length > 7) c.text(X + 14, yy, "… and " + (r.top.length - 7) + " more, all cut", "lbl-sm");
+        c.text(X + 10, 218, "“Recommend the best ones, citing only these SKUs. If none fit, say so.”", "lbl-sm");
+        // The budget meter.
+        var mw = W - 20, frac = Math.min(1, r.used / S.budget);
+        A.el("rect", { x: X + 10, y: 226, width: mw, height: 8, class: "fill-soft" }, g);
+        A.el("rect", { x: X + 10, y: 226, width: mw * frac, height: 8, class: "c0", opacity: 0.7 }, g);
+        c.text(X + W - 10, 22, "context: " + r.used + " of " + S.budget + " words", "lbl-sm", "end");
+      }
+
+      c.text(X, 262, "4 · The answer", "axis-label");
+      A.el("rect", { x: X, y: 270, width: W, height: 86, class: "box" + (sg >= 5 ? (r.correct ? " ok" : " hot") : ""), rx: 4 }, g);
+      if (sg >= 4) {
+        var a = r.ans, text;
+        if (a.kind === "abstain") text = "None of the entries I was given fits “" + Q.q + "”.";
+        else text = "For “" + Q.q + "”, I recommend " + a.names.map(function (nm, i) { return "the " + nm + " (" + a.cites[i] + ")"; }).join(" and ") + ".";
+        wrap(text, 58).slice(0, 4).forEach(function (ln, i) { c.text(X + 10, 290 + i * 17, ln, "lbl-sm"); });
+      }
+
+      c.text(X, 380, "5 · The check", "axis-label");
+      A.el("rect", { x: X, y: 388, width: W, height: 78, class: "box", rx: 4 }, g);
+      if (sg >= 5) {
+        var yk = 406;
+        if (!r.ans.cites.length) { c.text(X + 10, yk, "No citations.", "lbl-sm"); yk += 18; }
+        r.ans.cites.forEach(function (s) {
+          var ex = SKUS.indexOf(s) >= 0, rel = Q.rel.indexOf(s) >= 0;
+          c.text(X + 10, yk, s + ":  " + (ex ? "exists" : "does not exist") + ",  " + (rel ? "relevant" : "not relevant"), "lbl-sm mono");
+          yk += 18;
+        });
+        c.text(X + 10, 442, "grounding: " + (r.ans.cites.length ? r.exist + " of " + r.ans.cites.length + " cited SKUs exist" : "nothing cited"), "lbl-sm");
+        c.text(X + 10, 459, "correct: " + (r.correct ? "yes" : "no") +
+               (Q.rel.length ? " (relevant entries: " + Q.rel.join(", ") + ")" : " (no relevant entry exists)"), "lbl-sm");
+      }
+
+      // Readouts: the same pipeline run on all four questions.
+      var all = QS.map(function (_, i) { return run(i); }), ans = all.filter(function (x) { return x.Q.rel.length; });
+      var cites = A.sum(all.map(function (x) { return x.ans.cites.length; })), ex = A.sum(all.map(function (x) { return x.exist; }));
+      ro.set("rec", ans.filter(function (x) { return x.retrieved; }).length + " of " + ans.length);
+      ro.set("reach", ans.filter(function (x) { return x.reached; }).length + " of " + ans.length);
+      ro.set("corr", all.filter(function (x) { return x.correct; }).length + " of " + all.length);
+      ro.set("ground", cites ? ex + " of " + cites + " (" + A.pct(ex / cites, 0) + ")" : "none cited");
+
+      // Narration, stage by stage.
+      var firstRel = r.ranked.filter(function (x) { return x.rel; })[0];
+      var msg;
+      if (sg === 0) msg = "<span class='k'>Start.</span> The question is “" + Q.q + "”. " +
+        (Q.rel.length ? "A person judged " + Q.rel.length + " of the 12 entries relevant (green diamonds)." : "No entry in the catalogue answers it.") +
+        " Press <em>Step</em> to run the retriever.";
+      else if (sg === 1) msg = "<span class='k'>1 · Retrieve.</span> The question and every entry are embedded by the same encoder and scored by cosine. " +
+        "First: " + r.ranked[0].e.title + " (" + fmt(r.ranked[0].s, 3) + ")" +
+        (firstRel ? "; the first relevant entry is at rank " + firstRel.rank + "." : "; nothing relevant exists, but the ranking still has a top.");
+      else if (sg === 2) msg = "<span class='k'>2 · Top " + S.k + ".</span> " + (S.retrieval ?
+        (r.retrieved ? "A relevant entry is in the top " + S.k + ": the retriever has done its job, recall@" + S.k + " = 1." :
+         (Q.rel.length ? "No relevant entry in the top " + S.k + " — the first is at rank " + firstRel.rank + ". Nothing after this can recover it." :
+                         "There is nothing relevant to retrieve; the top " + S.k + " are the least bad matches.")) :
+        "Retrieval is off: the generator will get the question alone.");
+      else if (sg === 3) msg = "<span class='k'>3 · Assemble.</span> " + (S.retrieval ?
+        r.ctx.length + " entr" + (r.ctx.length === 1 ? "y" : "ies") + " fit in " + S.budget + " words (" + r.used + " used)" +
+        (r.cut.length ? "; " + r.cut.length + " cut" + (r.cut.some(function (x) { return x.rel; }) ? ", <strong>including a relevant one</strong> the retriever had found" : "") : "") + "." :
+        "The prompt holds the question and no entries.");
+      else if (sg === 4) msg = "<span class='k'>4 · Generate.</span> " + ({
+        grounded: "Relevant entries are in the context, and the generator recommends exactly those.",
+        anyway: "Nothing in the context fits, and the generator <strong>answers anyway</strong>, recommending the top entry it was given.",
+        abstain: "Nothing in the context fits, and the generator says so.",
+        invent: "With no entries to draw on, the generator answers from its own weights and <strong>invents</strong> a stock number in the right format — what the deck measured closed book, 0 of 32 citations real."
+      })[r.ans.kind];
+      else msg = "<span class='k'>5 · Check.</span> " + (r.ans.cites.length ? r.exist + " of " + r.ans.cites.length + " cited SKUs exist (grounding " +
+        A.pct(r.exist / r.ans.cites.length, 0) + "); " : "Nothing cited; ") + "the answer is " + (r.correct ? "<strong>correct</strong>" : "<strong>wrong</strong>") + "." +
+        (!r.correct && r.exist === r.ans.cites.length && r.ans.cites.length ? " Fully grounded and wrong: grounding is not correctness." : "") +
+        (!r.correct && r.retrieved && !r.reached ? " The retriever found a relevant entry; the budget cut it. Neither half failed on its own." : "");
+      say.say(msg);
+    }
+
+    pl = A.player("#rg-bar", { step: step, reset: reset, render: render, fps: 1, unit: "stage" });
+  })();
+})();
+</script>
+</body>
+</html>

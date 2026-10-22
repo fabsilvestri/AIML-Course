@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 20 · Dense retrieval — Animations</title>
+<meta name="description" content="Interactive animation for Lecture 20 of Applications of Machine Learning: a bi-encoder&rsquo;s exact search, scoring every document by inner product or by cosine.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-20.html">Lecture 20 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 20 · Animations</p>
+  <h1>Information retrieval: dense retrieval</h1>
+  <p>The search a bi-encoder does, run in front of you one step at a time:
+  every document is scored against the query, by inner product or by cosine,
+  and the top $k$ are kept. Press <strong>Step</strong> to advance one unit and
+  read what happened; press <strong>Play</strong> to let it run.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture. The
+  vectors are two-dimensional so that they can be drawn; the lecture&rsquo;s
+  encoder produces 384 dimensions.</p>
+  <ul class="toc">
+    <li><a href="#scan">1 · One query, every document</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · The exact scan, by inner product and by cosine
+     ====================================================================== -->
+<section class="anim" id="scan">
+  <h2><span class="num">1</span>One query, every document</h2>
+  <p class="lede">A hand-built toy corpus of 18 abstracts, already encoded: each
+  is a point $E(d)$, its direction standing for what it is about and its
+  distance from the origin for its norm $\lVert E(d)\rVert$ — the three long
+  reviews sit far out. The diamond is the query $E(q)$; drag it. Each
+  <strong>Step</strong> scores one more document, as the six-line search does,
+  and the shaded region is where a document has to lie to be in the top $k$.
+  The ringed point is the abstract judged relevant to the chosen query.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="sc-plots"></div>
+      <div class="narrate" id="sc-say"></div>
+      <div class="toolbar" id="sc-bar"></div>
+    </div>
+    <aside class="side" id="sc-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The bi-encoder&rsquo;s score is an inner product, and an inner product
+      factors into lengths and an angle:</p>
+      $$E(q)\cdot E(d) = \lVert E(q)\rVert\,\lVert E(d)\rVert\cos\theta .$$
+      <p>Normalising both vectors to unit length leaves only
+      $\cos\theta$: the cosine is the inner product of the normalised vectors.
+      $\lVert E(q)\rVert$ multiplies every document&rsquo;s score by the same
+      positive number, so it never changes the order. The inner product
+      therefore ranks by $\lVert E(d)\rVert\cos\theta$, the cosine by
+      $\theta$ alone. The top-$k$ region is $\{x : E(q)\cdot x \ge s_k\}$, a
+      half-plane whose edge is perpendicular to $E(q)$, or, for the cosine, the
+      cone $\cos\theta \ge s_k$ of half-angle $\arccos s_k$; $s_k$ is the
+      $k$-th best score so far.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>Under the inner product the half-plane reaches out to the long
+        reviews: a large $\lVert E(d)\rVert$ buys a place in the top $k$ at a
+        wide angle. That is the long-document bias normalisation removes.</li>
+        <li>For the first query, the relevant abstract shares
+        <strong>no word</strong> with the query, and is still the nearest by
+        angle. For the third, the rare term <em>BRCA1</em> is shared exactly,
+        and the map ranks the relevant abstract only fourth: the encoder has
+        blurred it into &ldquo;breast cancer&rdquo; in general.</li>
+        <li>Every step costs one inner product, and the scan cannot stop early:
+        a document&rsquo;s score is unknown until it has been computed.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>On the first query press <em>Score all</em>, then switch to
+        <em>inner product</em>: &ldquo;Cardiovascular outcomes: a long
+        review&rdquo; takes rank 1 and the relevant abstract drops to rank 4.</li>
+        <li>Under the inner product, drag the query straight outwards along its
+        own direction. Every score grows by the same factor and the ranking
+        does not change.</li>
+        <li>Choose the third query and compare the <em>shared words</em>
+        column with the ranking: here the lexical signal is right and the dense
+        one is not.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 20 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+  var deg = Math.PI / 180;
+
+  /** Keep the part of a polygon where a*x + b*y + c >= 0 (one
+   *  Sutherland–Hodgman pass). Used for the top-k region and the cells. */
+  function clipPoly(poly, a, b, c) {
+    var out = [];
+    for (var i = 0; i < poly.length; i++) {
+      var P = poly[i], Q = poly[(i + 1) % poly.length];
+      var fp = a * P[0] + b * P[1] + c, fq = a * Q[0] + b * Q[1] + c;
+      if (fp >= 0) out.push(P);
+      if ((fp >= 0) !== (fq >= 0)) {
+        var t = fp / (fp - fq);
+        out.push([P[0] + t * (Q[0] - P[0]), P[1] + t * (Q[1] - P[1])]);
+      }
+    }
+    return out;
+  }
+  function arc(r, a0, a1, n) {
+    return A.linspace(a0, a1, n).map(function (a) { return [r * Math.cos(a), r * Math.sin(a)]; });
+  }
+
+  /* ======================================================================
+     1 · One query, every document
+     ====================================================================== */
+  (function () {
+    // [title, topic, direction in degrees, norm]. The direction stands for
+    // what a text is about, the norm for how long it is.
+    var DOCS = [
+      ["Myocardial infarction under 40", 0, 56, 0.95],
+      ["Heart attack risk and statin use", 0, 74, 1.25],
+      ["Heart failure after valve surgery", 0, 92, 1.1],
+      ["Atrial fibrillation in the elderly", 0, 40, 1.05],
+      ["Salt intake and blood pressure", 0, 104, 1.2],
+      ["Cardiovascular outcomes: a long review", 0, 30, 2.3],
+      ["Malaria parasites in mice", 1, 165, 1.15],
+      ["P. chabaudi: small inoculum, rapid growth", 1, 178, 0.9],
+      ["Antibiotic resistance in E. coli", 1, 200, 1.2],
+      ["Influenza vaccine efficacy in children", 1, 145, 1.0],
+      ["Hospital infection control: a long review", 1, 190, 2.4],
+      ["Tuberculosis treatment adherence", 1, 222, 1.1],
+      ["BRCA1 mutation carriers and ovarian cancer", 2, 318, 1.0],
+      ["Tumour suppressor genes in breast cancer", 2, 297, 1.2],
+      ["Checkpoint inhibitors in melanoma", 2, 270, 1.1],
+      ["Breast cancer screening intervals", 2, 305, 1.15],
+      ["Cancer immunotherapy: a long review", 2, 290, 2.5],
+      ["Radiotherapy dose and survival", 2, 255, 1.0]
+    ];
+    // [text, direction, index of the abstract judged relevant]
+    var QUERIES = [
+      ["heart attack in young adults", 58, 0],
+      ["parasites proliferate faster at lower numbers", 176, 7],
+      ["BRCA1 carriers and breast cancer", 303, 12]
+    ];
+    var TOPICS = ["cardiology", "infection", "oncology"];
+    var STOP = {};
+    "a an and as at by for from in into its of on or the to with under after".split(" ")
+      .forEach(function (w) { STOP[w] = 1; });
+    // The words a lexical index would see: lower case, no stopwords.
+    function words(s) {
+      var out = [];
+      s.toLowerCase().split(/[^a-z0-9]+/).forEach(function (w) {
+        if (w.length > 1 && !STOP[w] && out.indexOf(w) < 0) out.push(w);
+      });
+      return out;
+    }
+    var N = DOCS.length;
+    var docs = DOCS.map(function (r, i) {
+      return { i: i, title: r[0], topic: r[1], len: r[3], words: words(r[0]),
+               v: [r[3] * Math.cos(r[2] * deg), r[3] * Math.sin(r[2] * deg)] };
+    });
+
+    var S = { metric: "cos", k: 5, query: 0, custom: false }, q, st, pl, quiet = false;
+    function setQuery(i) {
+      var a = QUERIES[i][1] * deg;
+      q = [Math.cos(a), Math.sin(a)];
+      S.query = i; S.custom = false;
+    }
+    setQuery(0);
+
+    function cosTo(d) { return A.dot(q, d.v) / (A.norm(q) * d.len); }
+    function score(d) { return S.metric === "ip" ? A.dot(q, d.v) : cosTo(d); }
+    function shared(d) {
+      if (S.custom) return null;
+      var qw = words(QUERIES[S.query][0]);
+      return d.words.filter(function (w) { return qw.indexOf(w) >= 0; });
+    }
+    function relevant() { return S.custom ? -1 : QUERIES[S.query][2]; }
+
+    var plots = A.$("#sc-plots");
+    var pM = A.plot(plots, { x: [-2.7, 2.7], y: [-2.7, 2.7], w: 420, h: 400, equal: true,
+                             xlabel: "dimension 1", ylabel: "dimension 2", zero: true,
+                             caption: "The corpus and the query, as vectors" });
+    var pL = A.canvas(plots, { w: 440, h: 400, caption: "The top k so far, as the scan finds them" });
+
+    var side = A.$("#sc-side");
+    A.select(side, { label: "Query", value: "0",
+                     options: QUERIES.map(function (Q, i) { return [String(i), Q[0]]; }),
+                     onChange: function (v) { setQuery(+v); rescan(st.n); } });
+    A.seg(side, { label: "Score", value: "cos", options: [["cos", "cosine"], ["ip", "inner product"]],
+                  hint: "Cosine: the inner product of the two vectors after normalising them to length 1.",
+                  onChange: function (v) { S.metric = v; rescan(st.n); } });
+    A.slider(side, { label: "Top $k$", min: 1, max: 8, step: 1, value: S.k,
+                     fmt: function (v) { return String(Math.round(v)); },
+                     onInput: function (v) { S.k = Math.round(v); render(); } });
+    var ro = A.readout(side, [["n", "documents scored"], ["thr", "score at rank $k$"],
+                              ["qn", "$\\lVert E(q)\\rVert$"], ["rel", "rank of the relevant abstract"],
+                              ["lex", "words it shares with the query"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "cardiology" },
+                    { shape: "tri", cls: "pt c1", label: "infection" },
+                    { shape: "sq", cls: "pt c2", label: "oncology" },
+                    { shape: "circle", cls: "pt c0 hollow", label: "not yet scored" },
+                    { shape: "diamond", cls: "pt halo", label: "query $E(q)$" },
+                    { line: "line ok", label: "judged relevant (ring)" },
+                    { line: "line ok dash thin", label: "edge of the top-$k$ region" }]);
+    var say = A.narrate("#sc-say");
+
+    function reset() { st = { n: 0, s: [], order: [], pos: -1 }; }
+    function step() {
+      var s = score(docs[st.n]), pos = 0;
+      st.s[st.n] = s;
+      while (pos < st.order.length && st.s[st.order[pos]] >= s) pos++;
+      st.order.splice(pos, 0, st.n);
+      st.pos = pos;
+      st.n++;
+      return st.n < N;
+    }
+    // Re-run the scan silently up to n documents: a new query or a new score
+    // changes every number, but should not throw away the reader's progress.
+    function rescan(n) {
+      quiet = true;
+      pl.reset();
+      while (st.n < n && !pl.done) pl.stepOnce();
+      quiet = false;
+      render();
+    }
+
+    pM.drag(function (x, y) { return Math.hypot(x - q[0], y - q[1]) < 0.3 ? true : null; },
+            function (h, x, y) {
+              var r = Math.hypot(x, y);
+              if (r < 0.2) { x *= 0.2 / (r || 1); y *= 0.2 / (r || 1); }
+              q = [x, y]; S.custom = true;
+              rescan(N);
+            });
+
+    function shortTitle(t) { return t.length > 38 ? t.slice(0, 36) + "…" : t; }
+
+    function render() {
+      if (quiet) return;
+      var k = S.k, thr = st.n >= k ? st.s[st.order[k - 1]] : null, rel = relevant();
+      var rankOf = {};
+      st.order.forEach(function (i, r) { rankOf[i] = r; });
+      var cosMode = S.metric === "cos", qa = Math.atan2(q[1], q[0]), qn = A.norm(q);
+
+      pM.clear();
+      // The top-k region and its edge.
+      if (thr !== null) {
+        if (cosMode) {
+          var al = Math.acos(A.clamp(thr, -1, 1));
+          pM.poly([[0, 0]].concat(arc(6, qa - al, qa + al, 40)), "fill-ok", "data", { opacity: 0.13 });
+          [qa - al, qa + al].forEach(function (a) { pM.line(0, 0, 6 * Math.cos(a), 6 * Math.sin(a), "line ok dash thin"); });
+        } else {
+          var box = [[-4, -4], [4, -4], [4, 4], [-4, 4]];
+          pM.poly(clipPoly(box, q[0], q[1], -thr), "fill-ok", "data", { opacity: 0.13 });
+          var x0 = [thr * q[0] / (qn * qn), thr * q[1] / (qn * qn)], u = [-q[1] / qn, q[0] / qn];
+          pM.line(x0[0] - 8 * u[0], x0[1] - 8 * u[1], x0[0] + 8 * u[0], x0[1] + 8 * u[1], "line ok dash thin");
+        }
+      }
+      pM.path(arc(1, 0, 2 * Math.PI, 90), "line thin muted dot");
+
+      // The document just scored, joined to the origin.
+      var cur = st.n > 0 ? docs[st.n - 1] : null;
+      function at(d) { return cosMode ? [d.v[0] / d.len, d.v[1] / d.len] : d.v; }
+      if (cur) { var c = at(cur); pM.line(0, 0, c[0], c[1], "line thin muted dash"); }
+
+      docs.forEach(function (d, i) {
+        var p = at(d), scored = i < st.n, top = scored && rankOf[i] < k;
+        if (cosMode) {
+          // Where the vector was before normalising, faintly.
+          pM.line(d.v[0], d.v[1], p[0], p[1], "line thin muted", "data", { opacity: 0.35 });
+          pM.dot(d.v[0], d.v[1], { shape: A.SHAPES[d.topic], r: 2.6, cls: "pt c" + d.topic + " hollow dim" });
+        }
+        pM.dot(p[0], p[1], { shape: A.SHAPES[d.topic], r: top ? 6 : 4.5,
+                             cls: "pt c" + d.topic + (scored ? "" : " hollow") });
+        if (i === rel) pM.dot(p[0], p[1], { r: 11, cls: "line ok thin" });
+        if (top) pM.text(p[0], p[1], String(rankOf[i] + 1), { dx: 8, dy: -7, cls: "lbl mono" });
+      });
+      if (cur) { var cc = at(cur); pM.dot(cc[0], cc[1], { r: 9, cls: "halo" }); }
+      pM.arrow(0, 0, q[0], q[1]);
+      pM.dot(q[0], q[1], { shape: "diamond", r: 7, cls: "pt halo draggable", layer: "over" });
+
+      // The ranked list.
+      pL.clear();
+      var colS = 340, colN = 384, colW = 436, y0 = 62, dy = 29;
+      pL.text(10, 24, "#", "axis-label");
+      pL.text(40, 24, "document", "axis-label");
+      pL.text(colS, 24, cosMode ? "cos θ" : "q·d", "axis-label", "end");
+      pL.text(colN, 24, "‖d‖", "axis-label", "end");
+      pL.text(colW, 24, "shared", "axis-label", "end");
+      A.el("line", { x1: 6, x2: 436, y1: 34, y2: 34, class: "axis" }, pL.g);
+      for (var r = 0; r < k; r++) {
+        var y = y0 + r * dy;
+        if (r >= st.order.length) { pL.text(42, y, "·", "lbl"); continue; }
+        var d = docs[st.order[r]], sh = shared(d);
+        pL.text(10, y, String(r + 1), "lbl mono");
+        pL.marker(30, y - 4, A.SHAPES[d.topic], 4.5, "pt c" + d.topic);
+        if (d.i === rel) pL.marker(30, y - 4, "circle", 9, "line ok thin");
+        pL.text(42, y, shortTitle(d.title), "lbl");
+        pL.text(colS, y, fmt(st.s[d.i], 3), "mono", "end");
+        pL.text(colN, y, fmt(d.len, 2), "mono", "end");
+        pL.text(colW, y, sh === null ? "—" : String(sh.length), "mono", "end");
+      }
+      A.el("line", { x1: 6, x2: 436, y1: 292, y2: 292, class: "zero" }, pL.g);
+      if (rel >= 0) {
+        var rd = docs[rel], rs = shared(rd).length;
+        pL.text(10, 318, "Judged relevant: " + shortTitle(rd.title), "lbl");
+        pL.text(10, 342, rankOf[rel] === undefined ? "not scored yet" :
+                "rank " + (rankOf[rel] + 1) + " of the " + st.n + " scored · shares " + rs + " word" + (rs === 1 ? "" : "s") + " with the query", "lbl");
+        // What counting shared words alone would put first.
+        var best = docs.slice().sort(function (a, b) { return shared(b).length - shared(a).length || a.i - b.i; })[0];
+        var bs = shared(best).length;
+        pL.text(10, 376, bs ? "Most words in common (" + bs + "): " + shortTitle(best.title) : "No document shares a word with the query.", "lbl");
+      } else {
+        pL.text(10, 318, "A dragged query has no text, so it has no", "lbl");
+        pL.text(10, 342, "judged-relevant abstract and no shared words.", "lbl");
+        pL.text(10, 366, "Choose a query to restore them.", "lbl");
+      }
+
+      ro.set("n", st.n + " of " + N);
+      ro.set("thr", thr === null ? "—" : fmt(thr, 3));
+      ro.set("qn", fmt(qn, 2));
+      ro.set("rel", rel < 0 ? "—" : rankOf[rel] === undefined ? "not scored" : String(rankOf[rel] + 1),
+             rel >= 0 && rankOf[rel] === 0 ? "good" : "");
+      ro.set("lex", rel < 0 ? "—" : String(shared(docs[rel]).length));
+
+      var qtext = S.custom ? "your dragged query" : "“" + QUERIES[S.query][0] + "”";
+      if (st.n === 0) {
+        say.say("<span class='k'>Start.</span> Query " + qtext + ". Nothing is scored yet. The exact search computes " +
+                K(cosMode ? "\\cos\\theta" : "E(q)\\cdot E(d)") + " for each of the " + N +
+                " documents in turn and keeps the best " + k + ". Press <em>Step</em> to score the first, or <em>Score all</em>.");
+      } else {
+        var th = Math.acos(A.clamp(cosTo(cur), -1, 1)) / deg, s = st.s[cur.i];
+        var how = cosMode
+          ? K("\\cos\\theta = \\cos " + fmt(th, 0) + "^\\circ = " + fmt(s, 3))
+          : K("\\lVert E(q)\\rVert\\,\\lVert E(d)\\rVert\\cos\\theta = " + fmt(qn, 2) + "\\times" + fmt(cur.len, 2) +
+              "\\times\\cos " + fmt(th, 0) + "^\\circ = " + fmt(s, 3));
+        var where = st.pos < k
+          ? "It enters the top " + k + " at rank " + (st.pos + 1) +
+            (st.n > k && st.order[k] !== undefined && st.pos < k ? ", pushing “" + shortTitle(docs[st.order[k]].title) + "” out." : ".")
+          : "That is below the " + k + "th best so far, " + fmt(thr, 3) + ", so it stays out.";
+        var head = "<span class='k'>Document " + st.n + " of " + N + ".</span> “" + cur.title + "”: " + how + ". " + where;
+        if (st.n === N) {
+          head = "<span class='k'>All " + N + " scored</span> — " + N + " inner products, every document touched once. ";
+          if (rel >= 0) {
+            var rr = rankOf[rel] + 1, w = shared(docs[rel]).length;
+            head += "The relevant abstract is at rank " + rr + " and shares " + w + " word" + (w === 1 ? "" : "s") + " with the query. ";
+            head += cosMode ? "The cosine ranks by angle alone." :
+              "The inner product ranks by " + K("\\lVert E(d)\\rVert\\cos\\theta") + ", so length counts as much as direction.";
+          } else {
+            head += "The ranking depends only on the direction of your query" + (cosMode ? "." : " under the cosine; under the inner product its length scales every score equally.");
+          }
+        }
+        say.say(head);
+      }
+    }
+
+    pl = A.player("#sc-bar", { step: step, reset: reset, render: render, fps: 3, unit: "document" });
+    A.button("#sc-bar", "Score all", function () { rescan(N); });
+  })();
+
+})();
+</script>
+</body>
+</html>

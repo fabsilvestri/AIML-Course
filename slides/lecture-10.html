@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 10 — Regularising deep networks</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Regularising deep networks</h1>
+  <p class="subtitle">CIFAR-10</p>
+  <p><span class="badge badge-lec">Lecture 10</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 11</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">The one figure to carry out of the room is the pair of
+  curves on slide 5: the network that would not train last time now learns
+  the training set by heart. Everything after it is a way of stopping that.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Lecture&nbsp;9 took a twenty-layer network that sat at chance
+  and repaired it:</p>
+  <ul class="tight small">
+    <li>the gradient shrank by a constant factor per layer &mdash; a straight
+        line on a log axis &mdash; because one layer multiplies the variance by
+        $n\cdot\operatorname{Var}(w)$</li>
+    <li>He initialisation and ReLU set that factor to one; batch
+        normalisation, clipping and an optimiser were measured on top</li>
+    <li>the ablation ladder: one change, ReLU with He, did more than the
+        rest together, and the last rung &mdash; dropout &mdash; made things
+        <em>worse</em></li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; a network that learns the training set by heart</span>
+    Train the repaired network for longer and it keeps improving &mdash; on
+    the images it trains on. On the images it does not, it stops at forty
+    percent and stays there. Today: why, what the cures are, which of them
+    pay, and what that last rung was.
+  </div>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li><strong>The gap</strong> &mdash; the training curve climbs, the
+        validation curve stalls; the gap named as variance</li>
+    <li><strong>The mathematics</strong> &mdash; dropout as an average over
+        $2^n$ thinned networks, and the rescaling that makes it one; weight
+        decay as a shrinkage applied before every step</li>
+    <li><strong>The method</strong> &mdash; five cures: early stopping, weight
+        decay, dropout, augmentation, label smoothing; each measured alone, then
+        stacked on the ladder</li>
+    <li>The failure condition that cannot be seen from the number: a knob tuned
+        on the test set</li>
+    <li><strong>Design exercise</strong> &mdash; the lesion check inside a
+        dermatology app, in nine steps, with the pitfalls and how to address
+        them</li>
+  </ol>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">Open Lecture 10 in Colab</a>
+  </p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="The specification">
+  <h2>The specification</h2>
+  <div class="panel">
+    <span class="panel-title">What we are asking for</span>
+    The network Lecture&nbsp;9 left us: 3,072 inputs, <strong>20 hidden
+    layers</strong> of 100 units, each <code>Linear &rarr; BatchNorm &rarr;
+    ReLU</code>, He initialisation, a linear head of 10 outputs. Cross-entropy,
+    Adam at 0.001, batches of 128, clipping at 1.0. The same 10,000 training
+    images and 5,000 validation images, the same seed &mdash; and
+    <strong>30 epochs</strong> instead of 20.
+  </div>
+  <p class="small">No learning-rate schedule this time: a schedule fixes the
+  number of steps in advance, and one of today&rsquo;s cures is to stop when
+  the validation set says so.</p>
+  <p class="small">One new column in the log: the accuracy on the
+  <strong>training</strong> images after every epoch, measured in evaluation
+  mode on all 10,000 of them, beside the validation accuracy.</p>
+</section>
+
+<!-- 5 -->
+<section class="figslide" data-menu-title="◆ THE FIGURE">
+  <h2>The same network, read on two sets of images</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/app13-overfit.svg"
+         alt="Two panels against epoch. Left: accuracy on the training images rises steadily to 78% while accuracy on the validation images rises to about 40% by epoch ten and stays there, with a dotted line at the best validation epoch, 21. Right: the training cross-entropy falls throughout while the validation cross-entropy reaches its minimum at epoch 11 and then rises.">
+  </figure>
+  <p class="takeaway fail">The network is still learning. It is learning
+  <em>these</em> ten thousand images.</p>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="Reading it">
+  <h2>Reading it</h2>
+  <table class="small">
+    <tr><th>Epoch</th><th class="num">Training accuracy</th><th class="num">Validation accuracy</th></tr>
+    <tr><td>20 &mdash; where Lecture 9 stopped</td><td class="num">67.71%</td><td class="num">40.26%</td></tr>
+    <tr><td class="fix">21 &mdash; the best validation epoch</td><td class="num">68.90%</td><td class="num hit">40.90%</td></tr>
+    <tr><td class="fail">30 &mdash; the last: a gap of 39.15 points</td><td class="num">78.05%</td><td class="num fail">38.90%</td></tr>
+  </table>
+  <ul class="tight small">
+    <li>Nine more epochs bought ten points on the training images and lost
+        two on the validation images</li>
+    <li>The validation <em>loss</em> turned earlier than the validation
+        accuracy: lowest at epoch 11, at 1.7145, and 2.0959 by the end.
+        Confident wrong answers cost more than they used to</li>
+    <li>Test accuracy of the last weights: <strong>40.11%</strong>. Of the
+        epoch-21 weights: <strong>41.46%</strong>. Keep that pair for later</li>
+  </ul>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="Name the gap">
+  <h2>Name the gap: variance</h2>
+  <p class="small">The error on new images that comes from fitting the
+  <em>particular</em> sample &mdash; which pixels this frog has, rather than
+  what a frog looks like. The arithmetic of why the network can:</p>
+  <table class="small">
+    <tr><th></th><th class="num"></th></tr>
+    <tr><td>Free parameters</td><td class="num">504,210</td></tr>
+    <tr><td>Training images</td><td class="num">10,000</td></tr>
+    <tr><td>Parameters per training image</td><td class="num">50.4</td></tr>
+    <tr><td>Bits of label information in the training set, $10{,}000 \cdot \log_2 10$</td><td class="num">33,219</td></tr>
+  </table>
+  <p class="lead fix">Half a million weights can store thirty thousand bits
+  many times over. Given enough epochs, they will.</p>
+  <p class="small muted">Lecture&nbsp;5 met the same thing in a tree grown to
+  purity, and averaged it away with a forest. A network has no cheap forest
+  &mdash; but one of today&rsquo;s cures turns out to be one.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="The cures are constraints">
+  <h2>Every cure is a constraint</h2>
+  <table class="small">
+    <tr><th>Cure</th><th>What it constrains</th><th>The knob</th></tr>
+    <tr><td>Early stopping</td><td>how far the fit runs</td><td>the epoch, chosen on validation</td></tr>
+    <tr><td>Weight decay</td><td>the size of the weights</td><td>$\lambda$</td></tr>
+    <tr><td>Dropout</td><td>which units may rely on which</td><td>$p$, and which layers</td></tr>
+    <tr><td>Data augmentation</td><td>the function: it must give the same answer on an image and its copies</td><td>which transforms</td></tr>
+    <tr><td>Label smoothing</td><td>the target: no logit is asked to be infinite</td><td>$\varepsilon$</td></tr>
+  </table>
+  <p class="small">Each one trades a little bias &mdash; the constraint may be
+  wrong &mdash; for less variance. Each has a knob, and every knob is set on
+  the validation set. The last slide before the design exercise is about what
+  happens when it is not.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="Dropout, the mechanism">
+  <h2>Dropout: the mechanism</h2>
+  <p class="small">At every training step, each hidden unit is set to zero
+  with probability $p$, independently. At test time nothing is dropped.</p>
+  <pre><code class="language-python">layers += [nn.Linear(prev, 100), nn.BatchNorm1d(100), nn.ReLU()]
+if dropout and i >= DEPTH - top:        # the top hidden layers only
+    layers.append(nn.Dropout(dropout))  # p: the DROP rate, not the keep rate
+
+net.train()   # masks sampled, kept units scaled by 1/(1 - p)
+net.eval()    # no masks, no scaling: the full network</code></pre>
+  <p class="small">Two things to settle before it can be used: what the network
+  without masks computes, and why the kept units are rescaled. Both are the
+  derivation.</p>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="2^n networks">
+  <h2>A layer of $n$ units is $2^n$ thinned networks</h2>
+  <div class="derivation">
+    <p class="small">A mask $\mathbf m \in \{0,1\}^n$ chooses which units
+    survive. Each choice is a different, smaller network &mdash; a
+    <em>thinned</em> network &mdash; and all of them <strong>share the same
+    weights</strong>. One training step samples one mask, runs that thinned
+    network forward and backward, and updates the shared weights.</p>
+  </div>
+  <div class="eqn-box">
+    $$2^{n} \text{ thinned networks;}\qquad n = 100:\ 2^{100} \approx 10^{30.1}$$
+    <span class="eqn-label">more networks than training steps, by twenty-seven orders of magnitude</span>
+  </div>
+  <p class="small">So almost every thinned network is trained zero times. What
+  makes this work is that they share weights &mdash; a weight that helps one
+  thinned network helps most of them &mdash; and the question becomes what
+  the full network, run without masks, has to do with their average.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="The expectation">
+  <h2>The expected pre-activation under the mask</h2>
+  <div class="derivation">
+    <p class="small">One unit of the next layer sees $z = \sum_j w_j a_j$ from
+    activations $a_j$. Under a mask $m_j \sim \text{Bernoulli}(1-p)$,
+    independent across $j$,</p>
+    $$\tilde z = \sum_j m_j\, w_j\, a_j,
+      \qquad
+      \mathbb E[\tilde z] = \sum_j \mathbb E[m_j]\, w_j a_j = (1-p)\, z$$
+    <p class="small">by linearity of expectation, with the $a_j$ and $w_j$ held
+    fixed. Train with masks and run without them, and every pre-activation is
+    $1/(1-p)$ times larger than anything the weights were trained on.</p>
+  </div>
+  <div class="eqn-box">
+    $$\tilde z = \frac{1}{1-p}\sum_j m_j\, w_j\, a_j
+      \qquad\Longrightarrow\qquad
+      \mathbb E[\tilde z] = z$$
+    <span class="eqn-label">inverted dropout: divide the kept activations by $1-p$ in training, and the full network at test time computes the expectation</span>
+  </div>
+  <a class="anim-link" href="../animations/lecture-10.html#drop" target="_blank">Animation</a>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="The second moment">
+  <h2>The expectation is preserved. The variance is not.</h2>
+  <div class="derivation">
+    <p class="small">For one term, $m_j^2 = m_j$ because $m_j \in \{0, 1\}$, so</p>
+    $$\mathbb E\!\left[\Big(\frac{m_j a_j}{1-p}\Big)^{2}\right]
+      = \frac{\mathbb E[m_j]\, a_j^2}{(1-p)^2}
+      = \frac{a_j^2}{1-p}$$
+    <p class="small">Every dropout layer multiplies the second moment of the
+    signal passing through it by $1/(1-p)$. The expectation is right; the
+    spread around it is not, and on a deep stack it compounds:</p>
+  </div>
+  <table class="small">
+    <tr><th>Dropout on</th><th class="num">$p$</th><th class="num">Factor on the second moment, $(1-p)^{-L}$</th></tr>
+    <tr><td>one layer</td><td class="num">0.5</td><td class="num">2</td></tr>
+    <tr><td class="fail">all twenty layers</td><td class="num">0.1</td><td class="num fail">8.23</td></tr>
+    <tr><td class="fail">all twenty layers</td><td class="num">0.5</td><td class="num fail">1,048,576</td></tr>
+  </table>
+  <p class="small fix">Lecture&nbsp;9&rsquo;s argument about $\rho$, again: a
+  factor applied twenty times is a different thing from a factor applied once.
+  Dropout goes on the <strong>top</strong> layer or two.</p>
+</section>
+
+<!-- 13 -->
+<section class="figslide" data-menu-title="◆ Checked">
+  <h2>The derivation, measured on the trained network</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/app13-dropout-check.svg"
+         alt="Left: the largest error between the mask-averaged pre-activation and the full network's, against the number of masks averaged on a log axis, falling from about 1.4 at ten masks to about 0.05 at ten thousand. Right: the measured second moment of the masked activations divided by the unmasked, against p from 0.1 to 0.6, lying on the curve 1/(1-p).">
+  </figure>
+  <p class="takeaway">On the last hidden layer, 20,000 masks at $p = 0.5$:
+  the average is within 0.0433 of $z$ on pre-activations of mean size 1.999,
+  and the second moment is 2.000 times the unmasked one.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="What it buys">
+  <h2>What the result buys you</h2>
+  <ul class="tight small">
+    <li><strong>An ensemble for free.</strong> The network run without masks
+        computes the expectation over $2^{n}$ thinned networks &mdash; an
+        average of models that share weights, Lecture&nbsp;5&rsquo;s cure for
+        variance without the forest&rsquo;s bill</li>
+    <li><strong>No unit can rely on a particular neighbour</strong>, because
+        the neighbour is absent half the time; the features it learns are
+        individually useful rather than co-adapted</li>
+    <li><strong>Keep the masks on at test time</strong> and you have the
+        ensemble&rsquo;s spread as well as its mean: Monte Carlo dropout, a
+        measure of how sure the network is, for the price of $T$ forward
+        passes</li>
+    <li><strong>Where to put it:</strong> the top layer or two, at
+        $p \in [0.2, 0.5]$, because each dropout layer multiplies the second
+        moment by $1/(1-p)$ and the factor compounds with depth</li>
+  </ul>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="Weight decay">
+  <h2>Weight decay: the step, written out</h2>
+  <div class="derivation">
+    <p class="small">Add $\tfrac{\lambda}{2}\lVert\theta\rVert^2$ to the loss.
+    Its gradient is $\lambda\theta$, so one gradient step is</p>
+    $$\theta \;\leftarrow\; \theta - \eta\,(\nabla L + \lambda\theta)
+      \;=\; (1 - \eta\lambda)\,\theta \;-\; \eta\nabla L$$
+  </div>
+  <div class="eqn-box">
+    $$\theta \leftarrow (1 - \eta\lambda)\,\theta - \eta\nabla L$$
+    <span class="eqn-label">first shrink every weight by the factor $1-\eta\lambda$, then take the usual step</span>
+  </div>
+  <p class="small">The $\ell_2$ penalty and the per-step shrinkage are the same
+  thing &mdash; for gradient descent. With $\eta = 0.001$ and $\lambda = 0.2$
+  the factor is 0.9998 per step; over the 2,370 steps of a thirty-epoch run a
+  weight that receives no gradient shrinks to 0.62 of itself. A weight that
+  earns its size keeps it; one that does not, decays.</p>
+  <a class="anim-link" href="../animations/lecture-10.html#decay" target="_blank">Animation</a>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="Where AdamW puts it">
+  <h2>Where AdamW puts it</h2>
+  <p class="small">Adam divides each coordinate&rsquo;s step by a running
+  estimate of its gradient&rsquo;s size. Put $\lambda\theta$ <em>into</em> the
+  gradient and it is divided too:</p>
+  <table class="small">
+    <tr><th></th><th>The update</th><th>What $\lambda$ does</th></tr>
+    <tr><td class="fail"><code>Adam(weight_decay=&lambda;)</code> &mdash; coupled</td><td>$\theta \leftarrow \theta - \eta\,\dfrac{\widehat m(\nabla L + \lambda\theta)}{\sqrt{\widehat v} + \epsilon}$</td><td>normalised away: every weight moves by about $\eta$, whatever its size</td></tr>
+    <tr><td class="fix"><code>AdamW(weight_decay=&lambda;)</code> &mdash; decoupled</td><td>$\theta \leftarrow (1-\eta\lambda)\,\theta - \eta\,\dfrac{\widehat m(\nabla L)}{\sqrt{\widehat v} + \epsilon}$</td><td>the shrinkage, as derived</td></tr>
+  </table>
+  <p class="small">One step with a <strong>zero</strong> loss gradient,
+  $\eta = 0.001$, $\lambda = 0.2$, so only the decay moves anything:</p>
+  <table class="small">
+    <tr><th></th><th class="num">0.5 becomes</th><th class="num">0.0005 becomes</th></tr>
+    <tr><td>SGD, AdamW</td><td class="num">0.4999</td><td class="num">0.0004999</td></tr>
+    <tr><td class="fail">Adam, coupled</td><td class="num">0.4990</td><td class="num fail">&minus;0.0005</td></tr>
+  </table>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="Cure 1 · early stopping">
+  <h2>Cure 1 &mdash; early stopping</h2>
+  <pre><code class="language-python">if h["val_acc"][-1] > h["best_val"]:           # chosen on VALIDATION
+    h["best_val"]   = h["val_acc"][-1]
+    h["best_epoch"] = ep + 1
+    h["best_state"] = {k: v.detach().clone()      # a COPY: training goes on
+                       for k, v in net.state_dict().items()}
+...
+best.load_state_dict(h["best_state"])
+h["test_at_best"] = accuracy(best, Xt, yt)          # what you ship, scored once</code></pre>
+  <ul class="tight small">
+    <li>Keep the <strong>best epoch</strong>, not the last: the curve on slide
+        5 says the last is worse</li>
+    <li>Two rules. The epoch is chosen on the validation set. What is
+        reported is the test accuracy of the <em>kept</em> weights &mdash; not
+        the validation accuracy that chose them, which is optimistic by
+        construction</li>
+  </ul>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="Early stopping measured">
+  <h2>Early stopping, measured</h2>
+  <table>
+    <tr><th>Weights shipped</th><th class="num">Test accuracy</th></tr>
+    <tr><td class="fail">epoch 30, the last</td><td class="num">40.11%</td></tr>
+    <tr><td class="fix">epoch 21, the best on validation</td><td class="num hit">41.46%</td></tr>
+  </table>
+  <p class="lead fix">+1.35 points, and nine epochs of training not spent
+  memorising.</p>
+  <p class="small">It did not close the gap: at epoch 21 the training
+  accuracy was already 68.90%. Early stopping stops the damage; it does not
+  constrain the model. The validation loss had turned ten epochs earlier
+  still, at epoch 11: a reasonable rule would have stopped there, and the
+  two rules land within a point of each other. The validation set decides;
+  the test set is read once.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="Cure 2 · weight decay">
+  <h2>Cure 2 &mdash; weight decay, $\lambda = 0.2$</h2>
+  <pre><code class="language-python">optim = torch.optim.AdamW(net.parameters(), lr=1e-3, weight_decay=0.2)</code></pre>
+  <table class="small">
+    <tr><th></th><th class="num">$\lVert\theta\rVert$ after epoch 30</th><th class="num">Training</th><th class="num">Validation</th><th class="num">Gap</th><th class="num">Test</th></tr>
+    <tr><td>no decay</td><td class="num">83.9</td><td class="num">78.05%</td><td class="num">38.90%</td><td class="num fail">39.15</td><td class="num">40.11%</td></tr>
+    <tr><td class="fix">AdamW, $\lambda = 0.2$</td><td class="num hit">54.6</td><td class="num">75.19%</td><td class="num">40.80%</td><td class="num">34.39</td><td class="num">41.34%</td></tr>
+  </table>
+  <p class="small">The weights are a third smaller, the gap is five points
+  narrower, the test accuracy is a point higher &mdash; a point being about
+  the seed-to-seed spread, as the ladder will show. Without decay the norm
+  <em>grew</em> over the run, from 77.7 after the first epoch to 83.9.</p>
+</section>
+
+<!-- 20 -->
+<section class="figslide" data-menu-title="◆ Decay">
+  <h2>What the decay does to the weights, and to the score</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/app13-decay.svg"
+         alt="Left: the norm of all weights against epoch for four runs: no decay rising slowly, AdamW at 0.2 falling to about two thirds, AdamW at 1.0 falling further, and Adam with a coupled penalty collapsing to near zero within the first epochs. Right: validation accuracy against epoch for the same four runs; the three AdamW runs rise to about 40% and the coupled-penalty run stays at chance.">
+  </figure>
+  <p class="takeaway">Same $\lambda$, two spellings: AdamW shrinks the
+  weights; Adam with a coupled penalty erases them.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Failure condition · coupled">
+  <h2>Failure condition &mdash; the penalty inside Adam</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">Adam(weight_decay=0.2) on this network</span>
+    Test accuracy <strong>10.00%</strong> &mdash; chance &mdash; and
+    $\lVert\theta\rVert = 0.2$ after thirty epochs, against 83.9 without
+    decay. The normalised penalty moves every weight by about $\eta$ towards
+    zero at every step whatever its size, and five hundred thousand weights
+    of size 0.1 reach zero in a hundred steps.
+  </div>
+  <ul class="tight small">
+    <li>Nothing raises. The loss sits at $\ln 10$ and the run completes</li>
+    <li>The same $\lambda$ in <code>AdamW</code> is the second row of the
+        previous table. The optimiser name is the whole difference</li>
+    <li>A value of $\lambda$ that is right for one optimiser is wrong by orders
+        of magnitude for the other; the knob does not transfer</li>
+  </ul>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Cure 3 · dropout">
+  <h2>Cure 3 &mdash; dropout, and where it goes</h2>
+  <pre><code class="language-python">net = make_net(dropout=0.5, top=1)      # after the top hidden layer only
+net = make_net(dropout=0.1, top=20)     # Lecture 9's last rung: every layer</code></pre>
+  <table class="small">
+    <tr><th></th><th class="num">Train, epoch 20</th><th class="num">Val, epoch 20</th><th class="num">Train, epoch 30</th><th class="num">Val, epoch 30</th><th class="num">Gap</th><th class="num">Test</th></tr>
+    <tr><td>none</td><td class="num">67.71%</td><td class="num">40.26%</td><td class="num">78.05%</td><td class="num">38.90%</td><td class="num fail">39.15</td><td class="num">40.11%</td></tr>
+    <tr><td class="fix">0.5 on the top layer</td><td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">74.62%</td><td class="num">41.24%</td><td class="num">33.38</td><td class="num hit">41.56%</td></tr>
+    <tr><td class="fail">0.1 on every layer</td><td class="num">39.09%</td><td class="num fail">33.90%</td><td class="num">47.39%</td><td class="num">37.08%</td><td class="num">10.31</td><td class="num fail">37.55%</td></tr>
+  </table>
+  <p class="small">On the top layer: a narrower gap and a point and a half on
+  the test set &mdash; a modest cure on a network this narrow. On every
+  layer: the narrowest gap on the slide, bought by not learning.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="Lecture 9's last rung">
+  <h2>Lecture 9&rsquo;s last rung, explained</h2>
+  <p class="small">That ladder stopped at epoch 20 and read dropout 0.1 on
+  every layer as a loss of seven points. Now the whole curve is in view:</p>
+  <ul class="tight small">
+    <li>at epoch 20 it stood at 33.90% on validation against 40.26% without
+        dropout &mdash; the row Lecture&nbsp;9 printed</li>
+    <li>its <em>training</em> accuracy at that epoch was 39.09%: it was not
+        overfitting, it was barely fitting</li>
+    <li>the second moment of the signal was multiplied by 8.23 on the way
+        up twenty layers of masks, and the network spent its epochs learning
+        through that noise</li>
+  </ul>
+  <p class="lead fix">Dropout on every layer of a deep, narrow stack is not a
+  regulariser. It is a slower learner with a narrower gap.</p>
+  <p class="small muted">Lecture&nbsp;9 read that rung as a regulariser added
+  to a network that was not overfitting. The training column, which that
+  deck did not log, says it was overfitting already; the rung failed for the
+  reason on the previous slide.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="MC dropout">
+  <h2>Monte Carlo dropout: keep the masks on</h2>
+  <pre><code class="language-python">net.eval()                              # BatchNorm: running statistics, frozen
+for m in net:
+    if isinstance(m, nn.Dropout):
+        m.train()                       # Dropout: masks on
+probs = sum(F.softmax(net(X), 1) for _ in range(T)) / T   # T = 20 passes
+pred, conf = probs.argmax(1), probs.max(1).values</code></pre>
+  <ul class="tight small">
+    <li>$T$ thinned networks, averaged: an ensemble whose members were
+        trained together</li>
+    <li>The largest averaged probability is the network&rsquo;s confidence,
+        and it can be <em>acted on</em>: answer when confident, refer the
+        rest</li>
+    <li>Only the dropout modules go back to training mode. Switch the whole
+        network and batch normalisation starts using batch statistics, and
+        the spread measures the batches, not the masks</li>
+  </ul>
+</section>
+
+<!-- 25 -->
+<section class="figslide" data-menu-title="◆ MC dropout">
+  <h2>Confidence that means something</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/app13-mc.svg"
+         alt="Ten bars: test images in deciles by the confidence of the twenty-pass average, from most to least confident, with accuracy falling from 79.6% in the first decile to 20.2% in the last, and a dotted line at the overall 41.7%.">
+  </figure>
+  <p class="takeaway">Masks off: 41.81%. Twenty passes averaged: 41.69%
+  &mdash; no better. But the top decile by confidence is right 79.6% of the
+  time and the bottom decile 20.2%; answer the 80% most confident and the
+  accuracy on what is answered is 46.81%.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Cure 4 · augmentation">
+  <h2>Cure 4 &mdash; data augmentation</h2>
+  <p class="small">A photograph flipped left-to-right, or shifted by two
+  pixels, is a photograph of the same thing. Train on random copies and the
+  network is told so: the function it fits has to give the same answer on an
+  image and its copies, which rules out the part of the hypothesis space that
+  was memorising pixel positions.</p>
+  <pre><code class="language-python">def augment(xb, g):                      # on standardised rows, as images
+    img = xb.view(n, 32, 32, 3)
+    flip = torch.rand(n, generator=g) &lt; 0.5
+    img = torch.where(flip[:, None, None, None], img.flip(2), img)
+    padded = F.pad(img.permute(0, 3, 1, 2), (2, 2, 2, 2))    # 36 x 36
+    ...                                  # a random 32 x 32 window of it
+xb = augment(Xf[idx], g)                 # a FRESH copy of every batch, every step</code></pre>
+  <p class="small">Which transforms is a statement about the data: a flipped
+  digit is a different digit, a flipped frog is a frog.</p>
+</section>
+
+<!-- 27 -->
+<section class="figslide" data-menu-title="◆ Copies">
+  <h2>One training image, seven random copies</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/app13-aug.png"
+         alt="Eight small colour images in a row: a CIFAR-10 training image and seven copies of it, some flipped left to right, each shifted by up to two pixels with a dark border where the shift exposed the padding.">
+  </figure>
+  <p class="takeaway">The network never sees the same batch twice. It cannot
+  memorise what it never sees twice.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Augmentation measured">
+  <h2>Augmentation, measured</h2>
+  <table class="small">
+    <tr><th></th><th class="num">Training</th><th class="num">Validation</th><th class="num">Gap</th><th class="num">Test</th><th class="num">Same answer on an image and its flip</th></tr>
+    <tr><td>none</td><td class="num">78.05%</td><td class="num">38.90%</td><td class="num fail">39.15</td><td class="num">40.11%</td><td class="num">52.91%</td></tr>
+    <tr><td class="fix">flips and shifts</td><td class="num">53.26%</td><td class="num hit">44.58%</td><td class="num hit">8.68</td><td class="num hit">44.88%</td><td class="num hit">71.77%</td></tr>
+  </table>
+  <p class="lead fix">+4.77 points on the test set, and the gap cut from
+  thirty-nine points to nine. The one cure that did more than narrow the
+  gap.</p>
+  <p class="small">The last column is the constraint, measured: without
+  augmentation the network changes its answer on half the test images when
+  they are flipped &mdash; it had learned where the pixels were. With it,
+  the flip is nearly invisible to it.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Failure condition · the evaluator">
+  <h2>Failure condition &mdash; the evaluator&rsquo;s transform</h2>
+  <div class="panel panel-fail">
+    <span class="panel-title">The same transform on the test loader</span>
+    Score the augmented network on a random copy of each test image instead
+    of the image: 43.64% instead of 45.15%. The network did not change;
+    the task did. A shifted test image with a two-pixel border is not a
+    photograph anyone will hand the system.
+  </div>
+  <ul class="tight small">
+    <li>Augmentation lives in the training path, and only there. Validation
+        and test images are never transformed</li>
+    <li>The usual way to get this wrong is a single <code>transform</code>
+        object shared by both loaders. The usual symptom is nothing: a
+        plausible number, a little low</li>
+    <li>The network trained without augmentation, on the same copies: 37.48%.
+        Both numbers are honest answers to a question nobody asked</li>
+  </ul>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Cure 5 · label smoothing">
+  <h2>Cure 5 &mdash; label smoothing, $\varepsilon = 0.1$</h2>
+  <div class="eqn-box">
+    $$y_k \;=\; (1-\varepsilon)\,[k = \text{true}] \;+\; \frac{\varepsilon}{10}$$
+    <span class="eqn-label">the target: 0.91 on the true class, 0.01 on each of the other nine</span>
+  </div>
+  <pre><code class="language-python">lossf = nn.CrossEntropyLoss(label_smoothing=0.1)</code></pre>
+  <table class="small">
+    <tr><th></th><th class="num">Training loss, epoch 30</th><th class="num">Training</th><th class="num">Validation</th><th class="num">Gap</th><th class="num">Test</th></tr>
+    <tr><td>one-hot targets</td><td class="num">0.8052</td><td class="num">78.05%</td><td class="num">38.90%</td><td class="num fail">39.15</td><td class="num">40.11%</td></tr>
+    <tr><td class="fix">smoothed, $\varepsilon = 0.1$</td><td class="num">1.1662</td><td class="num">76.32%</td><td class="num">39.92%</td><td class="num">36.40</td><td class="num">41.18%</td></tr>
+  </table>
+  <p class="small">The training loss is <em>higher</em> by construction: the
+  target can no longer be reached by driving one logit to infinity, which was
+  the mechanism that kept the training loss falling after the validation loss
+  had turned. A point on the test set; the gap barely moves.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Each cure alone">
+  <h2>Each cure alone, one seed</h2>
+  <table class="small">
+    <tr><th>Cure</th><th class="num">Training</th><th class="num">Validation</th><th class="num">Gap</th><th class="num">Test</th></tr>
+    <tr><td class="fail">none: the network as it stands</td><td class="num">78.05%</td><td class="num">38.90%</td><td class="num fail">39.15</td><td class="num">40.11%</td></tr>
+    <tr><td>early stopping, the best epoch kept</td><td class="num">78.05%</td><td class="num">38.90%</td><td class="num">39.15</td><td class="num">41.46%</td></tr>
+    <tr><td>weight decay, AdamW $\lambda = 0.2$</td><td class="num">75.19%</td><td class="num">40.80%</td><td class="num">34.39</td><td class="num">41.34%</td></tr>
+    <tr><td>dropout 0.5 on the top layer</td><td class="num">74.62%</td><td class="num">41.24%</td><td class="num">33.38</td><td class="num">41.56%</td></tr>
+    <tr><td>dropout 0.1 on every layer</td><td class="num">47.39%</td><td class="num">37.08%</td><td class="num">10.31</td><td class="num fail">37.55%</td></tr>
+    <tr><td class="fix">augmentation: flips and shifts</td><td class="num">53.26%</td><td class="num">44.58%</td><td class="num">8.68</td><td class="num hit">44.88%</td></tr>
+    <tr><td>label smoothing 0.1</td><td class="num">76.32%</td><td class="num">39.92%</td><td class="num">36.40</td><td class="num">41.18%</td></tr>
+  </table>
+  <p class="small">Every cure narrows the gap. One of them raises the test
+  accuracy by more than a point. Narrowing the gap and generalising better are
+  not the same thing: a network that learns nothing has no gap at all.</p>
+</section>
+
+<!-- 32 -->
+<section class="figslide" data-menu-title="◆ Alone">
+  <h2>The same table, as a picture</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/app13-alone.svg"
+         alt="Two panels of horizontal bars, one row per cure. Left: test accuracy, all rows near 40 to 42 percent except augmentation at 44.88% and dropout on every layer at 37.55%. Right: the training-minus-validation gap in points, 39 for the plain network, about 33 to 36 for weight decay, top-layer dropout and label smoothing, 10 for dropout on every layer and 9 for augmentation.">
+  </figure>
+  <p class="takeaway fix">The right panel is what every cure does. The left
+  panel is what you are paid for.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="★ THE LADDER">
+  <h2>The ladder, continued: three seeds a rung</h2>
+  <table class="small">
+    <tr><th>Configuration</th><th class="num">Test accuracy</th><th class="num">sd over 3 seeds</th><th class="num">Change</th><th class="num">Gap</th></tr>
+    <tr><td class="fail">the network as it stands, last epoch</td><td class="num">40.58%</td><td class="num">&plusmn;0.47</td><td class="num">&mdash;</td><td class="num fail">38.8</td></tr>
+    <tr><td>+ early stopping</td><td class="num">41.39%</td><td class="num">&plusmn;0.58</td><td class="num">+0.81 <span class="muted">(noise)</span></td><td class="num">38.8</td></tr>
+    <tr><td>+ weight decay, $\lambda = 0.2$</td><td class="num">41.59%</td><td class="num">&plusmn;0.67</td><td class="num">+0.20 <span class="muted">(noise)</span></td><td class="num">34.8</td></tr>
+    <tr><td>+ dropout 0.5, top layer</td><td class="num">41.18%</td><td class="num">&plusmn;0.92</td><td class="num">&minus;0.41 <span class="muted">(noise)</span></td><td class="num">30.1</td></tr>
+    <tr><td class="fix">+ augmentation</td><td class="num">44.30%</td><td class="num">&plusmn;0.18</td><td class="num hit">+3.12</td><td class="num hit">6.5</td></tr>
+    <tr><td>+ label smoothing 0.1</td><td class="num hit">44.55%</td><td class="num">&plusmn;0.90</td><td class="num">+0.25 <span class="muted">(noise)</span></td><td class="num">6.7</td></tr>
+  </table>
+  <p class="small">Typical spread, the mean of the sd column:
+  <strong>0.62 points</strong>. One rung clears twice that: augmentation,
+  <strong>+3.12</strong>. From the second rung on, every rung is read at its
+  best validation epoch, because early stopping is on the ladder and stays
+  on.</p>
+</section>
+
+<!-- 34 -->
+<section class="figslide" data-menu-title="◆ The ladder">
+  <h2>The same ladder, as a picture</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/app13-ladder.svg"
+         alt="Horizontal bars of mean test accuracy for each cumulative rung with seed error bars, from the plain network at 40.58% through early stopping, weight decay and dropout near 41%, then augmentation at 44.30% and label smoothing at 44.55%, each labelled with its value and the change from the rung above.">
+  </figure>
+  <p class="takeaway fix">Four points from the whole ladder, three of them
+  from one rung &mdash; and that rung was the only constraint on the
+  <em>function</em> rather than on the weights.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Where the gain came from">
+  <h2>Where the gain came from</h2>
+  <table>
+    <tr><th></th><th class="num">Accuracy points</th></tr>
+    <tr><td class="fix">The largest single step &mdash; augmentation</td><td class="num hit">+3.12</td></tr>
+    <tr><td>The last rung against the first</td><td class="num">+3.97</td></tr>
+    <tr><td>The other four rungs together</td><td class="num">+0.85</td></tr>
+    <tr><td>The gap, first rung to last</td><td class="num">38.8 &rarr; 6.7</td></tr>
+  </table>
+  <p class="lead">Every cure closed the gap. One of them raised the score.</p>
+  <p class="small">Which is the answer to &ldquo;should I add dropout, or
+  weight decay, or stop early?&rdquo; &mdash; yes, cheaply, and do not expect
+  much. The question with a large answer is &ldquo;what does the network not
+  need to learn?&rdquo;, and augmentation is how you tell it. Lecture&nbsp;12
+  builds that invariance into the architecture instead, and the gain is
+  larger again.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Failure condition · the test set">
+  <h2>Failure condition &mdash; a knob tuned on the test set</h2>
+  <p class="small">Six values of $\lambda$, one seed each, every run read at
+  its best validation epoch. Two ways to choose:</p>
+  <table class="small">
+    <tr><th class="num">$\lambda$</th><th class="num">0</th><th class="num">0.05</th><th class="num">0.1</th><th class="num">0.2</th><th class="num">0.5</th><th class="num">1.0</th></tr>
+    <tr><td>validation, best epoch</td><td class="num">40.90%</td><td class="num">41.32%</td><td class="num">41.30%</td><td class="num">41.54%</td><td class="num hit">41.68%</td><td class="num">41.46%</td></tr>
+    <tr><td>test, same weights</td><td class="num">41.46%</td><td class="num">41.86%</td><td class="num">41.88%</td><td class="num">41.71%</td><td class="num hit">42.43%</td><td class="num">41.76%</td></tr>
+  </table>
+  <div class="panel panel-fail">
+    <span class="panel-title">Choose on the test set</span>
+    The reported number is then the largest of six draws from the test set,
+    and it is optimistic by an amount that <em>cannot be seen from the
+    number</em>. Here the two choices happen to coincide, at $\lambda = 0.5$,
+    so the optimism was zero &mdash; which you know only because the
+    validation column exists. With a thousand configurations it is the whole
+    result.
+  </div>
+</section>
+
+<!-- 37 -->
+<section class="figslide" data-menu-title="◆ The sweep">
+  <h2>The sweep</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/app13-sweep.svg"
+         alt="Validation accuracy at the best epoch and test accuracy of the same weights against six values of weight decay from 0 to 1.0, both curves within about a point and a half of each other, with the value chosen on validation and the value chosen on test both marked at 0.5.">
+  </figure>
+  <p class="takeaway">Six numbers within a point and a half of each other, on
+  one seed. Nobody can read a winner off this plot. The validation set may
+  choose one; the test set may only confirm it, once.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="The recipe">
+  <h2>What practitioners actually reach for</h2>
+  <table class="small">
+    <tr><th>Always</th><th>Usually</th><th>Where it fits</th></tr>
+    <tr><td>early stopping on a validation metric, best weights kept</td><td>AdamW with a small decay, $\lambda$ around 0.01 to 0.1 for an adaptive optimiser</td><td>dropout at 0.2&ndash;0.5 on wide, top layers; little on narrow or convolutional ones</td></tr>
+    <tr><td>augmentation that matches the data&rsquo;s invariances, in the training path only</td><td>label smoothing, 0.1</td><td>Monte Carlo dropout where a confidence will be acted on</td></tr>
+  </table>
+  <ul class="tight small">
+    <li>More data first: the ratio on slide 7 is the cheapest knob of all,
+        and augmentation is the way to turn it when there is no more data</li>
+    <li>Then the architecture: a convolution <em>is</em> the shift
+        invariance, built in rather than taught (Lecture&nbsp;12); a pretrained
+        backbone is a thousand hours of someone else&rsquo;s data
+        (Lecture&nbsp;13)</li>
+    <li>Then the five cures here, every knob on the validation set, and the
+        test set read once</li>
+  </ul>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="The catalogue">
+  <h2>The silent-failure catalogue, continued</h2>
+  <table class="small">
+    <tr><th>Symptom</th><th>Cause</th><th>Lecture</th></tr>
+    <tr><td>loss flat at $\ln 10$, nothing raised</td><td>gradients vanishing by a constant factor per layer</td><td>9</td></tr>
+    <tr><td>training accuracy climbing, validation flat</td><td>variance: the network memorises the sample</td><td>10</td></tr>
+    <tr><td>a regularised network at chance</td><td>the penalty inside Adam, normalised away</td><td>10</td></tr>
+    <tr><td>dropout makes everything worse</td><td>on every layer of a deep stack: the second moment compounds</td><td>10</td></tr>
+    <tr><td>a plausible number, a little low</td><td>the training transform on the test loader</td><td>10</td></tr>
+    <tr><td>a published number nobody can reproduce</td><td>a knob chosen on the test set</td><td>10</td></tr>
+  </table>
+  <p class="small">Four of today&rsquo;s five raise nothing and print a number.
+  The notebook&rsquo;s answer to all of them is the same: log the training
+  accuracy beside the validation accuracy, and read both.</p>
+</section>
+
+<!-- 40 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook</h2>
+  <p class="small">Eighteen cells, on CPU. The repaired network trained for
+  thirty epochs and the two curves; the dropout expectation and the
+  zero-gradient decay step, checked numerically; each cure alone; Monte Carlo
+  dropout with the confidence deciles; the flip-agreement and the
+  augmented-evaluator measurement; the three-seed ladder; and the sweep of
+  $\lambda$ with both choices printed side by side.</p>
+  <table class="small">
+    <tr><th>Run first</th><th>Then change</th><th>And see</th></tr>
+    <tr><td>Section 5, the plain run</td><td>the epochs to 60</td><td>the training accuracy keeps climbing; the validation accuracy does not</td></tr>
+    <tr><td>Section 11, dropout</td><td><code>top</code> to 20 at $p = 0.5$</td><td>a million on the second moment: the validation curve stays at chance</td></tr>
+    <tr><td>Section 17, the sweep</td><td>add 2.0 and 5.0 to the grid</td><td>the validation choice does not move; the optimism cannot fall</td></tr>
+  </table>
+  <p class="small muted">The thread count is pinned to four and the device is
+  the CPU, so that two cells can be compared to two decimals. On another CPU
+  the numbers land a point or two away; every conclusion survives that.</p>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">Open Lecture 10 in Colab</a>
+  </p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="Design · The task">
+  <p class="kicker">Design exercise &middot; in the manner of an ML system-design interview</p>
+  <h2>The task: the lesion check inside a dermatology app</h2>
+  <div class="panel">
+    <span class="panel-title">The brief</span>
+    A consumer health company sells a skin-care app. Its new feature lets a
+    user photograph a mole or lesion with their phone and get one of two
+    answers: <em>looks fine, check again in a few months</em>, or <em>see a
+    dermatologist &mdash; here is how to book one</em>. The model behind it is
+    a classifier trained on photographs labelled by dermatologists. The
+    business measures referrals that turn out to be warranted, users retained,
+    and the cost of each dermatologist visit it triggers.
+  </div>
+  <ul class="tight small">
+    <li><strong>Given:</strong> a few thousand labelled photographs from
+        partner clinics, far fewer than the network has parameters; a stream of
+        unlabelled user photographs once the feature ships</li>
+    <li><strong>Actors:</strong> the product and data teams, the users, the
+        dermatologists who label and who receive the referrals, and the
+        medical-device regulator, because software that tells a person to see
+        or not see a doctor is a medical device</li>
+    <li><strong>Consumers of the output:</strong> the user, the booking flow,
+        and the clinical audit the regulator will ask for</li>
+  </ul>
+  <p class="small fix">Nine steps follow, each with the pitfall that catches a
+  first attempt and what to do about it. Today&rsquo;s method is at the centre:
+  a network with far more parameters than images, and the cures that keep it
+  honest.</p>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Design · 1 Frame it">
+  <h2>Step 1 &mdash; Frame it: what is predicted, what it costs to be wrong</h2>
+  <ul class="tight small">
+    <li>One row per photograph; the label is the dermatologist&rsquo;s verdict,
+        <em>refer</em> or <em>do not refer</em>; the output is a probability of
+        <em>refer</em>, and a threshold on it is the product decision</li>
+    <li>The two errors are not symmetric: a missed melanoma is a harm the
+        company answers for in court; an unneeded visit is a cost and an
+        anxious user. The metric is sensitivity at a fixed, high value, with
+        the specificity it buys, read on a reliability diagram</li>
+    <li>The baseline: the rule dermatologists already teach &mdash;
+        asymmetry, border, colour, diameter &mdash; scored on the same
+        photographs</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    Accuracy. Most lesions are benign, so a model that refers nobody is
+    accurate and lethal, and a model that refers everybody is safe and
+    useless. Fix the sensitivity first, as a clinical requirement agreed with
+    the dermatologists and written into the regulatory file, and optimise
+    everything else under it.
+  </div>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="Design · 2 The label">
+  <h2>Step 2 &mdash; The label is a clinician&rsquo;s opinion, and sometimes a biopsy</h2>
+  <table class="smaller">
+    <tr><th>Pitfall</th><th>What happens</th><th>What to do</th></tr>
+    <tr><td>Two kinds of label</td><td>some photographs carry a biopsy result, most carry one dermatologist&rsquo;s visual verdict; the second is noisier and the two are mixed</td><td>keep the label source as a column; evaluate on biopsy-confirmed rows; train on both, smoothing the visual ones</td></tr>
+    <tr><td>Disagreement</td><td>two dermatologists disagree on a fraction of borderline lesions; one opinion per image hides that</td><td>double-label a slice, measure the agreement, and treat it as the ceiling any model can reach</td></tr>
+    <tr><td>The clinic&rsquo;s camera</td><td>clinic photographs are taken with a dermatoscope under ring light; the user&rsquo;s are a phone in a bathroom</td><td>collect a labelled set of phone photographs before shipping, or the training set is of a different task</td></tr>
+  </table>
+  <p class="small fix">Write down what a <em>refer</em> label means and who
+  gave it. The regulator will ask; so will the lawyer.</p>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Design · 3 Split by patient">
+  <h2>Step 3 &mdash; Split before anything is fitted, and split by <em>patient</em></h2>
+  <ul class="tight small">
+    <li>Every photograph of one patient goes to the same side of the split:
+        training, validation or test. Validation chooses every knob; the test
+        side is read once, for the regulatory file</li>
+    <li>Stratify by the label and by the clinic, so that no clinic&rsquo;s
+        camera lives only on one side</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    A random split by photograph puts the same lesion, photographed twice at
+    the same visit, on both sides. The network memorises the patient&rsquo;s
+    skin and the clinic&rsquo;s lighting &mdash; today&rsquo;s lecture, exactly
+    &mdash; and the validation score is a memory test it passes. The number in
+    the regulatory submission is wrong, and it is discovered in the field,
+    on users.
+  </div>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="Design · 4 Augmentation">
+  <h2>Step 4 &mdash; Augmentation that respects the lesion</h2>
+  <ul class="tight small">
+    <li>A few thousand images and a network with millions of weights: the
+        ratio on slide 7, worse. Augmentation is the first cure, and the
+        largest</li>
+    <li>Flips, rotations by any angle, small crops and small changes of
+        brightness: a lesion has no orientation and a phone has no fixed
+        exposure</li>
+    <li>In the training path only. The validation and test photographs are
+        scored as they are</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    Colour and scale are the signal. A hue shift that would be harmless on a
+    frog turns a benign brown lesion into a suspicious black one; an aggressive
+    zoom changes the diameter that the clinical rule is built on. The
+    transforms must be chosen with a dermatologist in the room, and each one
+    tested on the validation side for whether it helps or hurts.
+  </div>
+</section>
+
+<!-- 46 -->
+<section data-menu-title="Design · 5 The model">
+  <h2>Step 5 &mdash; The model, and the cures on it</h2>
+  <ul class="tight small">
+    <li>A pretrained convolutional backbone, fine-tuned &mdash; the subject of
+        the next three lectures &mdash; with a dropout layer before the head</li>
+    <li>AdamW with a small decay; early stopping on the validation
+        sensitivity at the agreed specificity, the best weights kept</li>
+    <li>Label smoothing on the visually-labelled rows, where the label is an
+        opinion</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    A training curve that reaches perfect accuracy on the clinic photographs.
+    With a few thousand images the network will memorise them within a few
+    epochs, and a team that watches only the training loss ships the last
+    epoch. Log the validation curve beside it from the first run, stop on it,
+    and keep the ablation table &mdash; which cure bought what &mdash; because
+    the regulator&rsquo;s reviewer will ask why each component is there.
+  </div>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="Design · 6 Uncertainty">
+  <h2>Step 6 &mdash; When the model is not sure, it says so</h2>
+  <ul class="tight small">
+    <li>Monte Carlo dropout at inference: twenty passes, the mean as the
+        probability, the spread as the confidence</li>
+    <li>Three outputs, not two: <em>looks fine</em>, <em>see a
+        dermatologist</em>, and <em>this photograph cannot be assessed &mdash;
+        retake it, or see a dermatologist</em>, for the least confident
+        fraction</li>
+    <li>A separate, cheap check that the photograph is of skin at all, in
+        focus, and lit; most low-confidence cases are bad photographs</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    A two-answer product forces a confident verdict on a photograph the model
+    has never seen the like of &mdash; a skin tone absent from the clinic
+    data, a tattoo, a bandage. The least confident decile is where the
+    accuracy is lowest, as it was in the lecture, and it is also where the
+    users who most need a doctor are. Abstain and refer; the cost of a visit
+    is bounded, the cost of a confident wrong <em>looks fine</em> is not.
+  </div>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="Design · 7 The threshold">
+  <h2>Step 7 &mdash; The threshold, the calibration, and who signs it</h2>
+  <ul class="tight small">
+    <li>The sensitivity target fixes the threshold on the validation side;
+        the test side, read once, goes into the submission with its
+        confidence interval</li>
+    <li>Calibrate the probability on a held-out slice so that
+        &ldquo;eight in ten&rdquo; means eight in ten, and check it per skin
+        tone, per clinic and per phone model &mdash; a model calibrated on
+        average and wrong for one group is a model that is wrong</li>
+    <li>The threshold is a clinical decision, signed by the medical director,
+        not a hyperparameter</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall &mdash; tuning on the test set</span>
+    The team tries a dozen backbones and thresholds and reports the best test
+    sensitivity. That number is the largest of a dozen draws, and the
+    regulator&rsquo;s own evaluation on fresh patients comes in lower. The
+    submission is rejected, or worse, accepted. One test set, read once, by
+    someone who did not choose the model.
+  </div>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="Design · 8 Release">
+  <h2>Step 8 &mdash; Release, monitor, retrain</h2>
+  <ul class="tight small">
+    <li>Release behind a clinical safety case: a limited cohort first, every
+        referral followed up, every <em>looks fine</em> sampled and reviewed by
+        a dermatologist</li>
+    <li>Monitor the input distribution &mdash; phone models, skin tones,
+        lighting, the abstention rate &mdash; and the referral rate against the
+        rate the business planned for</li>
+    <li>Retrain on the new, phone-taken, dermatologist-reviewed photographs,
+        through the same split-by-patient pipeline, and re-evaluate on the
+        untouched test set before every release; a changed model is a changed
+        device</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    The feature changes who photographs what. Worried users send more
+    pictures of ordinary moles; reassured users stop sending the ones that
+    changed. The labels that come back are from the referrals the model
+    chose, so retraining on them teaches the model its own habits. Keep the
+    sampled review of the <em>looks fine</em> answers &mdash; that is the only
+    unbiased signal the product produces.
+  </div>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Design · 9 The pitfalls">
+  <h2>Step 9 &mdash; Ship it: the pipeline, and the pitfalls in one table</h2>
+  <p class="smaller">Clinic photographs, label source kept &rarr; split by
+  patient &rarr; augmentation agreed with a dermatologist, training path only
+  &rarr; pretrained backbone, dropout, AdamW, early stopping on validation
+  sensitivity &rarr; Monte Carlo dropout and a third answer &rarr; threshold
+  signed off, test set read once &rarr; audited release &rarr; monitor,
+  retrain, re-evaluate.</p>
+  <table class="smaller">
+    <tr><th>Pitfall</th><th>Address it by</th></tr>
+    <tr><td>Accuracy as the metric</td><td>sensitivity fixed first, as a clinical requirement</td></tr>
+    <tr><td>Clinic labels, phone photographs</td><td>a labelled phone set before shipping; the label source kept</td></tr>
+    <tr><td>A split by photograph</td><td>a split by patient, stratified by clinic</td></tr>
+    <tr><td>Augmentation that alters the signal</td><td>transforms chosen with a dermatologist, tested on validation</td></tr>
+    <tr><td>Shipping the last epoch</td><td>the validation curve from the first run; the best weights kept</td></tr>
+    <tr><td>A confident verdict on an unseen kind of image</td><td>Monte Carlo dropout; abstain and refer</td></tr>
+    <tr><td>The best of a dozen test scores</td><td>one test set, read once, by someone else</td></tr>
+    <tr><td>Retraining on the model&rsquo;s own referrals</td><td>a sampled review of every answer; a changed model is a changed device</td></tr>
+  </table>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight smaller">
+    <li>Trained Lecture&nbsp;9&rsquo;s repaired network for thirty epochs and
+        watched it memorise: 78.05% on its training images, 38.90% on
+        validation, a gap of thirty-nine points &mdash; variance, with
+        504,210 parameters for 10,000 images</li>
+    <li>Derived dropout as an average over $2^n$ thinned networks:
+        $\mathbb E[\tilde z] = (1-p)\,z$, so divide by $1-p$ in training and
+        the full network computes the expectation; the second moment grows by
+        $1/(1-p)$ per dropout layer, which is why one layer works and twenty
+        do not</li>
+    <li>Derived weight decay as the shrinkage $(1-\eta\lambda)\,\theta$
+        before every step, and saw Adam normalise the coupled penalty into a
+        network at chance; AdamW applies the shrinkage outside the step</li>
+    <li>Measured five cures alone and on a three-seed ladder: every one
+        narrowed the gap, and augmentation alone raised the test accuracy
+        beyond the seed spread, +3.12 points, because it constrains the
+        function rather than the weights</li>
+    <li>Kept the masks on at test time &mdash; Monte Carlo dropout &mdash;
+        and turned confidence into a decision: answer the surest 80%, refer
+        the rest</li>
+    <li>Named the failure nobody can see from the number: a knob chosen on
+        the test set; the validation set chooses, the test set is read once</li>
+    <li>Designed the lesion check inside a dermatology app in nine steps
+        &mdash; sensitivity fixed as a clinical requirement, labels with their
+        source, a split by patient, augmentation agreed with a dermatologist,
+        early stopping and dropout on a pretrained backbone, a third answer
+        for the unsure cases, a threshold someone signs, a release that is
+        audited &mdash; each step named for the pitfall it avoids</li>
+  </ol>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="References">
+  <h2>In the book</h2>
+  <table>
+    <tr><th>Topic</th><th>Chapter</th></tr>
+    <tr><td>Overfitting, and avoiding it through regularisation</td><td>11</td></tr>
+    <tr><td>$\ell_1$ and $\ell_2$ regularisation; AdamW</td><td>11</td></tr>
+    <tr><td>Dropout, and Monte Carlo dropout</td><td>11</td></tr>
+    <tr><td>Early stopping</td><td>11</td></tr>
+    <tr><td>Data augmentation</td><td>12</td></tr>
+    <tr><td>The train / validation / test split, and why the test set is read once</td><td>2</td></tr>
+  </table>
+</section>
+
+<!-- 53 -->
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 10">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 10</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 10">
+  <h2>Exercises &mdash; Lecture 10</h2>
+  <ul class="ex-list">
+    <li>A hidden unit's activations $a_j$ feed a pre-activation $z = \sum_j w_j a_j$. Dropout keeps each unit with probability $1-p$. Derive $\mathbb{E}[\tilde z]$ under the mask, and state what inverted dropout divides by so that the network run without masks computes that expectation. <span class="ex-marks">[4]</span></li>
+    <li>Dropout preserves the expected pre-activation. Show that it does not preserve the second moment, give the factor per dropout layer, and say what that implies for a stack of twenty layers. <span class="ex-marks">[5]</span></li>
+    <li>Add $\tfrac{\lambda}{2}\lVert\theta\rVert^2$ to the loss and write one gradient-descent step. Then say what happens to that term when it is handed to Adam as part of the gradient, and how AdamW differs. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 11&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 10 (2)">
+  <h2>Exercises &mdash; Lecture 10 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>A colleague trains for fifty epochs, keeps the weights of the epoch with the highest validation accuracy, and reports that validation accuracy as the model's result. Name the two things that are right about this and the one that is wrong. <span class="ex-marks">[4]</span></li>
+    <li>Six values of a weight-decay knob are tried, each run read at its best validation epoch. The value with the highest validation accuracy is reported on the test set, giving $t_v$; the value with the highest test accuracy is reported, giving $t_t$. State the sign of $t_t - t_v$, when it can be zero, and why the size of the bias cannot be read from either number. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 11&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 9">
+  <p class="kicker">The five set at the end of Lecture 9</p>
+  <h1>Solutions<br>Lecture 9</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 9">
+  <h2>Solutions &mdash; Lecture 9</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> One layer multiplies the standard deviation of the backward signal by&hellip;</p>
+      <p class="lead"><span class="fix">They multiply it by $\rho^{L-1}$ &mdash; $L-1$ steps between the first gradient and the last &mdash; so anything but 1 vanishes or explodes geometrically.</span></p>
+      <ul class="tight smaller">
+        <li>A constant applied $L$ times is exponential in $L$</li>
+        <li>There is no regime where a repeated constant other than 1 is safe</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> Preserving the forward signal asks for $\operatorname{Var}(w) = 1/n_{\text{in}}$ and preserving the gradient&hellip;</p>
+      <p class="lead"><span class="fix">They agree only when $n_{\text{in}} = n_{\text{out}}$; Glorot takes the harmonic mean, $2/(n_{\text{in}}+n_{\text{out}})$.</span></p>
+      <ul class="tight smaller">
+        <li>Any layer that changes width cannot satisfy both</li>
+        <li>The compromise accepts a small error in each direction rather than a large one in either</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 9 (2)">
+  <h2>Solutions &mdash; Lecture 9 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> He initialisation doubles the weight variance for ReLU. Derive the factor of two in one line.</p>
+      <p class="lead"><span class="fix">ReLU zeroes half of a symmetric zero-mean input, so $\mathbb{E}[\text{ReLU}(z)^2] = \tfrac12\mathbb{E}[z^2]$.</span></p>
+      <ul class="tight smaller">
+        <li>Exactly half the variance is discarded at each layer</li>
+        <li>Doubling $\operatorname{Var}(w)$ puts it back</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> A gradient profile that is a straight line on a log axis tells you something a curved one does not. State&hellip;</p>
+      <p class="lead"><span class="fix">The attenuation is the same factor at every layer, so it is the initialisation rather than one bad layer.</span></p>
+      <ul class="tight smaller">
+        <li>A constant ratio per layer is a straight line in log space</li>
+        <li>A single broken layer would show a step, not a slope</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 9 (3)">
+  <h2>Solutions &mdash; Lecture 9 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> Gradient clipping is applied to a network whose gradients are fifteen orders of magnitude too small. Predict&hellip;</p>
+      <p class="lead"><span class="fix">No effect &mdash; clipping bounds gradients that are too large.</span></p>
+      <ul class="tight smaller">
+        <li>The threshold is never reached, so nothing is rescaled</li>
+        <li>Reaching for it means the failure mode was never measured</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 11 &middot; Lecture notes</p>
+  <h1>Autoencoders and representation learning</h1>
+  <p class="small">
+    A network with no labels: compress an image to a code and reconstruct it<br>
+    A linear autoencoder recovers the principal subspace, derived<br>
+    The code as a representation: retrieval, clustering, anomalies
+  </p>
+  <p class="clock">Run the Lecture 10 notebook first</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 10
+  <span class="sep">&middot;</span> Regularising deep networks
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

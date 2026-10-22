@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 12 — Convolutional networks</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Convolutional networks</h1>
+  <p class="subtitle">Flowers102</p>
+  <p><span class="badge badge-lec">Lecture 12</span>
+     <span class="badge badge-ch">G&eacute;ron Ch. 12</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Part III opens. The mathematics is short &mdash; one
+  count and two definitions &mdash; so that the time goes to building, training
+  and reading the network.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Lecture&nbsp;11 took a deep fully connected stack on flattened
+  32&times;32 colour images (CIFAR-10) that would not train, and repaired it:</p>
+  <ul class="tight small">
+    <li>Two probes located the fault: the forward signal looked healthy, the
+        <em>backward</em> one shrank by a constant factor per layer</li>
+    <li>One variance recursion explained it, and Glorot&rsquo;s and He&rsquo;s
+        initialisations are the two ways of setting that factor to one</li>
+    <li>Six repairs &mdash; initialisation, activation, batch normalisation,
+        clipping, optimiser, schedule &mdash; added one at a time, and an
+        ablation saying which of them paid</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">What breaks when the image gets bigger</span>
+    Flattening a 224&times;224 colour image gives 150,528 inputs. A single dense
+    layer of 1,000 units on that is <strong>150 million parameters</strong> —
+    for one layer, on one image size. Every one of them has to be learned from
+    data, and none of them knows that two adjacent pixels are related.
+  </div>
+  <p class="small">Today&rsquo;s method fixes both problems at once, and the
+  derivation says exactly how much it saves.</p>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>The task, and why a flattened image is the wrong representation</li>
+    <li><strong>The mathematics</strong> &mdash; what weight sharing saves,
+        equivariance, and how pooling buys invariance</li>
+    <li><strong>The method</strong> &mdash; convolution, pooling, an
+        architecture, and training it</li>
+    <li>What it learned, what it scores, and what goes wrong quietly</li>
+      <li><strong>Design exercise</strong> &mdash; a recycling-robotics company&rsquo;s camera sorter on its customers&rsquo; conveyors, in nine steps, with the pitfalls and how to address them</li>
+  </ol>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-12.ipynb">Open Lecture 12 in Colab</a>
+  </p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="The stakeholder">
+  <h2>The stakeholder</h2>
+  <p class="lead">A horticultural wholesaler receives mixed pallets of cut
+  stems and has to sort them by species before they reach the auction floor.</p>
+  <ul class="tight small">
+    <li>One overhead camera per lane, one photograph per stem</li>
+    <li>A human inspector currently does this and is the bottleneck</li>
+    <li>They want the machine to name the species from the photograph</li>
+  </ul>
+  <p class="small muted">Same shape of problem as the garment sorter in
+  Lecture 7. Everything that makes it harder is in the pixels.</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="What they asked for">
+  <h2>What they actually asked for</h2>
+  <div class="panel">
+    <span class="panel-title">In their words</span>
+    &ldquo;Tell us which of our species it is. If you cannot tell, say so and
+    we will look at it ourselves &mdash; but do not tell us the wrong
+    one.&rdquo;
+  </div>
+  <p class="small">Two requirements hiding in one sentence: a classifier over
+  a fixed list of species, and a usable notion of <em>confidence</em>.</p>
+  <p class="small muted">We build the first today. The second waits until the
+  numbers are good enough to be worth calibrating.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; a classifier with no way to abstain</span>
+    The stakeholder asked to be told when the model cannot tell. A softmax always returns a class, and its largest probability is not a confidence you have calibrated. Deliver it as one and you have answered a different requirement while appearing to meet this one.
+  </div>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="The dataset">
+  <h2>The dataset</h2>
+  <p><code>torchvision.datasets.Flowers102</code> &mdash; 8,189
+  photographs of 102 flowering species common in the United
+  Kingdom.</p>
+  <pre><code class="language-python" data-trim>
+from torchvision.datasets import Flowers102
+
+train = Flowers102("data", split="train", download=True)
+val   = Flowers102("data", split="val",   download=True)
+test  = Flowers102("data", split="test",  download=True)
+  </code></pre>
+  <p class="small muted">About 345 MB. It is one of the datasets the textbook
+  names for this chapter, and the split used here is the one shipped with it &mdash;
+  so every result in the literature is on the same 6,149 test
+  images.</p>
+</section>
+
+<!-- 7 -->
+<section class="figslide" data-menu-title="◆ Twelve species">
+  <h2>What the camera sees</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l15-grid.png"
+         alt="Twelve colour photographs of flowers, two rows of six, each captioned with its species name; the flowers vary in scale, orientation and background clutter.">
+  </figure>
+  <p class="takeaway">Different scales, different backgrounds, different
+  lighting &mdash; and several of these species are hard to tell apart by eye.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="What is hard here">
+  <h2>What is hard here, precisely</h2>
+  <ul class="tight small">
+    <li><strong>Position</strong> &mdash; the flower is not centred, and not at
+        a fixed scale</li>
+    <li><strong>Background</strong> &mdash; leaves, soil, other flowers, a
+        gardener&rsquo;s hand</li>
+    <li><strong>Between-class similarity</strong> &mdash; several of the
+        102 species are separated by petal count and little
+        else</li>
+    <li><strong>Within-class variation</strong> &mdash; the same species at two
+        stages of opening</li>
+  </ul>
+  <p class="small">Only the first of those has a structural answer. It is the
+  answer this chapter is about.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="The split we are given">
+  <h2>The split we are given</h2>
+  <table>
+    <tr><th>Split</th><th class="num">Images</th><th class="num">Per class</th><th>Used for</th></tr>
+    <tr><td>train</td><td class="num">1,020</td><td class="num">10, exactly</td><td>fitting</td></tr>
+    <tr><td>val</td><td class="num">1,020</td><td class="num">10, exactly</td><td>choosing</td></tr>
+    <tr><td class="fail">test</td><td class="num fail">6,149</td><td class="num">20&ndash;238</td><td>reporting, once</td></tr>
+  </table>
+  <p class="lead fail">There are six times as many test images as training
+  images.</p>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="Why so few labels">
+  <h2>Why the training split is so small</h2>
+  <p>Because somebody had to look at every photograph and name the species.</p>
+  <div class="panel">
+    <span class="panel-title">The standing constraint of applied vision</span>
+    Images are cheap and labels are not. Every application in this part of the
+    course has more pixels than it can use and fewer labels than it wants.
+  </div>
+  <p class="small">Design for that. A method that needs thousands of labelled
+  examples per class is not a method you can deploy here.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="The obvious thing">
+  <h2>The obvious thing to try first</h2>
+  <p>You have a multilayer perceptron that works. Resize every photograph to
+  128 &times; 128, flatten it, and feed it in.</p>
+  <table>
+    <tr><th></th><th class="num">Count</th></tr>
+    <tr><td>Inputs, 128 &times; 128 &times; 3</td><td class="num">49,152</td></tr>
+    <tr><td>Outputs, 32 values at every pixel position</td><td class="num">524,288</td></tr>
+    <tr><td class="fail">Weights in one fully connected layer between them</td><td class="num fail">25,769,803,776</td></tr>
+  </table>
+  <p class="fail small">That is 96 GB of float32
+  for one layer. The full argument is this lecture&rsquo;s mathematics block; here it
+  is just a reason to do something else.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="The ratio">
+  <h2>What weight sharing saves</h2>
+  <p class="small">Input $3 \times H \times W$, output $32 \times H \times W$.
+  A dense layer connects every output to every input:
+  $n_{\text{in}} n_{\text{out}} = 96\,H^2W^2$ weights. A convolution connects
+  each output to a $k \times k$ window of every channel, <strong>with the same
+  weights at every position</strong>: $C_{\text{out}} C_{\text{in}} k^2 =
+  32 \times 3 \times 7 \times 7$, which is 4,704 weights.</p>
+  <div class="eqn-box">
+    $$\frac{n_{\text{in}} n_{\text{out}}}
+           {C_{\text{out}} C_{\text{in}} k^2}
+      \;=\; \frac{H^2 W^2}{k^2}$$
+  </div>
+  <p class="big-num bad">5,478,275</p>
+  <p class="lead">times fewer weights at $H = W = 128$, for the same output shape.</p>
+  <p class="small muted">With the 3 &times; 3 filters used everywhere else in
+  the network the factor is larger again, by $(7/3)^2$: the dense count never
+  contained $k$.</p>
+</section>
+
+<!-- 13 -->
+<section class="figslide" data-menu-title="◆ Dense against conv">
+  <h2>The same output shape, two ways</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l16-params.svg"
+         alt="Two horizontal bars on a logarithmic weight axis: the dense layer at about 25.8 billion weights and the convolutional layer at 4,704 weights, more than six decades apart.">
+  </figure>
+  <p class="takeaway">A logarithmic axis, and the two bars still barely fit on
+  the same figure.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Equivariance definition">
+  <h2>Equivariance, precisely</h2>
+  <p class="small">Sharing the weights assumes that a pattern means the same
+  thing wherever it appears. Let $T_{\mathbf{v}}$ be the operator that shifts an image by the vector
+  $\mathbf{v}$:</p>
+  <div class="eqn-box">
+    $$(T_{\mathbf{v}} x)(\mathbf{p}) \;=\; x(\mathbf{p} - \mathbf{v})$$
+  </div>
+  <p>A map $f$ is <strong>equivariant</strong> to translation when</p>
+  <div class="eqn-box">
+    $$f(T_{\mathbf{v}}\, x) \;=\; T_{\mathbf{v}}\, f(x)
+      \qquad \text{for every } \mathbf{v}$$
+  </div>
+  <p class="small">Shift then compute, or compute then shift &mdash; the same
+  answer. A convolution has this property because its weights do not depend on
+  the position; it holds exactly away from the border, where zero padding
+  invents input that was not there.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="Pooling makes invariance">
+  <h2>How pooling manufactures invariance</h2>
+  <p>A map $g$ is <strong>invariant</strong> to translation when</p>
+  <div class="eqn-box">
+    $$g(T_{\mathbf{v}}\, x) \;=\; g(x)
+      \qquad \text{for every } \mathbf{v}$$
+  </div>
+  <p class="small">The output does not move at all, so it no longer says
+  <em>where</em>. Classification wants that; equivariance alone does not give
+  it.</p>
+  <p class="small">A $2 \times 2$ max pool is invariant to any shift that keeps the maximum
+  inside its own window &mdash; so half the one-pixel shifts, in each
+  direction.</p>
+  <ul class="tight small">
+    <li>Stack four pooling stages and the tolerated shift grows to
+        $\pm$ 8 pixels in the last feature map</li>
+    <li>A global pool over the whole map is invariant to <em>every</em>
+        shift &mdash; there is no position left to be sensitive to</li>
+  </ul>
+  <p class="small muted">The invariance is approximate and it is built, one
+  factor of two at a time. Nothing in the architecture declares it.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="The idea">
+  <h2>The idea, in one sentence</h2>
+  <p class="lead">A feature worth detecting in the top left corner is worth
+  detecting in the bottom right, so <strong>use the same weights
+  everywhere</strong>.</p>
+  <ul class="tight small">
+    <li>That is the whole of it. Everything else is bookkeeping</li>
+    <li>It buys two things at once: far fewer parameters, and a network that
+        does not have to relearn a petal edge at every position</li>
+  </ul>
+  <p class="small muted">Both halves were stated in the mathematics block.
+  Here we use them.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="A convolution">
+  <h2>A convolution, as arithmetic</h2>
+  <p>For an input $x$ with $C$ channels and a kernel $w$ of size $k \times k$,
+  the output at position $(i, j)$ of filter $f$ is</p>
+  <div class="eqn-box">
+    $$z^{(f)}_{ij} \;=\; b^{(f)} \;+\;
+      \sum_{c=1}^{C}\;\sum_{u=0}^{k-1}\;\sum_{v=0}^{k-1}
+      w^{(f)}_{c,u,v}\, x_{c,\,i+u,\,j+v}$$
+  </div>
+  <p class="small">A dot product between the kernel and a window of the input,
+  repeated at every position. The sum over $c$ is why a filter reads
+  <em>all</em> the input channels at once.</p>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="nn.Conv2d">
+  <h2><code>nn.Conv2d</code>, and the defaults you did not ask for</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-9|3|4|5">nn.Conv2d(
+    in_channels=3,       # must match the previous layer's output
+    out_channels=32,     # how many filters -> how many output maps
+    kernel_size=7,
+    stride=1,            # the default
+    padding=3,           # NOT the default; the default is 0
+    bias=False,          # a batch-norm follows, and it has its own shift
+)
+  </code></pre>
+  <p class="small">The default you did not ask for: <strong>padding defaults to
+  zero</strong>, which silently shrinks every feature map by $k-1$ and will
+  eventually give you a shape error twelve layers later.</p>
+</section>
+
+<!-- 19 -->
+<section data-menu-title="Pooling">
+  <h2>Pooling</h2>
+  <p>After a couple of convolutions, halve the height and width by keeping only
+  the largest value in each $2 \times 2$ block.</p>
+  <ul class="tight small">
+    <li>Three quarters of the activations disappear, and with them three
+        quarters of the memory and the arithmetic in every later layer</li>
+    <li>It has <strong>no parameters</strong> &mdash; nothing about it is
+        learned</li>
+    <li>Each later unit therefore sees a larger piece of the original image</li>
+  </ul>
+  <p class="small muted">There is a fourth consequence &mdash; invariance
+  &mdash; and it is the one the mathematics block ended on.</p>
+</section>
+
+<!-- 20 -->
+<section class="figslide" data-menu-title="◆ Max pooling">
+  <h2>Max pooling, on numbers</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l15-pooling.svg"
+         alt="A four by four grid of single-digit numbers with four two-by-two windows outlined in red, beside the resulting two by two grid holding the maximum of each window.">
+  </figure>
+  <p class="takeaway">Sixteen numbers in, four out, and the four are the
+  largest of each block.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Batch norm here">
+  <h2>Why every convolution is followed by a batch norm</h2>
+  <p>Because ten layers of untreated convolutions on 1,020 images do not
+  train. This is Lecture 9's $\rho \ne 1$ in a new architecture &mdash; and
+  here, unlike there, initialisation alone does not reach it. Lecture 9
+  measured batch normalisation making a <em>repaired</em> network worse, by 4.74
+  points over five seeds; the size of an effect depends on what else is in the
+  system.</p>
+  <ul class="tight small">
+    <li>Ten layers of untreated convolutions on 1,020 images do not
+        train: the loss sits at $\log 102 \approx 4.62$ and the network
+        predicts one class</li>
+    <li><code>BatchNorm2d</code> normalises across the batch <em>and</em> both
+        spatial axes, so it holds one mean and one variance per channel</li>
+  </ul>
+  <pre><code class="language-python" data-trim>
+nn.Conv2d(c_in, c_out, 3, padding=1, bias=False)
+nn.BatchNorm2d(c_out)     # 2 * c_out parameters, not 2 * c_out * H * W
+nn.ReLU()
+  </code></pre>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="The architecture">
+  <h2>The architecture</h2>
+  <table>
+    <tr><th>Stage</th><th>Layers</th><th class="num">Output</th></tr>
+    <tr><td>1</td><td>conv 7&times;7 &times;32, conv 3&times;3 &times;32, pool</td><td class="num">32 &times; 64 &times; 64</td></tr>
+    <tr><td>2</td><td>conv &times;64, conv &times;64, pool</td><td class="num">64 &times; 32 &times; 32</td></tr>
+    <tr><td>3</td><td>conv &times;128, conv &times;128, pool</td><td class="num">128 &times; 16 &times; 16</td></tr>
+    <tr><td>4</td><td>conv &times;256, pool</td><td class="num">256 &times; 8 &times; 8</td></tr>
+    <tr><td class="fix">head</td><td class="fix">flatten, dense 256, dropout, dense 102</td><td class="num fix">102</td></tr>
+  </table>
+  <p class="small">Channels double as the map halves &mdash; the textbook&rsquo;s own
+  rule of thumb: what pooling takes away in resolution, the extra filters
+  give back in channels.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="The architecture in code">
+  <h2>The architecture, in code</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-14|1-3|10-13">def conv_block(c_in, c_out, k=3):
+    return [nn.Conv2d(c_in, c_out, k, padding=k // 2, bias=False),
+            nn.BatchNorm2d(c_out), nn.ReLU()]
+
+net = nn.Sequential(
+    *conv_block(3, 32, k=7), *conv_block(32, 32), nn.MaxPool2d(2),
+    *conv_block(32, 64),     *conv_block(64, 64), nn.MaxPool2d(2),
+    *conv_block(64, 128),  *conv_block(128, 128), nn.MaxPool2d(2),
+    *conv_block(128, 256),                        nn.MaxPool2d(2),
+    nn.Flatten(),
+    nn.Linear(256 * 8 * 8, 256), nn.ReLU(),
+    nn.Dropout(0.5),
+    nn.Linear(256, 102),
+)
+  </code></pre>
+  <p class="small muted">Thirty modules. Nothing in it that was not on a slide
+  in this lecture or the previous one.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Check the shapes">
+  <h2>Check the shapes before you check anything else</h2>
+  <pre><code class="language-python" data-trim>
+x = torch.zeros(2, 3, 128, 128)
+for m in net:
+    x = m(x)
+    print(f"{type(m).__name__:12s} {tuple(x.shape)}")
+
+assert x.shape == (2, 102), f"the head is wrong: {x.shape}"
+  </code></pre>
+  <p class="small"><em>What is the shape here?</em> Asking costs four lines. A shape error
+  inside a training loop surfaces as a size-mismatch traceback two hundred
+  lines deep; here it surfaces as a printed line.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Counting parameters">
+  <h2>Count the parameters, and look at where they are</h2>
+  <table>
+    <tr><th>Part</th><th class="num">Parameters</th><th class="num">Share</th></tr>
+    <tr><td>Every convolution and batch-norm layer together</td><td class="num">586,720</td><td class="num">12.2%</td></tr>
+    <tr><td class="fail">One dense layer, 16,384 &rarr; 256</td><td class="num fail">4,194,560</td><td class="num fail">87.3%</td></tr>
+    <tr><td>Output layer, 256 &rarr; 102</td><td class="num">26,214</td><td class="num">0.5%</td></tr>
+    <tr><td class="fix">Total</td><td class="num fix">4,807,494</td><td class="num">100%</td></tr>
+  </table>
+  <p class="lead fail">Nine parameters in ten are in the layer that is not
+  convolutional.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="The loop">
+  <h2>The training loop &mdash; unchanged</h2>
+  <pre><code class="language-python" data-trim>
+opt   = torch.optim.Adam(net.parameters(), lr=3e-4)
+lossf = nn.CrossEntropyLoss()
+
+for epoch in range(30):
+    net.train()
+    for xb, yb in train_loader:
+        opt.zero_grad()
+        loss = lossf(net(xb), yb)
+        loss.backward()
+        opt.step()
+  </code></pre>
+  <p class="small">Exactly the five lines from Lecture 8. Convolution changed
+  the model; it did not change the loop, because autograd does not care what
+  the modules are.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Learning rate">
+  <h2>One hyperparameter that is not a free choice</h2>
+  <table>
+    <tr><th>Learning rate</th><th class="num">Seed 42</th><th class="num">Seed 43</th><th class="num">Mean</th></tr>
+    <tr><td class="fail">$10^{-3}$, Adam&rsquo;s default</td><td class="num">0.98%</td><td class="num">1.76%</td><td class="num fail">1.37%</td></tr>
+    <tr><td class="fix">$3 \times 10^{-4}$</td><td class="num">4.22%</td><td class="num">6.76%</td><td class="num hit">5.49%</td></tr>
+  </table>
+  <p class="small">Validation accuracy after 12 epochs, on this architecture
+  and this data. The default does not diverge &mdash; it plateaus at or near
+  chance, which on a split with ten images of every species is 0.98%, and that
+  is the failure mode that does not announce itself.</p>
+  <p class="small muted">4.12 points, from one keyword argument nobody wrote
+  down &mdash; about one and a half times the 2.55 points between the two seeds
+  of the good rate.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Run it">
+  <h2>Run it</h2>
+  <table>
+    <tr><th>Setting</th><th class="num">Value</th></tr>
+    <tr><td>Epochs</td><td class="num">30</td></tr>
+    <tr><td>Batch size</td><td class="num">32</td></tr>
+    <tr><td>Steps per epoch</td><td class="num">32</td></tr>
+    <tr><td>Total optimiser steps</td><td class="num">960</td></tr>
+  </table>
+  <p class="small muted">A validation pass follows every epoch.</p>
+</section>
+
+<!-- 29 -->
+<section class="figslide" data-menu-title="◆ The learning curve">
+  <h2>The cost, on the x-axis</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l15-curve.svg"
+         alt="Training and validation accuracy plotted against wall-clock seconds over thirty epochs; both rise throughout, the training curve to 26 per cent and the validation curve far more slowly to 12.0 per cent, with a dotted line at the 3.87 per cent majority baseline.">
+  </figure>
+  <p class="takeaway">The x-axis is seconds, not epochs. That is deliberate:
+  from the next lecture on, time is one of the things being compared.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Score the test set">
+  <h2>The test set. Once.</h2>
+  <pre><code class="language-python" data-trim>
+net.eval()
+with torch.no_grad():
+    correct = sum((net(xb).argmax(1) == yb).sum().item()
+                  for xb, yb in test_loader)
+print(f"test accuracy {correct / len(test_ds):.4f}")
+  </code></pre>
+  <p class="big-num">8.13%</p>
+  <p class="small">One run, seed 42. Two seeds of a shorter run of the same
+  network land 2.55 points apart, so one run of a network this size on 1,020
+  images is an anecdote.</p>
+</section>
+
+<!-- 31 -->
+<section data-menu-title="Quote the spread">
+  <h2>Why one run is not a result</h2>
+  <table>
+    <tr><th>Seed</th><th class="num">Validation accuracy, 12 epochs</th></tr>
+    <tr><td>42</td><td class="num">4.22%</td></tr>
+    <tr><td>43</td><td class="num">6.76%</td></tr>
+  </table>
+  <p class="lead fail">2.55 points between two runs &mdash; 26 of the 1,020
+  validation images &mdash; and nothing changed but the seed.</p>
+  <p class="small">Any comparison you make from here that is smaller than that
+  is not a comparison. Two seeds only show that the spread exists; a mean you
+  would report needs more runs than a free CPU affords.</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Failure condition &middot; one seed reported as a result">
+  <h2>One seed reported as a result</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition</span>
+    2.55 points separate two runs with nothing changed but the seed. A single run is one draw from that spread, and a comparison of two single runs is two draws &mdash; which is why what gets reported is the spread as well as the mean.
+  </div>
+</section>
+
+<!-- 33 -->
+<section class="figslide" data-menu-title="◆ The filters">
+  <h2>Thirty-two filters, before and after</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l15-filters.png"
+         alt="Two montages of thirty-two seven-by-seven colour patches: on the left the filters at random initialisation, on the right the same filters after thirty epochs of training. The two blocks look the same.">
+  </figure>
+  <p class="takeaway">Look at the two blocks for ten seconds, and say what
+  changed.</p>
+  <aside class="notes">Give them the ten seconds. Somebody always says
+  &ldquo;nothing&rdquo;, hesitantly, expecting to be wrong. They are right, and
+  the whole of the next lecture hangs on it.</aside>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="Nothing changed">
+  <h2>It moved a little. It did not become anything</h2>
+  <pre><code class="language-python" data-trim>
+import torch.nn.functional as F
+
+# init_filters: a copy of net[0].weight, taken before the first step
+before, after = init_filters.flatten(), net[0].weight.flatten()
+print(f"cosine similarity {F.cosine_similarity(before, after, dim=0):.4f}")
+print(f"mean |change| / mean |weight| "
+      f"{(after - before).abs().mean() / before.abs().mean():.1%}")
+  </code></pre>
+  <table>
+    <tr><th></th><th class="num">Value</th></tr>
+    <tr><td class="fix">cosine similarity, all 4,704 weights before against after</td><td class="num hit">0.9880</td></tr>
+    <tr><td>mean absolute change, as a share of the mean weight</td><td class="num">14.1%</td></tr>
+    <tr><td>weights that changed sign</td><td class="num">160</td></tr>
+  </table>
+  <p class="lead fail">The weights moved. No structure appeared &mdash; the
+  right-hand block is still noise, and thirty epochs of training
+  bought it.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Why nothing appeared">
+  <h2>Two reasons, and both are worth knowing</h2>
+  <ol class="tight small">
+    <li><strong>The gradient that reaches it is small.</strong> Ten layers of
+        chain rule separate the loss from these weights, and 1,020
+        images give 960 optimiser steps in total</li>
+    <li><strong>Its scale does not matter.</strong> A batch norm follows
+        immediately, and normalising the output makes the overall size of these
+        weights irrelevant to the function &mdash; so there is no gradient
+        pressure on it at all</li>
+  </ol>
+  <p class="small">The textbook picture of a first layer &mdash; colour blobs,
+  oriented edges &mdash; is real, and you will see it next lecture. It comes
+  from a corpus a thousand times this size.</p>
+</section>
+
+<!-- 36 -->
+<section class="figslide" data-menu-title="◆ Feature maps">
+  <h2>What a filter does to one photograph</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l15-featmaps.png"
+         alt="Two rows: the input photograph followed by eight first-layer feature maps at 128 by 128 in which the flower is still recognisable, and below it the same photograph followed by eight maps after four convolutions at 32 by 32 in which only blobs remain.">
+  </figure>
+  <p class="takeaway">Early maps still look like the photograph. Four layers
+  down they do not, and that is the point.</p>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Reading feature maps">
+  <h2>Reading a feature map</h2>
+  <ul class="tight small">
+    <li>Bright means <em>this filter fired strongly here</em> &mdash; nothing
+        more mystical than that</li>
+    <li>The spatial layout survives: a bright patch is where in the image the
+        pattern was found</li>
+    <li>After four pooling stages the map is 8 &times; 8, so one cell answers
+        for a 256-pixel square of the
+        original</li>
+  </ul>
+  <p class="small">That last line is a loss of information we chose. It is
+  the right choice for naming a species, and the wrong one for any task that
+  must say <em>where</em>.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="The scoreboard">
+  <h2>The scoreboard</h2>
+  <table>
+    <tr><th></th><th class="num">Test accuracy</th></tr>
+    <tr><td>Uniform guess</td><td class="num">0.98%</td></tr>
+    <tr><td>Commonest species</td><td class="num">3.87%</td></tr>
+    <tr><td class="fix">Yours, today</td><td class="num hit">8.13%</td></tr>
+    <tr><td>Operator&rsquo;s requirement</td><td class="num">90%</td></tr>
+  </table>
+  <p class="lead">Above both baselines &mdash; 2.1 times the commonest
+  species &mdash; and far below the requirement. Both distances matter.</p>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Honest limits">
+  <h2>What this number is and is not</h2>
+  <ul class="tight small">
+    <li><strong>Is</strong>: one run, seed 42, of one
+        architecture on one split, measured on 6,149
+        held-out images</li>
+    <li><strong>Is not</strong>: a claim about convolutional networks. It is a
+        claim about this one, trained on 1,020 images</li>
+    <li>Two seeds of a shorter run differed by
+        2.55 points. Any comparison smaller than that is
+        not a comparison</li>
+  </ul>
+  <p class="small">Quote the spread whenever you quote the number. It is the
+  difference between a measurement and an anecdote.</p>
+</section>
+
+<!-- 40 -->
+<section data-menu-title="Common mistakes">
+  <h2>Five ways this build goes wrong quietly</h2>
+  <table>
+    <tr><th>Mistake</th><th>Symptom</th></tr>
+    <tr><td><code>padding=0</code> left at the default</td><td>maps shrink; a shape error many layers later</td></tr>
+    <tr><td>Forgetting <code>net.eval()</code></td><td>the score wobbles between calls &mdash; Lecture 8</td></tr>
+    <tr><td>Normalising with statistics of all splits</td><td>2.16 points, inside the seed noise</td></tr>
+    <tr><td><code>lr</code> left at Adam&rsquo;s default</td><td>4.12 points, and no error</td></tr>
+    <tr><td>Pooling before any convolution</td><td>throws away the pixels before anything reads them</td></tr>
+  </table>
+</section>
+
+<!-- 41 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-12.ipynb">Open Lecture 12 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU.</strong> It trains 30 epochs, and every
+        accuracy on these slides is one it printed</li>
+    <li>The dense-against-convolutional parameter count, computed rather than
+        quoted &mdash; the arithmetic you can do on paper first</li>
+    <li>The network built and shape-checked layer by layer, the learning-rate
+        and seed comparisons, one test score, and the first layer&rsquo;s
+        filters and feature maps</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Set <code>padding=0</code> on every convolution and re-run the shape
+    check. Every map shrinks and the first linear layer no longer matches.
+  </div>
+</section>
+
+<section data-menu-title="Design · The task">
+  <p class="kicker">Design exercise &middot; in the manner of an ML system-design interview</p>
+  <h2>The task: a recycling-robotics company&rsquo;s camera sorter</h2>
+  <div class="panel">
+    <span class="panel-title">The brief</span>
+    A recycling-robotics company sells a sorting unit for its customers&rsquo;
+    conveyors: a camera photographs every object, an air jet blows it into
+    the bin for its material. It names the <strong>material</strong> of each
+    object &mdash; paper, cardboard, two plastics, glass, aluminium, residual
+    &mdash; in time for the jet. Users: the plant operators. The business
+    warrants the purity of the bales its customers sell, and pays for
+    returns.
+  </div>
+  <ul class="tight small">
+    <li><strong>Given:</strong> a few thousand photographs from installed
+        units, one object each, labelled by the customers&rsquo; operators</li>
+    <li><strong>Scale:</strong> several objects a second per belt; the jet
+        fires a fraction of a second later</li>
+    <li><strong>Consumers of the output:</strong> the unit&rsquo;s diverter,
+        the customer&rsquo;s purity report per bale, the support team</li>
+  </ul>
+  <p class="small fix">Nine steps follow, each with the pitfall that catches a
+  first attempt and what to do about it. The model at the centre is
+  today&rsquo;s: a convolutional network trained from scratch.</p>
+</section>
+
+<section data-menu-title="Design · 1 Frame it">
+  <h2>Step 1 &mdash; Frame it: one class per object, scored per material</h2>
+  <ul class="tight small">
+    <li>One row per object; the label is its material; the output is one class
+        from a fixed list. The customers&rsquo; &ldquo;if you cannot tell, send
+        it to residual&rdquo; is a confidence requirement a softmax does not
+        meet &mdash; say so in the brief rather than hand over the largest
+        probability as if it were one</li>
+    <li>The metric is per material: the recall of each, and the purity of each
+        bin, read off a confusion matrix; the baseline is &ldquo;everything is
+        cardboard&rdquo;</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall &mdash; class imbalance between materials</span>
+    Cardboard and paper are most of a belt; aluminium is perhaps one object
+    in fifty. Accuracy rewards a network that never names aluminium, and the
+    aluminium bale &mdash; the one worth most per tonne &mdash; is the one the
+    customer&rsquo;s buyer rejects: a warranty claim. Score every material
+    separately, weight the loss by the inverse frequency or oversample the
+    rare ones, and report bin purity, never one accuracy.
+  </div>
+</section>
+
+<section data-menu-title="Design · 2 The data">
+  <h2>Step 2 &mdash; The data: one crop per object, and what a pixel costs</h2>
+  <ul class="tight small">
+    <li>The camera frame is mostly belt: crop each object out of it, so the
+        network reads the object and not the conveyor</li>
+    <li>The weight count of a convolution does not contain the image size, but
+        the activations and the arithmetic do: every feature map is as large as
+        its input, and the dense head grows with the last map</li>
+    <li>Choose the side length by looking: the smallest at which an operator
+        can still tell the two plastics apart on the crop &mdash; then measure</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall &mdash; resolution chosen by habit</span>
+    Fed at the camera&rsquo;s full resolution, the early maps are hundreds of
+    times larger than at today&rsquo;s crop size, and one object takes longer
+    than the belt allows. Shrunk to a thumbnail, the label on the bottle and
+    the texture that separates the plastics are gone, the two merge in the
+    confusion matrix, and the plastic bale downgrades. Pick the resolution
+    with the confusion matrix and the clock both open.
+  </div>
+</section>
+
+<section data-menu-title="Design · 3 The split">
+  <h2>Step 3 &mdash; Split by plant, then augment the training side only</h2>
+  <ul class="tight small">
+    <li>Consecutive frames show the same object twice, and a plant&rsquo;s belt
+        is one distribution: split by plant, never by frame, so the
+        validation plants are ones the network never saw; standardise with
+        the training side&rsquo;s channel statistics only</li>
+    <li>Manufacture views of the training crops: an object lies on the
+        belt at any angle, so rotations and flips keep the label; a shift of
+        position the convolution already handles by equivariance</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall &mdash; augmentation that does not respect the object</span>
+    A hue shift turns green glass into brown, and the label did not survive. A
+    crop that drops the bottle&rsquo;s neck or the can&rsquo;s rim removes the
+    feature the operators used. Each transform is a claim that the material is
+    unchanged under it: state the claim, apply the transform to the training
+    loader only, and leave the validation and test crops as the camera took
+    them.
+  </div>
+</section>
+
+<section data-menu-title="Design · 4 Representation">
+  <h2>Step 4 &mdash; Representation: the crop as a tensor, read by shared weights</h2>
+  <ul class="tight small">
+    <li>The input is channels &times; height &times; width, not a flattened
+        vector: a dense layer producing a map from a flattened crop needs a
+        weight count that contains the square of the image area</li>
+    <li>A convolution reads a window with the same weights at every position:
+        a crushed can&rsquo;s rim is the same evidence wherever it lies on the
+        belt, which is exactly the assumption weight sharing makes &mdash; and
+        here it holds</li>
+    <li>Pooling then builds invariance: the diverter needs the material, not
+        where on the crop the rim was</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall &mdash; the first attempt flattens</span>
+    A multilayer perceptron on flattened crops has to learn the same edge at
+    every position from a few thousand examples, and its first layer does not
+    fit in memory at any resolution that shows the material. Weight sharing
+    is the reason a network fits this belt at all: the same filter at
+    every position, far fewer weights, and the rim learned once.
+  </div>
+</section>
+
+<section data-menu-title="Design · 5 The model">
+  <h2>Step 5 &mdash; The model: convolution, batch norm, pooling &mdash; and the shapes first</h2>
+  <ul class="tight small">
+    <li>Blocks of convolution, batch norm and ReLU; a pool after every pair;
+        channels doubling as the map halves; a small dense head with dropout
+        over the materials</li>
+    <li>Batch norm after every convolution, because a stack of untreated
+        convolutions on a few thousand crops sits at the loss of a uniform
+        guess and names one material</li>
+    <li>Push a dummy batch through the modules one at a time and print every
+        shape before the first training step</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall &mdash; padding left at its default</span>
+    The default is zero: every map shrinks by the kernel size less one, and
+    the error surfaces as a size mismatch at the dense layer, many layers
+    after the cause, in the middle of a training loop. Set the padding to half
+    the kernel so each map keeps its size, and assert the head&rsquo;s output
+    shape before anything is trained.
+  </div>
+</section>
+
+<section data-menu-title="Design · 6 Overfitting">
+  <h2>Step 6 &mdash; Failure condition: a few thousand crops against millions of parameters</h2>
+  <ul class="tight small">
+    <li>Nine parameters in ten sit in the dense layer after the flatten, and
+        it can memorise a few thousand crops</li>
+    <li>Symptom: the training curve climbs towards the purity the company
+        warrants and the validation curve parts from it and flattens</li>
+    <li>Two seeds of the same run differ by points: a comparison smaller than
+        the seed spread is not a comparison</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall &mdash; overfitting a small set, read as success</span>
+    The first attempt puts the training accuracy in the release note, and the
+    first customer finds otherwise. Shrink the head &mdash; a global pool in
+    place of the flatten &mdash; keep the dropout, augment, label more crops
+    from the plants the model gets wrong, and read every number on held-out
+    plants, with the seed spread beside it.
+  </div>
+</section>
+
+<section data-menu-title="Design · 7 The clock">
+  <h2>Step 7 &mdash; Evaluation: the curve against the clock, the test plants once</h2>
+  <ul class="tight small">
+    <li>Plot training and validation accuracy against wall-clock seconds, not
+        epochs: the comparison for every new customer&rsquo;s belt is
+        &ldquo;how good, in how long&rdquo;</li>
+    <li>The learning rate is not a free choice: at the optimiser&rsquo;s default
+        the network plateaus at chance and nothing raises; choose it on the
+        validation plants</li>
+    <li>Choose everything on the validation plants; read the test plants
+        once</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall &mdash; curves compared by epoch</span>
+    A wider network, or one fed a larger crop, looks better at the same epoch
+    and costs several times the seconds per epoch. The budget is
+    commissioning time, so the x-axis must be time: against the clock the
+    small network has often reached the same point long before the large
+    one, and the comparison reverses.
+  </div>
+</section>
+
+<section data-menu-title="Design · 8 On the line">
+  <h2>Step 8 &mdash; On the line: latency, release, and the operators&rsquo; audit</h2>
+  <ul class="tight small">
+    <li>The crop, the preprocessing and one forward pass must fit inside the
+        fraction of a second before the jet, on the unit&rsquo;s controller
+        &mdash; one object at a time, no batch</li>
+    <li>Early pooling removes three quarters of every later layer&rsquo;s
+        arithmetic; the convolutions are where the time goes</li>
+    <li>Release: new model on one lane, old on the other, bin purity compared
+        on the customer&rsquo;s audit; retrain on the audits as packaging
+        changes; the engineer on call reads each bin&rsquo;s purity against
+        the launch matrix</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall &mdash; latency measured on the development machine, in batches</span>
+    Throughput on a graphics card at a batch of sixty-four says nothing about
+    one crop on the unit&rsquo;s controller: a model that clears the batch
+    benchmark misses the jet. Time a single crop end to end on the
+    unit&rsquo;s own hardware, and put that number in every comparison and
+    the specification.
+  </div>
+</section>
+
+<section data-menu-title="Design · 9 The pitfalls">
+  <h2>Step 9 &mdash; Ship it: the pipeline, and the pitfalls in one table</h2>
+  <p class="small">Camera frame &rarr; one crop per object &rarr; split by
+  plant &rarr; label-preserving augmentation, training only &rarr;
+  convolution, batch norm, pooling, small head, shapes asserted &rarr;
+  per-material loss, learning rate from validation &rarr; curves against the
+  clock &rarr; test plants once &rarr; one crop timed on the unit &rarr; lane
+  against lane, retrain on the audit.</p>
+  <table class="smaller">
+    <tr><th>Pitfall</th><th>Address it by</th></tr>
+    <tr><td>Accuracy on an imbalanced belt</td><td>recall and bin purity per material; the loss weighted</td></tr>
+    <tr><td>Resolution chosen by habit</td><td>a side length chosen with the confusion matrix open</td></tr>
+    <tr><td>Augmentation that changes the material</td><td>transforms the label survives, on the training loader only</td></tr>
+    <tr><td>A flattened crop</td><td>a convolution: shared weights, invariance from pooling</td></tr>
+    <tr><td>Padding at its default</td><td>padding of half the kernel; the shape check before training</td></tr>
+    <tr><td>Training accuracy shipped as the result</td><td>a global pool, dropout; numbers from held-out plants</td></tr>
+    <tr><td>Curves compared by epoch</td><td>accuracy against wall-clock seconds</td></tr>
+    <tr><td>Latency measured in batches</td><td>one crop end to end on the unit</td></tr>
+  </table>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="small">
+    <li>Counted the weights of a dense layer and a convolutional layer producing
+        the same output, and found the image size absent from the convolutional
+        count</li>
+    <li>Defined translation <em>equivariance</em>, the property weight sharing
+        buys, and saw that pooling builds <em>invariance</em> on top of it</li>
+    <li>Built a convolutional network &mdash; convolution, batch norm, pooling,
+        a dense head &mdash; checked its shapes, and found nine parameters in
+        ten in the one dense layer</li>
+    <li>Trained it with a learning rate that is not a free choice, scored the
+        test set once, and quoted the seed spread beside the number</li>
+    <li>Looked inside: the first-layer filters barely moved, and the feature
+        maps lose the photograph as they go down the stack</li>
+      <li>Designed the camera sorter a recycling-robotics company sells for its customers&rsquo; conveyors in nine steps &mdash; per-material recall against an imbalanced belt, a resolution chosen with the clock open, a split by customer plant and augmentation the material survives, shared weights in place of a flattened crop, padding set and shapes asserted, a global pool and dropout against a memorised set, curves read against the clock, and one crop timed on the unit&rsquo;s own controller &mdash; each step named for the pitfall it avoids</li>
+  </ol>
+</section>
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 12">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 12</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 12">
+  <h2>Exercises &mdash; Lecture 12</h2>
+  <ul class="ex-list">
+    <li>A dense layer mapping a $3\times128\times128$ input to a $32\times128\times128$ output has $n_{\text{in}}n_{\text{out}}$ weights. Give the convolutional count for a $7\times7$ kernel, and say which symbols are absent from it. <span class="ex-marks">[5]</span></li>
+    <li>State the difference between equivariance and invariance, say which of the two pooling builds, and why a species classifier wants it. <span class="ex-marks">[4]</span></li>
+    <li>Convolution is equivariant to translation on the interior of an image but not at the border. Give the reason. <span class="ex-marks">[3]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 13&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 12 (2)">
+  <h2>Exercises &mdash; Lecture 12 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>Trained with Adam at its default learning rate of $10^{-3}$, the lecture&rsquo;s network neither diverges nor raises an error. State what it does instead, and how the lecture showed it. <span class="ex-marks">[4]</span></li>
+    <li>Two runs of the same network, differing only in the seed, reach 4.22% and 6.76% validation accuracy. A change to the pipeline then gains 1.5 points in a single run. What can you conclude, and what should be reported? <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 13&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 11">
+  <p class="kicker">The five set at the end of Lecture 11</p>
+  <h1>Solutions<br>Lecture 11</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 11">
+  <h2>Solutions &mdash; Lecture 11</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> A linear autoencoder $784 \to d \to 784$ with squared loss is trained to convergence on centred data. State&hellip;</p>
+      <p class="lead"><span class="fix">$\sum_{j>d}\sigma_j^2$, the tail of the spectrum; it reconstructs through the projection onto the span of the leading $d$ right singular vectors &mdash; the principal subspace.</span></p>
+      <ul class="tight smaller">
+        <li>Every reconstruction is a combination of the $d$ rows of the decoder, so it lies in one subspace of dimension at most $d$, and the closest point of a subspace is the orthogonal projection</li>
+        <li>Over all $d$-dimensional subspaces the projection error is smallest on the principal subspace, where it equals the tail sum; the choice $\mathbf{A} = \mathbf{V}_d$, $\mathbf{B} = \mathbf{V}_d^{\intercal}$ attains it</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> Two linear autoencoders are trained from different seeds to the same loss, and their codes for the same image&hellip;</p>
+      <p class="lead"><span class="fix">Not a bug. For any invertible $\mathbf{T}$, the encoder $\mathbf{A}\mathbf{T}$ with the decoder $\mathbf{T}^{-1}\mathbf{B}$ gives the same reconstruction and a different code: the subspace is unique, its basis is not.</span></p>
+      <ul class="tight smaller">
+        <li>The loss depends on the product $\mathbf{A}\mathbf{B}$ only, and the product does not change under the change of basis</li>
+        <li>Gradient descent lands on one basis of the principal subspace; the principal components themselves are one basis among all of them</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 11 (2)">
+  <h2>Solutions &mdash; Lecture 11 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> The code size is set equal to the number of pixels and nothing else constrains the network. State what the&hellip;</p>
+      <p class="lead"><span class="fix">The identity, with zero loss. The code is a re-encoding of the pixels that loses nothing and learns nothing.</span></p>
+      <ul class="tight smaller">
+        <li>With $d = n$ the tail of the spectrum is empty, so the floor is zero and the identity reaches it</li>
+        <li>A bottleneck narrower than the input is the only thing that forbids copying; without it the code carries exactly the pixels, differently arranged</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> An anomaly detector scores images by their reconstruction error from an autoencoder trained on nine classes;&hellip;</p>
+      <p class="lead"><span class="fix">Reconstruction error measures how well the training classes can imitate an image, not how rare it is. A held-out class the training classes resemble is reconstructed as well as they are, so its errors sit on top of theirs. Examples of the anomalies, to measure the detector on.</span></p>
+      <ul class="tight smaller">
+        <li>A coat held out from pullovers, shirts and T-shirts decodes as a dark pullover; nothing in the score knows it was never seen</li>
+        <li>Whether the method works is a property of what the anomalies look like, which cannot be read from the training data alone</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 11 (3)">
+  <h2>Solutions &mdash; Lecture 11 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> Nearest-neighbour retrieval in a 32-number autoencoder code scores the same precision at ten as in the 784&hellip;</p>
+      <p class="lead"><span class="fix">A twenty-fourfold saving in storage and in the cost of every comparison, at equal precision. It could not beat the pixels because the reconstruction loss contains no information about which images are similar: the code is a compressed account of pixel distance.</span></p>
+      <ul class="tight smaller">
+        <li>A nearest-neighbour search compares the query with every item in the catalogue, so the length of the code is the cost of the search</li>
+        <li>A representation that is better than its input at a task needs a training signal about that task, and reconstructing the input supplies none</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 13 &middot; G&eacute;ron Ch. 12</p>
+  <h1>Transfer learning</h1>
+  <p class="small">
+    Why features learned on a large labelled corpus transfer to these
+    flowers<br>
+    Freeze the backbone and train a head; then let the last block move, at
+    its own learning rate<br>
+    Augmentation &mdash; and why it belongs to the training loader only
+  </p>
+  <p class="clock">Run the Lecture 12 notebook first</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 12
+  <span class="sep">&middot;</span> Convolutional networks
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

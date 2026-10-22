@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 11 — Autoencoders and representation learning</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Autoencoders and<br>representation learning</h1>
+  <p class="subtitle">Fashion-MNIST</p>
+  <p><span class="badge badge-lec">Lecture 11</span>
+     <span class="badge badge-notes">Lecture notes</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Outside the textbook and examinable from the notes. Say
+  so at the start. The derivation is the lecture's centre: it ties the SVD of
+  Lecture 6 to a network trained by gradient descent.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <table class="smaller">
+    <tr><th>Lecture</th><th>What it built</th><th>What it needed</th></tr>
+    <tr><td>7</td><td>a first network, and what a layer computes</td><td>a label for every image</td></tr>
+    <tr><td>8</td><td>the training loop, written out in five lines</td><td>a label for every image</td></tr>
+    <tr><td>9</td><td>a deep network that trains, by initialisation and normalisation</td><td>a label for every image</td></tr>
+    <tr><td>10</td><td>a network that stops overfitting: early stopping, weight decay, dropout, augmentation</td><td>a label for every image</td></tr>
+    <tr class="hit"><td><strong>11</strong></td><td><strong>a network that learns from the images alone</strong></td><td><strong>no labels</strong></td></tr>
+  </table>
+  <div class="panel panel-when">
+    <span class="panel-title">Outside the book</span>
+    This lecture is taught from its notes rather than from G&eacute;ron, and is
+    examined on the same terms as every other. The notes are the primary
+    source; the deck is the lecture.
+  </div>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>The task: a catalogue of photographs and no labels &mdash; find the
+        similar ones, group them, flag the odd ones</li>
+    <li><strong>The mathematics</strong> &mdash; a linear autoencoder with
+        squared loss recovers the principal subspace of Lecture 6</li>
+    <li><strong>The method</strong> &mdash; undercomplete autoencoders in
+        PyTorch; what the loss sees; the code as a representation, measured on
+        retrieval and clustering; denoising; anomaly detection</li>
+    <li>The variational autoencoder, for context, and where representations
+        go from here</li>
+    <li><strong>Design exercise</strong> &mdash; a fashion marketplace&rsquo;s
+        &ldquo;see similar&rdquo; feature, in nine steps, with the pitfalls and
+        how to address them</li>
+  </ol>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-11.ipynb">
+       Open Lecture 11 in Google Colab</a>
+  </p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="The setting">
+  <h2>The setting: a catalogue nobody labelled</h2>
+  <p>A marketplace holds millions of product photographs uploaded by sellers.
+  The category field is free text, often empty, sometimes wrong. Three things
+  the product team wants from the photographs alone:</p>
+  <ul class="tight">
+    <li><strong>Similar items</strong> &mdash; given one garment, the ten most
+        like it, in milliseconds, across the whole catalogue</li>
+    <li><strong>Groups</strong> &mdash; a first structure for a catalogue that
+        has none</li>
+    <li><strong>The odd ones</strong> &mdash; uploads that are not what the
+        catalogue holds, flagged before a shopper sees them</li>
+  </ul>
+  <p class="small fix">Every method so far needed a label per row. None of
+  these questions comes with one. The network of today learns from the inputs
+  by trying to <em>reproduce</em> them.</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="The data">
+  <h2>The data, and the one rule about labels</h2>
+  <div class="cols cols-60-40">
+    <div>
+      <table class="smaller">
+        <tr><th>Fashion-MNIST</th><th class="num">Count</th></tr>
+        <tr><td>Images to fit on</td><td class="num">12,000</td></tr>
+        <tr><td>Validation images</td><td class="num">5,000</td></tr>
+        <tr><td>Test images, the catalogue</td><td class="num">10,000</td></tr>
+        <tr><td>Pixels per image</td><td class="num">784</td></tr>
+        <tr><td>Classes</td><td class="num">10</td></tr>
+      </table>
+    </div>
+    <div>
+      <p class="small">The same split as Lectures 7 and 8, so the numbers
+      compare. Twelve thousand images are few enough to train every network
+      here on a CPU.</p>
+    </div>
+  </div>
+  <div class="panel panel-when">
+    <span class="panel-title">The labels are loaded, and used for exactly one thing</span>
+    <strong>Scoring.</strong> Nothing is fitted on them. Precision at ten,
+    the clusters&rsquo; purity and the anomaly detector&rsquo;s AUROC all read the
+    labels after the fact, to say whether a representation learned without
+    them means anything.
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="figslide" data-menu-title="◆ The autoencoder">
+  <h2>An autoencoder: compress, then reconstruct</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/d-autoencoder.svg"
+         alt="An image of 784 pixels enters an encoder, which produces a code of d numbers; a decoder turns the code back into 784 pixels; the loss compares the reconstruction with the input, and the arrow of the gradient runs back through both.">
+  </figure>
+  <p class="takeaway">The target is the input. The network is trained to
+  return what it was given, through a code too small to hold it &mdash; so
+  it has to learn what the images have in common.</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="The objective">
+  <h2>The objective</h2>
+  <div class="eqn-box">
+    $$\mathbf{z} = f_{\text{enc}}(\mathbf{x}) \in \mathbb{R}^{d}, \qquad
+      \hat{\mathbf{x}} = f_{\text{dec}}(\mathbf{z}) \in \mathbb{R}^{n}$$
+    $$L = \frac{1}{m}\sum_{i=1}^{m}\bigl\lVert \mathbf{x}^{(i)} - \hat{\mathbf{x}}^{(i)}\bigr\rVert_2^2$$
+  </div>
+  <ul class="tight small">
+    <li>$n = 784$ pixels in, $n$ pixels out; $d$ numbers in between &mdash;
+        the <strong>code</strong></li>
+    <li>Squared loss on pixels: the same loss as least squares, with the
+        input standing in for the label</li>
+    <li>Trained by the five-line loop of Lecture 8; nothing in the loop
+        knows there is no label</li>
+  </ul>
+  <p class="small muted">The whole design question is what stops the network
+  from learning the identity.</p>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="The bottleneck">
+  <h2>Why a bottleneck: a constraint in the sense of Lecture 10</h2>
+  <p class="small">Lecture 10&rsquo;s regularisers &mdash; weight decay,
+  dropout, augmentation &mdash; all work the same way: they <em>shrink the
+  set of functions the network can reach</em>, so that fitting the training
+  data no longer means memorising it. An autoencoder needs the same thing,
+  for a sharper reason: with $d = n$ the identity is reachable, the loss is
+  zero, and nothing was learned.</p>
+  <table class="smaller">
+    <tr><th>Constraint</th><th>What it forbids</th><th>Name</th></tr>
+    <tr class="hit"><td>$d \ll n$</td><td>copying: 784 numbers cannot pass through 32</td><td><strong>undercomplete</strong></td></tr>
+    <tr><td>corrupt the input, keep the target clean</td><td>copying: what comes in is not what must go out</td><td>denoising</td></tr>
+    <tr><td>penalise the code</td><td>using every coordinate for every image</td><td>sparse</td></tr>
+  </table>
+  <p class="small fix">Today: the first two. The first is the one the
+  mathematics is about.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="The question">
+  <h2>The question for the mathematics</h2>
+  <p class="lead">Make the encoder and the decoder <em>linear</em>, keep the
+  squared loss, and train by gradient descent. What does the network
+  learn?</p>
+  <div class="panel panel-math">
+    <span class="panel-title">The claim</span>
+    Exactly what Lecture 6 computed with the SVD: the best such network
+    reconstructs through the projection onto the span of the leading $d$
+    right singular vectors, and the error it leaves is the tail of the
+    spectrum, $\sum_{j>d}\sigma_j^2$.
+  </div>
+  <p class="small muted">The result is worth having twice over. It says what
+  an autoencoder is, in the one case where the answer is closed-form; and it
+  says what the non-linear one is <em>for</em> &mdash; the part of the error
+  that no projection can remove.</p>
+</section>
+
+<!-- 10 -->
+<section data-menu-title="The model, with shapes">
+  <h2>Step 1 &middot; The model, with the shapes tracked</h2>
+  <p class="small muted"><span class="scope scope-exam">examinable</span>
+  One photograph per row, as in Lecture 6; the data centred on its mean.</p>
+  <div class="eqn-box">
+    $$\mathbf{Z} = \tilde{\mathbf{X}}\mathbf{A}, \quad
+      \hat{\mathbf{X}} = \mathbf{Z}\mathbf{B} = \tilde{\mathbf{X}}\mathbf{A}\mathbf{B}, \quad
+      E(\mathbf{A},\mathbf{B}) = \bigl\lVert\tilde{\mathbf{X}} - \tilde{\mathbf{X}}\mathbf{A}\mathbf{B}\bigr\rVert_F^2$$
+  </div>
+  <table class="smaller">
+    <tr><th>Object</th><th>Shape</th><th>Role</th></tr>
+    <tr><td>$\tilde{\mathbf{X}}$</td><td>$m \times n$</td><td>the centred images, one per row</td></tr>
+    <tr><td>$\mathbf{A}$</td><td>$n \times d$</td><td>the encoder: $n$ pixels to $d$ numbers</td></tr>
+    <tr><td>$\mathbf{Z}$</td><td>$m \times d$</td><td>the codes, one per row</td></tr>
+    <tr><td>$\mathbf{B}$</td><td>$d \times n$</td><td>the decoder: $d$ numbers to $n$ pixels</td></tr>
+  </table>
+  <p class="small">No orthogonality, no constraint on $\mathbf{A}$ or
+  $\mathbf{B}$ at all. Gradient descent sees $2nd$ free numbers.</p>
+</section>
+
+<!-- 11 -->
+<section data-menu-title="Step 2 · A subspace">
+  <h2>Step 2 &middot; Every reconstruction lies in a $d$-dimensional subspace</h2>
+  <p>Row $i$ of $\hat{\mathbf{X}}$ is $\mathbf{z}^{(i)}\mathbf{B}$ &mdash; a
+  combination of the $d$ rows of $\mathbf{B}$, with the $d$ entries of the
+  code as coefficients.</p>
+  <div class="eqn-box">
+    $$\hat{\mathbf{x}}^{(i)} \in S := \operatorname{rowspace}(\mathbf{B}) \subseteq \mathbb{R}^{n},
+      \qquad \dim S \le d$$
+  </div>
+  <p class="small">Whatever the encoder does, the decoder can only put a
+  reconstruction <em>somewhere in $S$</em>. The encoder chooses where; the
+  decoder fixes the subspace. This is the only place the bottleneck enters
+  the argument, and it enters as a dimension count.</p>
+</section>
+
+<!-- 12 -->
+<section data-menu-title="Step 3 · The closest point">
+  <h2>Step 3 &middot; The closest point of a subspace is the projection</h2>
+  <p class="small">Let $\mathbf{P}_S$ be the orthogonal projector onto $S$.
+  For any $\mathbf{y} \in S$, split the error into the part orthogonal to $S$
+  and the part inside it:</p>
+  <div class="eqn-box">
+    $$\tilde{\mathbf{x}} - \mathbf{y} = \underbrace{(\tilde{\mathbf{x}} - \mathbf{P}_S\tilde{\mathbf{x}})}_{\perp\, S}
+      + \underbrace{(\mathbf{P}_S\tilde{\mathbf{x}} - \mathbf{y})}_{\in\, S}$$
+    $$\lVert\tilde{\mathbf{x}} - \mathbf{y}\rVert^2 = \lVert\tilde{\mathbf{x}} - \mathbf{P}_S\tilde{\mathbf{x}}\rVert^2
+      + \lVert\mathbf{P}_S\tilde{\mathbf{x}} - \mathbf{y}\rVert^2$$
+  </div>
+  <p class="small">Pythagoras, because the two pieces are orthogonal. The
+  second term is never negative, so</p>
+  <div class="eqn-box">
+    $$\lVert\tilde{\mathbf{x}} - \mathbf{y}\rVert^2 \;\ge\; \lVert\tilde{\mathbf{x}} - \mathbf{P}_S\tilde{\mathbf{x}}\rVert^2
+      \qquad\text{for every } \mathbf{y}\in S.$$
+  </div>
+</section>
+
+<!-- 13 -->
+<section data-menu-title="Step 4 · Sum the rows">
+  <h2>Step 4 &middot; Sum over the rows: the loss is bounded by a projection&rsquo;s</h2>
+  <p class="small">Apply step 3 to every row, with $\mathbf{y} = \hat{\mathbf{x}}^{(i)}$:</p>
+  <div class="eqn-box">
+    $$E(\mathbf{A},\mathbf{B}) = \sum_i \lVert\tilde{\mathbf{x}}^{(i)} - \hat{\mathbf{x}}^{(i)}\rVert^2
+      \;\ge\; \sum_i \lVert\tilde{\mathbf{x}}^{(i)} - \mathbf{P}_S\tilde{\mathbf{x}}^{(i)}\rVert^2$$
+    $$\phantom{E(\mathbf{A},\mathbf{B})} = \bigl\lVert\tilde{\mathbf{X}} - \tilde{\mathbf{X}}\mathbf{W}\mathbf{W}^{\intercal}\bigr\rVert_F^2$$
+  </div>
+  <p class="small">where $\mathbf{W}$ is an orthonormal basis of $S$, so that
+  $\mathbf{P}_S = \mathbf{W}\mathbf{W}^{\intercal}$. If $\dim S &lt; d$, pad
+  $\mathbf{W}$ to $d$ columns: a larger subspace can only lower the error.</p>
+  <p class="lead fix">The right-hand side is <em>exactly</em> Lecture 6&rsquo;s
+  objective $E(\mathbf{W})$, with $\mathbf{W}^{\intercal}\mathbf{W} = \mathbf{I}_d$.</p>
+</section>
+
+<!-- 14 -->
+<section data-menu-title="Step 5 · Recall Lecture 6">
+  <h2>Step 5 &middot; Recall what Lecture 6 proved about that objective</h2>
+  <div class="panel panel-math">
+    <span class="panel-title">PCA via the SVD, restated</span>
+    With $\tilde{\mathbf{X}} = \mathbf{U}\boldsymbol\Sigma\mathbf{V}^{\intercal}$
+    and $\sigma_1 \ge \sigma_2 \ge \dots$, over all $\mathbf{W}$ with
+    orthonormal columns,
+    $$\min_{\mathbf{W}} \bigl\lVert\tilde{\mathbf{X}} - \tilde{\mathbf{X}}\mathbf{W}\mathbf{W}^{\intercal}\bigr\rVert_F^2
+      = \sum_{j>d}\sigma_j^2, \qquad \text{attained at } \mathbf{W} = \mathbf{V}_d,$$
+    the first $d$ columns of $\mathbf{V}$.
+  </div>
+  <p class="small">Seven lines there: Pythagoras turns the error into
+  $\lVert\tilde{\mathbf{X}}\rVert_F^2 - \operatorname{tr}(\mathbf{W}^{\intercal}\mathbf{C}\mathbf{W})$,
+  the SVD diagonalises $\mathbf{C} = \tilde{\mathbf{X}}^{\intercal}\tilde{\mathbf{X}}$,
+  and $d$ units of weight spent on the largest $\sigma_j^2$ maximise the
+  trace. Nothing in it is needed again today except the result.</p>
+</section>
+
+<!-- 15 -->
+<section data-menu-title="Step 6 · Attained">
+  <h2>Step 6 &middot; The bound is attained by a linear autoencoder</h2>
+  <p class="small">Steps 4 and 5 together: for every $\mathbf{A}$ and
+  $\mathbf{B}$, $E(\mathbf{A},\mathbf{B}) \ge \sum_{j>d}\sigma_j^2$. Now
+  choose</p>
+  <div class="eqn-box">
+    $$\mathbf{A} = \mathbf{V}_d, \quad \mathbf{B} = \mathbf{V}_d^{\intercal}
+      \quad\Longrightarrow\quad
+      \mathbf{A}\mathbf{B} = \mathbf{V}_d\mathbf{V}_d^{\intercal}$$
+    $$E(\mathbf{V}_d, \mathbf{V}_d^{\intercal}) = \sum_{j>d}\sigma_j^2$$
+  </div>
+  <p class="small">The encoder computes the principal components; the decoder
+  puts them back. The lower bound is reached, so it is the minimum:
+  $\min_{\mathbf{A},\mathbf{B}} E(\mathbf{A},\mathbf{B}) = \sum_{j>d}\sigma_j^2$.</p>
+</section>
+
+<!-- 16 -->
+<section data-menu-title="Step 7 · What is unique">
+  <h2>Step 7 &middot; The subspace is unique; the code is not</h2>
+  <p class="small">At any optimum the reconstruction is
+  $\tilde{\mathbf{X}}\mathbf{V}_d\mathbf{V}_d^{\intercal}$ &mdash; step 3 is
+  an equality only when $\hat{\mathbf{x}}^{(i)} = \mathbf{P}_S\tilde{\mathbf{x}}^{(i)}$,
+  and step 5 is an equality only on the principal subspace when the
+  $\sigma_j^2$ around position $d$ are distinct. But for any invertible
+  $d\times d$ matrix $\mathbf{T}$,</p>
+  <div class="eqn-box">
+    $$(\mathbf{A}\mathbf{T})\,(\mathbf{T}^{-1}\mathbf{B}) = \mathbf{A}\mathbf{B}$$
+  </div>
+  <p class="small">gives the same reconstruction with a different code,
+  $\mathbf{Z}\mathbf{T}$. Gradient descent lands on <em>one</em> of these:
+  the principal subspace, in some basis, not the principal components
+  themselves.</p>
+  <p class="small fix">That is the claim to check numerically: the error,
+  and the subspace &mdash; not the coordinates.</p>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="The derivation, in seven lines">
+  <h2>The derivation, in seven lines</h2>
+  <p class="small muted"><span class="scope scope-exam">examinable</span>
+  Reproduce this from the statement of the problem, with Lecture 6&rsquo;s result quoted at line 5.</p>
+  <!-- Each step is wrapped in one <div>. .derivation > li is a two-column
+       grid: ::before takes column 1, and without the wrapper the .why span
+       becomes a third grid item. -->
+  <ol class="derivation smaller">
+    <li><div>$E(\mathbf{A},\mathbf{B}) = \lVert\tilde{\mathbf{X}} - \tilde{\mathbf{X}}\mathbf{A}\mathbf{B}\rVert_F^2$, $\mathbf{A}$ is $n\times d$, $\mathbf{B}$ is $d\times n$
+        <span class="why">the linear autoencoder, unconstrained</span></div></li>
+    <li><div>$\hat{\mathbf{x}}^{(i)} = \mathbf{z}^{(i)}\mathbf{B} \in S = \operatorname{rowspace}(\mathbf{B})$, $\dim S \le d$
+        <span class="why">every reconstruction lies in one subspace</span></div></li>
+    <li><div>$\lVert\tilde{\mathbf{x}} - \mathbf{y}\rVert^2 \ge \lVert\tilde{\mathbf{x}} - \mathbf{P}_S\tilde{\mathbf{x}}\rVert^2$ for $\mathbf{y}\in S$
+        <span class="why">Pythagoras: the projection is the closest point</span></div></li>
+    <li><div>$E(\mathbf{A},\mathbf{B}) \ge \lVert\tilde{\mathbf{X}} - \tilde{\mathbf{X}}\mathbf{W}\mathbf{W}^{\intercal}\rVert_F^2$, $\mathbf{W}^{\intercal}\mathbf{W} = \mathbf{I}_d$
+        <span class="why">sum over rows; $\mathbf{W}$ an orthonormal basis of $S$</span></div></li>
+    <li><div>$\min_{\mathbf{W}}\lVert\tilde{\mathbf{X}} - \tilde{\mathbf{X}}\mathbf{W}\mathbf{W}^{\intercal}\rVert_F^2 = \sum_{j>d}\sigma_j^2$ at $\mathbf{W}=\mathbf{V}_d$
+        <span class="why">Lecture 6: PCA via the SVD</span></div></li>
+    <li><div>$\mathbf{A}=\mathbf{V}_d$, $\mathbf{B}=\mathbf{V}_d^{\intercal}$ gives $E = \sum_{j>d}\sigma_j^2$
+        <span class="why">the bound is attained, so it is the minimum</span></div></li>
+    <li class="result"><div>$\min_{\mathbf{A},\mathbf{B}}E = \sum_{j>d}\sigma_j^2$, reconstruction through $\mathbf{V}_d\mathbf{V}_d^{\intercal}$; code unique up to $\mathbf{T}$
+        <span class="why">PCA, reached by gradient descent</span></div></li>
+  </ol>
+</section>
+
+<!-- 18 -->
+<section data-menu-title="What the result buys you">
+  <h2>What the result buys you</h2>
+  <ul class="tight small">
+    <li><strong>A floor you can compute before training.</strong>
+        $\sum_{j>d}\sigma_j^2$ comes from one SVD. Any linear autoencoder
+        that reports less has a bug; one that reports much more has not
+        converged.</li>
+    <li><strong>A definition of what the non-linear model is for.</strong>
+        Whatever it gains over the floor is the part of the error that no
+        projection can remove &mdash; curvature in the data that a subspace
+        cannot follow.</li>
+    <li><strong>The bottleneck is the whole constraint.</strong> At $d = n$
+        the tail is empty, the floor is zero, the identity is reached, and
+        the code is a rotation of the pixels. Nothing learned, no error
+        raised.</li>
+    <li><strong>The code is a representation only up to a change of basis.</strong>
+        Distances in it are not the distances between principal components;
+        they are those distances under $\mathbf{T}$. Retrieval in a learned
+        code is retrieval in a metric nobody chose.</li>
+  </ul>
+</section>
+
+<!-- 19 -->
+<section class="figslide" data-menu-title="◆ Checked numerically">
+  <h2>Checked numerically: gradient descent reaches the floor</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/ae11-linear-floor.svg"
+         alt="Left: the training loss of the linear autoencoder falling over sixty epochs onto a dashed line at the floor computed from the SVD. Right: the thirty-two principal angles between the decoder's column space and the principal subspace, thirty of them under two degrees and the last two larger.">
+  </figure>
+  <p class="takeaway">Floor from the SVD 0.01501; the linear autoencoder
+  after 60 epochs 0.01510. Thirty of the 32 principal angles are under two
+  degrees. The last two are where $\sigma_{32}^2$ and $\sigma_{33}^2$ differ
+  by about one percent: the loss barely prefers one direction to the other,
+  so neither does the optimiser &mdash; step 6, seen from inside.</p>
+  <a class="anim-link" href="../animations/lecture-11.html#linear" target="_blank">Animation</a>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="The three numbers">
+  <h2>The same subspace, three ways of saying so</h2>
+  <table>
+    <tr><th>Quantity, at $d = 32$</th><th class="num">Linear autoencoder</th><th class="num">Rank-32 projection</th></tr>
+    <tr><td>Training error, per pixel</td><td class="num">0.01510</td><td class="num">0.01501 (the floor)</td></tr>
+    <tr><td>Test error, per pixel</td><td class="num">0.01523</td><td class="num">0.01519</td></tr>
+    <tr><td>Principal angles under 2&deg;</td><td class="num">30 of 32</td><td class="num">&mdash;</td></tr>
+    <tr><td>$\sigma_{32}^2$ and $\sigma_{33}^2$, per pixel</td><td class="num" colspan="2">0.000230 and 0.000227 &mdash; about one percent apart</td></tr>
+    <tr><td>$R^2$ of the code regressed on the PCA scores</td><td class="num hit">0.9979</td><td class="num">&mdash;</td></tr>
+  </table>
+  <p class="small">The last row is step 7: the code is not the principal
+  components, but a linear map of them explains it almost entirely. Same
+  subspace, different basis.</p>
+  <p class="small muted">The projection is computed in closed form; the
+  network by 60 epochs of Adam on 12,000 images. The derivation says they
+  must agree, and they do.</p>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="The module">
+  <h2>The undercomplete autoencoder, in PyTorch</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-10|3-4|5-6|9-10">class AutoEncoder(nn.Module):
+    def __init__(self, d, hidden=256):
+        super().__init__()
+        self.enc = nn.Sequential(nn.Linear(784, hidden), nn.ReLU(),
+                                 nn.Linear(hidden, d))
+        self.dec = nn.Sequential(nn.Linear(d, hidden), nn.ReLU(),
+                                 nn.Linear(hidden, 784), nn.Sigmoid())
+
+    def forward(self, x):
+        return self.dec(self.enc(x))
+  </code></pre>
+  <ul class="tight small">
+    <li>$784 \to 256 \to d \to 256 \to 784$; a sigmoid on the output, because
+        a reconstruction is an image in $[0, 1]$</li>
+    <li><code>enc</code> and <code>dec</code> are attributes on purpose: the
+        code is read by calling the encoder alone</li>
+    <li>At $d = 32$: 419,120 parameters &mdash; the two 784-wide layers are
+        almost all of them</li>
+  </ul>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="The loop">
+  <h2>The loop is the one you already own</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-9|7">for epoch in range(EPOCHS):
+    net.train()
+    for xb in batches(X_fit):          # no labels in the loader
+        opt.zero_grad()                # 1
+        out  = net(xb)                 # 2
+        loss = F.mse_loss(out, xb)     # 3  the target is the input
+        loss.backward()                # 4
+        opt.step()                     # 5
+  </code></pre>
+  <p class="small">One change from Lecture 8: line 3 compares the output with
+  the <em>input</em>. Everything about training deep networks &mdash;
+  initialisation, the optimiser, the schedule, the regularisers &mdash;
+  carries over unchanged, because nothing in it ever depended on the target
+  being a label.</p>
+  <p class="small muted">Twenty epochs of Adam at $10^{-3}$, batches of 128,
+  12,000 images: a CPU is enough.</p>
+</section>
+
+<!-- 23 -->
+<section data-menu-title="Run it">
+  <h2>Run it at $d = 32$</h2>
+  <table>
+    <tr><th>Model, test error per pixel</th><th class="num">Error</th></tr>
+    <tr><td>Rank-32 projection &mdash; the best any <em>linear</em> model can do</td><td class="num">0.01519</td></tr>
+    <tr><td>Linear autoencoder</td><td class="num">0.01523</td></tr>
+    <tr class="hit"><td><strong>Non-linear autoencoder, 419,120 parameters</strong></td><td class="num hit"><strong>0.01275</strong></td></tr>
+  </table>
+  <p class="lead">About a sixth below the floor.</p>
+  <p class="small">That sixth is the quantity the derivation defined: the
+  error a subspace cannot remove, which a curved map can. It is the entire
+  justification for the two ReLU layers.</p>
+  <p class="small muted">Training error 0.01188, validation 0.01276: a
+  small gap, the kind Lecture 10 was about, and small because the bottleneck
+  is doing the regulariser&rsquo;s job.</p>
+</section>
+
+<!-- 24 -->
+<section class="figslide" data-menu-title="◆ Error against d">
+  <h2>The code size, swept</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/ae11-error-vs-d.svg"
+         alt="Test error against code size for the exact rank-d projection, the linear autoencoder and the non-linear autoencoder at d equal to 2, 8, 32 and 128. The linear curve sits on the projection's. The non-linear curve is well below both at 2, 8 and 32 and above them at 128.">
+  </figure>
+  <p class="takeaway">The linear network tracks the exact projection at every
+  $d$. The non-linear one wins where the bottleneck binds &mdash; and at
+  $d = 128$ it <em>loses</em>: 0.01179 against 0.00641.</p>
+  <a class="anim-link" href="../animations/lecture-11.html#curve" target="_blank">Animation</a>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Reading the sweep">
+  <h2>Reading the last column first</h2>
+  <table class="smaller">
+    <tr><th class="num">$d$</th><th class="num">Projection (exact)</th><th class="num">Linear autoencoder</th><th class="num">Non-linear autoencoder</th></tr>
+    <tr><td class="num">2</td><td class="num">0.04610</td><td class="num">0.04611</td><td class="num hit">0.03041</td></tr>
+    <tr><td class="num">8</td><td class="num">0.02662</td><td class="num">0.02665</td><td class="num hit">0.01617</td></tr>
+    <tr><td class="num">32</td><td class="num">0.01519</td><td class="num">0.01523</td><td class="num hit">0.01275</td></tr>
+    <tr><td class="num">128</td><td class="num hit">0.00641</td><td class="num">0.00649</td><td class="num fail">0.01179</td></tr>
+  </table>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; a trained approximation against an exact optimum</span>
+    The projection is the exact minimum of its class, from one SVD. The
+    network is a <em>trained</em> approximation to the minimum of a larger
+    class, and at $d = 128$ its budget &mdash; one hidden layer of 256,
+    twenty epochs &mdash; leaves it above what the SVD gets in closed form.
+    More capacity is not more accuracy until the optimiser has found it.
+  </div>
+</section>
+
+<!-- 26 -->
+<section class="figslide" data-menu-title="◆ Reconstructions">
+  <h2>What the loss sees</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/ae11-reconstructions.png"
+         alt="Five rows of eight garments: the originals, the rank-32 projection, the linear autoencoder at 32, the non-linear autoencoder at 32, and the non-linear autoencoder at 2. The projection and the linear rows are indistinguishable; the non-linear row at 32 is sharper; the row at 2 shows a blurred average of each garment's kind.">
+  </figure>
+  <p class="takeaway">Rows two and three are the derivation in pictures: the
+  same reconstruction. Row five is what two numbers buy.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="What the loss cannot see">
+  <h2>What the loss cannot see</h2>
+  <p class="small">Squared error on pixels is a distance between two
+  arrays. It has no idea which pixels matter.</p>
+  <ul class="tight small">
+    <li><strong>It rewards blur.</strong> The average of a class is close, in
+        pixel distance, to every member of the class. A model short of
+        capacity reconstructs the average and is scored well for it.</li>
+    <li><strong>It is blind to a shift.</strong> Move a sharp edge one pixel
+        and the error is large; smear it over three pixels and the error is
+        smaller. The sharper reconstruction is the worse one, by this loss.</li>
+    <li><strong>It measures pixels, not garments.</strong> A missing button
+        costs nothing; a slightly different grey over the whole sleeve costs
+        a lot.</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; a loss that rewards the average</span>
+    Reconstruction error falling is not the same as reconstructions
+    improving. Look at them. A code chosen by the loss alone is a code tuned
+    to reproduce the common, and the common is what you already knew.
+  </div>
+</section>
+
+<!-- 28 -->
+<section class="figslide" data-menu-title="◆ Two numbers per garment">
+  <h2>The code as a picture: $d = 2$</h2>
+  <figure class="fig fig-tall">
+    <img src="../assets/figures/ae11-code-2d.png"
+         alt="A scatter plot of ten thousand test images placed by their two-dimensional code, one colour per class. Footwear and bags occupy one side; trousers another; the five upper-body classes overlap each other in one region.">
+  </figure>
+  <p class="takeaway">Learned without labels; the colour is the label, added afterwards.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="A representation">
+  <h2>The code as a representation</h2>
+  <p>Thirty-two numbers per garment, computed from the pixels, learned from
+  the pixels. The product questions become geometry in that space:</p>
+  <table class="smaller">
+    <tr><th>Question</th><th>Operation on the codes</th><th>Scored by</th></tr>
+    <tr><td>similar items</td><td>nearest neighbours by Euclidean distance</td><td>precision at ten, against the labels</td></tr>
+    <tr><td>groups</td><td>$k$-means with $k = 10$</td><td>mean purity of the clusters, against the labels</td></tr>
+    <tr><td>the odd ones</td><td>reconstruction error as a score</td><td>AUROC, against a held-out class</td></tr>
+  </table>
+  <p class="small fix">Every one of them has a baseline that needs no
+  learning: the same operation on the 784 raw pixels, and on the 32 PCA
+  scores. A learned code that cannot beat its own input has learned nothing
+  the question needed.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Precision at ten">
+  <h2>Similar items: nearest neighbours, and how they are scored</h2>
+  <pre><code class="language-python" data-trim>def precision_at_10(Z):            # Z: one row per catalogue image
+    Zq = Z[q]                        # 1,000 fixed queries
+    D2 = (Zq**2).sum(1)[:, None] - 2 * Zq @ Z.T + (Z**2).sum(1)[None, :]
+    D2[np.arange(len(q)), q] = np.inf          # not your own neighbour
+    nn10 = np.argsort(D2, axis=1)[:, :10]
+    return (y_test[nn10] == y_test[q][:, None]).mean()
+  </code></pre>
+  <ul class="tight small">
+    <li>Catalogue: the 10,000 test images; queries: 1,000 of them, each
+        searching the other 9,999</li>
+    <li>$\lVert a - b\rVert^2 = \lVert a\rVert^2 - 2a\cdot b + \lVert b\rVert^2$:
+        one matrix product instead of a loop over queries</li>
+    <li><strong>Precision at ten</strong>: of the ten returned, the fraction
+        of the query&rsquo;s class. The label is read here and nowhere else.</li>
+  </ul>
+</section>
+
+<!-- 31 -->
+<section class="figslide" data-menu-title="◆ Ten neighbours">
+  <h2>One query, ten neighbours, two spaces</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/ae11-neighbours.png"
+         alt="A query shirt on the left and its ten nearest neighbours to the right, once in pixel space and once in the autoencoder's code; each neighbour's frame is green when it shares the query's class and red when it does not.">
+  </figure>
+  <p class="takeaway">Green frames share the query&rsquo;s class: nine of
+  ten in both spaces, and largely the same ten images. The code is a
+  compressed account of pixel distance, not a different opinion about what
+  is similar &mdash; which is the finding of the next slide, in one
+  example.</p>
+</section>
+
+<!-- 32 -->
+<section data-menu-title="Retrieval measured">
+  <h2>Retrieval, measured</h2>
+  <table>
+    <tr><th>Space</th><th class="num">Numbers per item</th><th class="num">Precision at 10</th></tr>
+    <tr><td>Raw pixels</td><td class="num">784</td><td class="num">76.71%</td></tr>
+    <tr><td>PCA scores</td><td class="num">32</td><td class="num">76.47%</td></tr>
+    <tr><td>Linear autoencoder code</td><td class="num">32</td><td class="num">77.07%</td></tr>
+    <tr class="hit"><td>Autoencoder code</td><td class="num">32</td><td class="num hit">77.32%</td></tr>
+  </table>
+  <p class="lead">Four spaces within a point of one another.</p>
+  <p class="small">The code did not beat the pixels, and it could not have:
+  nothing in the reconstruction loss is about which garments are
+  <em>similar</em>. What it bought is the second column.</p>
+</section>
+
+<!-- 33 -->
+<section class="figslide" data-menu-title="◆ Precision against d">
+  <h2>How many numbers a garment needs</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/ae11-p10-vs-d.svg"
+         alt="Precision at ten against code size for the autoencoder's code at 2, 8, 32 and 128, rising steeply from 2 to 8 and flattening after, with dashed lines for the raw pixels and the PCA scores at about seventy-seven percent.">
+  </figure>
+  <p class="takeaway">Two numbers lose a fifth of the precision; eight
+  recover most of it; thirty-two match the pixels; 128 add a point. The
+  representation question is a cost question from eight upwards.</p>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="The bill">
+  <h2>What the code buys: the bill for a catalogue</h2>
+  <table class="smaller">
+    <tr><th>Per item</th><th class="num">Raw pixels</th><th class="num">Code</th><th class="num">Factor</th></tr>
+    <tr><td>Numbers stored</td><td class="num">784</td><td class="num">32</td><td class="num hit">24.5</td></tr>
+    <tr><td>Multiplications per comparison</td><td class="num">784</td><td class="num">32</td><td class="num hit">24.5</td></tr>
+    <tr><td>Bytes, as float32</td><td class="num">3,136</td><td class="num">128</td><td class="num hit">24.5</td></tr>
+  </table>
+  <p class="small">A nearest-neighbour search is a comparison against every
+  item in the catalogue. At equal precision, the factor in the last column
+  is the factor on the index&rsquo;s memory and on the query&rsquo;s cost
+  &mdash; and for a photograph of real size, 28 &times; 28 becomes
+  thousands of pixels and the factor grows with it.</p>
+  <p class="small muted">The case for a learned representation in a product
+  is, first of all, this table. Quality is the next lecture&rsquo;s problem
+  &mdash; and Lecture 23&rsquo;s.</p>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="Clustering measured">
+  <h2>Groups: $k$-means on the code</h2>
+  <table>
+    <tr><th>Space, $k = 10$</th><th class="num">Numbers per item</th><th class="num">Mean purity</th></tr>
+    <tr><td>Raw pixels</td><td class="num">784</td><td class="num">0.6473</td></tr>
+    <tr><td>PCA scores</td><td class="num">32</td><td class="num">0.6471</td></tr>
+    <tr><td>Autoencoder code</td><td class="num">32</td><td class="num">0.5891</td></tr>
+  </table>
+  <p class="small">Purity, from Lecture 6: for each cluster, the share of its
+  members that belong to its commonest class, averaged over the ten clusters.
+  Pixels and PCA scores tie; the learned code loses six points &mdash;
+  nothing in the reconstruction loss is about which garments belong together,
+  and here it shows.</p>
+  <p class="small fix">Same lesson as retrieval. The structure $k$-means finds
+  is the structure the two-dimensional picture drew &mdash; footwear,
+  trousers, bags, torso &mdash; and it is in the pixels already. The code
+  carries it in 32 numbers, at a price the audit shows.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="Denoising">
+  <h2>The denoising autoencoder</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-5|2|4">for xb in batches(X_fit):
+    xin  = (xb + 0.3 * torch.randn_like(xb)).clamp(0, 1)   # corrupt the input
+    opt.zero_grad()
+    loss = F.mse_loss(net(xin), xb)                        # the target is clean
+    loss.backward(); opt.step()
+  </code></pre>
+  <ul class="tight small">
+    <li>The second constraint from the table: what comes in is not what must
+        go out, so copying is impossible even with a wide code</li>
+    <li>Fresh noise on every batch &mdash; the same corruption twenty times
+        over is a fixed dataset, and can be memorised</li>
+    <li>This is Lecture 10&rsquo;s augmentation, with the clean image as the
+        target: a regulariser applied to the <em>training input only</em></li>
+  </ul>
+</section>
+
+<!-- 37 -->
+<section class="figslide" data-menu-title="◆ Denoised">
+  <h2>Noisy in, garment out</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/ae11-denoising.png"
+         alt="Three rows of eight garments: the test images with Gaussian noise added, the denoising autoencoder's reconstruction of them, and the originals. The reconstructions are smooth versions of the originals.">
+  </figure>
+  <p class="takeaway">The network never saw a clean input during training. It
+  learned what a garment looks like well enough to put one back &mdash; a
+  smooth one, as the squared loss prefers.</p>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="Denoising measured">
+  <h2>Denoising, measured</h2>
+  <table class="smaller">
+    <tr><th>Error against the clean test image, per pixel</th><th class="num">Error</th></tr>
+    <tr><td>The noisy image itself</td><td class="num fail">0.05264</td></tr>
+    <tr><td>The plain autoencoder, fed the noisy image</td><td class="num">0.02408</td></tr>
+    <tr class="hit"><td>The denoising autoencoder, fed the noisy image</td><td class="num hit">0.01551</td></tr>
+    <tr><td>The denoising autoencoder, fed the clean image</td><td class="num">0.01781</td></tr>
+  </table>
+  <p class="small">Three things in four rows. The bottleneck alone removes
+  half the noise &mdash; noise does not fit through 32 numbers either. Training
+  on corrupted input removes most of the rest. And the price: on clean input
+  the denoiser is a worse autoencoder (0.01781 against 0.01275), and its code
+  retrieves slightly worse, 75.87% against 77.32%.</p>
+  <p class="small muted">A regulariser is a trade. The constraint that stops
+  copying also stops some fitting.</p>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Anomaly detection">
+  <h2>The odd ones: reconstruction error as a score</h2>
+  <ul class="tight small">
+    <li>Train on what the catalogue holds. Score every new image by how badly
+        it is reconstructed. An image unlike anything in training should
+        reconstruct badly.</li>
+    <li>No labels in training, no examples of the anomaly needed &mdash;
+        which is the whole appeal, and the whole risk</li>
+    <li>To <em>measure</em> it, hold one class out of the fit set, train on
+        the other nine, and ask whether the held-out class scores high</li>
+  </ul>
+  <div class="panel panel-math">
+    <span class="panel-title">AUROC</span>
+    The probability that a random held-out image scores above a random seen
+    one. 0.5 is chance; 1.0 is a perfect separation. It needs no threshold,
+    so it measures the score rather than one operating point of it.
+  </div>
+</section>
+
+<!-- 40 -->
+<section class="figslide" data-menu-title="◆ Caught and missed">
+  <h2>Caught, and missed</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/ae11-anomaly.svg"
+         alt="Two histograms of per-image reconstruction error. Left, bags held out: the bags' errors sit well to the right of the nine seen classes, AUROC 0.9382. Right, coats held out: the coats' errors sit on top of the seen classes, AUROC 0.5249.">
+  </figure>
+  <p class="takeaway">Bags held out are caught; coats held out are not. A
+  network that learned pullovers, shirts and T-shirts reconstructs a coat
+  as well as it reconstructs them.</p>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="Anomaly measured">
+  <h2>Ten held-out classes, ten detectors</h2>
+  <div class="cols cols-60-40">
+    <div>
+      <table class="smaller">
+        <tr><th>Held out</th><th class="num">AUROC</th><th>Held out</th><th class="num">AUROC</th></tr>
+        <tr><td class="hit">Bag</td><td class="num hit">0.9382</td><td>Sneaker</td><td class="num">0.6081</td></tr>
+        <tr><td>Trouser</td><td class="num">0.8674</td><td>Pullover</td><td class="num">0.5832</td></tr>
+        <tr><td>Sandal</td><td class="num">0.8664</td><td>T-shirt/top</td><td class="num">0.5549</td></tr>
+        <tr><td>Ankle boot</td><td class="num">0.7982</td><td>Shirt</td><td class="num">0.5267</td></tr>
+        <tr><td>Dress</td><td class="num">0.6543</td><td class="fail">Coat</td><td class="num fail">0.5249</td></tr>
+      </table>
+    </div>
+    <div>
+      <p class="small">The coats&rsquo; mean error, 0.01345, is <em>below</em>
+      the seen classes&rsquo; 0.01391. The detector would flag a random
+      pullover before a coat.</p>
+    </div>
+  </div>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; the score measures imitability, not rarity</span>
+    Reconstruction error says how well the training classes can
+    <em>imitate</em> an image. A novelty they can imitate is never flagged; an
+    ordinary image they cannot is flagged every time. Whether this detector
+    works is a fact about what the anomalies will look like, and it has to
+    be measured on examples of them.
+  </div>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Three failure conditions">
+  <h2>The three failure conditions, in one place</h2>
+  <table class="smaller">
+    <tr><th>Condition</th><th>What happens</th><th>Where it was measured</th></tr>
+    <tr><td>No constraint on the code</td><td>the identity is reachable; zero loss, nothing learned</td><td>the floor at $d = 784$ is 0</td></tr>
+    <tr><td>A trained approximation against an exact optimum</td><td>at a wide bottleneck the network sits above the SVD</td><td>$d = 128$: 0.01179 against 0.00641</td></tr>
+    <tr><td>Reconstruction error as an anomaly score</td><td>an imitable novelty is never flagged</td><td>coats: AUROC 0.5249</td></tr>
+  </table>
+  <p class="small">And one that is a property of the loss rather than of the
+  method: squared error rewards the average, so a falling loss is not an
+  improving reconstruction until you have looked.</p>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="The VAE">
+  <h2>The variational autoencoder</h2>
+  <p class="small muted"><span class="scope scope-context">beyond the syllabus, for context</span></p>
+  <p class="small">The autoencoders so far give one code per image and
+  nothing in between: decode a point between two codes and there is no
+  reason the output is a garment. The <strong>variational autoencoder</strong>
+  makes the encoder output a <em>distribution</em>, $\mathcal{N}(\boldsymbol\mu(\mathbf{x}),
+  \operatorname{diag}\,\boldsymbol\sigma^2(\mathbf{x}))$, samples a code from
+  it, and adds a term that keeps every such distribution close to
+  $\mathcal{N}(\mathbf{0}, \mathbf{I})$:</p>
+  <div class="eqn-box">
+    $$L = \underbrace{\lVert\mathbf{x} - \hat{\mathbf{x}}\rVert^2}_{\text{reconstruction}}
+      \;+\; \underbrace{\tfrac12\sum_{j=1}^{d}\bigl(\sigma_j^2 + \mu_j^2 - 1 - \log\sigma_j^2\bigr)}_{\text{KL to the standard normal}}$$
+  </div>
+  <p class="small">The second term is a regulariser on the code &mdash; the
+  third row of the table on slide 8 &mdash; and it fills the code space: a
+  code drawn from $\mathcal{N}(\mathbf{0}, \mathbf{I})$ decodes to something
+  plausible, which makes the decoder a <em>generator</em>.</p>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Reparametrisation">
+  <h2>The reparametrisation trick</h2>
+  <p class="small muted"><span class="scope scope-context">beyond the syllabus, for context</span></p>
+  <p class="small">A sampled code breaks the chain rule of Lecture 8: there
+  is no derivative of a random draw with respect to the parameters that
+  chose its distribution. The repair moves the randomness outside the
+  graph:</p>
+  <div class="eqn-box">
+    $$\mathbf{z} = \boldsymbol\mu(\mathbf{x}) + \boldsymbol\sigma(\mathbf{x}) \odot \boldsymbol\varepsilon,
+      \qquad \boldsymbol\varepsilon \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$$
+  </div>
+  <ul class="tight small">
+    <li>$\boldsymbol\varepsilon$ is drawn first and treated as an input;
+        $\mathbf{z}$ is then a deterministic function of $\boldsymbol\mu$,
+        $\boldsymbol\sigma$ and $\boldsymbol\varepsilon$</li>
+    <li>Reverse mode differentiates through $\boldsymbol\mu$ and
+        $\boldsymbol\sigma$ as through any layer; the draw is never
+        differentiated</li>
+  </ul>
+  <p class="small muted">Not examined. It is here because every generative
+  model you will meet from Lecture 24 onwards contains this move, and because
+  it is one line.</p>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="Where this leads">
+  <h2>Where this leads: representations, and what trains them</h2>
+  <table class="smaller">
+    <tr><th>Representation</th><th>Trained by</th><th>What distances in it mean</th><th>Lecture</th></tr>
+    <tr><td>PCA scores</td><td>the SVD</td><td>pixel distance, in the best $d$ directions</td><td>6</td></tr>
+    <tr class="hit"><td>autoencoder code</td><td>reconstructing the input</td><td>pixel distance, through a curved map, in a basis nobody chose</td><td>11</td></tr>
+    <tr><td>a classifier&rsquo;s penultimate layer</td><td>labels</td><td>whatever separates the classes</td><td>13</td></tr>
+    <tr><td>a dense-retrieval embedding</td><td>query&ndash;document pairs</td><td>relevance</td><td>20</td></tr>
+    <tr><td>a contrastive embedding</td><td>pairs that belong together</td><td>similarity, as the pairs defined it</td><td>23</td></tr>
+  </table>
+  <p class="small fix">Today&rsquo;s code matched the pixels on retrieval and
+  could not beat them, because the loss never saw a pair. The rest of the
+  course is, in part, the story of what happens when it does.</p>
+</section>
+
+<!-- 46 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-11.ipynb">Open Lecture 11 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU</strong>, and on the CPU by choice: 12,000
+        images and small networks, and the numbers on these slides are
+        its run</li>
+    <li>The floor from the SVD, then the linear autoencoder trained against
+        it: loss, test error, principal angles, the $R^2$ of the code on the
+        PCA scores</li>
+    <li>The non-linear autoencoder, the sweep over $d$, the reconstructions,
+        the two-dimensional code drawn</li>
+    <li>Precision at ten and $k$-means in four spaces; the denoiser; ten
+        anomaly detectors, one per held-out class</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    Set <code>NOISE = 0</code> in the denoising section and run again. The
+    denoising rows become the plain autoencoder&rsquo;s, to the digit &mdash;
+    they were always the same model with one line changed.
+  </div>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="Design · The task">
+  <p class="kicker">Design exercise &middot; in the manner of an ML system-design interview</p>
+  <h2>The task: &ldquo;see similar&rdquo; on a fashion marketplace</h2>
+  <div class="panel">
+    <span class="panel-title">The brief</span>
+    An online fashion marketplace sells garments listed by thousands of
+    independent brands and shops. The product is its shopping app; the
+    feature is a <strong>&ldquo;see similar&rdquo;</strong> strip under every
+    item page, and a camera search that finds catalogue items like a photo
+    the shopper took. The users are shoppers; the customers are the sellers,
+    who pay a commission on every sale. The business measures the
+    strip&rsquo;s click-through, the conversion it adds, and the return rate
+    of what it sells.
+  </div>
+  <ul class="tight small">
+    <li><strong>Given:</strong> millions of seller photographs with an
+        unreliable category field, the shoppers&rsquo; click and purchase
+        logs, the sellers&rsquo; stock and price feeds</li>
+    <li><strong>Consumers of the output:</strong> the strip, the camera
+        search, and the screening that keeps non-garments out of the
+        catalogue</li>
+    <li><strong>Regulators:</strong> data protection, for the shoppers&rsquo;
+        photographs; consumer protection and brand owners, for what
+        &ldquo;similar&rdquo; may show</li>
+  </ul>
+  <p class="small fix">Nine steps follow, each with its pitfall; the model at
+  the centre is today&rsquo;s code, learned from the photographs alone.</p>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="Design · 1 Frame it">
+  <h2>Step 1 &mdash; Frame it honestly: a ranking, scored as one</h2>
+  <ul class="tight small">
+    <li>The output is a ranked list of catalogue items for one query image;
+        the metric is precision at the strip&rsquo;s length on held-out items,
+        read beside its anchor: the same strip filled from the query&rsquo;s
+        category at random</li>
+    <li>The label for scoring comes from what shoppers did &mdash; items
+        viewed or bought in the same session &mdash; cleaned of the strip&rsquo;s
+        own clicks; the seller&rsquo;s category field is a weak second
+        source</li>
+    <li>The baseline before any model: the same category, in stock, most
+        popular first</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    Reporting the reconstruction error. It is the training signal, and the
+    shopper never sees it: a code can reconstruct every photograph beautifully
+    and return the wrong garments. Score the ranking the product shows, and
+    report it against the anchor, or the first number will say nothing about
+    the feature.
+  </div>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="Design · 2 The photographs">
+  <h2>Step 2 &mdash; The photographs are not as alike as the dataset&rsquo;s</h2>
+  <table class="smaller">
+    <tr><th>Pitfall</th><th>What happens</th><th>What to do</th></tr>
+    <tr><td>Studio, not garment</td><td>sellers shoot on different backgrounds, at different sizes, on or off a model; a code learned from the pixels learns the studio, and the strip returns the same seller&rsquo;s other items</td><td>crop to the garment, resize, normalise the background before anything is fitted; check the strip for seller clumping</td></tr>
+    <tr><td>Shoppers&rsquo; photographs</td><td>a camera-search image is personal data, and is nothing like a studio shot</td><td>encode on the device or discard after encoding; never keep the photo; train the encoder with camera-style augmentations</td></tr>
+    <tr><td>Duplicates</td><td>the same garment listed by four sellers, and in six colours</td><td>link variants to one item before splitting, or the split leaks</td></tr>
+  </table>
+  <p class="small fix">Write down what one &ldquo;item&rdquo; is before the
+  first fit. Every later number is a number about <em>that</em> unit.</p>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Design · 3 Split by item">
+  <h2>Step 3 &mdash; Split by item, and by seller</h2>
+  <ul class="tight small">
+    <li>Hold out whole items &mdash; every photograph and variant of them
+        &mdash; and hold out whole sellers for a second check: the feature has
+        to work for a shop that joined this morning</li>
+    <li>Choose the code size, the distance and the ranking rules on the
+        validation items; read the test items once</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    A random split over photographs puts the red and the blue of one dress on
+    both sides. The nearest neighbour of a held-out photo is then its own
+    item in another colour, precision looks superb, and the number says
+    nothing about a garment the catalogue has never seen. Split on the item
+    identifier from step 2, and keep a seller-level split beside it.
+  </div>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="Design · 4 The code">
+  <h2>Step 4 &mdash; Learn the code from the catalogue, and size it by the ranking</h2>
+  <ul class="tight small">
+    <li>Train the autoencoder on the whole catalogue of standardised
+        photographs &mdash; no labels needed, so every listing counts, and a
+        convolutional encoder once the photographs are real-sized</li>
+    <li>Read the code from the encoder alone; sweep its size and pick the
+        smallest that holds the validation precision &mdash; the cost
+        table says why smallest</li>
+    <li>Denoising and augmentation as the regulariser: the same garment,
+        shifted, in another colour, on another background, must land on the same
+        code</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    Choosing the code size by reconstruction error. It falls at every
+    increase, forever; the ranking metric flattens early and the index cost
+    does not. A code sized by the loss is a code sized by the wrong
+    question, and the bill for it is paid on every query.
+  </div>
+</section>
+
+<!-- 52 -->
+<section data-menu-title="Design · 5 The index">
+  <h2>Step 5 &mdash; The index: codes stored once, searched in milliseconds</h2>
+  <ul class="tight small">
+    <li>Encode every catalogue item once, when it is listed, and store the
+        code beside it; the query is encoded at request time and compared
+        against the stored codes, never against the photographs</li>
+    <li>Exact search is a matrix product at a hundred thousand items; at
+        millions, an approximate-neighbour index trades a little recall for
+        a hundred-fold speed, and that recall is measured, not assumed</li>
+    <li>Normalise the codes to unit length and compare by cosine, so that a
+        bright photograph is not far from a dark one of the same dress</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    A distance nobody chose. The code&rsquo;s coordinates are in a basis the
+    optimiser landed on, and one coordinate with a large range dominates
+    the Euclidean distance. Normalise, or whiten against the validation set,
+    and check that the strip&rsquo;s neighbours do not all share one bright
+    background.
+  </div>
+</section>
+
+<!-- 53 -->
+<section data-menu-title="Design · 6 Ranking on top">
+  <h2>Step 6 &mdash; Similarity is one feature of the ranking, not the ranking</h2>
+  <ul class="tight small">
+    <li>The strip ranks the nearest hundred by a second model that sees
+        similarity, stock, size availability, price band, the seller&rsquo;s
+        return rate and the shopper&rsquo;s history &mdash; a table, and a
+        boosted ensemble on it</li>
+    <li>Business rules sit on top: in stock only, the shopper&rsquo;s size,
+        nothing from a seller under review</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall &mdash; the look-alike under a brand&rsquo;s page</span>
+    Visual similarity is blind to who made the garment. Under a luxury
+    brand&rsquo;s listing the strip shows the imitations that look most like
+    it, the brand &mdash; a paying customer &mdash; sees its page selling
+    look-alikes, and the counterfeit complaints land with the regulator.
+    Brand and seller constraints belong in the ranking layer, and the
+    similarity model must never be the last word.
+  </div>
+</section>
+
+<!-- 54 -->
+<section data-menu-title="Design · 7 Screening uploads">
+  <h2>Step 7 &mdash; Screening uploads by reconstruction error</h2>
+  <ul class="tight small">
+    <li>The same encoder&ndash;decoder scores every new upload: a screenshot,
+        a blank, a photograph of a receipt reconstructs badly and goes to a
+        review queue before it is listed</li>
+    <li>Calibrate the threshold per category on the validation items, and
+        measure the queue&rsquo;s precision with the reviewers&rsquo;
+        decisions</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    The score follows what the catalogue can imitate. A plain photograph of
+    nothing reconstructs well and passes; an elaborate, legitimate gown
+    reconstructs badly and is flagged, and its seller waits a day for a
+    listing. Route to review, never reject automatically, and read the
+    detector&rsquo;s AUROC on the kinds of upload it is meant to catch.
+  </div>
+</section>
+
+<!-- 55 -->
+<section data-menu-title="Design · 8 Release">
+  <h2>Step 8 &mdash; Release, monitor, retrain</h2>
+  <ul class="tight small">
+    <li>Release behind an A/B test on live traffic, read on the strip&rsquo;s
+        click-through, the conversion it adds and the return rate of what it
+        sells, with the sellers&rsquo; exposure held fair across both arms</li>
+    <li>Monitor the distribution of codes as the catalogue turns over with
+        the seasons; retrain on a schedule and re-encode the whole catalogue
+        in one atomic swap of the index</li>
+    <li>Keep a randomised slot in the strip, so that the clicks the next
+        model trains on are not only the ones this model chose</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    Two encoders in one index. A retrained encoder puts the same garment at a
+    different code, so an index holding codes from both versions compares
+    numbers that no longer mean the same thing, and the strip fills with
+    garments that are near nothing. Version the encoder with the index, and
+    never serve a query from one against codes from the other.
+  </div>
+</section>
+
+<!-- 56 -->
+<section data-menu-title="Design · 9 The pitfalls">
+  <h2>Step 9 &mdash; Ship it: pipeline and pitfalls</h2>
+  <p class="small">Standardised photographs, variants linked into items &rarr;
+  split by item and seller &rarr; autoencoder, code sized on validation
+  precision &rarr; normalised codes, versioned index &rarr; ranking with
+  business rules &rarr; review queue &rarr; A/B test &rarr; retrain, re-encode,
+  monitor.</p>
+  <table class="smaller">
+    <tr><th>Pitfall</th><th>Address it by</th></tr>
+    <tr><td>Reconstruction error as the product metric</td><td>precision on the strip against the category anchor</td></tr>
+    <tr><td>A code that learns the studio</td><td>standardised photographs; seller clumping checked</td></tr>
+    <tr><td>Variants across the split</td><td>splitting by item and by seller</td></tr>
+    <tr><td>Code sized by the loss</td><td>the smallest size that holds validation precision</td></tr>
+    <tr><td>A distance nobody chose</td><td>normalised codes, cosine, whitening</td></tr>
+    <tr><td>Look-alikes under a brand</td><td>brand and seller rules in the ranking layer</td></tr>
+    <tr><td>The screen flags the elaborate, passes the blank</td><td>a review queue, calibrated per category, measured</td></tr>
+    <tr><td>Two encoders in one index</td><td>versioned encoder and index, atomic re-encoding</td></tr>
+  </table>
+</section>
+
+<!-- 57 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight smaller">
+    <li>Trained a network with no labels: compress to a code, reconstruct,
+        and make the bottleneck the constraint &mdash; a regulariser in
+        Lecture 10&rsquo;s sense, because without it the identity is
+        reachable</li>
+    <li>Derived that a linear autoencoder with squared loss cannot beat the
+        projection onto the principal subspace, and reaches it: the floor is
+        $\sum_{j>d}\sigma_j^2$, the subspace is Lecture 6&rsquo;s, the code
+        is unique only up to a change of basis &mdash; and checked all three
+        numerically</li>
+    <li>Built the non-linear one: a sixth below the floor at $d = 32$, and
+        above the exact projection at $d = 128$, because a trained
+        approximation is not an exact optimum</li>
+    <li>Read the code as a representation: 32 numbers retrieve and cluster
+        as well as 784 pixels, and no better, at a twenty-fourfold saving
+        &mdash; the loss never saw a pair</li>
+    <li>Denoising as a constraint on the input; reconstruction error as an
+        anomaly score that catches bags and misses coats, because it
+        measures imitability</li>
+    <li>Designed a marketplace&rsquo;s &ldquo;see similar&rdquo; feature in
+        nine steps &mdash; a ranking metric against its anchor, standardised
+        photographs, a split by item, a code sized by precision, a normalised
+        versioned index, business rules above similarity, a review queue,
+        an A/B test &mdash; each named for the pitfall it avoids</li>
+  </ol>
+</section>
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 11">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 11</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 11">
+  <h2>Exercises &mdash; Lecture 11</h2>
+  <ul class="ex-list">
+    <li>A linear autoencoder $784 \to d \to 784$ with squared loss is trained to convergence on centred data. State the smallest error it can reach, in terms of the singular values of the centred data, and name the subspace through which it reconstructs. <span class="ex-marks">[4]</span></li>
+    <li>Two linear autoencoders are trained from different seeds to the same loss, and their codes for the same image differ. State whether this is a bug, and why. <span class="ex-marks">[4]</span></li>
+    <li>The code size is set equal to the number of pixels and nothing else constrains the network. State what the trained network computes, and what its code is worth as a representation. <span class="ex-marks">[3]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 12&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 11 (2)">
+  <h2>Exercises &mdash; Lecture 11 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>An anomaly detector scores images by their reconstruction error from an autoencoder trained on nine classes; on the tenth, held out, it scores at chance. Explain the mechanism, and say what would be needed to know in advance whether such a detector works. <span class="ex-marks">[5]</span></li>
+    <li>Nearest-neighbour retrieval in a 32-number autoencoder code scores the same precision at ten as in the 784 raw pixels. State what the code bought, and why it could not have bought more. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 12&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 10">
+  <p class="kicker">The five set at the end of Lecture 10</p>
+  <h1>Solutions<br>Lecture 10</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 10">
+  <h2>Solutions &mdash; Lecture 10</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> A hidden unit's activations $a_j$ feed a pre-activation $z = \sum_j w_j a_j$. Dropout keeps each unit with&hellip;</p>
+      <p class="lead"><span class="fix">$\mathbb{E}[\tilde z] = \sum_j \mathbb{E}[m_j]\, w_j a_j = (1-p)\, z$; inverted dropout divides the kept activations by $1-p$ during training, so $\mathbb{E}[\tilde z] = z$ and the unmasked network at test time is the expectation.</span></p>
+      <ul class="tight smaller">
+        <li>The masks are independent Bernoulli$(1-p)$ and the weights are fixed, so the expectation passes through the sum</li>
+        <li>Without the division every pre-activation at test time is $1/(1-p)$ times larger than anything the weights were trained on</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> Dropout preserves the expected pre-activation. Show that it does not preserve the second moment, give the&hellip;</p>
+      <p class="lead"><span class="fix">$\mathbb{E}[(m_j a_j/(1-p))^2] = a_j^2/(1-p)$ because $m_j^2 = m_j$: each dropout layer multiplies the second moment by $1/(1-p)$, so twenty layers multiply it by $(1-p)^{-20}$ &mdash; dropout goes on the top layer or two, not on every layer.</span></p>
+      <ul class="tight smaller">
+        <li>$m_j \in \{0, 1\}$, so $\mathbb{E}[m_j^2] = \mathbb{E}[m_j] = 1-p$, and dividing by $(1-p)^2$ leaves $1/(1-p)$</li>
+        <li>A factor applied once is a regulariser; the same factor applied twenty times is noise the network must learn through</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 10 (2)">
+  <h2>Solutions &mdash; Lecture 10 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> Add $\tfrac{\lambda}{2}\lVert\theta\rVert^2$ to the loss and write one gradient-descent step. Then say what&hellip;</p>
+      <p class="lead"><span class="fix">$\theta \leftarrow \theta - \eta(\nabla L + \lambda\theta) = (1-\eta\lambda)\,\theta - \eta\nabla L$: shrink every weight by $1-\eta\lambda$, then step. Inside Adam the $\lambda\theta$ term is divided by the running gradient scale like everything else, so the decay is scaled away; AdamW applies the factor $1-\eta\lambda$ outside the adaptive step.</span></p>
+      <ul class="tight smaller">
+        <li>The gradient of $\tfrac{\lambda}{2}\lVert\theta\rVert^2$ is $\lambda\theta$</li>
+        <li>Adam divides each coordinate's step by its gradient history, so a penalty inside the gradient no longer scales with the weight</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> A colleague trains for fifty epochs, keeps the weights of the epoch with the highest validation accuracy, and&hellip;</p>
+      <p class="lead"><span class="fix">Right: the epoch is chosen on the validation set, and the best epoch's weights are kept rather than the last. Wrong: the reported number is the one that chose the epoch, so it is optimistic; report the test accuracy of the kept weights, read once.</span></p>
+      <ul class="tight smaller">
+        <li>The maximum over fifty validation readings is biased upward by the selection</li>
+        <li>The test set exists to be read after every choice has been made</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 10 (3)">
+  <h2>Solutions &mdash; Lecture 10 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> Six values of a weight-decay knob are tried, each run read at its best validation epoch. The value with the&hellip;</p>
+      <p class="lead"><span class="fix">$t_t - t_v \ge 0$ always, with equality when the two choices coincide; the bias is the gap between the maximum of several test readings and one test reading, and it is invisible from a single number because both are accuracies on the same set.</span></p>
+      <ul class="tight smaller">
+        <li>$t_t$ is by construction the largest test accuracy in the table, so it cannot be below any other entry, $t_v$ included</li>
+        <li>More candidates can only raise a maximum, so the bias grows with the size of the search and nothing in the reported figure records that size</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 12 &middot; G&eacute;ron Ch. 12</p>
+  <h1>Convolutional networks</h1>
+  <p class="small">
+    Why a dense layer is the wrong shape for an image<br>
+    Weight sharing and equivariance, derived<br>
+    A network that sees Flowers102 at its real size
+  </p>
+  <p class="clock">Run the Lecture 11 notebook first</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 11
+  <span class="sep">&middot;</span> Autoencoders and representation learning
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

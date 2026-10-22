@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 10 · Regularising deep networks — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 10 of Applications of Machine Learning: dropout as an average over thinned networks, and weight decay with early stopping on a fit that overfits.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-10.html">Lecture 10 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 10 · Animations</p>
+  <h1>Regularising deep networks</h1>
+  <p>Two widgets for today's thread. The first samples thinned networks one
+  mask at a time and watches their average find the full network. The second
+  fits a polynomial that has more coefficients than points, and shows what
+  weight decay and early stopping each do to it.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#drop">1 · Dropout: one thinned network per step, averaged</a></li>
+    <li><a href="#decay">2 · Weight decay and early stopping on a fit that overfits</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Dropout
+     ====================================================================== -->
+<section class="anim" id="drop">
+  <h2><span class="num">1</span>Dropout: one thinned network per step, averaged</h2>
+  <p class="lede">One hidden layer of eight ReLU units with fixed random
+  weights, and one fixed input. Each step draws a mask that keeps every unit
+  with probability $1 - p$, computes the thinned network's output $\tilde z$,
+  and adds it to a running average. On the left, the network: a kept unit is
+  blue, a dropped one is hollow. On the right, every $\tilde z$ as a dot and
+  the running average as a line, against the full network's $z$, the dashed
+  line. Untick the rescaling and watch where the average goes instead.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="dr-plots"></div>
+      <div class="narrate" id="dr-say"></div>
+      <div class="toolbar" id="dr-bar"></div>
+    </div>
+    <aside class="side" id="dr-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The hidden activations $a_j = \operatorname{ReLU}(\mathbf w_j^{\mathsf T}\mathbf x)$
+      are fixed, because the input and the weights are. The full network
+      outputs $z = \sum_j v_j a_j$. A mask draws $m_j \sim \text{Bernoulli}(1-p)$
+      independently for each unit, so $\mathbb E[m_j] = 1-p$ and
+      $\operatorname{Var}(m_j) = p(1-p)$. The thinned network outputs
+      $\tilde z = \sum_j m_j v_j a_j / (1-p)$, and by linearity of expectation</p>
+      $$\mathbb E[\tilde z] = \sum_j \frac{\mathbb E[m_j]}{1-p}\, v_j a_j = z .$$
+      <p>Without the division the expectation is $(1-p)\,z$. For the spread,
+      independent terms add their variances, so
+      $\operatorname{Var}(\tilde z) = \sum_j \frac{p(1-p)}{(1-p)^2} v_j^2 a_j^2
+      = \frac{p}{1-p}\sum_j v_j^2 a_j^2$, which is what the readout's predicted
+      standard deviation is the square root of. With eight units there are
+      $2^8 = 256$ thinned networks; each step trains one of them, and the
+      network run without masks at test time computes their average.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>Single dots scatter widely — a thinned network with half its units
+        gone is a different function — but the running average settles on the
+        dashed line within a few dozen steps, and the measured standard
+        deviation of $\tilde z$ approaches the predicted one.</li>
+        <li>Raise $p$ and the dots spread further: the spread grows like
+        $\sqrt{p/(1-p)}$, so $p = 0.8$ is four times as wide as $p = 0.2$. The
+        average still finds $z$, more slowly.</li>
+        <li>With the rescaling off, the average settles at $(1-p)\,z$, the
+        dotted line: a network trained this way and run without masks would
+        see activations $1/(1-p)$ times too large.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ul>
+        <li>Set $p = 0.5$, press <em>Play</em>, and count how many distinct masks
+        the readout has seen by step 100. Out of 256, most have been drawn
+        once or not at all: the average is over networks that were mostly never
+        trained.</li>
+        <li>Untick <em>rescale by 1/(1 − p)</em> at $p = 0.5$: the average
+        halves. Tick it again and it recovers. That tick is the only difference
+        between dropout as first published and inverted dropout, the one
+        <code>nn.Dropout</code> implements.</li>
+        <li>Set $p = 0.1$ and read the predicted spread; then $p = 0.9$. The
+        second is nine times the first, a factor of eighty-one on the second
+        moment — $p/(1-p)$ went from a ninth to nine — and on a deep stack
+        that factor compounds once per dropout layer.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · Weight decay and early stopping
+     ====================================================================== -->
+<section class="anim" id="decay">
+  <h2><span class="num">2</span>Weight decay and early stopping on a fit that overfits</h2>
+  <p class="lede">Twelve training points from a smooth curve plus noise, and
+  thirty validation points from the same curve. The model is a polynomial of
+  degree twelve — thirteen coefficients for twelve points — fitted by gradient
+  descent from zero. Each step is five gradient iterations with the update
+  $\boldsymbol\theta \leftarrow (1-\eta\lambda)\,\boldsymbol\theta - \eta\nabla L$.
+  On the left, the points, the fit and the true curve. On the right, the
+  training and validation errors against the step, with the best validation
+  step marked. The readout keeps the best step and its error: that pair is
+  early stopping.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="wd-plots"></div>
+      <div id="wd-cost"></div>
+      <div class="narrate" id="wd-say"></div>
+      <div class="toolbar" id="wd-bar"></div>
+    </div>
+    <aside class="side" id="wd-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The features are Chebyshev polynomials $T_0(x), \dots, T_{12}(x)$ on
+      $[-1, 1]$, with $T_0 = 1$, $T_1 = x$ and $T_{k+1} = 2xT_k - T_{k-1}$,
+      so every feature lies in $[-1, 1]$ and gradient descent is stable at one
+      learning rate. The loss is the mean squared error
+      $L(\boldsymbol\theta) = \tfrac1n\sum_i (\boldsymbol\theta^{\mathsf T}\boldsymbol\phi(x_i) - y_i)^2$,
+      whose gradient is $\tfrac2n\boldsymbol\Phi^{\mathsf T}(\boldsymbol\Phi\boldsymbol\theta - \mathbf y)$.
+      Adding $\tfrac\lambda2\lVert\boldsymbol\theta\rVert^2$ adds $\lambda\boldsymbol\theta$
+      to the gradient, and one step becomes</p>
+      $$\boldsymbol\theta \leftarrow \boldsymbol\theta - \eta(\nabla L + \lambda\boldsymbol\theta)
+        = (1 - \eta\lambda)\,\boldsymbol\theta - \eta\nabla L :$$
+      <p>shrink every coefficient by the factor $1-\eta\lambda$, then take the
+      usual step. With $\eta = 0.05$ and $\lambda = 0.05$ the factor is
+      $0.9975$ per iteration; over the five iterations of one step it is
+      $0.9875$. The validation error is the same mean squared error on points
+      the fit never sees, and early stopping keeps the coefficients from the
+      step where it was lowest.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>With $\lambda = 0$ both errors fall together at first; then the
+        validation error turns and climbs, several times over by the end,
+        while the training error keeps falling. The fit on the left starts to
+        wiggle between the points: thirteen coefficients can pass through
+        twelve points.</li>
+        <li>The best validation step is early. From then on every iteration
+        makes the training error better and the validation error worse, and
+        the gold marker on the right stays where it is.</li>
+        <li>With $\lambda = 0.05$ the coefficient norm in the readout levels
+        off instead of doubling, the wiggles stay small, and the validation
+        error climbs by a fraction of its minimum instead of several times
+        over.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ul>
+        <li>Run to the end with $\lambda = 0$ and note the final validation
+        error and the best step's. The gap between them is what shipping the
+        last weights instead of the best ones costs.</li>
+        <li>Set $\lambda = 0.2$. The fit is now too stiff: the training error
+        stays high and the validation error, though it never climbs, never gets
+        as low as the best early-stopped value either. Too much shrinkage is a
+        constraint the data cannot satisfy.</li>
+        <li>Set $\lambda = 0.05$ and compare its validation error at the end
+        with the $\lambda = 0$ run's at the end, and with that run's best
+        step. Decay holds the fit back; early stopping stops it. Neither
+        beats the other here, and together they are cheaper than either
+        alone: with decay on, the best step hardly matters.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  /* ======================================================================
+     1 · Dropout
+     ====================================================================== */
+  (function () {
+    var N_IN = 4, N_H = 8, MAXIT = 400;
+    var S = { p: 0.5, rescale: true };
+    // fixed weights and one fixed input, from a fixed seed
+    var r0 = A.rng(1116), W = [], v = [], x = [], a = [];
+    for (var j = 0; j < N_H; j++) {
+      W.push([]);
+      for (var i = 0; i < N_IN; i++) W[j].push(r0.n(0, 0.8));
+      v.push(r0.n(0, 0.8));
+    }
+    for (var i2 = 0; i2 < N_IN; i2++) x.push(r0.n(0, 1));
+    for (var j2 = 0; j2 < N_H; j2++) {
+      var s = 0;
+      for (var i3 = 0; i3 < N_IN; i3++) s += W[j2][i3] * x[i3];
+      a.push(Math.max(0, s));
+    }
+    var z = 0, sumsq = 0;
+    for (var j3 = 0; j3 < N_H; j3++) { z += v[j3] * a[j3]; sumsq += v[j3] * v[j3] * a[j3] * a[j3]; }
+
+    var st, rng, pl, pN, curve;
+    var host = A.$("#dr-plots");
+    var netHost = A.h("div", null, host);
+    var curHost = A.h("div", null, host);
+
+    var side = A.$("#dr-side");
+    A.slider(side, { label: "dropout rate $p$", min: 0.1, max: 0.9, step: 0.1, value: S.p,
+                     fmt: function (q) { return fmt(q, 1); },
+                     hint: "Each unit is dropped with probability $p$, independently, at every step.",
+                     onInput: function (q) { S.p = q; pl.restart(true); } });
+    A.check(side, { label: "rescale by $1/(1-p)$ (inverted dropout)", value: true,
+                    onChange: function (q) { S.rescale = q; pl.restart(true); } });
+    var ro = A.readout(side, [["k", "step"], ["kept", "units kept"], ["zt", "thinned output z̃"],
+                              ["mean", "running average"], ["z", "full network z"],
+                              ["sd", "sd of z̃, measured"], ["sdp", "sd of z̃, predicted"],
+                              ["seen", "distinct masks seen"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "a kept unit" },
+                    { shape: "circle", cls: "pt hollow", label: "a dropped unit" },
+                    { shape: "circle", cls: "pt c1", label: "one thinned output z̃" },
+                    { line: "line", label: "running average" },
+                    { line: "line ok dash", label: "full network z" }]);
+    var say = A.narrate("#dr-say");
+
+    function predictedSd() { return Math.sqrt(S.p / (1 - S.p) * sumsq); }
+    function target() { return S.rescale ? z : (1 - S.p) * z; }
+
+    function buildPlots() {
+      A.clear(netHost); A.clear(curHost);
+      pN = A.plot(netHost, { x: [-0.6, 2.6], y: [-0.5, N_H - 0.5], w: 340, h: 300, noAxes: true,
+                             caption: "The thinned network this step" });
+      var ylim = Math.max(1, 3 * predictedSd() + Math.abs(z));
+      curve = A.curve(curHost, { y: [-ylim, ylim], ylabel: "output", n: 100, w: 500, h: 300,
+                                 xlabel: "step", caption: "Each z̃, and their running average" });
+    }
+
+    function reset() {
+      rng = A.rng(2020);
+      st = { k: 0, mask: null, zt: [], mean: [], sum: 0, sumsq: 0, seen: {}, nseen: 0 };
+    }
+    function step() {
+      var m = [], key = "", zt = 0;
+      for (var j = 0; j < N_H; j++) {
+        var keep = rng.u() >= S.p ? 1 : 0;
+        m.push(keep); key += keep;
+        zt += keep * v[j] * a[j];
+      }
+      if (S.rescale) zt /= (1 - S.p);
+      st.mask = m;
+      st.zt.push(zt);
+      st.sum += zt; st.sumsq += zt * zt;
+      st.mean.push(st.sum / st.zt.length);
+      if (!st.seen[key]) { st.seen[key] = true; st.nseen++; }
+      st.k++;
+      return st.k < MAXIT;
+    }
+
+    function drawNet() {
+      pN.clear();
+      var m = st.mask;
+      for (var i = 0; i < N_IN; i++) {
+        var yi = (N_H - 1) / 2 + (i - (N_IN - 1) / 2) * 1.6;
+        for (var j = 0; j < N_H; j++) pN.line(0, yi, 1.3, j, "line thin muted", "data");
+        pN.dot(0, yi, { shape: "sq", cls: "pt c3", r: 5 });
+      }
+      for (var j2 = 0; j2 < N_H; j2++) {
+        var kept = !m || m[j2] === 1;
+        pN.line(1.3, j2, 2.3, (N_H - 1) / 2, kept ? "line thin" : "line thin muted dash", "data");
+        pN.dot(1.3, j2, { shape: "circle", cls: kept ? "pt c0" : "pt hollow", r: 7 });
+        pN.text(1.3, j2, fmt(a[j2], 2), { dx: 11, dy: 4, cls: "lbl-sm" });
+      }
+      pN.dot(2.3, (N_H - 1) / 2, { shape: "diamond", cls: "pt c2", r: 7 });
+      pN.text(2.3, (N_H - 1) / 2, m ? "z̃ = " + fmt(st.zt[st.zt.length - 1], 2) : "z = " + fmt(z, 2),
+              { dx: 12, dy: 4, cls: "lbl-sm" });
+    }
+
+    function render() {
+      drawNet();
+      var refs = [{ y: z, cls: "line ok dash", label: "z" }];
+      if (!S.rescale) refs.push({ y: (1 - S.p) * z, cls: "line muted dash", label: "(1 − p) z" });
+      curve.draw([{ values: st.mean, cls: "line" }], refs);
+      var cp = curve.plot;
+      st.zt.forEach(function (q, k) { cp.dot(k, A.clamp(q, -1e9, 1e9), { shape: "circle", cls: "pt c1", r: 2.5 }); });
+
+      ro.set("k", String(st.k));
+      ro.set("z", fmt(z, 3));
+      ro.set("sdp", fmt(predictedSd(), 3));
+      if (!st.k) {
+        ro.set("kept", "—"); ro.set("zt", "—"); ro.set("mean", "—"); ro.set("sd", "—"); ro.set("seen", "0 of 256");
+        say.say("<span class='k'>Start.</span> Eight hidden units, activations " +
+                a.map(function (q) { return fmt(q, 2); }).join(", ") + ", so the full network outputs " +
+                K("z = \\sum_j v_j a_j = " + fmt(z, 3)) + ". The masks have not been drawn yet. Press <em>Step</em> to draw one.");
+        return;
+      }
+      var n = st.zt.length, mean = st.sum / n;
+      var sd = n > 1 ? Math.sqrt(Math.max(0, (st.sumsq - n * mean * mean) / (n - 1))) : 0;
+      var kept = st.mask.reduce(function (p, q) { return p + q; }, 0);
+      ro.set("kept", kept + " of " + N_H);
+      ro.set("zt", fmt(st.zt[n - 1], 3));
+      ro.set("mean", fmt(mean, 3), Math.abs(mean - target()) < 0.1 * Math.max(1, Math.abs(target())) ? "good" : "");
+      ro.set("sd", fmt(sd, 3));
+      ro.set("seen", st.nseen + " of 256");
+      var txt = "<span class='k'>Step " + st.k + ".</span> Mask kept " + kept + " of " + N_H + " units" +
+                (S.rescale ? ", rescaled by " + K("1/(1-p) = " + fmt(1 / (1 - S.p), 2)) : ", not rescaled") +
+                ": " + K("\\tilde z = " + fmt(st.zt[n - 1], 3)) + ". Running average over " + n + " masks: " +
+                K("\\bar{\\tilde z} = " + fmt(mean, 3)) + ", against " +
+                (S.rescale ? K("z = " + fmt(z, 3)) : K("(1-p)\\,z = " + fmt((1 - S.p) * z, 3))) + ".";
+      if (n >= 30) {
+        txt += " Measured spread " + fmt(sd, 3) + " against the predicted " +
+               K("\\sqrt{\\tfrac{p}{1-p}\\sum_j v_j^2 a_j^2} = " + fmt(predictedSd(), 3)) + ".";
+      }
+      if (st.nseen === 256) txt += " Every one of the 256 thinned networks has now been drawn at least once.";
+      say.say(txt);
+    }
+
+    buildPlots();
+    reset();
+    pl = A.player("#dr-bar", { step: step, reset: function () { reset(); buildPlots(); }, render: render, fps: 10, unit: "step", max: MAXIT });
+    A.onTheme(function () { buildPlots(); render(); });
+  })();
+
+  /* ======================================================================
+     2 · Weight decay and early stopping
+     ====================================================================== */
+  (function () {
+    var DEG = 12, NTR = 12, NVA = 30, NOISE = 0.35, ITERS = 5, MAXIT = 400, ETA = 0.05;
+    var S = { lam: 0.0 };
+    var f = function (x) { return Math.sin(3 * x); };
+    var r0 = A.rng(3030);
+    var xtr = [], ytr = [], xva = [], yva = [];
+    for (var i = 0; i < NTR; i++) xtr.push(r0.uniform(-1, 1));
+    xtr.sort(function (p, q) { return p - q; });
+    for (var i2 = 0; i2 < NTR; i2++) ytr.push(f(xtr[i2]) + r0.n(0, NOISE));
+    for (var i3 = 0; i3 < NVA; i3++) xva.push(r0.uniform(-1, 1));
+    xva.sort(function (p, q) { return p - q; });
+    for (var i4 = 0; i4 < NVA; i4++) yva.push(f(xva[i4]) + r0.n(0, NOISE));
+
+    function phi(x) {
+      var T = [1, x];
+      for (var k = 2; k <= DEG; k++) T.push(2 * x * T[k - 1] - T[k - 2]);
+      return T;
+    }
+    var Ptr = xtr.map(phi), Pva = xva.map(phi);
+    function predict(th, P) { return P.map(function (row) { var s = 0; for (var k = 0; k <= DEG; k++) s += th[k] * row[k]; return s; }); }
+    function mse(th, P, y) { var yh = predict(th, P), s = 0; for (var i = 0; i < y.length; i++) s += (yh[i] - y[i]) * (yh[i] - y[i]); return s / y.length; }
+    function grad(th) {
+      var yh = predict(th, Ptr), g = [];
+      for (var k = 0; k <= DEG; k++) {
+        var s = 0;
+        for (var i = 0; i < NTR; i++) s += (yh[i] - ytr[i]) * Ptr[i][k];
+        g.push(2 * s / NTR);
+      }
+      return g;
+    }
+    function norm(th) { var s = 0; for (var k = 0; k <= DEG; k++) s += th[k] * th[k]; return Math.sqrt(s); }
+
+    var st, pl, pF, curve;
+    var host = A.$("#wd-plots");
+    var fitHost = A.h("div", null, host);
+    var side = A.$("#wd-side");
+    A.slider(side, { label: "weight decay $\\lambda$", min: 0, max: 0.2, step: 0.01, value: S.lam,
+                     fmt: function (q) { return fmt(q, 2); },
+                     hint: "Each iteration first multiplies every coefficient by $1 - \\eta\\lambda$, with $\\eta = 0.05$.",
+                     onInput: function (q) { S.lam = q; pl.restart(true); } });
+    var ro = A.readout(side, [["k", "step"], ["tr", "training error"], ["va", "validation error"],
+                              ["best", "best step · its validation error"], ["norm", "‖θ‖"], ["factor", "shrink per step"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "training point" },
+                    { shape: "tri", cls: "pt c1", label: "validation point" },
+                    { line: "line", label: "the fit" },
+                    { line: "line ok dash", label: "the true curve" },
+                    { shape: "diamond", cls: "pt c1", label: "best validation step" }]);
+    var say = A.narrate("#wd-say");
+
+    var xs = A.linspace(-1, 1, 161);
+    function buildPlots() {
+      A.clear(fitHost);
+      pF = A.plot(fitHost, { x: [-1.05, 1.05], y: [-2.2, 2.2], w: 420, h: 300, xlabel: "x", ylabel: "y",
+                             caption: "Twelve points, thirteen coefficients" });
+      curve = A.curve("#wd-cost", { y: [-2, 1], log: true, ylabel: "mean squared error", n: 100, h: 170,
+                                    xlabel: "step", caption: "Training and validation error, log scale" });
+    }
+    function reset() {
+      var th = [];
+      for (var k = 0; k <= DEG; k++) th.push(0);
+      st = { k: 0, th: th, tr: [mse(th, Ptr, ytr)], va: [mse(th, Pva, yva)], best: 0, bestVa: Infinity, bestTh: th.slice() };
+      st.bestVa = st.va[0];
+    }
+    function step() {
+      var th = st.th;
+      for (var it = 0; it < ITERS; it++) {
+        var g = grad(th), nt = [];
+        for (var k = 0; k <= DEG; k++) nt.push((1 - ETA * S.lam) * th[k] - ETA * g[k]);
+        th = nt;
+      }
+      st.th = th; st.k++;
+      st.tr.push(mse(th, Ptr, ytr));
+      var va = mse(th, Pva, yva);
+      st.va.push(va);
+      if (va < st.bestVa) { st.bestVa = va; st.best = st.k; st.bestTh = th.slice(); }
+      return st.k < MAXIT;
+    }
+    function render() {
+      pF.clear();
+      pF.path(xs.map(function (x) { return [x, f(x)]; }), "line ok dash");
+      pF.path(xs.map(function (x) { return [x, A.clamp(predict(st.th, [phi(x)])[0], -5, 5)]; }), "line");
+      for (var i = 0; i < NVA; i++) pF.dot(xva[i], yva[i], { shape: "tri", cls: "pt c1", r: 4 });
+      for (var i2 = 0; i2 < NTR; i2++) pF.dot(xtr[i2], ytr[i2], { shape: "circle", cls: "pt c0", r: 5 });
+      curve.draw([{ values: st.tr, cls: "line", label: "train" }, { values: st.va, cls: "line acc", label: "val" }]);
+      if (st.k) curve.plot.dot(st.best, Math.log10(st.bestVa), { shape: "diamond", cls: "pt c1", r: 6, layer: "over" });
+
+      var tr = st.tr[st.k], va = st.va[st.k];
+      ro.set("k", String(st.k));
+      ro.set("tr", fmt(tr, 3));
+      ro.set("va", fmt(va, 3), va > 1.5 * st.bestVa && st.k > st.best ? "bad" : "");
+      ro.set("best", st.k ? st.best + " · " + fmt(st.bestVa, 3) : "—");
+      ro.set("norm", fmt(norm(st.th), 3));
+      ro.set("factor", fmt(Math.pow(1 - ETA * S.lam, ITERS), 4));
+      if (!st.k) {
+        say.say("<span class='k'>Start.</span> All thirteen coefficients are zero, so the fit is the flat line " +
+                K("y = 0") + ": training error " + fmt(tr, 3) + ", validation error " + fmt(va, 3) +
+                ". Each step takes five iterations of " +
+                K("\\boldsymbol\\theta \\leftarrow (1-\\eta\\lambda)\\boldsymbol\\theta - \\eta\\nabla L") +
+                " with " + K("\\eta = " + fmt(ETA, 2) + ",\\ \\lambda = " + fmt(S.lam, 2)) + ". Press <em>Step</em>.");
+        return;
+      }
+      var txt = "<span class='k'>Step " + st.k + ".</span> Training error " + fmt(tr, 3) + ", validation error " + fmt(va, 3) +
+                ", " + K("\\lVert\\boldsymbol\\theta\\rVert = " + fmt(norm(st.th), 3)) + ".";
+      if (st.k === st.best) txt += " This is the best validation step so far; early stopping would keep these coefficients.";
+      else txt += " The best validation step was " + st.best + ", at " + fmt(st.bestVa, 3) +
+                  (va > 1.5 * st.bestVa ? ": the fit has been getting worse on new points for " + (st.k - st.best) + " steps while its training error kept falling." : ".");
+      if (S.lam > 0) txt += " Each step shrinks every coefficient by " + K("(1-\\eta\\lambda)^5 = " + fmt(Math.pow(1 - ETA * S.lam, ITERS), 4)) + " before the gradient moves it.";
+      say.say(txt);
+    }
+
+    buildPlots();
+    reset();
+    pl = A.player("#wd-bar", { step: step, reset: function () { reset(); buildPlots(); }, render: render, fps: 10, unit: "step", max: MAXIT });
+    A.onTheme(function () { buildPlots(); render(); });
+  })();
+})();
+</script>
+</body>
+</html>
