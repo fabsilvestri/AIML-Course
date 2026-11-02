@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 1 · What machine learning is — Animations</title>
+<meta name="description" content="Interactive animation for Lecture 1 of Applications of Machine Learning: how the number of bins in a histogram decides whether a capped target is visible at all.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-01.html">Lecture 1 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 1 · Animations</p>
+  <h1>What machine learning is, and how we will work</h1>
+  <p>The first look at a dataset is a histogram of every column, and the
+  most consequential fact in this one &mdash; a target that stops dead at a
+  ceiling &mdash; is visible or invisible depending on a single argument. The
+  widget below builds a histogram of a capped price one batch of districts at
+  a time. Press <strong>Step</strong> to add a batch and read what happened.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#cap">1 · A cap, and the bins that hide it</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · A cap, and the bins that hide it
+     ====================================================================== -->
+<section class="anim" id="cap">
+  <h2><span class="num">1</span>A cap, and the bins that hide it</h2>
+  <p class="lede">20,640 synthetic districts, each with a median house value
+  drawn from a smooth, right-skewed distribution &mdash; and then, as in the
+  census data, every value above 500,000 dollars recorded as 500,001. Each <em>Step</em> adds 516 districts to
+  the histogram. The slider sets the number of bins; the last bar, which holds
+  the cap, is drawn in the accent colour.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="cp-plots"></div>
+      <div class="narrate" id="cp-say"></div>
+      <div class="toolbar" id="cp-bar"></div>
+    </div>
+    <aside class="side" id="cp-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>With $m$ districts and $b$ equal bins of width $w$ over the range,
+      a bar over a stretch where the values have a smooth density $f$ holds
+      about $m\,f(x)\,w$ districts &mdash; it shrinks in proportion to $w$.
+      The capped districts, a share $p$ of all of them, sit at one value, so
+      they land in one bar whatever $w$ is:</p>
+      $$\frac{\text{cap bar}}{\text{its neighbour}} \;\approx\;
+        \frac{p + f\,w}{f\,w} \;=\; 1 + \frac{p}{f\,w}.$$
+      <p>Since $w$ is the range divided by $b$, the ratio grows roughly
+      linearly in the number of bins. Too few, and the cap is one bar among
+      its neighbours.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>At 50 bins the last bar stands many times taller than the one
+        beside it; at 10 bins it is only about twice as tall, and reads as the
+        tail of a skewed distribution.</li>
+        <li>The share of capped districts does not depend on the bins at all:
+        it is a count, and the readout gives it whatever the slider says.</li>
+        <li>The ratio is noisy for the first few batches and settles as the
+        districts accumulate.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Run to the end at 50 bins, then drag the slider down to 10. The
+        same data, and the spike all but disappears.</li>
+        <li>Drag it up to 100: the ratio roughly doubles again, as
+        $1 + p/(f\,w)$ predicts when $w$ halves.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 1 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt;
+
+  /* ======================================================================
+     1 · A cap, and the bins that hide it
+     ====================================================================== */
+  (function () {
+    var M = 20640, BATCH = 516, CAP = 500001, HI = 500001;
+    // Lognormal prices, median $180,000, then censored at the cap exactly as
+    // the census recorded them.
+    var G = A.rng(3), price = [];
+    for (var i = 0; i < M; i++) {
+      var v = 180000 * Math.exp(0.6 * G.n());
+      price.push(v > 500000 ? CAP : v);
+    }
+    var S = { b: 50 }, st, pl, pH;
+
+    var side = A.$("#cp-side");
+    A.slider(side, { label: "Bins $b$", min: 5, max: 100, value: S.b, step: 1,
+                     fmt: function (v) { return String(Math.round(v)); },
+                     onInput: function (v) { S.b = Math.round(v); render(); } });
+    var ro = A.readout(side, [["k", "districts so far"], ["cap", "at the cap"],
+                              ["share", "share at the cap"], ["w", "bin width"],
+                              ["ratio", "cap bar ÷ neighbour"]]);
+    A.legend(side, [{ swatch: "fill-primary", label: "a bar of the histogram" },
+                    { swatch: "fill-acc", label: "the bar holding the cap" }]);
+    var say = A.narrate("#cp-say");
+
+    function counts(k, b) {
+      var c = A.range(b).map(function () { return 0; });
+      for (var i = 0; i < k; i++) c[Math.min(b - 1, Math.floor(price[i] / HI * b))]++;
+      return c;
+    }
+
+    function reset() { st = { k: 0 }; }
+    function step() { st.k = Math.min(M, st.k + BATCH); return st.k < M; }
+
+    function render() {
+      var b = S.b, c = counts(st.k, b), top = Math.max(1, Math.max.apply(null, c));
+      A.clear(A.$("#cp-plots"));
+      pH = A.plot("#cp-plots", { x: [0, 520], y: [0, 1.05], w: 760, h: 320, yticks: [],
+                                 xlabel: "median house value ($ thousands)",
+                                 caption: "Histogram of the districts so far, " + b + " bins" });
+      for (var j = 0; j < b; j++) {
+        if (!c[j]) continue;
+        var x0 = 500.001 * j / b, x1 = 500.001 * (j + 1) / b;
+        pH.rect(x0, 0, x1, c[j] / top, j === b - 1 ? "fill-acc" : "fill-primary", "data",
+                { "fill-opacity": 0.75 });
+      }
+      pH.line(500.001, 0, 500.001, 1.05, "line thin muted dash");
+
+      var capped = 0;
+      for (var i = 0; i < st.k; i++) if (price[i] === CAP) capped++;
+      var ratio = c[b - 2] ? c[b - 1] / c[b - 2] : NaN;
+      ro.set("k", st.k.toLocaleString("en-US"));
+      ro.set("cap", st.k ? capped.toLocaleString("en-US") : "—");
+      ro.set("share", st.k ? A.pct(capped / st.k, 1) : "—");
+      ro.set("w", fmt(500.001 / b, 1) + " thousand");
+      ro.set("ratio", isFinite(ratio) ? fmt(ratio, 1) + "×" : "—", ratio > 4 ? "bad" : "");
+
+      if (!st.k) {
+        say.say("<span class='k'>Ready.</span> " + M.toLocaleString("en-US") +
+                " districts, every value above 500,000 dollars recorded as 500,001. Press <em>Step</em> to add the first " +
+                BATCH + ".");
+      } else {
+        say.say("<span class='k'>" + st.k.toLocaleString("en-US") + " districts.</span> " +
+                capped.toLocaleString("en-US") + " of them (" + A.pct(capped / st.k, 1) +
+                ") sit at the cap. With " + b + " bins each bar is " + fmt(500.001 / b, 1) +
+                " thousand dollars wide, and the bar holding the cap is " + (isFinite(ratio) ? fmt(ratio, 1) + " times" : "not comparable with") +
+                " the one beside it" + (isFinite(ratio) && ratio < 3 ? " — easy to read as an ordinary tail." : "."));
+      }
+    }
+
+    pl = A.player("#cp-bar", { step: step, reset: reset, render: render, fps: 6, unit: "batch" });
+  })();
+})();
+</script>
+</body>
+</html>

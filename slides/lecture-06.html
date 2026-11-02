@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 6 — Dimensionality reduction and unsupervised learning</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+<section class="title-slide" data-menu-title="Title">
+  <h1>Dimensionality reduction<br>and unsupervised learning</h1>
+  <p class="subtitle">Olivetti faces &middot; four hundred photographs, no labels</p>
+  <p><span class="badge badge-lec">Lecture 6</span>
+     <span class="badge badge-ch">Géron Ch. 7 &amp; 8</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">The derivation is in the notes and stays examinable;
+  today is about where these tools are used and what goes wrong. Spend the
+  time on the four examples and on looking at the clusters.</aside>
+</section>
+
+
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Five lectures, and every one of them was handed the
+  answers:</p>
+  <table class="smaller">
+    <tr><th>Lecture</th><th>What the data came with</th></tr>
+    <tr><td>1&ndash;2 &middot; California housing</td><td>a price for every district</td></tr>
+    <tr><td>3 &middot; MNIST</td><td>a digit for every image</td></tr>
+    <tr><td>4 &middot; Titanic</td><td>a survivor flag for every passenger</td></tr>
+    <tr><td>5 &middot; CoverType</td><td>a cover type for every plot</td></tr>
+    <tr><td><strong>6 &middot; Olivetti faces</strong></td><td class="fail"><strong>nothing</strong></td></tr>
+  </table>
+  <p class="small">Every model so far was scored against a label. Today there
+  is no target column. That changes what a metric can be, what a baseline is,
+  and how you find out you were wrong.</p>
+  <p class="small muted">You have met PCA, k-means and DBSCAN as methods. Today
+  is about where they are used, which one a task calls for, and what goes
+  wrong in practice.</p>
+</section>
+
+
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li><strong>What unsupervised learning is</strong>, and why anyone pays
+        for it</li>
+    <li><strong>Four tasks from practice</strong> &mdash; and for each, the
+        one tool that fits and why the others are the wrong choice</li>
+    <li><strong>PCA on a worked example</strong> &mdash; what it keeps and what it
+        drops</li>
+    <li><strong>k-means</strong> &mdash; choosing $k$ with no labels, and
+        looking at what you got</li>
+    <li><strong>DBSCAN and anomalies</strong>, and where to spend forty
+        labels</li>
+    <li><strong>What to look out for</strong> when you do this for real</li>
+    <li><strong>Design exercise</strong> &mdash; a grocery-delivery
+        app&rsquo;s customer segments for its marketing team, in nine steps,
+        with the pitfalls and how to address them</li>
+  </ol>
+  <p class="small muted">The derivations are in the notes. The slides are about
+  the decisions.</p>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-06.ipynb">Open Lecture 6 in Colab</a>
+  </p>
+</section>
+
+
+<section data-menu-title="What unsupervised learning is">
+  <h2>What unsupervised learning is</h2>
+  <div class="cols">
+    <div>
+      <p><strong>Supervised</strong></p>
+      <ul class="tight smaller">
+        <li>You are given $(\mathbf{x}^{(i)}, y^{(i)})$</li>
+        <li>The metric compares prediction to truth</li>
+        <li>The baseline is &ldquo;predict the majority&rdquo;</li>
+        <li>You know when you are wrong</li>
+      </ul>
+    </div>
+    <div>
+      <p><strong>Unsupervised</strong></p>
+      <ul class="tight smaller">
+        <li>You are given $\mathbf{x}^{(i)}$ only</li>
+        <li>The metric compares the grouping to <em>itself</em></li>
+        <li>The baseline is &ldquo;group at random&rdquo;</li>
+        <li>You find out you were wrong when someone looks</li>
+      </ul>
+    </div>
+  </div>
+  <div class="panel panel-when">
+    <span class="panel-title">The consequence for the rest of the lecture</span>
+    Every number computed today is a statement about <strong>geometry</strong>,
+    not about people, customers or transactions. Whether the geometry
+    <em>is</em> the thing you care about is a separate question, and it is
+    answered by looking.
+  </div>
+</section>
+
+
+<section data-menu-title="Why it is useful">
+  <h2>Why anyone pays for it</h2>
+  <p class="small">Outside a benchmark, data is cheap and labels are not.
+  Every company has far more rows than it has verdicts about them. Three jobs
+  recur, and every unsupervised method you know does one of them:</p>
+  <table class="smaller">
+    <tr><th>The job</th><th>What it buys</th><th>The methods</th></tr>
+    <tr><td><strong>Find the groups</strong></td><td>a handful of segments to act on, one decision per group instead of one per row</td><td>k-means, DBSCAN</td></tr>
+    <tr><td><strong>Fewer numbers per item</strong></td><td>a model that trains faster, a plot you can look at, a store that fits</td><td>PCA, the SVD</td></tr>
+    <tr><td><strong>Flag the unusual</strong></td><td>the few rows unlike all the rest, before anyone has labelled a single one</td><td>DBSCAN&rsquo;s noise, a reconstruction error</td></tr>
+  </table>
+  <p class="small fix">And a fourth, quieter use: structure found without
+  labels tells you <em>which</em> few rows are worth paying to label. The
+  worked example ends there.</p>
+</section>
+
+
+<section data-menu-title="Example · Segments">
+  <h2>One &mdash; a retailer&rsquo;s customer segments: k-means</h2>
+  <p class="small">The marketing team wants a handful of segments, one campaign
+  each, and <em>every</em> account placed in one. The rows are spend, order
+  frequency, basket mix, time since the last order.</p>
+  <table class="smaller">
+    <tr><th>Tool</th><th>On this task</th></tr>
+    <tr><td class="hit"><strong>k-means</strong></td><td>a few compact groups, every account assigned, $k$ small because a person has to write a campaign per segment &mdash; $k$ is a business decision, and that is what k-means asks for</td></tr>
+    <tr><td class="fail">DBSCAN</td><td>behaviour data has no empty space between groups, so either most accounts are noise or everything is one cluster; and the team cannot send a campaign to &ldquo;noise&rdquo;</td></tr>
+    <tr><td class="fail">PCA / SVD</td><td>gives axes, not groups; a direction of spend is a description, not a segment anyone can write to</td></tr>
+  </table>
+  <div class="panel panel-when">
+    <span class="panel-title">Look out for</span>
+    The columns are in different units, and k-means only sees distance: scale
+    first, or the segments are &ldquo;spend&rdquo; and nothing else.
+  </div>
+</section>
+
+
+<section data-menu-title="Example · Anomalies">
+  <h2>Two &mdash; a payments app&rsquo;s unusual transactions: DBSCAN</h2>
+  <p class="small">The fraud team wants the few transactions unlike all the
+  rest, every night, with no labels yet &mdash; the disputes that would label
+  them arrive weeks later.</p>
+  <table class="smaller">
+    <tr><th>Tool</th><th>On this task</th></tr>
+    <tr><td class="hit"><strong>DBSCAN</strong></td><td>normal behaviour is dense and of any shape &mdash; commuters, weekend shoppers, subscriptions &mdash; and the output wanted is exactly its <strong>noise</strong> label: points no dense region claims, with no $k$ to choose</td></tr>
+    <tr><td class="fail">k-means</td><td>every transaction must belong to a cluster, so an anomaly becomes a far-off member of the nearest one and drags its centroid towards itself</td></tr>
+    <tr><td class="fail">PCA</td><td>a reconstruction error only catches what leaves the main subspace; a fraudulent transaction that sits in a hole <em>inside</em> it scores as normal</td></tr>
+  </table>
+  <div class="panel panel-when">
+    <span class="panel-title">Look out for</span>
+    <code>eps</code> and <code>min_samples</code> together set the density a
+    cluster must reach; the fraction called noise is a decision the fraud team
+    must own, not a number the algorithm found.
+  </div>
+</section>
+
+
+<section data-menu-title="Example · Compression">
+  <h2>Three &mdash; embeddings into a smaller model, and onto a plot: PCA</h2>
+  <p class="small">A search team stores a long vector per product and per
+  query. The downstream model trains too slowly, the index is too large, and
+  nobody can look at the data.</p>
+  <table class="smaller">
+    <tr><th>Tool</th><th>On this task</th></tr>
+    <tr><td class="hit"><strong>PCA</strong></td><td>a linear map to fewer numbers that keeps the directions where the vectors differ most, and states the price before you choose how many: the explained variance ratio</td></tr>
+    <tr><td class="fail">k-means</td><td>replaces every vector by its centroid, so everything that distinguished two products in the same cluster is gone &mdash; quantisation, not compression</td></tr>
+    <tr><td class="fail">DBSCAN</td><td>compresses nothing: it returns a label per row and keeps every column</td></tr>
+  </table>
+  <div class="panel panel-when">
+    <span class="panel-title">Look out for</span>
+    The two-dimensional plot is a projection, and distances on it are not
+    distances in the data. And variance kept is not usefulness kept: read
+    what the kept directions are.
+  </div>
+</section>
+
+
+<section data-menu-title="Example · Documents">
+  <h2>Four &mdash; grouping unlabelled support tickets: the SVD</h2>
+  <p class="small">A support team has a backlog of tickets and no categories
+  yet. Each ticket is a sparse row of word counts: thousands of columns,
+  almost all zero.</p>
+  <table class="smaller">
+    <tr><th>Tool</th><th>On this task</th></tr>
+    <tr><td class="hit"><strong>Truncated SVD</strong></td><td>works on the sparse matrix as it is, and its leading directions are the recurring <em>themes</em> &mdash; the words that occur together; then group the tickets in that small space</td></tr>
+    <tr><td class="fail">PCA</td><td>centres first, which turns a sparse matrix into a dense one that does not fit in memory, for a mean that is mostly zeros</td></tr>
+    <tr><td class="fail">k-means or DBSCAN on the counts</td><td>in thousands of dimensions every ticket is about equally far from every other: k-means groups by ticket length and the commonest words, DBSCAN finds no dense region and calls everything noise</td></tr>
+  </table>
+  <div class="panel panel-when">
+    <span class="panel-title">Look out for</span>
+    The themes are read by a person; a direction that mixes two topics is not
+    fixed by any amount of tuning, only by looking at its top words.
+  </div>
+</section>
+
+
+<section data-menu-title="The tool follows the answer">
+  <h2>The tool follows the shape of the answer</h2>
+  <table class="smaller">
+    <tr><th>What the consumer needs</th><th>The tool</th><th>What it assumes</th></tr>
+    <tr><td>every item in one of a few compact groups</td><td><strong>k-means</strong></td><td>convex, roughly equal groups; $k$ given</td></tr>
+    <tr><td>dense regions of any shape, and a &ldquo;none of these&rdquo;</td><td><strong>DBSCAN</strong></td><td>a density that separates groups from the rest</td></tr>
+    <tr><td>fewer numbers per item, with the price stated</td><td><strong>PCA</strong></td><td>the useful variation is where the variance is</td></tr>
+    <tr><td>themes in a sparse table of counts</td><td><strong>truncated SVD</strong></td><td>the same, without centring</td></tr>
+  </table>
+  <p class="small fix">Choose by what the consumer of the output can do with
+  it. A segment nobody can write to, a noise label nobody can act on and a
+  component nobody can read are all technically correct and all useless.</p>
+  <p class="small muted">The rest of the lecture works one example in full,
+  because every one of these tools has the same failure mode: it does exactly
+  what it was asked, in a geometry that may not be the one you meant.</p>
+</section>
+
+
+<section data-menu-title="The stakeholder">
+  <p class="kicker">The worked example</p>
+  <h2>The brief</h2>
+  <div class="panel">
+    <span class="panel-title">The request</span>
+    &ldquo;We have a photographic archive. We do not know how many distinct
+    people are in it. Group the photographs by person, so that a human can name
+    a <em>group</em> instead of naming every photograph.&rdquo;
+  </div>
+  <ul class="tight small">
+    <li>The archive is not annotated, and nobody remembers who is in it</li>
+    <li>A trained annotator costs money and time per photograph</li>
+    <li>We are funded for <strong>forty</strong> labels. That is all</li>
+  </ul>
+  <p class="small muted">The same shape as the four examples: find the groups,
+  compress to make it feasible, flag what does not belong, and spend the few
+  labels well.</p>
+</section>
+
+
+<section data-menu-title="The corpus">
+  <h2>The corpus, and a photograph as a point</h2>
+  <div class="cols cols-60-40">
+    <div>
+      <table class="smaller">
+        <tr><th>Quantity</th><th class="num">Value</th></tr>
+        <tr><td>Photographs</td><td class="num">400</td></tr>
+        <tr><td>Distinct people</td><td class="num">40</td></tr>
+        <tr><td>Photographs per person</td><td class="num">10</td></tr>
+        <tr><td>Pixels per photograph</td><td class="num">4,096</td></tr>
+        <tr><td>The whole corpus in memory</td><td class="num">6.6 MB</td></tr>
+      </table>
+    </div>
+    <div>
+      <div class="eqn-box">
+        $$\begin{aligned}\mathbf{x}^{(i)} &\in \mathbb{R}^{4096}\\ x_j &\in [0,1]\end{aligned}$$
+      </div>
+    </div>
+  </div>
+  <p class="small">Flatten the 64 &times; 64 grid and a photograph is a vector.
+  Every method today measures a distance between two of them.</p>
+  <p class="small fail"><strong>Ten times more dimensions than points.</strong>
+  Four hundred points cannot fill four thousand dimensions, and that is the
+  first reason to compress before clustering.</p>
+</section>
+
+
+<section class="figslide" data-menu-title="◆ Forty people">
+  <h2>Forty people</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l09-corpus.png"
+         alt="A grid of forty greyscale portrait photographs, four rows of ten, each a different person, all cropped tightly to the face on a dark background.">
+  </figure>
+  <p class="takeaway muted">Same crop, same lighting rig, same background. What
+  varies between rows is the person &mdash; and, as much, the lamp.</p>
+</section>
+
+
+<section data-menu-title="y exists, and we use it twice">
+  <h2><code>y</code> exists. The brief does not have it</h2>
+  <p>Olivetti is a benchmark, so it ships with the identity of every
+  photograph. The archive we are pretending to hold does not.</p>
+  <div class="panel">
+    <span class="panel-title">The rule, kept for the whole lecture</span>
+    <code>y</code> is used in exactly two ways, both announced on the slide
+    where they happen: as the <em>forty labels we paid for</em>, and as an
+    <strong>audit</strong>, to find out what those forty could not have told us.
+  </div>
+  <p class="small">Any other use of <code>y</code> is the same error as scoring
+  on the test set, wearing different clothes. In practice you will have no
+  <code>y</code> at all &mdash; which is why the audit slides matter: they show
+  what you would not have been able to see.</p>
+</section>
+
+
+<section data-menu-title="Distance is not identity">
+  <h2>Before anything is fitted: can this work at all?</h2>
+  <p class="small">k-means groups points that are close in Euclidean distance.
+  So one measurement decides whether the rest of the lecture can work
+  <span class="muted">(an audit &mdash; it uses the hidden labels)</span>:</p>
+  <p class="lead">Are two photographs of the same person closer than two
+  photographs of different people?</p>
+  <table class="smaller">
+    <tr><th>Euclidean distance, raw pixels</th><th class="num">Pairs</th><th class="num">Mean</th><th class="num">Median</th></tr>
+    <tr><td>Same person</td><td class="num">1,800</td><td class="num">8.38</td><td class="num">8.15</td></tr>
+    <tr><td>Different people</td><td class="num">78,000</td><td class="num">12.41</td><td class="num">12.15</td></tr>
+  </table>
+  <p class="small fix">In practice: before you fit anything, measure whether
+  the distance you are about to cluster on tracks the thing you care about.
+  One cell, and it tells you whether you are about to tune or about to hope.</p>
+</section>
+
+
+<section class="figslide" data-menu-title="◆ Distance is not identity">
+  <h2>The gap is real, and it is small</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l09-distances.svg"
+         alt="Two overlapping histograms of Euclidean distance between pairs of faces. The grey different-people distribution and the red same-person distribution overlap over most of their range, with the same-person one shifted only slightly left.">
+  </figure>
+  <p class="takeaway fail"><strong>6%</strong> of same-person pairs sit further
+  apart than the <em>median</em> different-person pair. Pixel distance is partly
+  identity and partly lighting &mdash; and whatever varies most owns the
+  distance.</p>
+</section>
+
+
+<section data-menu-title="PCA, what it does">
+  <h2>PCA: what it minimises, and what the SVD gives you</h2>
+  <p class="small">Centre the data by subtracting the mean face, giving
+  $\tilde{\mathbf{X}}$; among all $d$-dimensional subspaces, PCA picks the one
+  that loses least when the points are projected onto it:</p>
+  <div class="eqn-box">
+    $$\min_{\mathbf{W}^{\intercal}\mathbf{W}=\mathbf{I}_d}\;
+      \bigl\lVert \tilde{\mathbf{X}} - \tilde{\mathbf{X}}\mathbf{W}\mathbf{W}^{\intercal}\bigr\rVert_F^2
+      \;=\; \sum_{j>d}\sigma_j^{2}
+      \qquad \text{at } \mathbf{W} = \mathbf{V}_d$$
+  </div>
+  <ul class="tight small">
+    <li>The answer is the SVD of the centred data,
+        $\tilde{\mathbf{X}} = \mathbf{U}\boldsymbol\Sigma\mathbf{V}^{\intercal}$:
+        the first $d$ right singular vectors. The error left is the tail of
+        the spectrum, readable <em>before</em> you choose $d$</li>
+    <li>The <strong>explained variance ratio</strong>
+        $r_j = \sigma_j^2 / \sum_i \sigma_i^2$ is that statement normalised:
+        keeping $d$ components removes exactly $\sum_{j\le d} r_j$ of the
+        squared error. The seven-line derivation is in the notes</li>
+  </ul>
+  <p class="small fail">Centre first. <code>PCA</code> does it for you; a
+  hand-rolled SVD does not, and the uncentred first component is the mean face
+  &mdash; a plausible picture and no error message.</p>
+</section>
+
+
+<section class="figslide" data-menu-title="◆ Scree and cumulative">
+  <h2>How many components you actually need</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l10-scree.svg"
+         alt="Two panels. Left: variance explained by each of the first fifty components, falling steeply from a large first value. Right: cumulative variance rising to a plateau, with dashed lines marking ninety-five percent and the component count where it is reached.">
+  </figure>
+  <p class="takeaway muted">123 components hold 95% of the variance of 4,096
+  pixels &mdash; a factor of 33 fewer numbers per photograph, and the price
+  of the cut is read off the right-hand panel before anything downstream is
+  run.</p>
+</section>
+
+
+<section data-menu-title="PCA in one line">
+  <h2>In one line of code</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-4|3">from sklearn.decomposition import PCA
+
+Z = PCA(n_components=0.95, random_state=42).fit_transform(X)
+print(Z.shape)                            # (400, 123)
+</code></pre>
+  <p class="small"><code>n_components=0.95</code> &mdash; a float between 0 and
+  1 is read as a <strong>variance target</strong> rather than a component count,
+  and scikit-learn chooses $d$ for you from the cumulative ratio. Here it
+  chooses 123.</p>
+  <p class="small fix">An integer means &ldquo;this many components&rdquo;; a
+  float means &ldquo;this much variance&rdquo;. One character apart, and
+  <code>n_components=1</code> and <code>n_components=1.0</code> do completely
+  different things. It is the first thing to check in a pipeline you inherit.</p>
+</section>
+
+
+<section class="figslide" data-menu-title="◆ Eigenfaces">
+  <h2>The mean face, then the first fifteen components</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l10-eigenfaces.png"
+         alt="A grid of sixteen greyscale images. The first is a blurred average face; the rest are ghostly face-like patterns of light and dark, the earliest ones dominated by left-right and top-bottom lighting gradients, the later ones showing finer facial structure.">
+  </figure>
+  <p class="takeaway fail">A component is a vector in $\mathbb{R}^{4096}$, so
+  it is an image &mdash; an <em>eigenface</em>. Look at the first few. They are
+  <strong>lighting</strong> &mdash; exactly what the distance histogram
+  predicted would dominate. Variance kept is not usefulness kept.</p>
+</section>
+
+
+<section class="figslide" data-menu-title="◆ Reconstruction">
+  <h2>The same held-out face, with components taken away</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l10-reconstruction.png"
+         alt="A row of nine greyscale portraits of the same held-out person, labelled 1, 2, 5, 10, 25, 50, 100, 200 and 4096. The first two are unrecognisable blurs; by 25 the face is identifiable; by 100 it is close to the original.">
+  </figure>
+  <p class="takeaway muted">Recognisable well before 123 components. Identity
+  survives a compression that the pixel values do not.</p>
+</section>
+
+
+<section data-menu-title="k-means">
+  <h2>k-means, in five lines</h2>
+  <ol class="tight small">
+    <li>Choose $k$ centroids (scikit-learn uses <em>k-means++</em>, which
+        spreads the initial ones out)</li>
+    <li>Assign every point to its nearest centroid</li>
+    <li>Move every centroid to the mean of its assigned points</li>
+    <li>Repeat 2&ndash;3 until no assignment changes</li>
+    <li>Repeat the whole thing <code>n_init</code> times and keep the best</li>
+  </ol>
+  <div class="panel">
+    Step 5 is not optional. Lloyd&rsquo;s algorithm converges &mdash; to a local
+    minimum that depends entirely on where you started. <code>n_init</code>
+    changed its default between scikit-learn versions, so name it &mdash; and
+    name <code>random_state</code>, or the segments change every time the
+    job runs.
+  </div>
+  <a class="anim-link" href="../animations/lecture-06.html#kmeans" target="_blank">Animation</a>
+</section>
+
+
+<section data-menu-title="What k-means assumes">
+  <h2>What k-means assumes, whether you asked or not</h2>
+  <div class="panel panel-when">
+    <span class="panel-title">Four assumptions, three of them false here</span>
+    <p class="tight small"><strong>Convexity.</strong> The partition is a
+    Voronoi diagram of the centroids, so every cluster is convex.</p>
+    <p class="tight small"><strong>Spherical, equal-sized.</strong> The only
+    quantity is distance to a centre.</p>
+    <p class="tight small"><strong>Total assignment.</strong> Every point
+    belongs to exactly one cluster; there is no &ldquo;none of these&rdquo;.</p>
+    <p class="tight small"><strong>$k$ is given.</strong> Nothing in the
+    algorithm chooses it.</p>
+  </div>
+  <p class="small">The first three are what DBSCAN drops, and why it was the
+  tool for the transactions. The fourth &mdash; choosing $k$ &mdash; is what
+  the next slides are about, because in practice nobody tells you $k$.</p>
+</section>
+
+
+<section data-menu-title="Inertia">
+  <h2>Definition: inertia</h2>
+  <div class="eqn-box">
+    $$J(k) \;=\; \sum_{i=1}^{m}\bigl\lVert \mathbf{x}^{(i)} - \boldsymbol\mu_{c(i)}\bigr\rVert_2^{2}$$
+  </div>
+  <p class="eqn-label">The sum of squared distances from every point to its assigned centroid &mdash; what k-means minimises, and what <code>km.inertia_</code> reports</p>
+  <div class="panel panel-when">
+    <span class="panel-title">A property, not an accident</span>
+    $J$ is <strong>non-increasing in $k$</strong> &mdash; refining a partition
+    cannot increase the distance to the assigned centre &mdash; and $J(m) = 0$
+    exactly, one cluster per point. So &ldquo;minimise inertia&rdquo; picks
+    $k = m$ on any dataset; the elbow rule exists to work around that.
+  </div>
+  <p class="small fix">In practice: inertia compares two runs at the
+  <em>same</em> $k$ &mdash; which restart was best &mdash; never two values of
+  $k$.</p>
+</section>
+
+
+<section class="figslide" data-menu-title="◆ The elbow that is not there">
+  <h2>Inertia cannot choose $k$: find the elbow</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l09-elbow.svg"
+         alt="Inertia plotted against k from 2 to 60. The curve falls steeply at first and then flattens gradually, with no visible corner. A dashed line marks k equals 40 in the flat region.">
+  </figure>
+  <p class="takeaway muted">Inertia &mdash; the sum of squared distances to the
+  assigned centroid &mdash; can only fall as $k$ rises, and is zero at one
+  cluster per point. A smooth convex curve: the <em>kneedle</em> rule
+  &mdash; furthest below the chord, both axes rescaled &mdash; picks
+  $k = 19$, the archive has 40, and 46% of the inertia at $k=2$ is still
+  present at $k=40$.</p>
+</section>
+
+
+<section data-menu-title="Silhouette">
+  <h2>Definition: the silhouette of a point $i$ in cluster $C_i$</h2>
+  <div class="eqn-box compact">
+    $$\begin{aligned}
+      a_i &= \frac{1}{\lvert C_i\rvert - 1}\sum_{j \in C_i,\, j \ne i} d\bigl(\mathbf{x}^{(i)}, \mathbf{x}^{(j)}\bigr)\\[0pt]
+      b_i &= \min_{C \ne C_i}\;\frac{1}{\lvert C\rvert}\sum_{j \in C} d\bigl(\mathbf{x}^{(i)}, \mathbf{x}^{(j)}\bigr)
+    \end{aligned}$$
+  </div>
+  <ul class="tight smaller">
+    <li><strong>$a_i$</strong>: mean distance from $i$ to the <em>other members
+        of its own cluster</em> &mdash; how tightly it sits</li>
+    <li><strong>$b_i$</strong>: mean distance from $i$ to the members of the
+        <em>nearest other cluster</em>, the one with the smallest such mean</li>
+    <li><strong>$s_i = (b_i - a_i)\,/\max(a_i, b_i) \in [-1, 1]$</strong>:
+        near $+1$ far inside its own cluster, near 0 on a boundary, negative
+        when closer to another cluster. The
+        <strong>silhouette score</strong> is its mean over all points: an
+        interior maximum in $k$, and no labels needed</li>
+  </ul>
+</section>
+
+
+<section data-menu-title="The random anchor">
+  <h2>Before reading the silhouette: what does <em>nothing</em> score?</h2>
+  <p class="small">Put every photograph in a uniformly random group, twenty
+  times, and look at the spread. The silhouette has no natural scale, and a
+  number with no null has no units.</p>
+  <table class="smaller">
+    <tr><th>Random assignment, twenty times</th><th class="num">Silhouette</th></tr>
+    <tr><td>$k = 10$</td><td class="num">&minus;0.0422 &plusmn; 0.0045</td></tr>
+    <tr><td>$k = 40$</td><td class="num">&minus;0.1288 &plusmn; 0.0107</td></tr>
+    <tr><td>$k = 60$</td><td class="num">&minus;0.1805 &plusmn; 0.0124</td></tr>
+  </table>
+  <p class="fix">The anchor sits at or below zero, and now you know the width
+  of the noise around it. A silhouette of 0.02 is not a discovery.</p>
+</section>
+
+
+<section class="figslide" data-menu-title="◆ Silhouette over k">
+  <h2>Silhouette against $k$, read against the anchor</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l09-silhouette-vs-k.svg"
+         alt="Mean silhouette plotted against k from 2 to 60, a rising then roughly flat curve with a marked maximum, above a dotted line near zero showing random assignment, with a dashed vertical line at k equals 40.">
+  </figure>
+  <p class="takeaway muted">A maximum exists. It is also low, and the curve near
+  it is nearly flat &mdash; so the chosen $k$ is not decisively better than its
+  neighbours. In practice that flatness is the finding: the data does not
+  insist on a $k$, so the business gets to choose one.</p>
+</section>
+
+
+<section class="figslide" data-menu-title="◆ Inside two clusters">
+  <h2>A mean silhouette means nothing until you look</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/l09-clusters.png"
+         alt="Two rows of ten greyscale faces. The top row shows the same person repeatedly. The bottom row shows several different people, four of them outlined in red, all photographed with similar lighting and head angle.">
+  </figure>
+  <p class="takeaway fail">The cleanest and the worst cluster at $k=40$. The
+  bottom row is not a person. It is a <em>lighting condition</em> &mdash;
+  several different people lit and posed the same way.</p>
+  <aside class="notes">Give them two minutes to look before saying anything.
+  Someone always spots the lighting pattern unprompted; let them say it. Show
+  the worst cluster as well as the best — a montage of the cleanest one is a
+  marketing image.</aside>
+</section>
+
+
+<section data-menu-title="Purity">
+  <h2>Definition: purity</h2>
+  <p class="small">For one cluster $C$, purity is the share of its members
+  that belong to its most common identity:</p>
+  <div class="eqn-box">
+    $$\mathrm{purity}(C) \;=\; \max_{y}\;\frac{\lvert\{\,i \in C : y_i = y\,\}\rvert}{\lvert C\rvert}$$
+  </div>
+  <ul class="tight small">
+    <li>1.00 when every photograph in the cluster is the same person; low when
+        the cluster mixes many people with none dominating</li>
+    <li><strong>Mean purity</strong> averages it over the clusters, each cluster
+        counting once</li>
+    <li>It needs the identity of every photograph, so here it is an
+        <strong>audit</strong> &mdash; a number the project itself could not
+        compute</li>
+  </ul>
+  <p class="small fail">Read it beside the cluster sizes: a cluster of one
+  photograph is pure by construction, and a very large cluster can be pure
+  only if it swallowed one person entirely. Purity alone rewards
+  over-splitting, exactly as inertia does.</p>
+</section>
+
+
+<section data-menu-title="Counting the damage">
+  <h2>Counting it, rather than describing it</h2>
+  <table class="smaller">
+    <tr><th>At $k = 40$, against the hidden identities (audit)</th><th class="num">Value</th></tr>
+    <tr><td>Cleanest cluster: 10 photographs, purity</td><td class="num hit">1.00</td></tr>
+    <tr><td>Worst cluster: 24 photographs of 10 people, purity</td><td class="num fail">0.21</td></tr>
+    <tr><td>Mean purity across the forty clusters</td><td class="num">0.74</td></tr>
+    <tr><td>Clusters holding exactly one person</td><td class="num">16</td></tr>
+    <tr><td>Clusters with exactly ten members</td><td class="num">7</td></tr>
+    <tr><td>Cluster sizes, smallest to largest</td><td class="num">4 to 25</td></tr>
+  </table>
+  <p class="small">Every true group has exactly ten members. The overlap the
+  distance histogram showed before anything was fitted is now a count. In
+  practice you will not have this table &mdash; so look at a sample of every
+  cluster, the worst ones first, before anyone names them.</p>
+</section>
+
+
+<section data-menu-title="Compress first">
+  <h2>Put the two halves together: compress, then cluster</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-5|1|3-5">Z = PCA(n_components=0.95, random_state=42).fit_transform(X)   # 123
+
+for k in range(2, 61):
+    km = KMeans(n_clusters=k, n_init=10, random_state=42).fit(Z)
+    sil.append(silhouette_score(Z, km.labels_))
+</code></pre>
+  <p class="small">The clustering code is unchanged. The grid is unchanged, the
+  seed is unchanged, <code>n_init</code> is unchanged. Only <em>what k-means is
+  looking at</em> changed: 123 numbers per photograph instead of 4,096.</p>
+  <p class="small fix">This is the standard pipeline in practice &mdash;
+  reduce, then cluster &mdash; and the silhouette is computed in the reduced
+  space, so it is not comparable with the one measured in pixels. A different
+  representation is a different evaluation.</p>
+</section>
+
+
+<section data-menu-title="DBSCAN">
+  <h2>DBSCAN, in three definitions</h2>
+  <ul class="tight small">
+    <li>A point is a <strong>core point</strong> if at least
+        <code>min_samples</code> points lie within <code>eps</code> of it</li>
+    <li>Core points within <code>eps</code> of each other are in the same
+        cluster; so are the non-core points in their neighbourhoods</li>
+    <li>Everything else is <strong>noise</strong>, labelled $-1$</li>
+  </ul>
+  <pre><code class="language-python" data-trim>
+db = DBSCAN(eps=6.0, min_samples=3).fit(Z)
+n_clusters = len(set(db.labels_) - {-1})     # exclude the noise label
+  </code></pre>
+  <p class="small fix">In practice: the noise label is the output you wanted
+  for anomalies and the output you did not want for segments; <code>eps</code>
+  is in the units of the space you hand it, so it changes when the scaling
+  does; and <code>DBSCAN</code> has no <code>predict</code> &mdash; to label a
+  new point you fit again, or train a classifier on its output.</p>
+  <a class="anim-link" href="../animations/lecture-06.html#dbscan" target="_blank">Animation</a>
+</section>
+
+
+<section data-menu-title="Anomaly detection">
+  <h2>Anomaly detection with the tools already on the table</h2>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>By reconstruction error</strong></p>
+      <p class="smaller">An image the eigenfaces cannot rebuild is unlike the
+      images that built them. Fit the PCA on the clean corpus, score every
+      image, flag the worst few.</p>
+      <pre><code class="language-python" data-trim>
+R   = pca.inverse_transform(pca.transform(Xa))
+err = ((R - Xa) ** 2).mean(axis=1)
+      </code></pre>
+    </div>
+    <div>
+      <p class="small"><strong>By density</strong></p>
+      <p class="smaller">DBSCAN&rsquo;s noise points are the images no dense
+      region claims. That is the transactions example again, on faces.</p>
+      <pre><code class="language-python" data-trim>
+bad = DBSCAN(eps=6.0, min_samples=3).fit(Z).labels_ == -1
+      </code></pre>
+    </div>
+  </div>
+  <p class="small">The notebook tests the first by planting twelve corrupted
+  images &mdash; four rotated, four dimmed, four double-exposed &mdash; and
+  counting how many land in the top twelve, with the detector fitted on the
+  clean corpus only.</p>
+  <p class="small fix">Look out for: a detector fitted on data that already
+  contains the anomalies has learned them; and the threshold &mdash; how many
+  to flag &mdash; is a decision about the cost of a missed one against the cost
+  of a false alarm, not a number the method knows.</p>
+</section>
+
+
+<section data-menu-title="Spending the forty labels">
+  <h2>Finally: the forty labels</h2>
+  <p class="small">Split the corpus 280 / 120, stratified by identity. We may
+  label forty of the 280 training photographs. Where we spend them turns out to
+  matter more than what we do with them.</p>
+  <ol class="tight small">
+    <li>Forty <strong>at random</strong></li>
+    <li>Forty chosen as the photograph nearest each of forty cluster centroids
+        &mdash; <code>km.transform(Z).argmin(axis=0)</code></li>
+    <li>The representative&rsquo;s label <strong>propagated</strong> to its whole
+        cluster &mdash; 280 labels from 40</li>
+    <li>Propagated only to the 75% of each cluster closest to its centroid</li>
+    <li>All 280 true labels &mdash; the ceiling, which the project cannot buy</li>
+  </ol>
+  <p class="small muted">Same classifier, same held-out faces, twenty splits.
+  The only thing that varies is <em>which</em> forty were labelled.</p>
+</section>
+
+
+<section data-menu-title="The propagation numbers">
+  <h2>The numbers</h2>
+  <table class="smaller">
+    <tr><th>Labels used</th><th class="num">Held-out accuracy</th><th class="num">sd over 20 splits</th></tr>
+    <tr><td>40 at random</td><td class="num">48.1%</td><td class="num">3.8%</td></tr>
+    <tr><td>40, one per cluster</td><td class="num hit">60.5%</td><td class="num">4.8%</td></tr>
+    <tr><td>Propagated to the whole cluster</td><td class="num">55.6%</td><td class="num">4.8%</td></tr>
+    <tr><td>Propagated to the closest 75%</td><td class="num">55.1%</td><td class="num">4.9%</td></tr>
+    <tr><td>All 280 true labels</td><td class="num fix">97.4%</td><td class="num">1.6%</td></tr>
+  </table>
+  <p class="small">Twenty splits, because the differences between the middle
+  three rows are of the same order as their spread &mdash; and a comparison that
+  turns on less than the spread is not a comparison.</p>
+  <p class="small muted">Propagation buys 280 labels from 40 and does
+  <em>worse</em> than the 40 alone, because a wrong propagated label is worse
+  than no label. Report that, do not bury it &mdash; it is the commonest
+  shortcut in a labelling budget, and it is a loss.</p>
+</section>
+
+
+<section data-menu-title="Look out for · before and PCA">
+  <h2>In practice, look out for &mdash; before fitting, and with PCA</h2>
+  <table class="smaller">
+    <tr><th>Situation</th><th>What goes wrong</th><th>Do this</th></tr>
+    <tr><td>Columns in different units</td><td>distance is owned by the largest unit; the segments are &ldquo;spend&rdquo;</td><td>scale before any distance, and keep the scaler with the model</td></tr>
+    <tr><td>Something dominates the variation</td><td>the clusters and the leading components are that thing &mdash; a lamp, a season, a device</td><td>measure first whether distance tracks what you care about; change the representation, not the algorithm</td></tr>
+    <tr><td><code>n_components</code> as an integer or a float</td><td>a count or a variance target, one character apart</td><td>read it aloud in every pipeline you inherit</td></tr>
+    <tr><td>The two-dimensional plot</td><td>a projection; distances on it are not distances in the data</td><td>use it to look, never to measure</td></tr>
+  </table>
+</section>
+
+
+<section data-menu-title="Look out for · clusters">
+  <h2>In practice, look out for &mdash; with clusters and anomalies</h2>
+  <table class="smaller">
+    <tr><th>Situation</th><th>What goes wrong</th><th>Do this</th></tr>
+    <tr><td>Nobody told you $k$</td><td>inertia always prefers more; the silhouette is flat near its maximum</td><td>read it against a random anchor; then let the consumer choose among the flat candidates</td></tr>
+    <tr><td>A clean mean silhouette</td><td>one cluster can be a lighting condition, a region, a device</td><td>look at a sample of every cluster, worst first, before naming any</td></tr>
+    <tr><td>The job reruns next month</td><td>different seed, different segments, different names</td><td>fix <code>n_init</code> and <code>random_state</code>; check stability across resamples before trusting a segment</td></tr>
+    <tr><td>DBSCAN after rescaling</td><td><code>eps</code> was set in the old units</td><td>treat <code>eps</code> as part of the representation; and remember it cannot <code>predict</code></td></tr>
+    <tr><td>Anomalies in the training data</td><td>the detector has learned them</td><td>fit on data believed clean; the threshold is a cost decision</td></tr>
+    <tr><td>A labelling budget</td><td>propagated labels cost more than they buy</td><td>spend labels on representatives; report the loss, do not bury it</td></tr>
+  </table>
+</section>
+
+
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-06.ipynb">Open Lecture 6 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU</strong>, top to bottom</li>
+    <li>PCA by hand from the SVD of the centred data, checked against
+        scikit-learn to $10^{-4}$; the explained variance ratio, the eigenfaces
+        and the reconstructions</li>
+    <li>Everything else on today&rsquo;s slides &mdash; the distance histogram,
+        the sweep in raw pixels and compressed, the elbow, the random
+        anchor, the silhouette diagrams, DBSCAN, the anomalies and the forty
+        labels</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change, and what should happen</span>
+    Every specification box carries a <strong>try</strong> line. The cheapest one:
+    change <code>n_components=0.95</code> to <code>0.99</code>, which takes $d$
+    from 123 to 260. The sweep slows by roughly the ratio of the two, and
+    what k-means finds barely moves &mdash; which is the whole trade-off in one
+    edit.
+  </div>
+</section>
+
+
+<section data-menu-title="Design · The task">
+  <p class="kicker">Design exercise &middot; in the manner of an ML system-design interview</p>
+  <h2>The task: a grocery-delivery app&rsquo;s customer segments for its marketing team</h2>
+  <div class="panel">
+    <span class="panel-title">The brief</span>
+    A grocery-delivery app holds every account&rsquo;s order history. Its
+    marketing team wants a handful of <strong>customer segments</strong>
+    &mdash; one campaign per segment, written by a person and sent through
+    the app &mdash; and every account&rsquo;s segment. The business reads
+    retention and promotion spend per order; a campaign aimed at a segment
+    that is not one wastes both. No account comes with a label.
+  </div>
+  <ul class="tight small">
+    <li><strong>Given:</strong> for each account, its orders over the last
+        year &mdash; what, when, how much, on promotion &mdash; and nothing
+        else</li>
+    <li><strong>Scale:</strong> millions of accounts; dozens of departments;
+        a budget to interview a few hundred customers</li>
+    <li><strong>Consumers of the output:</strong> the marketing team, who
+        name and write to each segment; the campaign tool assigning new
+        accounts; finance</li>
+  </ul>
+  <p class="small fix">Nine steps follow, each with the pitfall that catches a
+  first attempt and what to do about it. The model at the centre is
+  today&rsquo;s: PCA to reduce the dimension, then k-means, with $k$ chosen
+  without labels.</p>
+</section>
+
+<section data-menu-title="Design · 1 Frame it">
+  <h2>Step 1 &mdash; Frame it honestly: there is no target column</h2>
+  <ul class="tight small">
+    <li>One row per account; the output is a segment for every account and a
+        <em>profile</em> of each segment in the measured columns</li>
+    <li>No truth to compare with, so the metric compares the grouping to
+        itself &mdash; the silhouette, read against what a <strong>random</strong>
+        grouping scores &mdash; and to its own stability under resampling</li>
+    <li>The baseline is &ldquo;group at random&rdquo;; the test is whether a
+        marketer reading a segment&rsquo;s baskets sees one kind of customer</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    The first attempt asks the model how many kinds of customer there are,
+    reads it as fact, and writes a campaign per cluster.
+    Every number here is a statement about <em>geometry</em>; whether the
+    geometry is the customers is answered by looking. Decide before fitting
+    what to look at: the baskets nearest each centre, and the worst segment
+    as well as the best.
+  </div>
+</section>
+
+<section data-menu-title="Design · 2 Scale first">
+  <h2>Step 2 &mdash; The row, scaled before any distance is measured</h2>
+  <ul class="tight small">
+    <li>One account is a vector of <em>shares and rates</em> &mdash; the
+        share of spend per department, orders per week, basket size, the
+        share on promotion &mdash; so that how much a household spends is not
+        an axis of its own</li>
+    <li>k-means groups rows close in Euclidean distance, which adds every
+        column up with the same weight: standardise, with a scaler fitted on
+        the training accounts, before the first distance</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    Annual spend in euros next to orders per week: the column with the
+    largest unit decides every distance, and the &ldquo;segments&rdquo; are
+    bands of total spend &mdash; a lamp and a nose on one axis, a campaign
+    finance could have written from one column. Remove the nuisance at the
+    row, not by deleting leading components afterwards: that threw away
+    signal with the nuisance today.
+  </div>
+</section>
+
+<section data-menu-title="Design · 3 Reduce it">
+  <h2>Step 3 &mdash; PCA, and how many components</h2>
+  <ul class="tight small">
+    <li>Dozens of correlated department columns: centre, take the SVD, and
+        let a float to <code>n_components</code> choose $d$ from the
+        cumulative variance ratio &mdash; an integer would say how many</li>
+    <li>A component is a direction in the columns, so it can be read: fresh
+        against packaged, evening top-ups against one weekly shop</li>
+    <li>Both cost models below are linear in $n$, so the sweep over $k$ and
+        the silhouette get cheaper by the same factor</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    Variance kept is not usefulness kept. The first component of a table of
+    departments is usually &ldquo;how much&rdquo; &mdash; total spend wearing
+    forty names &mdash; which the shares and rates of the previous step were
+    meant to remove. Read every kept component in the columns before
+    clustering on it; if the first one is size, the scaling is wrong, and no
+    choice of $d$ repairs it.
+  </div>
+</section>
+
+<section data-menu-title="Design · 4 k-means">
+  <h2>Step 4 &mdash; The model: k-means, and what it assumes whether you asked or not</h2>
+  <ul class="tight small">
+    <li>Lloyd&rsquo;s algorithm from k-means++ starts; name <code>n_init</code>
+        and keep the best of several restarts, because it converges to a local
+        minimum that depends on the start</li>
+    <li>It assumes convex, spherical, equal-sized clusters, total assignment
+        and a given $k$ &mdash; and the app&rsquo;s customers are one large
+        crowd with a few small, distinct groups around it</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    Voronoi cells slice the crowd into arbitrary wedges and absorb the small
+    groups, and every account, however odd, gets one. Read the cluster sizes
+    and the silhouette diagram before believing the partition. If the shape
+    is wrong, a Gaussian mixture fits ellipsoids of different sizes; DBSCAN
+    finds dense groups and labels the rest noise, at the price of no
+    <code>predict</code> for a new account.
+  </div>
+</section>
+
+<section data-menu-title="Design · 5 Choose k">
+  <h2>Step 5 &mdash; Choose $k$: inertia cannot, the silhouette can, against a random anchor</h2>
+  <ul class="tight small">
+    <li>Inertia is non-increasing in $k$ and zero at one cluster per account:
+        no interior minimum exists, and the elbow is a picture of a criterion
+        that does not exist</li>
+    <li>The silhouette is penalised for splitting a group and for merging
+        two, so it has an interior maximum; quadratic in the rows, it is
+        computed on a sample of the accounts, in the reduced space</li>
+    <li>Before reading any value, assign the accounts to $k$ groups at
+        random, many times: the null, with its width</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    A silhouette with no anchor has no units, and the marketing team is told
+    that &ldquo;the data shows five segments&rdquo; &mdash; and budgets five
+    campaigns &mdash; on a maximum that is low and nearly flat across its
+    neighbours. Report the curve, the anchor and the width of the noise, and
+    say when the chosen $k$ is not decisively better than its neighbours.
+  </div>
+</section>
+
+<section data-menu-title="Design · 6 Stability">
+  <h2>Step 6 &mdash; Do the segments survive a resample?</h2>
+  <ul class="tight small">
+    <li>Refit at the chosen $k$ on several random subsamples, match the
+        segments of two fits by overlap, and count the share of the accounts
+        they share that keep their segment</li>
+    <li>A segment the team can write to is one that is there again after a
+        resample; one that moves on every refit is a property of the sample,
+        not of the customers</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    The silhouette picks a $k$, the campaign is written, and the next refit
+    &mdash; a new quarter, a different seed &mdash; produces segments that do
+    not match: a message written for one segment reaches accounts no longer
+    in it. Restarts remove the variation that is Lloyd&rsquo;s algorithm;
+    what remains is the data&rsquo;s. Report the index between refits beside
+    the silhouette, and treat a $k$ whose partitions disagree as unsupported,
+    whatever the silhouette says.
+  </div>
+</section>
+
+<section data-menu-title="Design · 7 Name it">
+  <h2>Step 7 &mdash; Name a segment without inventing a story</h2>
+  <ul class="tight small">
+    <li>For each segment: its profile in the <em>original</em> units, every
+        column&rsquo;s mean against the mean of all accounts, and the baskets
+        of the accounts nearest its centroid</li>
+    <li>Spend the interview budget on those representatives, not on accounts
+        drawn at random: today representatives were worth a quarter more than
+        random, with the same classifier</li>
+    <li>Show the worst segment as well as the cleanest</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    &ldquo;Young professionals&rdquo; is written on a centroid nobody looked
+    at, and a campaign goes out in that voice; the segment is actually
+    &ldquo;accounts delivering to an office at lunchtime&rdquo; &mdash; a
+    <em>condition</em>, this problem&rsquo;s lighting, not a kind of person.
+    Name a segment only in the measured columns, and never propagate an
+    interviewed answer to its whole segment: propagated labels did worse
+    than the few alone.
+  </div>
+</section>
+
+<section data-menu-title="Design · 8 In production">
+  <h2>Step 8 &mdash; In production: the accounts that fit nowhere, and the seasons</h2>
+  <ul class="tight small">
+    <li>k-means assigns every account, so score each one first &mdash; the
+        density under a Gaussian mixture, or the PCA reconstruction error:
+        the lowest few are a shared flat&rsquo;s account or a caf&eacute;
+        buying for resale, and get no segment</li>
+    <li>Release with a holdout of accounts that get no campaign, so each
+        campaign&rsquo;s lift on retention is measured; refit on a rolling
+        window each season, compare with the old partition by the share of
+        accounts that keep their segment; the data team is on call</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    Fitted in summer, run in the winter holidays: the scaler, the components
+    and the centres describe a season that has gone, and the share of
+    accounts that change segment on refit is the only sign. Monitor that
+    share and the column means; when they move, refit, and tell the team
+    which segments survived.
+  </div>
+</section>
+
+<section data-menu-title="Design · 9 The pitfalls">
+  <h2>Step 9 &mdash; Ship it: the pipeline, and the pitfalls in one table</h2>
+  <p class="small">Order log &rarr; one row per account, shares and rates
+  &rarr; held-out accounts &rarr; scaler and PCA in a pipeline &rarr; k-means
+  with restarts &rarr; silhouette against the random anchor &rarr; stability
+  across resamples &rarr; profiles and representatives &rarr; anomaly scores
+  &rarr; a holdout; refit by season.</p>
+  <table class="smaller">
+    <tr><th>Pitfall</th><th>Address it by</th></tr>
+    <tr><td>Geometry read as people</td><td>deciding what will be looked at before fitting</td></tr>
+    <tr><td>The largest unit chooses the segments</td><td>shares and rates; a scaler fitted on the training accounts</td></tr>
+    <tr><td>Variance kept read as usefulness</td><td>reading every kept component in the columns</td></tr>
+    <tr><td>Equal convex cells on an unequal crowd</td><td>sizes and the silhouette diagram; a mixture or DBSCAN</td></tr>
+    <tr><td>The elbow, or a silhouette with no units</td><td>the silhouette against a random anchor, with its noise</td></tr>
+    <tr><td>Segments that move on every refit</td><td>the share of accounts that keep their segment across resamples</td></tr>
+    <tr><td>A story written on a centroid</td><td>profiles in measured columns; the interviews spent on representatives</td></tr>
+    <tr><td>Every account assigned, in every season</td><td>density or reconstruction scores; a rolling refit, compared</td></tr>
+  </table>
+</section>
+
+<section data-menu-title="Summary">
+  <h2>What to remember</h2>
+  <ol class="tight smaller">
+    <li>Unsupervised learning finds groups, cuts the numbers per item, and
+        flags the unusual &mdash; with no label to score against, so every
+        number is about geometry and you find out you were wrong by looking</li>
+    <li>The tool follows the shape of the answer: every item in a compact group
+        &rarr; k-means; dense regions of any shape and a &ldquo;none of
+        these&rdquo; &rarr; DBSCAN; fewer numbers with the price stated
+        &rarr; PCA; themes in sparse counts &rarr; the truncated SVD. Each is
+        the wrong tool for the other three jobs</li>
+    <li>PCA is the SVD of the <strong>centred</strong> data; the error it
+        leaves is the tail of the spectrum, and the explained variance ratio
+        reads it before you choose $d$: 123 components hold 95% of 4,096
+        pixels</li>
+    <li>Inertia cannot choose $k$. The silhouette can, read against a random
+        anchor &mdash; and then against the items themselves, because a mean
+        hides a cluster that is a lighting condition rather than a person</li>
+    <li>Scale before any distance; fix the seed; look at the worst cluster
+        first; fit a detector on clean data; the threshold and $k$ are
+        decisions the consumer owns</li>
+    <li>Forty labels spent on cluster representatives were worth a quarter
+        more accuracy than forty spent at random; propagating them was a loss.
+        Which forty mattered more than what was done with them</li>
+    <li>Designed a grocery-delivery app&rsquo;s customer segments for its
+        marketing team in nine steps &mdash; shares and rates scaled before
+        any distance, PCA read in the columns, k-means read against its
+        assumptions, $k$ by silhouette against a random anchor, stability
+        across resamples, names in the measured columns, anomalies by
+        density, a holdout and a refit by season &mdash; each step named for
+        the pitfall it avoids</li>
+  </ol>
+</section>
+
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 6">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 6</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 6">
+  <h2>Exercises &mdash; Lecture 6</h2>
+  <ul class="ex-list">
+    <li>A marketing team wants every customer placed in one of a handful of segments; a fraud team wants the few transactions unlike all the rest, with no labels yet. Name the clustering method for each, and say why the other one is the wrong tool in each case. <span class="ex-marks">[5]</span></li>
+    <li>The explained variance ratio is sometimes called a heuristic for choosing $d$. Say why it is not one, and what keeping 95% of the variance leaves as reconstruction error. <span class="ex-marks">[5]</span></li>
+    <li>A customer-segmentation job reruns every month on fresh orders, and the marketing team complains that the segments &ldquo;moved&rdquo;: the groups and their sizes differ from last month&rsquo;s. Name two things to fix in the code, and one check to run before any segment is trusted. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 7&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 6 (2)">
+  <h2>Exercises &mdash; Lecture 6 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>Inertia always falls as $k$ rises, so it cannot choose $k$. State what silhouette adds, and one situation where it also fails. <span class="ex-marks">[5]</span></li>
+    <li>You have 4,096-dimensional face vectors and are told two faces are &ldquo;close&rdquo;. Explain why that alone does not mean they are the same person. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 7&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 5">
+  <p class="kicker">The five set at the end of Lecture 5</p>
+  <h1>Solutions<br>Lecture 5</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 5">
+  <h2>Solutions &mdash; Lecture 5</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> For $n$ predictors each of variance $\sigma^2$ and pairwise correlation $\rho$, the variance of their average&hellip;</p>
+      <p class="lead"><span class="fix">It tends to $\rho\sigma^2$ &mdash; correlation, not ensemble size, sets the floor.</span></p>
+      <ul class="tight smaller">
+        <li>The second term vanishes; the first does not depend on $n$ at all</li>
+        <li>Adding members past a point buys nothing, which is why the design effort goes into <em>decorrelating</em> them</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> Bagging measures $\rho = 0.072$ with one member at 78.8% accuracy; the random forest measures $\rho = 0.043$&hellip;</p>
+      <p class="lead"><span class="fix">Lowering $\rho$ is not free. The forest lowers it by letting each split see only 7 of 54 columns, which handicaps every member, and the formula is about variance alone: $\sigma^2$ sits in both terms and bias is not in it at all.</span></p>
+      <ul class="tight smaller">
+        <li>$\operatorname{Var}(\bar f) = \rho\sigma^2 + (1-\rho)\sigma^2/n$ predicts the variance of the average; accuracy also depends on how good each member is</li>
+        <li>On this dataset the decorrelation is worth less than the weaker members cost: 89.8% for bagging against 88.4% for the forest</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 5 (2)">
+  <h2>Solutions &mdash; Lecture 5 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> You set bootstrap=False and oob_score=True. State what happens and why.</p>
+      <p class="lead"><span class="fix">It raises: with no bootstrap there are no out-of-bag rows.</span></p>
+      <ul class="tight smaller">
+        <li>Out-of-bag scoring uses the rows a member did not sample</li>
+        <li>Without sampling, every member sees every row and the estimate is undefined</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> Impurity importance ranks a column of random numbers tenth of 55; permutation importance on held-out data&hellip;</p>
+      <p class="lead"><span class="fix">Shuffle one column of the held-out set, re-score the fitted model, and report the fall in accuracy, repeated for a spread. A random column carries no information the model can use on new rows, so shuffling it costs nothing.</span></p>
+      <ul class="tight smaller">
+        <li>Impurity importance sums the impurity decrease of every training-set split on a column, so it is earned on the rows the trees were grown on</li>
+        <li>Permutation importance is measured on rows the model never saw: only a column whose values matter for those predictions loses accuracy when they are scrambled</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 5 (3)">
+  <h2>Solutions &mdash; Lecture 5 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> A forest improves accuracy over one tree by far less than the variance reduction would suggest. Is this a&hellip;</p>
+      <p class="lead"><span class="fix">No &mdash; variance is only one term of the error.</span></p>
+      <ul class="tight smaller">
+        <li>Averaging reduces variance and leaves bias untouched</li>
+        <li>If the remaining error is mostly bias or noise, removing variance moves the accuracy very little</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 7 &middot; G&eacute;ron Ch. 9</p>
+  <h1>Neural networks</h1>
+  <p class="small">
+    Back to labels: ten classes of small greyscale images, and a pixel as a feature<br>
+    The multilayer perceptron, and why a stack of linear layers is a linear model<br>
+    A layer in matrices, softmax and cross-entropy, and the parameter count before the fit<br>
+    A network fitted and tuned by hand &mdash; and the four walls <code>fit()</code> puts round you
+  </p>
+  <p class="clock">Run the Lecture 6 notebook first</p>
+</section>
+
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 6
+  <span class="sep">&middot;</span> Dimensionality reduction and unsupervised learning
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>
