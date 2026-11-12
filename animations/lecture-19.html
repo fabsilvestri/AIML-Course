@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 19 · Information retrieval: the lexical foundation — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 19 of Applications of Machine Learning: BM25 and what k1 and b do, and the ranking metrics P@k, R@k, RR, AP and NDCG computed term by term.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-19.html">Lecture 19 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 19 · Animations</p>
+  <h1>Information retrieval: the lexical foundation</h1>
+  <p>Two pieces of today, run in front of you: BM25, with its two
+  parameters on sliders; and the ranking metrics, recomputed term by term as
+  you change which results are relevant. Press <strong>Step</strong> to advance
+  one unit and read what happened; press <strong>Play</strong> to let it
+  run.</p>
+  <p class="note">All data on this page is synthetic: the ten one-line
+  “abstracts” and the term counts are made up, not taken from SciFact.
+  <em>Reset</em> always gives back the same picture. Logarithms are natural
+  logarithms, except $\log_2$ in the discount of DCG.</p>
+  <ul class="toc">
+    <li><a href="#bm25">1 · BM25 and its two parameters</a></li>
+    <li><a href="#metrics">2 · Evaluating a ranking</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · BM25
+     ====================================================================== -->
+<section class="anim" id="bm25">
+  <h2><span class="num">1</span>BM25 and its two parameters</h2>
+  <p class="lede">The query <em>insulin resistance in obesity</em> against ten
+  made-up documents A–J, described by their length and their counts of the
+  query terms. Bottom: each document's BM25 score, split into its four terms'
+  contributions and sorted — move $k_1$ and $b$ and watch the order change.
+  Top left: one term's contribution against its count; top right, against the
+  document's length. Each step pastes one more <em>insulin</em> into document
+  D, as a spammer would.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="bm-plots"></div>
+      <div id="bm-rank"></div>
+      <div class="narrate" id="bm-say"></div>
+      <div class="toolbar" id="bm-bar"></div>
+    </div>
+    <aside class="side" id="bm-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      $$\text{BM25}(q,d) = \sum_{t \in q} \mathrm{idf}(t)\,
+        \frac{\text{tf}_{t,d}\,(k_1+1)}{\text{tf}_{t,d} + k_1 L_d},$$
+      $$L_d = 1-b+b\,\frac{|d|}{\text{avgdl}},$$
+      $$\mathrm{idf}(t) = \log\!\left(1 + \frac{N - n_t + 0.5}{n_t + 0.5}\right),$$
+      <p>for $N$ documents of which $n_t$ contain $t$, and avgdl the mean
+      document length. For $k_1 &gt; 0$ the denominator is larger than $\text{tf}$, so each
+      term's contribution is below $\mathrm{idf}(t)(k_1+1)$, whatever
+      $\text{tf}$: the saturation. At $k_1 = 0$ the fraction is $1$ for any
+      $\text{tf} &gt; 0$, so the score is $\sum$ idf over the query terms the
+      document contains.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li><em>in</em> occurs in all ten documents and its idf is 0.047:
+        its segment of every bar is a sliver. No stop-word list was
+        needed.</li>
+        <li>Each step adds a copy of <em>insulin</em> to D. The first copies
+        raise its score most; later ones add almost nothing, and the
+        <em>insulin</em> part never crosses the dashed bound
+        $\mathrm{idf}(k_1+1)$.</li>
+        <li>Document B is long (620 tokens) and has the most occurrences of
+        everything: it leads at $b = 0.4$ and loses its lead as $b$ grows.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Set $b = 0$: B leads by more. Set $b = 1$: B drops to third,
+        behind the short documents A and C.</li>
+        <li>Set $k_1 = 0$: A, B and C tie exactly, because each contains all
+        four terms once or more and counts no longer matter.</li>
+        <li>Press <em>Play</em> with $k_1 = 0.9$: after 40 copies D is still
+        below C, which mentions each term once. Then set $k_1 = 5$, close to
+        raw counting: D jumps above C.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · Evaluating a ranking
+     ====================================================================== -->
+<section class="anim" id="metrics">
+  <h2><span class="num">2</span>Evaluating a ranking, term by term</h2>
+  <p class="lede">Ten ranked results; click one to change its relevance. It
+  starts as the lecture's worked example — relevant documents at ranks 1, 2
+  and 8. Under each rank, every term each metric adds up: the precision at
+  each hit for AP, and the gain and discount for DCG, with the ideal ordering
+  beneath. Each step makes one swap towards the ideal ordering, moving a more
+  relevant result one place up.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div id="mt-plot"></div>
+      <div class="viz-row" id="mt-curves"></div>
+      <div class="narrate" id="mt-say"></div>
+      <div class="toolbar" id="mt-bar"></div>
+    </div>
+    <aside class="side" id="mt-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>With $R$ the set of relevant documents (those in the list, plus any
+      the system never retrieved):</p>
+      $$\text{P}@k = \frac{|R \cap \text{top-}k|}{k},\quad
+        \text{R}@k = \frac{|R \cap \text{top-}k|}{|R|},$$
+      $$\text{RR} = \frac{1}{\text{rank of the first relevant}},$$
+      $$\text{AP} = \frac{1}{|R|}\sum_{i\,:\,d_i \in R}\text{P}@i,$$
+      $$\text{DCG}@k = \sum_{i=1}^{k}\frac{g_i}{\log_2(i+1)},$$
+      $$\text{NDCG}@k = \frac{\text{DCG}@k}{\text{IDCG}@k}.$$
+      <p>IDCG@$k$ is the DCG@$k$ of the ideal ordering: every relevant document,
+      most relevant first. The gain is $g_i = \text{rel}_i$ (linear) or
+      $2^{\text{rel}_i} - 1$; for binary relevance both give 0 or 1. RR is 0 if
+      nothing relevant is retrieved. A relevant document never retrieved counts
+      as grade 1.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>At the start the side panel reads the lecture's numbers:
+        AP 0.7917, DCG@10 1.9464, IDCG@10 2.1309, NDCG@10 0.9134 — while
+        R@10 and RR both say 1.</li>
+        <li>Stepping moves the rank-8 document up. AP and NDCG rise with every
+        swap; R@10 and RR do not move at all: they cannot read that part of the
+        order.</li>
+        <li>AP divides by $|R|$, not by the number of hits: add a relevant
+        document the system never retrieved, and AP falls although the list is
+        unchanged.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Leave one relevant document and move it: ranks 1, 2, 5, 10 give
+        RR 1, 0.5, 0.2, 0.1 and NDCG@10 1, 0.6309, 0.3869, 0.2891, while R@10
+        stays 1.</li>
+        <li>Set <em>relevant, not retrieved</em> to 1: R@10 drops to 0.75 and
+        AP to 0.5938.</li>
+        <li>Switch to graded relevance and give ranks 1, 2, 3 the grades 1, 1, 3
+        and rank 8 the grade 0 (clicks cycle 0 → 1 → 2 → 3 → 0). With linear gain the two fair documents
+        contribute 1.63 to DCG and the excellent one 1.5; with
+        $2^{\text{rel}} - 1$ the excellent one contributes 3.5.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 19 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  function idfOf(N, n) { return Math.log(1 + (N - n + 0.5) / (n + 0.5)); }
+  function bm25Term(idf, tf, len, avgdl, k1, b) {
+    if (tf <= 0) return 0;
+    return idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * len / avgdl));
+  }
+
+  /* ======================================================================
+     1 · BM25 and its two parameters
+     ====================================================================== */
+  (function () {
+    var Q = ["insulin", "resistance", "in", "obesity"];
+    var BASE = [["A", 180, [3, 2, 4, 2]], ["B", 620, [7, 5, 14, 4]], ["C", 90, [1, 1, 2, 1]], ["D", 150, [1, 0, 3, 0]],
+                ["E", 210, [0, 0, 5, 3]], ["F", 240, [0, 2, 6, 0]], ["G", 130, [0, 0, 3, 0]], ["H", 300, [0, 0, 7, 1]],
+                ["I", 160, [0, 0, 2, 0]], ["J", 200, [1, 0, 4, 0]]];
+    var N = BASE.length, SPAM = 3, MAXCOPIES = 40;
+    var S = { k1: 0.9, b: 0.4 }, st, pl;
+
+    function docs() {
+      return BASE.map(function (d, i) {
+        var tf = d[2].slice(), len = d[1];
+        if (i === SPAM) { tf[0] += st.copies; len += st.copies; }
+        return { name: d[0], len: len, tf: tf };
+      });
+    }
+    function stats(D) {
+      var avg = A.mean(D.map(function (d) { return d.len; }));
+      var idf = Q.map(function (t, k) { return idfOf(N, D.filter(function (d) { return d.tf[k] > 0; }).length); });
+      return { avg: avg, idf: idf };
+    }
+    function scoreParts(d, s) { return Q.map(function (t, k) { return bm25Term(s.idf[k], d.tf[k], d.len, s.avg, S.k1, S.b); }); }
+
+    var plots = A.$("#bm-plots");
+    var pT = A.plot(plots, { x: [0, 45], y: [0, 4.4], w: 420, h: 280, xlabel: "tf of insulin", ylabel: "contribution", yticks: [0, 1, 2, 3, 4],
+                             caption: "insulin's contribution in document D, against its count" });
+    var pL = A.plot(plots, { x: [0, 3], y: [0, 4.4], yticks: [0, 1, 2, 3, 4], w: 420, h: 280, xlabel: "|d| / avgdl", ylabel: "contribution",
+                             caption: "A term with tf = 3 and idf 1, against document length" });
+    var rk = A.canvas("#bm-rank", { w: 860, h: 330 });
+
+    var side = A.$("#bm-side");
+    A.slider(side, { label: "$k_1$ (saturation)", min: 0, max: 5, step: 0.05, value: S.k1,
+                     fmt: function (v) { return fmt(v, 2); }, onInput: function (v) { S.k1 = v; render(); } });
+    A.slider(side, { label: "$b$ (length normalisation)", min: 0, max: 1, step: 0.01, value: S.b,
+                     fmt: function (v) { return fmt(v, 2); }, onInput: function (v) { S.b = v; render(); } });
+    var ro = A.readout(side, [["avg", "avgdl"]].concat(Q.map(function (t, k) { return ["idf" + k, "idf(" + t + ")"]; }))
+                              .concat([["tfD", "tf of insulin in D"], ["lenD", "|D|"], ["cD", "its contribution"],
+                                       ["bound", "bound $\\mathrm{idf}(k_1+1)$"], ["top", "top three"]]));
+    A.legend(side, Q.map(function (t, k) { return { swatch: "c" + k, label: t }; }).concat([
+                    { line: "line", label: "BM25 term" }, { line: "line muted dash", label: "raw tf × idf" },
+                    { line: "line ok dash thin", label: "the bound idf(k₁ + 1)" }]));
+    var say = A.narrate("#bm-say");
+
+    function reset() { st = { copies: 0, hist: [] }; }
+    function step() {
+      var D = docs(), s = stats(D), before = A.sum(scoreParts(D[SPAM], s));
+      st.copies++;
+      var D2 = docs(), s2 = stats(D2), after = A.sum(scoreParts(D2[SPAM], s2));
+      st.last = { before: before, after: after };
+      return st.copies < MAXCOPIES;
+    }
+
+    function render() {
+      var D = docs(), s = stats(D), d = D[SPAM], idf0 = s.idf[0];
+      // Contribution against tf, in D as it now is (its length grows with tf).
+      pT.clear();
+      var bound = idf0 * (S.k1 + 1);
+      pT.line(0, bound, 45, bound, "line ok dash thin");
+      pT.path(A.linspace(0, 45, 91).map(function (tf) { return [tf, tf * idf0]; }), "line muted dash thin");
+      pT.path(A.linspace(0, 45, 181).map(function (tf) {
+        return [tf, bm25Term(idf0, tf, d.len - d.tf[0] + tf, s.avg + (tf - d.tf[0]) / N, S.k1, S.b)];
+      }), "line");
+      var cD = bm25Term(idf0, d.tf[0], d.len, s.avg, S.k1, S.b);
+      pT.dot(d.tf[0], cD, { r: 6, cls: "pt c0", layer: "over" });
+      pT.text(d.tf[0], cD, "D", { dx: 6, dy: -8, cls: "lbl" });
+
+      // Contribution against length, for tf = 3 and idf = 1.
+      pL.clear();
+      var lr = A.linspace(0.05, 3, 120);
+      function lenCurve(b) { return lr.map(function (x) { var k = S.k1; return [x, 3 * (k + 1) / (3 + k * (1 - b + b * x))]; }); }
+      pL.path(lenCurve(0), "line muted dash thin");
+      pL.path(lenCurve(1), "line muted dot");
+      pL.path(lenCurve(S.b), "line");
+      pL.text(2.95, lenCurve(0)[119][1], "b = 0", { anchor: "end", dy: -6, cls: "lbl-sm" });
+      pL.text(2.95, lenCurve(1)[119][1], "b = 1", { anchor: "end", dy: 14, cls: "lbl-sm" });
+      pL.line(1, 0, 1, 4.4, "zero");
+
+      // The ranked list.
+      var rows = D.map(function (dd, i) { var p = scoreParts(dd, s); return { d: dd, p: p, s: A.sum(p), i: i }; })
+                  .sort(function (a, b) { return b.s - a.s || a.i - b.i; });
+      rk.clear();
+      var g = rk.g, smax = Math.max(6, rows[0].s), x0 = 230, W = 520;
+      rk.text(8, 16, "document · length · tf of (insulin, resistance, in, obesity)", "axis-label");
+      rk.text(x0 + W + 90, 16, "BM25", "axis-label", "end");
+      rows.forEach(function (r, k) {
+        var y = 40 + k * 29, x = x0;
+        var t = rk.text(8, y, (k + 1) + ".  " + r.d.name + " · " + r.d.len + " · (" + r.d.tf.join(", ") + ")", r.i === SPAM ? "lbl mono" : "lbl mono");
+        if (r.i === SPAM) t.setAttribute("font-weight", "700");
+        r.p.forEach(function (v, q) {
+          var w = W * v / smax;
+          if (w > 0) A.el("rect", { x: x, y: y - 13, width: w, height: 18, class: "c" + q, opacity: 0.85 }, g);
+          x += w;
+        });
+        rk.text(x0 + W + 90, y, fmt(r.s, 3), "mono", "end");
+      });
+
+      ro.set("avg", fmt(s.avg, 1));
+      s.idf.forEach(function (v, k) { ro.set("idf" + k, fmt(v, 3)); });
+      ro.set("tfD", String(d.tf[0]));
+      ro.set("lenD", String(d.len));
+      ro.set("cD", fmt(cD, 3));
+      ro.set("bound", fmt(bound, 3));
+      ro.set("top", rows.slice(0, 3).map(function (r) { return r.d.name; }).join(" > "));
+
+      var head = st.copies ? "<span class='k'>Copy " + st.copies + ".</span> D now contains <em>insulin</em> " + d.tf[0] + " times. Its score went " +
+                             fmt(st.last.before, 3) + " → " + fmt(st.last.after, 3) + " (+" + fmt(st.last.after - st.last.before, 3) + "); the <em>insulin</em> part is " +
+                             fmt(cD, 3) + ", below the bound " + fmt(bound, 3) + ". "
+                           : "<span class='k'>Start.</span> ";
+      var posD = rows.map(function (r) { return r.i; }).indexOf(SPAM) + 1, posC = rows.map(function (r) { return r.i; }).indexOf(2) + 1;
+      say.say(head + "With " + K("k_1 = " + fmt(S.k1, 2)) + " and " + K("b = " + fmt(S.b, 2)) + " the ranking starts " +
+              rows.slice(0, 3).map(function (r) { return r.d.name + " (" + fmt(r.s, 2) + ")"; }).join(", ") +
+              ". D is " + posD + (posD === 1 ? "st" : posD === 2 ? "nd" : posD === 3 ? "rd" : "th") + " and C " + posC +
+              (posC === 1 ? "st" : posC === 2 ? "nd" : posC === 3 ? "rd" : "th") + "." + (st.copies ? "" : " Press <em>Step</em> to paste one more <em>insulin</em> into D."));
+    }
+
+    pl = A.player("#bm-bar", { step: step, reset: reset, render: render, fps: 4, unit: "copy" });
+  })();
+
+  /* ======================================================================
+     2 · Evaluating a ranking
+     ====================================================================== */
+  (function () {
+    var N = 10, EXAMPLE = [1, 1, 0, 0, 0, 0, 0, 1, 0, 0];
+    var S = { start: EXAMPLE.slice(), graded: false, exp: false, k: 10, missing: 0 }, st, pl, kSlider, mSlider;
+
+    function gain(r) { return S.exp ? Math.pow(2, r) - 1 : r; }
+    function disc(i) { return 1 / Math.log2(i + 2); }      // i is 0-based: rank i + 1
+    function metrics(gr) {
+      var k = S.k, rel = gr.map(function (v) { return v > 0 ? 1 : 0; });
+      var nR = A.sum(rel) + S.missing, hitsK = A.sum(rel.slice(0, k));
+      var first = rel.indexOf(1);
+      var apTerms = [], hits = 0;
+      rel.forEach(function (r, i) { if (r) { hits++; apTerms.push([i, hits / (i + 1)]); } });
+      var dcgTerms = gr.map(function (r, i) { return gain(r) * disc(i); });
+      var ideal = gr.filter(function (r) { return r > 0; }).concat(A.range(S.missing).map(function () { return 1; }))
+                    .sort(function (a, b) { return b - a; });
+      while (ideal.length < N) ideal.push(0);
+      var idealTerms = ideal.map(function (r, i) { return gain(r) * disc(i); });
+      var dcg = A.sum(dcgTerms.slice(0, k)), idcg = A.sum(idealTerms.slice(0, k));
+      return { P: hitsK / k, R: nR ? hitsK / nR : NaN, RR: first < 0 ? 0 : 1 / (first + 1),
+               AP: nR ? A.sum(apTerms.map(function (a) { return a[1]; })) / nR : NaN, apTerms: apTerms, nR: nR,
+               dcgTerms: dcgTerms, ideal: ideal, idealTerms: idealTerms, DCG: dcg, IDCG: idcg, NDCG: idcg > 0 ? dcg / idcg : NaN };
+    }
+
+    var cv = A.canvas("#mt-plot", { w: 900, h: 300 });
+    var curves = A.$("#mt-curves"), dHost = A.h("div", null, curves), pD = null, pDtop = 0;
+    function buildD(top) {
+      A.clear(dHost); pDtop = top;
+      pD = A.plot(dHost, { x: [0.5, 10.5], y: [0, top], w: 430, h: 220, xlabel: "cutoff k", ylabel: "DCG@k",
+                           xticks: A.range(10).map(function (i) { return i + 1; }), caption: "DCG@k of this ranking and of the ideal one" });
+    }
+    var pP = A.plot(curves, { x: [0.5, 10.5], y: [0, 1.05], w: 430, h: 220, xlabel: "cutoff k", ylabel: "value",
+                              xticks: A.range(10).map(function (i) { return i + 1; }), yticks: [0, 0.25, 0.5, 0.75, 1],
+                              caption: "P@k (▲), R@k (◆) and NDCG@k (●) at every cutoff" });
+
+    var side = A.$("#mt-side");
+    A.seg(side, { label: "Relevance", value: "bin", options: [["bin", "binary"], ["graded", "graded 0–3"]],
+                  onChange: function (v) {
+                    S.graded = v === "graded";
+                    if (!S.graded) { st.g = st.g.map(function (r) { return r > 0 ? 1 : 0; }); S.start = st.g.slice(); pl.restart(); }
+                    else render();
+                  } });
+    A.seg(side, { label: "Gain $g_i$", value: "lin", options: [["lin", "rel"], ["exp", "2<sup>rel</sup> − 1"]],
+                  onChange: function (v) { S.exp = v === "exp"; render(); } });
+    kSlider = A.slider(side, { label: "Cutoff $k$", min: 1, max: 10, step: 1, value: 10, fmt: function (v) { return String(v); },
+                               onInput: function (v) { S.k = Math.round(v); render(); } });
+    mSlider = A.slider(side, { label: "Relevant, not retrieved", min: 0, max: 5, step: 1, value: 0, fmt: function (v) { return String(v); },
+                               onInput: function (v) { S.missing = Math.round(v); render(); } });
+    var ro = A.readout(side, [["P", "P@k"], ["R", "R@k"], ["RR", "RR"], ["AP", "AP"], ["DCG", "DCG@k"], ["IDCG", "IDCG@k"], ["NDCG", "NDCG@k"]]);
+    A.button(side, "Back to the worked example", function () {
+      S.start = EXAMPLE.slice(); S.graded = false; S.missing = 0; S.k = 10; kSlider.value = 10; mSlider.value = 0;
+      side.querySelectorAll(".seg")[0].querySelectorAll("button").forEach(function (b, i) { b.setAttribute("aria-pressed", i === 0 ? "true" : "false"); });
+      pl.restart();
+    });
+    A.legend(side, [{ swatch: "fill-ok", label: "relevant (darker = higher grade)" }, { swatch: "box", label: "not relevant" },
+                    { line: "line", label: "this ranking" }, { line: "line ok dash", label: "ideal ranking" }]);
+    var say = A.narrate("#mt-say");
+
+    var BX = 150, BW = 70;
+    cv.svg.addEventListener("click", function (ev) {
+      var p = cv.at(ev), i = Math.floor((p[0] - BX) / BW);
+      if (i < 0 || i >= N || p[1] < 22 || p[1] > 76) return;
+      st.g[i] = S.graded ? (st.g[i] + 1) % 4 : 1 - st.g[i];
+      S.start = st.g.slice();
+      pl.restart();
+    });
+
+    function reset() { st = { g: S.start.slice(), last: null }; }
+    function step() {
+      // One adjacent swap towards the ideal: the lowest pair still in the wrong order.
+      for (var i = N - 2; i >= 0; i--) {
+        if (st.g[i] < st.g[i + 1]) {
+          var t = st.g[i]; st.g[i] = st.g[i + 1]; st.g[i + 1] = t;
+          st.last = i;
+          break;
+        }
+      }
+      for (i = 0; i + 1 < N; i++) if (st.g[i] < st.g[i + 1]) return true;
+      return false;
+    }
+
+    function render() {
+      var m = metrics(st.g), g = cv.g, k = S.k;
+      cv.clear();
+      var rows = [["rank i", null], ["relevance", null], ["P@i at a hit (AP)", 104], ["gain g_i", 132], ["1 / log₂(i+1)", 160],
+                  ["g_i / log₂(i+1)", 188], ["ideal grade", 228], ["ideal term", 256]];
+      rows.forEach(function (r) { if (r[1]) cv.text(8, r[1], r[0], "lbl-sm"); });
+      cv.text(8, 54, "click to change", "lbl-sm");
+      cv.text(8, 14, "rank", "lbl-sm");
+      A.el("line", { x1: 8, x2: 892, y1: 208, y2: 208, class: "axis" }, g);
+      for (var i = 0; i < N; i++) {
+        var x = BX + BW * i, cx = x + BW / 2, inK = i < k, r = st.g[i];
+        cv.text(cx, 14, String(i + 1), "axis-label", "middle");
+        A.el("rect", { x: x + 5, y: 24, width: BW - 10, height: 50, rx: 4, class: r > 0 ? "fill-ok" : "box",
+                       opacity: r > 0 ? (S.graded ? 0.25 + 0.25 * r : 0.75) : 1, style: "cursor:pointer" }, g);
+        if (st.last === i || st.last === i - 1) A.el("rect", { x: x + 3, y: 22, width: BW - 6, height: 54, rx: 5, class: "halo" }, g);
+        A.el("text", { x: cx, y: 55, "text-anchor": "middle", class: r > 0 ? "fill-card" : "lbl-sm", "font-size": 15, "font-weight": 700,
+                       text: S.graded ? String(r) : (r ? "✓" : "·"), style: "pointer-events:none" }, g);
+        var ap = m.apTerms.filter(function (a) { return a[0] === i; })[0];
+        var vals = [[104, ap ? fmt(ap[1], 4) : ""], [132, fmt(gain(r), 0)], [160, fmt(disc(i), 4)],
+                    [188, m.dcgTerms[i] ? fmt(m.dcgTerms[i], 4) : "0"], [228, String(m.ideal[i])], [256, m.idealTerms[i] ? fmt(m.idealTerms[i], 4) : "0"]];
+        vals.forEach(function (v) {
+          var t = cv.text(cx, v[0], v[1], "mono", "middle");
+          if (!inK && v[0] >= 132) t.setAttribute("opacity", "0.35");
+        });
+      }
+      if (k < N) A.el("line", { x1: BX + BW * k, x2: BX + BW * k, y1: 4, y2: 266, class: "zero" }, g);
+      cv.text(BX + BW * k - 4, 286, "cutoff k = " + k + (k < N ? " (greyed terms are cut off)" : ""), "lbl-sm", "end");
+
+      // Curves over k.
+      pP.clear();
+      var cum = 0, icum = 0, dc = [], ic = [], Pk = [], Rk = [], Nk = [];
+      for (i = 0; i < N; i++) {
+        cum += m.dcgTerms[i]; icum += m.idealTerms[i];
+        dc.push([i + 1, cum]); ic.push([i + 1, icum]);
+        var h = st.g.slice(0, i + 1).filter(function (v) { return v > 0; }).length;
+        Pk.push([i + 1, h / (i + 1)]); Rk.push([i + 1, m.nR ? h / m.nR : NaN]); Nk.push([i + 1, icum > 0 ? cum / icum : NaN]);
+      }
+      var top = Math.max(2.5, Math.ceil(icum * 1.1 * 2) / 2);
+      if (top !== pDtop) buildD(top);
+      pD.clear();
+      pD.path(ic, "line ok dash");
+      pD.path(dc, "line");
+      dc.forEach(function (p) { pD.dot(p[0], p[1], { r: 3.5, cls: "pt c0" }); });
+      pD.line(k, 0, k, top, "line thin muted dot");
+      pP.path(Pk, "line gold"); pP.path(Rk, "line teal"); pP.path(Nk, "line");
+      Pk.forEach(function (p) { pP.dot(p[0], p[1], { shape: "tri", r: 3.5, cls: "pt c1" }); });
+      Rk.forEach(function (p) { if (isFinite(p[1])) pP.dot(p[0], p[1], { shape: "diamond", r: 3.5, cls: "pt c3" }); });
+      Nk.forEach(function (p) { if (isFinite(p[1])) pP.dot(p[0], p[1], { r: 3.5, cls: "pt c0" }); });
+      pP.line(k, 0, k, 1.05, "line thin muted dot");
+
+      function f4(v) { return isFinite(v) ? fmt(v, 4) : "—"; }
+      ro.set("P", f4(m.P)); ro.set("R", f4(m.R)); ro.set("RR", f4(m.RR)); ro.set("AP", f4(m.AP));
+      ro.set("DCG", f4(m.DCG)); ro.set("IDCG", f4(m.IDCG)); ro.set("NDCG", f4(m.NDCG), m.NDCG > 0.99999 ? "good" : "");
+
+      var apStr = m.apTerms.length ? K("\\text{AP} = \\tfrac{1}{" + m.nR + "}(" + m.apTerms.map(function (a) { return fmt(a[1], 4); }).join(" + ") + ") = " + f4(m.AP))
+                                   : "AP = 0, nothing relevant retrieved";
+      var dTerms = m.dcgTerms.slice(0, k).map(function (v) { return v; }).filter(function (v) { return v > 0; });
+      var head = st.last === null ? "<span class='k'>" + (S.start.join() === EXAMPLE.join() && !S.graded ? "The worked example." : "Your ranking.") + "</span> "
+                                  : "<span class='k'>Swap " + (pl ? pl.t : "") + ".</span> Ranks " + (st.last + 1) + " and " + (st.last + 2) + " exchanged. ";
+      say.say(head + "|R| = " + m.nR + ". " + apStr + ". " +
+              K("\\text{DCG}@" + k + " = " + (dTerms.length ? dTerms.map(function (v) { return fmt(v, 4); }).join(" + ") : "0") + " = " + f4(m.DCG)) +
+              ", " + K("\\text{NDCG}@" + k + " = " + f4(m.DCG) + "/" + f4(m.IDCG) + " = " + f4(m.NDCG)) +
+              ". R@" + k + " = " + f4(m.R) + ", RR = " + f4(m.RR) + "." +
+              (pl && pl.done ? " <strong>Ideal order reached</strong>" + (S.missing ? ", but NDCG stays below 1: the unretrieved documents are in the ideal and not in the list." : ".") : ""));
+    }
+
+    pl = A.player("#mt-bar", { step: step, reset: reset, render: render, fps: 1.5, unit: "swap" });
+  })();
+})();
+</script>
+</body>
+</html>

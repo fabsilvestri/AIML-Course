@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 14 · Detection and segmentation — Animations</title>
+<meta name="description" content="Interactive animation for Lecture 14 of Applications of Machine Learning: non-maximum suppression, step by step.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-14.html">Lecture 14 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 14 · Animations</p>
+  <h1>Detection and segmentation</h1>
+  <p>Non-maximum suppression thinning a cluster of candidate boxes one round
+  at a time. Press <strong>Step</strong> to advance one round and read what
+  happened; press <strong>Play</strong> to let it run.</p>
+  <p class="note">All boxes, scores and overlaps on this page are synthetic,
+  generated in your browser from a fixed seed, so <em>Reset</em> always gives
+  back the same picture. None of it comes from COCO.</p>
+  <ul class="toc">
+    <li><a href="#nms">1 · Non-maximum suppression</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Non-maximum suppression
+     ====================================================================== -->
+<section class="anim" id="nms">
+  <h2><span class="num">1</span>Non-maximum suppression, one round at a time</h2>
+  <p class="lede">Fourteen scored candidate boxes over two objects that
+  overlap each other, the way two people standing close do. The dotted
+  outlines are the objects themselves; suppression never sees them. Each
+  <strong>Step</strong> is one round of the greedy rule: keep the highest
+  remaining score, then delete every remaining box whose IoU with it is above
+  the threshold. The list on the right is the ranking.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="nms-plots"></div>
+      <div class="narrate" id="nms-say"></div>
+      <div class="toolbar" id="nms-bar"></div>
+    </div>
+    <aside class="side" id="nms-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>Let $S$ be the candidates sorted by score. Repeat until $S$ is empty:</p>
+      <ol>
+        <li>remove the first box $b^\ast$ from $S$ and keep it;</li>
+        <li>remove from $S$ every $b$ with $\mathrm{IoU}(b, b^\ast) &gt; t$.</li>
+      </ol>
+      <p>This is <code>torchvision.ops.nms</code>, which discards a box when its IoU
+      is strictly above <code>iou_threshold</code>. Every round keeps exactly one box,
+      so the number of rounds equals the number of boxes kept. The rule is
+      greedy: a box suppressed in round $k$ is never compared with anything
+      again.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>Round 1 keeps the 0.97 box on object 1 and deletes its duplicates.
+        The best box on object 2 survives only because its IoU with the 0.97
+        box is below $t$.</li>
+        <li>The two stray boxes, which cover no object, survive at every
+        threshold. Suppression removes duplicates, not mistakes; that is the
+        score threshold's job.</li>
+        <li>Once a box is kept, nothing later can remove it. The order of the
+        scores decides everything.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Lower $t$ to 0.2 and press Play. Box #2, the best on object 2,
+        overlaps #1 with IoU 0.23 and is suppressed; object 2 survives only
+        through a worse box. Lower $t$ to 0.1 and object 2 disappears entirely:
+        two objects become one detection, the deck's failure condition.</li>
+        <li>Raise $t$ to 0.7. Duplicates on both objects survive, because their
+        IoU with the kept box is below 0.7.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 14 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  // IoU of two boxes [x1, y1, x2, y2].
+  function iouOf(a, b) {
+    var iw = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
+    var ih = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+    var I = iw * ih;
+    return I / ((a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - I);
+  }
+
+  /* ======================================================================
+     1 · Non-maximum suppression
+     ====================================================================== */
+  (function () {
+    var GTS = [[40, 40, 200, 240], [120, 60, 300, 250]];
+    var SCORES = [[0.97, 0.90, 0.83, 0.71, 0.56, 0.42], [0.94, 0.86, 0.68, 0.61, 0.47, 0.34]];
+    var R = A.rng(14), C = [];
+    GTS.forEach(function (g, k) {
+      SCORES[k].forEach(function (s, j) {
+        var w = g[2] - g[0], h = g[3] - g[1], sd = j === 0 ? 0.04 : 0.11;
+        var cx = (g[0] + g[2]) / 2 + R.n(0, sd * w), cy = (g[1] + g[3]) / 2 + R.n(0, sd * h);
+        var ww = w * Math.exp(R.n(0, sd)), hh = h * Math.exp(R.n(0, sd));
+        C.push({ b: [cx - ww / 2, cy - hh / 2, cx + ww / 2, cy + hh / 2], s: s, obj: k });
+      });
+    });
+    C.push({ b: [250, 10, 330, 90], s: 0.38, obj: -1 });
+    C.push({ b: [10, 200, 90, 290], s: 0.29, obj: -1 });
+    C.sort(function (a, b) { return b.s - a.s; });
+    var N = C.length;
+
+    var S = { t: 0.5 }, st, pl;
+
+    var plots = A.$("#nms-plots");
+    var pImg = A.plot(plots, { x: [0, 340], y: [0, 300], w: 440, h: 400, equal: true, xlabel: "", ylabel: "",
+                               caption: "The candidates (dotted: the two objects)" });
+    var list = A.canvas(plots, { w: 330, h: 400, caption: "The ranking, highest score first" });
+
+    var side = A.$("#nms-side");
+    A.slider(side, { label: "IoU threshold $t$", min: 0.05, max: 0.95, step: 0.05, value: S.t,
+                     fmt: function (v) { return fmt(v, 2); },
+                     hint: "A remaining box is deleted when its IoU with the kept box is above $t$.",
+                     onInput: function (v) { S.t = Math.round(v * 100) / 100; pl.restart(); } });
+    var ro = A.readout(side, [["r", "round"], ["kept", "kept"], ["sup", "suppressed"], ["left", "still to compare"],
+                              ["objs", "objects with a kept box"]]);
+    A.legend(side, [{ line: "line", label: "kept this round" }, { line: "line ok", label: "kept earlier" },
+                     { line: "line acc dash thin", label: "suppressed this round" },
+                     { line: "line thin muted", label: "not yet decided" }, { line: "line ink dot thin", label: "object (not used)" }]);
+    var say = A.narrate("#nms-say");
+
+    function reset() {
+      st = { status: C.map(function () { return "pending"; }), by: C.map(function () { return null; }),
+             round: 0, current: -1, last: null };
+    }
+    function step() {
+      var top = st.status.indexOf("pending");
+      if (top < 0) return false;
+      st.round++;
+      st.status[top] = "kept";
+      st.current = top;
+      var cmp = [];
+      for (var j = top + 1; j < N; j++) {
+        if (st.status[j] !== "pending") continue;
+        var v = iouOf(C[j].b, C[top].b);
+        var out = v > S.t;
+        cmp.push({ j: j, v: v, out: out });
+        if (out) { st.status[j] = "sup"; st.by[j] = { k: top, v: v, round: st.round }; }
+      }
+      st.last = { top: top, cmp: cmp };
+      return st.status.indexOf("pending") >= 0;
+    }
+
+    function rowY(i) { return 44 + i * 24.5; }
+    function render() {
+      pImg.clear();
+      GTS.forEach(function (g, k) {
+        pImg.rect(g[0], g[1], g[2], g[3], "line ink dot thin");
+        if (k === 0) pImg.text(g[0], g[1], "object 1", { dy: 14, cls: "lbl-sm" });
+        else pImg.text(g[2], g[3], "object 2", { anchor: "end", dy: -5, cls: "lbl-sm" });
+      });
+      // Draw the undecided first, then the decided on top of them.
+      var order = A.range(N).sort(function (a, b) {
+        var rank = function (i) { return st.status[i] === "pending" ? 0 : st.status[i] === "sup" ? 1 : 2; };
+        return rank(a) - rank(b);
+      });
+      order.forEach(function (i) {
+        var b = C[i].b, s = st.status[i], cls;
+        if (s === "pending") cls = "line thin muted";
+        else if (s === "sup") {
+          if (st.by[i].round !== st.round) return;   // gone in an earlier round
+          cls = "line acc dash thin";
+        } else cls = i === st.current ? "line" : "line ok";
+        pImg.rect(b[0], b[1], b[2], b[3], cls);
+        if (s === "kept") pImg.text(b[0], b[3], "#" + (i + 1) + " · " + fmt(C[i].s, 2), { dx: 3, dy: 13, cls: "lbl-sm" });
+      });
+
+      // The ranking.
+      list.clear();
+      list.text(14, 20, "rank", "lbl-sm");
+      list.text(64, 20, "score", "lbl-sm");
+      list.text(118, 20, "decision", "lbl-sm");
+      A.el("line", { x1: 8, x2: 322, y1: 28, y2: 28, class: "axis" }, list.g);
+      var cmpOf = {};
+      if (st.last) st.last.cmp.forEach(function (c) { cmpOf[c.j] = c; });
+      C.forEach(function (c, i) {
+        var y = rowY(i), s = st.status[i], txt, cls = "lbl-sm";
+        if (s === "kept") {
+          txt = i === st.current ? "kept, round " + st.round : "kept";
+          cls = i === st.current ? "lbl" : "lbl-sm";
+          list.marker(110, y - 4, "circle", 4, i === st.current ? "pt c0" : "pt c4");
+        } else if (s === "sup") {
+          txt = "IoU " + fmt(st.by[i].v, 2) + " with #" + (st.by[i].k + 1) + " > t";
+          cls = st.by[i].round === st.round ? "lbl" : "lbl-sm";
+          list.marker(110, y - 4, "cross", 3.5, "line acc thin");
+        } else {
+          txt = cmpOf[i] ? "IoU " + fmt(cmpOf[i].v, 2) + " with #" + (st.current + 1) + " ≤ t, stays" : "—";
+          list.marker(110, y - 4, "circle", 3.5, "pt c0 hollow");
+        }
+        list.text(14, y, "#" + (i + 1), "lbl mono");
+        list.text(64, y, fmt(c.s, 2), "lbl mono");
+        list.text(122, y, txt, cls);
+      });
+
+      var kept = [], nSup = 0, nLeft = 0;
+      st.status.forEach(function (s, i) { if (s === "kept") kept.push(i); else if (s === "sup") nSup++; else nLeft++; });
+      var objs = {};
+      kept.forEach(function (i) { if (C[i].obj >= 0) objs[C[i].obj] = true; });
+      var nObj = Object.keys(objs).length;
+      ro.set("r", String(st.round));
+      ro.set("kept", String(kept.length));
+      ro.set("sup", String(nSup));
+      ro.set("left", String(nLeft));
+      ro.set("objs", nObj + " of 2", nLeft === 0 ? (nObj === 2 ? "good" : "bad") : "");
+
+      if (!st.last) {
+        say.say("<span class='k'>Start.</span> " + N + " candidates, sorted by score. Two objects, " +
+                "and two stray boxes over empty background. The threshold is " + K("t = " + fmt(S.t, 2)) +
+                ". Press <em>Step</em> for round 1.");
+      } else {
+        var L = st.last, outs = L.cmp.filter(function (c) { return c.out; }), ins = L.cmp.filter(function (c) { return !c.out; });
+        var list2 = function (arr) {
+          return arr.map(function (c) { return "#" + (c.j + 1) + " (" + fmt(c.v, 2) + ")"; }).join(", ");
+        };
+        say.say("<span class='k'>Round " + st.round + ".</span> The highest remaining score is #" + (L.top + 1) +
+                " (" + fmt(C[L.top].s, 2) + "): kept. " +
+                (L.cmp.length === 0 ? "Nothing is left to compare it with. " :
+                  (outs.length ? "IoU above " + fmt(S.t, 2) + ", suppressed: " + list2(outs) + ". " : "No remaining box overlaps it by more than " + fmt(S.t, 2) + ". ") +
+                  (ins.length ? "Below the threshold, still in the running: " + list2(ins) + ". " : "")) +
+                (nLeft === 0 ? "<strong>Done</strong>: " + kept.length + " boxes kept, covering " + nObj + " of the 2 objects." : ""));
+      }
+    }
+
+    pl = A.player("#nms-bar", { step: step, reset: reset, render: render, fps: 1.5, unit: "round" });
+  })();
+})();
+</script>
+</body>
+</html>

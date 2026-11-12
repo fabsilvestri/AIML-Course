@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 11 · Autoencoders and representation learning — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 11 of Applications of Machine Learning: a linear autoencoder finding the principal axis by gradient descent, and a non-linear autoencoder following a curve that no line can.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-11.html">Lecture 11 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 11 · Animations</p>
+  <h1>Autoencoders and representation learning</h1>
+  <p>Two widgets for today's derivation and its limit. The first trains a
+  linear autoencoder with a one-number code on a cloud of points and watches
+  it find the principal axis, with the floor from the SVD drawn in. The
+  second puts a tiny non-linear autoencoder on points that lie along a curve,
+  which no line can follow, and shows the error going below that floor.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#linear">1 · A linear autoencoder finds the principal axis</a></li>
+    <li><a href="#curve">2 · A non-linear autoencoder follows the curve</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Linear autoencoder, d = 1, in the plane
+     ====================================================================== -->
+<section class="anim" id="linear">
+  <h2><span class="num">1</span>A linear autoencoder finds the principal axis</h2>
+  <p class="lede">Sixty centred points in the plane, and a linear autoencoder
+  with a one-number code: $z = \mathbf{x}\cdot\mathbf{a}$, then
+  $\hat{\mathbf{x}} = z\,\mathbf{b}$. Every reconstruction lies on the line
+  through the origin in the direction of $\mathbf{b}$ (blue). Each step is
+  one gradient step on the mean squared error over all sixty points, for the
+  four numbers in $\mathbf{a}$ and $\mathbf{b}$ together. The dashed purple
+  line is the first principal axis from the SVD, and the dashed level in the
+  cost plot is the floor $\sigma_2^2/m$ that the derivation says no linear
+  autoencoder can go below.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div id="la-plot"></div>
+      <div id="la-cost"></div>
+      <div class="narrate" id="la-say"></div>
+      <div class="toolbar" id="la-bar"></div>
+    </div>
+    <aside class="side" id="la-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>With $\mathbf{r}_i = \mathbf{x}_i - (\mathbf{x}_i\cdot\mathbf{a})\,\mathbf{b}$
+      the residual of point $i$ and $m = 60$,</p>
+      $$E(\mathbf{a},\mathbf{b}) = \frac{1}{m}\sum_{i=1}^{m}\lVert\mathbf{r}_i\rVert^2,
+        \qquad
+        \frac{\partial E}{\partial\mathbf{b}} = -\frac{2}{m}\sum_i (\mathbf{x}_i\cdot\mathbf{a})\,\mathbf{r}_i,
+        \qquad
+        \frac{\partial E}{\partial\mathbf{a}} = -\frac{2}{m}\sum_i (\mathbf{r}_i\cdot\mathbf{b})\,\mathbf{x}_i,$$
+      <p>and one step is $\mathbf{a} \leftarrow \mathbf{a} - \eta\,\partial E/\partial\mathbf{a}$,
+      $\mathbf{b} \leftarrow \mathbf{b} - \eta\,\partial E/\partial\mathbf{b}$.
+      The derivation of the lecture, with $d = 1$: every $\hat{\mathbf{x}}_i$
+      lies on the line spanned by $\mathbf{b}$; the closest point of that
+      line is the orthogonal projection, so $E \ge$ the projection error onto
+      the line; and over all lines through the origin the projection error is
+      smallest on the first principal axis $\mathbf{v}_1$, where it equals
+      $\sigma_2^2/m$. The optimum is reached only when $\mathbf{a}$ makes
+      $z\,\mathbf{b}$ the orthogonal projection, that is
+      $\mathbf{a} = \mathbf{b}/\lVert\mathbf{b}\rVert^2$; the scale of
+      $\mathbf{b}$ itself is free, which is the one-dimensional case of the
+      change of basis $\mathbf{T}$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The blue line swings onto the purple one within the first few
+        dozen steps, and the cost falls onto the dashed floor and stays there.
+        The readout's angle between $\mathbf{b}$ and $\mathbf{v}_1$ goes to
+        zero; the cost never goes below the floor.</li>
+        <li>The grey segments are the residuals $\mathbf{r}_i$. At the optimum
+        they are all perpendicular to the blue line: the reconstruction is
+        the orthogonal projection, which is what step 3 of the derivation
+        requires.</li>
+        <li>The angle is under a degree within the first twenty steps, while
+        the cost is still about a percent above the floor. The direction is
+        found first; the last part of the descent is $\mathbf{a}$ and
+        $\mathbf{b}$ adjusting their scales against each other so that
+        $z\,\mathbf{b}$ lands exactly on the projection.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Switch the cloud to <em>nearly round</em>, where the two singular
+        values are close. The line still settles, but far more slowly, and a
+        new start lands it at a visibly different angle for a while: when
+        $\sigma_1^2$ and $\sigma_2^2$ are nearly equal the loss barely prefers
+        one direction, which is what happened to the last two principal angles
+        in the lecture's measurement.</li>
+        <li>Raise $\eta$ to 0.2. Within a few steps the cost blows up and the
+        readout gives up on the angle: the step along the steep direction of
+        the loss overshoots and each step is larger than the last, the
+        stability limit of Lecture 9, here on the curvature of $E$ in
+        $\mathbf{a}$ and $\mathbf{b}$. At 0.12 it still converges, slowly.</li>
+        <li>Press <em>New start</em> several times. Every run ends on the same
+        purple line with the same cost, and with a different length of
+        $\mathbf{b}$: the subspace is unique, the code's scale is not.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · Non-linear autoencoder on a curve
+     ====================================================================== -->
+<section class="anim" id="curve">
+  <h2><span class="num">2</span>A non-linear autoencoder follows the curve</h2>
+  <p class="lede">Eighty centred points along a parabola, with a little noise.
+  The best line through them (purple, dashed) is the first principal axis, and
+  its error is the floor of widget 1: no linear autoencoder, however trained,
+  gets below it. The green curve is what a tiny non-linear autoencoder
+  decodes from a sweep of its one-number code, $2 \to 8 \to 1 \to 8 \to 2$
+  with tanh units, trained by gradient descent with momentum on all eighty
+  points. Each step is one gradient step on the whole set.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div id="cv-plot"></div>
+      <div id="cv-cost"></div>
+      <div class="narrate" id="cv-say"></div>
+      <div class="toolbar" id="cv-bar"></div>
+    </div>
+    <aside class="side" id="cv-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>Encoder $z = \mathbf{w}_2^{\intercal}\tanh(\mathbf{W}_1\mathbf{x} + \mathbf{b}_1) + b_2$,
+      decoder $\hat{\mathbf{x}} = \mathbf{W}_4\tanh(\mathbf{w}_3 z + \mathbf{b}_3) + \mathbf{b}_4$,
+      loss $E = \frac{1}{m}\sum_i\lVert\mathbf{x}_i - \hat{\mathbf{x}}_i\rVert^2$,
+      gradients by reverse mode through the four layers (Lecture 8), the
+      gradient clipped to norm at most 1, and the update with momentum
+      $\beta = 0.9$: $\mathbf{v} \leftarrow \beta\mathbf{v} - \eta\,\nabla E$,
+      $\boldsymbol\theta \leftarrow \boldsymbol\theta + \mathbf{v}$ (both from
+      Lecture 9; without the clipping, one large early step can saturate a
+      tanh unit, and a saturated unit has no gradient left to learn with).
+      The derivation of the lecture bounds every <em>linear</em> autoencoder
+      by the projection onto the principal axis; it says nothing about this
+      model, whose reconstructions lie on a curve rather than a line. What the
+      non-linear model gains over the floor is exactly the part of the error
+      that no line can remove: the curvature of the data.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The green curve starts as a short, nearly straight stroke near
+        the origin and bends to follow the parabola. The cost crosses the
+        dashed floor within the first hundred steps and keeps falling well
+        below it.</li>
+        <li>The code is one number, exactly as in widget 1. The gain comes
+        from what the decoder does with it: a line through the origin in
+        widget 1, a curve here.</li>
+        <li>Away from the data, the green curve goes wherever the decoder
+        happens to extrapolate. A code between two seen codes decodes to a
+        point near the curve; a code beyond the seen range decodes to nothing
+        the data vouches for — the motivation, in one picture, for the
+        variational autoencoder's constraint on the code.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Set the curvature to <em>none</em>: the points lie on a line.
+        Now the floor is almost all noise, and the non-linear model cannot
+        go far below it, because there is no curvature left to remove. The
+        two models tie, which is the derivation's bound seen as a limit on the
+        gain rather than on the linear model.</li>
+        <li>Lower $\eta$ to 0.01. The curve takes longer to bend; the floor
+        is crossed later and the cost at step 300 is higher. Capacity that the
+        optimiser has not reached yet is not accuracy, which is how the exact
+        projection beat the network at $d = 128$ in the lecture.</li>
+        <li>Press <em>New start</em>. The final curve is nearly the same;
+        the final code values along it are not. The representation is the
+        curve; the coordinates on it are whatever the start produced.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, k = A.k;
+
+  // ---------------------------------------------------------------- shared
+  function svd2(X) {
+    // Principal axes of a centred 2-D cloud: eigenvectors of X^T X / m.
+    var m = X.length, sxx = 0, sxy = 0, syy = 0;
+    for (var i = 0; i < m; i++) {
+      sxx += X[i][0] * X[i][0]; sxy += X[i][0] * X[i][1]; syy += X[i][1] * X[i][1];
+    }
+    sxx /= m; sxy /= m; syy /= m;
+    var tr = sxx + syy, det = sxx * syy - sxy * sxy;
+    var disc = Math.sqrt(Math.max(0, tr * tr / 4 - det));
+    var l1 = tr / 2 + disc, l2 = tr / 2 - disc;           // sigma_1^2/m, sigma_2^2/m
+    var v1 = Math.abs(sxy) > 1e-12 ? [l1 - syy, sxy] : (sxx >= syy ? [1, 0] : [0, 1]);
+    var n1 = Math.hypot(v1[0], v1[1]); v1 = [v1[0] / n1, v1[1] / n1];
+    return { l1: l1, l2: l2, v1: v1 };
+  }
+  function centre(X) {
+    var mx = A.mean(X.map(function (p) { return p[0]; }));
+    var my = A.mean(X.map(function (p) { return p[1]; }));
+    return X.map(function (p) { return [p[0] - mx, p[1] - my]; });
+  }
+
+  // ================================================================ 1 · linear
+  (function () {
+    var SEED = 11, m = 60;
+    var shape = "narrow", eta = 0.08, startSeed = 1;
+    var X, pca, a, b, hist, floor;
+
+    function makeData() {
+      var r = A.rng(SEED);
+      var sd = shape === "narrow" ? [2.0, 0.6] : [1.3, 1.1];
+      var th = Math.PI / 6, c = Math.cos(th), s = Math.sin(th);
+      var pts = [];
+      for (var i = 0; i < m; i++) {
+        var u = r.n(0, sd[0]), v = r.n(0, sd[1]);
+        pts.push([c * u - s * v, s * u + c * v]);
+      }
+      X = centre(pts);
+      pca = svd2(X);
+      floor = pca.l2;
+    }
+    function reset() {
+      makeData();
+      var r = A.rng(100 + startSeed);
+      a = [r.n(0, 0.3), r.n(0, 0.3)];
+      b = [r.n(0, 0.3), r.n(0, 0.3)];
+      hist = [cost()];
+    }
+    function cost() {
+      var e = 0;
+      for (var i = 0; i < m; i++) {
+        var z = X[i][0] * a[0] + X[i][1] * a[1];
+        var rx = X[i][0] - z * b[0], ry = X[i][1] - z * b[1];
+        e += rx * rx + ry * ry;
+      }
+      return e / m;
+    }
+    function step() {
+      var ga = [0, 0], gb = [0, 0];
+      for (var i = 0; i < m; i++) {
+        var z = X[i][0] * a[0] + X[i][1] * a[1];
+        var rx = X[i][0] - z * b[0], ry = X[i][1] - z * b[1];
+        var rb = rx * b[0] + ry * b[1];
+        gb[0] += -2 * z * rx / m; gb[1] += -2 * z * ry / m;
+        ga[0] += -2 * rb * X[i][0] / m; ga[1] += -2 * rb * X[i][1] / m;
+      }
+      a[0] -= eta * ga[0]; a[1] -= eta * ga[1];
+      b[0] -= eta * gb[0]; b[1] -= eta * gb[1];
+      var e = cost();
+      if (!isFinite(e) || e > 1e6) { e = 1e6; }
+      hist.push(e);
+      return hist.length < 400;
+    }
+    function angle() {
+      var nb = Math.hypot(b[0], b[1]);
+      if (!(nb > 0)) return 90;
+      var c = Math.abs(b[0] * pca.v1[0] + b[1] * pca.v1[1]) / nb;
+      return A.clamp(Math.acos(A.clamp(c, -1, 1)) * 180 / Math.PI, 0, 90);
+    }
+
+    var p = A.plot("#la-plot", { x: [-4.5, 4.5], y: [-3.2, 3.2], w: 560, h: 400, equal: true,
+                                 xlabel: "x₁", ylabel: "x₂", label: "the points, the reconstruction line and the principal axis" });
+    var cc = A.curve("#la-cost", { y: [-1, 1], log: true, n: 100, ylabel: "cost (log)", h: 150 });
+    var side = A.$("#la-side");
+    var sh = A.seg(side, { label: "The cloud", value: "narrow",
+                           options: [["narrow", "narrow"], ["round", "nearly round"]],
+                           onChange: function (v) { shape = v; pl.restart(); } });
+    var sl = A.slider(side, { label: k("\\eta"), min: 0.01, max: 0.25, step: 0.01, value: 0.08,
+                              fmt: function (v) { return A.fmt(v, 2); },
+                              onInput: function (v) { eta = v; } });
+    A.button(side, "New start", function () { startSeed++; pl.restart(); });
+    var ro = A.readout(side, [["t", "step"], ["cost", "cost E"], ["floor", "floor σ₂²/m"],
+                              ["ang", "angle to v₁"], ["nb", "‖b‖"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "point" },
+                    { shape: "circle", cls: "pt c2", label: "reconstruction" },
+                    { line: "line primary", label: "span of b" },
+                    { line: "line acc dash", label: "principal axis v₁" },
+                    { line: "line muted thin", label: "residual" }]);
+    var say = A.narrate("#la-say");
+
+    function render() {
+      p.clear();
+      var L = 10;
+      // the principal axis and the span of b
+      p.line(-L * pca.v1[0], -L * pca.v1[1], L * pca.v1[0], L * pca.v1[1], "line acc dash");
+      var nb = Math.hypot(b[0], b[1]);
+      if (nb > 1e-9) p.line(-L * b[0] / nb, -L * b[1] / nb, L * b[0] / nb, L * b[1] / nb, "line primary");
+      for (var i = 0; i < m; i++) {
+        var z = X[i][0] * a[0] + X[i][1] * a[1];
+        var hx = z * b[0], hy = z * b[1];
+        p.line(X[i][0], X[i][1], hx, hy, "line muted thin");
+        p.dot(hx, hy, { cls: "pt c2", r: 3 });
+        p.dot(X[i][0], X[i][1], { cls: "pt c0", r: 3.5 });
+      }
+      var t = hist.length - 1, e = hist[t], ang = angle();
+      cc.draw([{ values: hist, cls: "line primary", label: "E" }],
+              [{ y: floor, label: "floor " + A.fmt(floor, 3), cls: "line acc dash thin" }]);
+      ro.set("t", t); ro.set("cost", A.fmt(e, 4), e < floor * 1.01 ? "ok" : "");
+      ro.set("floor", A.fmt(floor, 4)); ro.set("ang", A.fmt(ang, 2) + "°", ang < 1 ? "ok" : "");
+      ro.set("nb", A.fmt(nb, 3));
+      if (t === 0) {
+        say.say("Start. A random " + k("\\mathbf{a}") + " and " + k("\\mathbf{b}") + ": the blue line points " +
+                A.fmt(ang, 1) + "° away from the principal axis and the cost is " + A.fmt(e, 3) +
+                " against a floor of " + A.fmt(floor, 3) + ". Press Play, or Step for one gradient step.");
+      } else {
+        var ratio = e / floor;
+        say.say("Step " + t + ". Cost " + A.fmt(e, 4) + ", " +
+                (ratio < 1.001 ? "at the floor" : A.fmt(100 * (ratio - 1), 1) + "% above the floor") +
+                " of " + A.fmt(floor, 4) + "; the span of " + k("\\mathbf{b}") + " is " + A.fmt(ang, 2) +
+                "° from " + k("\\mathbf{v}_1") + ", and " + k("\\lVert\\mathbf{b}\\rVert") + " = " + A.fmt(nb, 3) +
+                (ang < 0.5 && ratio < 1.01 ? ". The residuals are now perpendicular to the line: the reconstruction is the orthogonal projection." : "."));
+      }
+      A.tex(say.el);
+    }
+    var pl = A.player("#la-bar", { step: step, reset: reset, render: render, fps: 12, unit: "step" });
+    reset(); render();
+  })();
+
+  // ================================================================ 2 · curve
+  (function () {
+    var SEED = 23, m = 80, H = 8;
+    var curv = 0.45, eta = 0.05, beta = 0.9, startSeed = 1;
+    var X, pca, floor, P, V, hist;
+
+    function makeData() {
+      var r = A.rng(SEED);
+      var pts = [];
+      for (var i = 0; i < m; i++) {
+        var t = r.uniform(-2, 2);
+        pts.push([t + r.n(0, 0.08), curv * t * t + r.n(0, 0.08)]);
+      }
+      X = centre(pts);
+      pca = svd2(X);
+      floor = pca.l2;
+    }
+    function zeros(n) { var o = []; for (var i = 0; i < n; i++) o.push(0); return o; }
+    function mat(r, c, sd, rng) {
+      var M = []; for (var i = 0; i < r; i++) { var row = []; for (var j = 0; j < c; j++) row.push(rng.n(0, sd)); M.push(row); } return M;
+    }
+    function reset() {
+      makeData();
+      var r = A.rng(200 + startSeed);
+      P = { W1: mat(2, H, 0.5, r), b1: zeros(H), W2: mat(H, 1, 0.5, r), b2: zeros(1),
+            W3: mat(1, H, 0.5, r), b3: zeros(H), W4: mat(H, 2, 0.5, r), b4: zeros(2) };
+      V = {};
+      Object.keys(P).forEach(function (key) {
+        V[key] = Array.isArray(P[key][0]) ? P[key].map(function (row) { return zeros(row.length); }) : zeros(P[key].length);
+      });
+      hist = [cost()];
+    }
+    function tanh(x) { var e = Math.exp(2 * x); return isFinite(e) ? (e - 1) / (e + 1) : (x > 0 ? 1 : -1); }
+    function forward(x) {
+      var h1 = [], j, i;
+      for (j = 0; j < H; j++) h1.push(tanh(P.W1[0][j] * x[0] + P.W1[1][j] * x[1] + P.b1[j]));
+      var z = P.b2[0]; for (j = 0; j < H; j++) z += h1[j] * P.W2[j][0];
+      var h2 = []; for (j = 0; j < H; j++) h2.push(tanh(P.W3[0][j] * z + P.b3[j]));
+      var out = [P.b4[0], P.b4[1]];
+      for (j = 0; j < H; j++) { out[0] += h2[j] * P.W4[j][0]; out[1] += h2[j] * P.W4[j][1]; }
+      return { h1: h1, z: z, h2: h2, out: out };
+    }
+    function decode(z) {
+      var h2 = [], j; for (j = 0; j < H; j++) h2.push(tanh(P.W3[0][j] * z + P.b3[j]));
+      var out = [P.b4[0], P.b4[1]];
+      for (j = 0; j < H; j++) { out[0] += h2[j] * P.W4[j][0]; out[1] += h2[j] * P.W4[j][1]; }
+      return out;
+    }
+    function cost() {
+      var e = 0;
+      for (var i = 0; i < m; i++) { var o = forward(X[i]).out; e += (o[0] - X[i][0]) * (o[0] - X[i][0]) + (o[1] - X[i][1]) * (o[1] - X[i][1]); }
+      return e / m;
+    }
+    function step() {
+      // reverse mode through the four layers, accumulated over the whole set
+      var G = { W1: mat(2, H, 0, A.rng(1)), b1: zeros(H), W2: mat(H, 1, 0, A.rng(1)), b2: zeros(1),
+                W3: mat(1, H, 0, A.rng(1)), b3: zeros(H), W4: mat(H, 2, 0, A.rng(1)), b4: zeros(2) };
+      var i, j;
+      for (i = 0; i < m; i++) {
+        var f = forward(X[i]);
+        var g = [2 * (f.out[0] - X[i][0]) / m, 2 * (f.out[1] - X[i][1]) / m];
+        var gz = 0;
+        for (j = 0; j < H; j++) {
+          G.W4[j][0] += f.h2[j] * g[0]; G.W4[j][1] += f.h2[j] * g[1];
+          var gh2 = g[0] * P.W4[j][0] + g[1] * P.W4[j][1];
+          var gpre = gh2 * (1 - f.h2[j] * f.h2[j]);
+          G.W3[0][j] += f.z * gpre; G.b3[j] += gpre;
+          gz += gpre * P.W3[0][j];
+        }
+        G.b4[0] += g[0]; G.b4[1] += g[1];
+        G.b2[0] += gz;
+        for (j = 0; j < H; j++) {
+          G.W2[j][0] += f.h1[j] * gz;
+          var gh1 = gz * P.W2[j][0];
+          var gp1 = gh1 * (1 - f.h1[j] * f.h1[j]);
+          G.W1[0][j] += X[i][0] * gp1; G.W1[1][j] += X[i][1] * gp1; G.b1[j] += gp1;
+        }
+      }
+      // clip the gradient's norm at 1 (Lecture 9): a saturated tanh unit
+      // otherwise stops learning for good after one large early step
+      var norm2 = 0;
+      Object.keys(G).forEach(function (key) {
+        if (Array.isArray(G[key][0])) { for (var r = 0; r < G[key].length; r++) for (var c = 0; c < G[key][r].length; c++) norm2 += G[key][r][c] * G[key][r][c]; }
+        else { for (var q = 0; q < G[key].length; q++) norm2 += G[key][q] * G[key][q]; }
+      });
+      var scale = norm2 > 1 ? 1 / Math.sqrt(norm2) : 1;
+      Object.keys(P).forEach(function (key) {
+        if (Array.isArray(P[key][0])) {
+          for (var r = 0; r < P[key].length; r++) for (var c = 0; c < P[key][r].length; c++) {
+            V[key][r][c] = beta * V[key][r][c] - eta * scale * G[key][r][c]; P[key][r][c] += V[key][r][c];
+          }
+        } else {
+          for (var q = 0; q < P[key].length; q++) { V[key][q] = beta * V[key][q] - eta * scale * G[key][q]; P[key][q] += V[key][q]; }
+        }
+      });
+      var e = cost();
+      if (!isFinite(e) || e > 1e6) e = 1e6;
+      hist.push(e);
+      return hist.length < 400;
+    }
+
+    var p = A.plot("#cv-plot", { x: [-3, 3], y: [-1.6, 2.4], w: 560, h: 400, equal: true,
+                                 xlabel: "x₁", ylabel: "x₂", label: "the points, the principal axis and the decoded curve" });
+    var cc = A.curve("#cv-cost", { y: [-3, 1], log: true, n: 100, ylabel: "cost (log)", h: 150 });
+    var side = A.$("#cv-side");
+    A.seg(side, { label: "Curvature", value: "0.45",
+                  options: [["0", "none"], ["0.2", "mild"], ["0.45", "strong"]],
+                  onChange: function (v) { curv = parseFloat(v); pl.restart(); } });
+    A.slider(side, { label: k("\\eta"), min: 0.005, max: 0.1, step: 0.005, value: 0.05,
+                     fmt: function (v) { return A.fmt(v, 3); }, onInput: function (v) { eta = v; } });
+    A.button(side, "New start", function () { startSeed++; pl.restart(); });
+    var ro = A.readout(side, [["t", "step"], ["cost", "cost E"], ["floor", "floor σ₂²/m"], ["ratio", "floor / cost"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "point" },
+                    { line: "line acc dash", label: "principal axis (the linear floor)" },
+                    { line: "line ok", label: "decoded curve" },
+                    { shape: "circle", cls: "pt c2", label: "reconstruction" }]);
+    var say = A.narrate("#cv-say");
+
+    function render() {
+      p.clear();
+      var L = 10;
+      p.line(-L * pca.v1[0], -L * pca.v1[1], L * pca.v1[0], L * pca.v1[1], "line acc dash");
+      // the decoded curve: sweep the code over the range the data occupies
+      var zs = X.map(function (x) { return forward(x).z; });
+      var lo = Math.min.apply(null, zs), hi = Math.max.apply(null, zs);
+      var pad = 0.15 * (hi - lo || 1);
+      var path = A.linspace(lo - pad, hi + pad, 80).map(function (z) { return decode(z); });
+      p.path(path, "line ok");
+      for (var i = 0; i < m; i++) {
+        var o = forward(X[i]).out;
+        p.dot(o[0], o[1], { cls: "pt c2", r: 2.5 });
+        p.dot(X[i][0], X[i][1], { cls: "pt c0", r: 3.5 });
+      }
+      var t = hist.length - 1, e = hist[t];
+      cc.draw([{ values: hist, cls: "line ok", label: "E" }],
+              [{ y: floor, label: "linear floor " + A.fmt(floor, 3), cls: "line acc dash thin" }]);
+      ro.set("t", t); ro.set("cost", A.fmt(e, 4), e < floor ? "ok" : "");
+      ro.set("floor", A.fmt(floor, 4)); ro.set("ratio", A.fmt(floor / e, 1) + "×", e < floor ? "ok" : "");
+      if (t === 0) {
+        say.say("Start. The decoded curve is whatever a random network draws; cost " + A.fmt(e, 3) +
+                " against the linear floor of " + A.fmt(floor, 3) + ", which is the best any line can do on these points. Press Play.");
+      } else {
+        say.say("Step " + t + ". Cost " + A.fmt(e, 4) + ": " +
+                (e < floor ? A.fmt(floor / e, 1) + "× below the linear floor of " + A.fmt(floor, 4) + " — the part of the error a line cannot remove, removed."
+                           : "still above the linear floor of " + A.fmt(floor, 4) + "; the curve has not bent yet."));
+      }
+      A.tex(say.el);
+    }
+    var pl = A.player("#cv-bar", { step: step, reset: reset, render: render, fps: 12, unit: "step" });
+    reset(); render();
+  })();
+})();
+</script>
+
+</body>
+</html>
