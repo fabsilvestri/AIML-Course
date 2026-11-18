@@ -1,0 +1,373 @@
+/* ==========================================================================
+   Applicazioni Informatiche del Machine Learning — animation pages
+
+   One page per lecture, animations/lecture-NN.html, each carrying one or more
+   interactive widgets. The palette and typeface are the course's: the tokens
+   below mirror assets/css/site.css (which mirrors custom.css), so a change to
+   a colour there MUST be mirrored here in the same commit.
+
+   Colours are applied through classes (.c0, .c1, .acc, ...) and never as
+   inline fills, so the dark scheme is a stylesheet concern and no widget has
+   to redraw when the reader's system theme changes. The one exception is the
+   raster shading of decision regions, which reads the tokens at draw time
+   through AIML.color() and redraws on AIML.onTheme().
+   ========================================================================== */
+
+@font-face {
+  font-family: 'Source Sans 3';
+  src: url('../../assets/fonts/SourceSans3-VF.woff2') format('woff2-variations');
+  font-weight: 200 900; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Source Sans 3';
+  src: url('../../assets/fonts/SourceSans3-Italic-VF.woff2') format('woff2-variations');
+  font-weight: 200 900; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'Source Code Pro';
+  src: url('../../assets/fonts/SourceCodePro-VF.woff2') format('woff2-variations');
+  font-weight: 200 900; font-style: normal; font-display: swap;
+}
+
+html { font-size: 17px; }
+:root {
+  --primary:  #0b3d62;
+  --accent:   #c0392b;   /* errors, misclassified points, the loss */
+  --success:  #14663a;   /* the optimum, the correct answer        */
+  --math:     #6c3483;   /* the mathematical thread                */
+  --gold:     #a8770a;   /* second class; 3.6:1 on white           */
+  --teal:     #0f7b8a;
+  --gold-ink: #8a5e00;   /* gold for TEXT: 5.7:1, where --gold is 3.6:1 */
+  --ink:      #16212b;
+  --muted:    #6b7280;
+  --muted-strong: #4b5563;
+  --axis:     #7b8794;
+  --rule:     #b0bcc7;
+  --rule-faint: #d5dbe1;
+  --soft:     #f4f7f9;
+  --page:     #ffffff;
+  --card:     #ffffff;
+  --shadow:   0 1px 3px rgba(11, 61, 98, 0.07);
+
+  /* Class colours. Two classes are blue and gold -- distinguishable under
+     every common colour-vision deficiency -- and always carry a second cue,
+     the marker shape, so nothing depends on colour alone. Red is not a class:
+     in this course red means "wrong". */
+  --c0: var(--primary);
+  --c1: var(--gold);
+  --c2: var(--math);
+  --c3: var(--teal);
+  --c4: var(--success);
+
+  --sans: 'Source Sans 3', -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: 'Source Code Pro', ui-monospace, SFMono-Regular, Menlo, Consolas,
+          "Liberation Mono", monospace;
+  --maxw: 66rem;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary: #7fb5d8;
+    --accent:  #e8776a;
+    --success: #5cba85;
+    --math:    #bb92d0;
+    --gold:    #e0b54a;
+    --teal:    #4fc1d0;
+    --gold-ink: #e0b54a;
+    --ink:     #e6ecf1;
+    --muted:   #97a3b0;
+    --muted-strong: #b9c3ce;
+    --axis:    #7d8a97;
+    --rule:    #3a4653;
+    --rule-faint: #26313c;
+    --soft:    #161e26;
+    --page:    #0d1319;
+    --card:    #121a21;
+    --shadow:  none;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--page);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, .mono { font-family: var(--mono); font-size: 0.88em; }
+strong { font-weight: 650; }
+
+/* --- Page chrome -------------------------------------------------------- */
+
+.topbar {
+  border-bottom: 1px solid var(--rule);
+  background: var(--card);
+  position: sticky; top: 0; z-index: 10;
+}
+.topbar .inner {
+  max-width: var(--maxw); margin: 0 auto; padding: 0.55rem 1rem;
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  font-size: 0.85rem;
+}
+.topbar .home { font-weight: 650; color: var(--ink); }
+.topbar nav { display: flex; gap: 0.9rem; flex-wrap: wrap; margin-left: auto; }
+.topbar nav a { color: var(--muted-strong); }
+.topbar nav a:hover { color: var(--primary); }
+
+main { max-width: var(--maxw); margin: 0 auto; padding: 0 1rem 4rem; }
+
+.wip {
+  margin: 1.1rem 0 0; padding: 0.55rem 0.9rem;
+  background: #fff4d6; color: #3d2c00;
+  border-left: 4px solid #d99400; border-radius: 0 4px 4px 0;
+  font-size: 0.9rem;
+}
+@media (prefers-color-scheme: dark) {
+  .wip { background: #2a2208; color: #f3e6c4; border-left-color: #e0a94a; }
+}
+.hero { padding: 1.4rem 0 1.2rem; border-bottom: 1px solid var(--rule-faint); }
+.kicker {
+  font-size: 0.74rem; font-weight: 700; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted-strong); margin: 0 0 0.3rem;
+}
+h1 {
+  font-size: 2.05rem; line-height: 1.15; margin: 0 0 0.6rem;
+  color: var(--primary); font-weight: 700;
+}
+.hero p { margin: 0.4rem 0; max-width: 46rem; color: var(--ink); }
+.hero .note { font-size: 0.85rem; color: var(--muted-strong); }
+
+.toc { margin: 1rem 0 0; padding: 0; list-style: none;
+       display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.toc a {
+  display: inline-block; font-size: 0.8rem; font-weight: 600;
+  padding: 0.25em 0.75em; border: 1px solid var(--rule);
+  border-radius: 999px; color: var(--muted-strong); background: var(--soft);
+}
+.toc a:hover { border-color: var(--primary); color: var(--primary);
+               text-decoration: none; }
+
+/* --- One widget ---------------------------------------------------------- */
+
+section.anim { padding: 2.2rem 0 0.4rem; scroll-margin-top: 3.2rem; }
+section.anim + section.anim { border-top: 1px solid var(--rule-faint); }
+section.anim h2 {
+  font-size: 1.45rem; line-height: 1.2; margin: 0 0 0.35rem;
+  color: var(--primary); font-weight: 700;
+}
+section.anim h2 .num { color: var(--muted); font-weight: 600; margin-right: 0.35em; }
+.lede { margin: 0 0 1rem; max-width: 48rem; }
+
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17.5rem;
+  gap: 1rem;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 0.9rem;
+  box-shadow: var(--shadow);
+}
+.stage.wide { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 52rem) { .stage { grid-template-columns: minmax(0, 1fr); } }
+
+.viz { min-width: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.viz-row { display: grid; gap: 0.8rem;
+           grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+/* Not KaTeX's own SVGs (the surd of a square root, a wide hat): those size
+   themselves, and width:100% here would flatten them into nothing. */
+.viz svg:not(.katex svg) { display: block; width: 100%; height: auto; overflow: visible;
+                           touch-action: none; }
+.viz figure { margin: 0; min-width: 0; }
+.viz figcaption {
+  font-size: 0.78rem; color: var(--muted-strong); text-align: center;
+  margin-top: 0.15rem;
+}
+
+/* The running account of what the algorithm is doing right now. This is
+   the part a static figure cannot give, so it sits directly under the plot
+   rather than in the side panel. */
+.narrate {
+  min-height: 3.3em;
+  font-size: 0.92rem; line-height: 1.5;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--math);
+  background: var(--soft);
+  border-radius: 0 4px 4px 0;
+}
+.narrate .k { font-weight: 650; color: var(--math); }
+
+.side { display: flex; flex-direction: column; gap: 0.85rem; min-width: 0; }
+
+/* Toolbar: play / pause / step / reset / speed */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.toolbar .spacer { flex: 1; }
+button.b {
+  font: inherit; font-size: 0.8rem; font-weight: 650; letter-spacing: 0.02em;
+  padding: 0.32em 0.85em; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--primary); color: var(--primary); background: transparent;
+  line-height: 1.4;
+}
+button.b:hover { background: var(--primary); color: var(--page); }
+button.b.primary { background: var(--primary); color: var(--page); }
+button.b.primary:hover { filter: brightness(1.15); }
+button.b.quiet { border-color: var(--rule); color: var(--muted-strong); }
+button.b.quiet:hover { border-color: var(--primary); color: var(--primary);
+                       background: transparent; }
+button.b[aria-pressed="true"] { background: var(--primary); color: var(--page); }
+button.b:disabled { opacity: 0.45; cursor: default; }
+button.b:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--math); outline-offset: 2px;
+}
+.speed { font-size: 0.78rem; color: var(--muted-strong);
+         display: inline-flex; align-items: center; gap: 0.3rem; }
+
+/* Controls */
+.ctl { display: flex; flex-direction: column; gap: 0.15rem; }
+.ctl label, .ctl .lab {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 0.82rem; font-weight: 600; color: var(--ink); gap: 0.5rem;
+}
+.ctl output, .ctl .val {
+  font-family: var(--mono); font-size: 0.78rem; font-weight: 500;
+  color: var(--math); font-variant-numeric: tabular-nums;
+}
+.ctl .hint { font-size: 0.74rem; color: var(--muted-strong); line-height: 1.35; }
+input[type=range] { width: 100%; accent-color: var(--primary); margin: 0.1rem 0; }
+select {
+  font: inherit; font-size: 0.82rem; padding: 0.22em 0.4em; border-radius: 4px;
+  border: 1px solid var(--rule); background: var(--card); color: var(--ink);
+}
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 4px;
+       overflow: hidden; flex-wrap: wrap; }
+.seg button {
+  font: inherit; font-size: 0.78rem; font-weight: 600; padding: 0.25em 0.65em;
+  border: 0; border-right: 1px solid var(--rule); background: transparent;
+  color: var(--muted-strong); cursor: pointer;
+}
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--primary); color: var(--page); }
+.check { display: flex; align-items: center; gap: 0.45rem; font-size: 0.82rem;
+         font-weight: 600; cursor: pointer; }
+.check input { accent-color: var(--primary); }
+
+/* Readouts: the live numbers */
+.readout { display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 0.8rem;
+           font-size: 0.82rem; margin: 0; padding: 0.55rem 0.7rem;
+           background: var(--soft); border-radius: 4px;
+           border: 1px solid var(--rule-faint); }
+.readout dt { color: var(--muted-strong); white-space: nowrap; }
+.readout dd { margin: 0; text-align: right; font-family: var(--mono);
+              font-size: 0.78rem; font-variant-numeric: tabular-nums;
+              color: var(--ink); overflow-wrap: anywhere; }
+.readout dd.good { color: var(--success); font-weight: 600; }
+.readout dd.bad  { color: var(--accent);  font-weight: 600; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem;
+          font-size: 0.78rem; color: var(--muted-strong); }
+.legend > span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.legend > span > svg { width: 14px; height: 14px; overflow: visible; }
+
+/* The three panels under each widget */
+.panels { display: grid; gap: 0.9rem; margin: 1rem 0 0;
+          grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
+.panel {
+  background: var(--soft); border: 1px solid var(--rule-faint);
+  border-left: 4px solid var(--primary); border-radius: 0 6px 6px 0;
+  padding: 0.75rem 0.95rem; font-size: 0.92rem;
+}
+.panel-title {
+  display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--primary); margin-bottom: 0.35rem;
+}
+.panel.math { border-left-color: var(--math); }
+.panel.math .panel-title { color: var(--math); }
+.panel.watch { border-left-color: var(--success); }
+.panel.watch .panel-title { color: var(--success); }
+.panel.try { border-left-color: var(--gold); }
+.panel.try .panel-title { color: var(--gold-ink); }
+.panel ul, .panel ol { margin: 0.2rem 0 0; padding-left: 1.2rem; }
+.panel li { margin: 0.2rem 0; }
+.panel p { margin: 0.3rem 0; }
+.panel .katex-display { margin: 0.5em 0; overflow-x: auto; overflow-y: hidden; }
+
+footer.page {
+  max-width: var(--maxw); margin: 0 auto; padding: 1.4rem 1rem 2.5rem;
+  border-top: 1px solid var(--rule); font-size: 0.8rem; color: var(--muted);
+}
+
+.katex { font-size: 1.08em; }
+
+/* --- SVG vocabulary ------------------------------------------------------
+   Every widget draws with these classes. Fills and strokes come from the
+   tokens above, so light and dark need no code. */
+
+svg text { font-family: var(--sans); fill: var(--ink); }
+svg .tick text, svg text.tick { font-size: 12px; fill: var(--muted-strong);
+                                font-variant-numeric: tabular-nums; }
+svg text.axis-label { font-size: 13px; fill: var(--muted-strong); font-weight: 600; }
+svg text.lbl { font-size: 13px; fill: var(--ink); }
+svg text.lbl-sm { font-size: 11.5px; fill: var(--muted-strong); }
+svg text.lbl-math { font-size: 12.5px; fill: var(--math); font-style: italic; }
+svg text.mono { font-family: var(--mono); font-size: 12px; }
+svg .frame { fill: none; stroke: var(--rule); }
+svg .axis line, svg .axis path, svg line.axis { stroke: var(--axis); stroke-width: 1; }
+svg .grid line { stroke: var(--rule-faint); stroke-width: 1; }
+svg .zero { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 2 3; }
+
+svg .c0 { fill: var(--c0); stroke: var(--c0); }
+svg .c1 { fill: var(--c1); stroke: var(--c1); }
+svg .c2 { fill: var(--c2); stroke: var(--c2); }
+svg .c3 { fill: var(--c3); stroke: var(--c3); }
+svg .c4 { fill: var(--c4); stroke: var(--c4); }
+svg .pt { stroke-width: 1.2; }
+svg .pt.hollow { fill: var(--card); }
+svg .pt.wrong { stroke: var(--accent); stroke-width: 2.2; }
+svg .pt.dim { opacity: 0.25; }
+
+svg .line   { fill: none; stroke: var(--primary); stroke-width: 2.4; }
+svg .line.thin { stroke-width: 1.4; }
+svg .line.acc  { stroke: var(--accent); }
+svg .line.ok   { stroke: var(--success); }
+svg .line.math { stroke: var(--math); }
+svg .line.gold { stroke: var(--gold); }
+svg .line.teal { stroke: var(--teal); }
+svg .line.muted { stroke: var(--axis); }
+svg .line.ink   { stroke: var(--ink); }
+svg .line.dash { stroke-dasharray: 6 4; }
+svg .line.dot  { stroke-dasharray: 1.5 3.5; stroke-linecap: round; }
+svg .fill-soft { fill: var(--soft); stroke: none; }
+svg .fill-acc  { fill: var(--accent); }
+svg .fill-ok   { fill: var(--success); }
+svg .fill-math { fill: var(--math); }
+svg .fill-primary { fill: var(--primary); }
+svg .fill-gold { fill: var(--gold); }
+svg .fill-ink  { fill: var(--ink); }
+svg .fill-card { fill: var(--card); }
+svg .stroke-card { stroke: var(--card); }
+svg .resid { stroke: var(--accent); stroke-width: 1.2; opacity: 0.7; }
+svg .resid.faint { opacity: 0.35; }
+svg .arrow { stroke: var(--math); stroke-width: 2.2; fill: none; }
+svg .arrow-head { fill: var(--math); }
+svg .box { fill: var(--card); stroke: var(--rule); stroke-width: 1; }
+svg .box.on { stroke: var(--primary); stroke-width: 2; }
+svg .box.hot { stroke: var(--accent); stroke-width: 2; }
+svg .box.ok { stroke: var(--success); stroke-width: 2; }
+svg .halo { fill: none; stroke: var(--ink); stroke-width: 1.4; }
+svg .draggable { cursor: grab; }
+svg .draggable:active { cursor: grabbing; }
+
+/* Animation-only transitions on SVG geometry are deliberately absent: the
+   player advances the model, and the frame is redrawn from state. That keeps
+   "step" exact, and keeps reduced-motion readers from seeing anything move
+   unless they press a button. */

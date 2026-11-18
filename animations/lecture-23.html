@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 23 · Vision transformers and multimodal retrieval — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 23 of Applications of Machine Learning: an image as a sequence of patches.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-23.html">Lecture 23 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 23 · Animations</p>
+  <h1>Vision transformers and multimodal retrieval</h1>
+  <p>An image turned into a sequence one patch at a time: the patch size, the
+  token count it implies, and what the positional encoding is for. Press
+  <strong>Step</strong> to advance one unit and read what happened; press
+  <strong>Play</strong> to let it run.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture. The
+  embeddings are random or hand-built vectors, not the output of a trained
+  model.</p>
+  <ul class="toc">
+    <li><a href="#vit">1 · An image as a sequence</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · ViT patching
+     ====================================================================== -->
+<section class="anim" id="vit">
+  <h2><span class="num">1</span>An image as a sequence</h2>
+  <p class="lede">A synthetic 224 × 224 image is cut into $P \times P$ patches.
+  Each step takes the next patch, flattens its $3P^2$ pixel values into a
+  vector $\mathbf{x}_i$, projects it linearly to a token
+  $\mathbf{z}_i = \mathbf{E}\mathbf{x}_i$, adds the position vector
+  $\mathbf{p}_i$, and appends the result to the sequence after the
+  <code>[CLS]</code> token. Change $P$ and watch the sequence length, and the
+  cost of attention, move.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="vit-top"></div>
+      <div class="viz-row" id="vit-bottom"></div>
+      <div class="narrate" id="vit-say"></div>
+      <div class="toolbar" id="vit-bar"></div>
+    </div>
+    <aside class="side" id="vit-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>An $H \times W$ image in patches of $P \times P$ gives</p>
+      $$N = \frac{H}{P}\cdot\frac{W}{P}, \qquad \mathbf{x}_i \in \mathbb{R}^{3P^2},$$
+      $$\mathbf{t}_i = \mathbf{E}\,\mathbf{x}_i + \mathbf{p}_i .$$
+      <p>Self-attention compares every token with every token, so one head in
+      one layer computes $(N+1)^2$ scores. With $N \propto P^{-2}$ that is
+      roughly $\propto P^{-4}$: halving $P$ multiplies the cost by about 16.
+      Here $\mathbf{E}$ maps to a toy $d_{\text{model}} = 8$ so the tokens fit on
+      screen; ViT-Base uses 768.</p>
+      <p>Attention without positions is a weighted average over a
+      <em>set</em>: for the <code>[CLS]</code> query $\mathbf{q}$,
+      $\sum_j \operatorname{softmax}_j(\mathbf{q}^{\top}\mathbf{k}_j/\sqrt{d})\,\mathbf{v}_j$
+      does not depend on the order of the $j$. Only $\mathbf{p}_i$ tells the
+      model where a patch was.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The flattened strip is the patch read row by row. Nothing in
+        $\mathbf{x}_i$ records that two values were vertical neighbours — the
+        locality a convolution assumes is gone at this step.</li>
+        <li>The cost plot is a straight line of slope about $-4$ on log–log
+        axes: the sequence length goes as $P^{-2}$ and attention squares it.</li>
+        <li>The side panel's last line: shuffle the patches with positions
+        switched off and the <code>[CLS]</code> output does not change at all.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Set $P = 8$: 784 patches and 616,225 attention scores per head per
+        layer, about 15.9 times the cost at $P = 16$.</li>
+        <li>Tick <em>Shuffle the patches</em>, then untick <em>Add positions</em>.
+        The image is scrambled, yet the <code>[CLS]</code> change reads 0.</li>
+        <li>Set $P = 56$: only 16 tokens, cheap — but each token must summarise a
+        quarter of the house.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 23 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+  var MINUS = "−";
+  function int(n) { return Math.round(n).toLocaleString("en-GB"); }
+
+  /* ======================================================================
+     1 · An image as a sequence of patches
+     ====================================================================== */
+  (function () {
+    var SIZE = 224, DM = 8;
+    var SIZES = [4, 7, 8, 14, 16, 28, 32, 56];
+    var S = { P: 16, pos: true, shuffle: false };
+    var img = null, st, pl, geo;
+
+    // The synthetic picture, painted from the course's colour tokens: a sky,
+    // a sun, a house with a door, and the ground. Values in [0, 1] per channel.
+    function paint() {
+      var bg = A.rgb("card"), sky = A.rgb("c0"), sun = A.rgb("c1"), roof = A.rgb("c2"),
+          door = A.rgb("c3"), ground = A.rgb("c3"), wall = A.rgb("c0");
+      var px = new Float32Array(SIZE * SIZE * 3);
+      function mix(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+      for (var y = 0; y < SIZE; y++) for (var x = 0; x < SIZE; x++) {
+        var c = mix(bg, sky, 0.12 + 0.18 * (1 - y / SIZE));
+        var dx = x - 168, dy = y - 52;
+        if (dx * dx + dy * dy < 26 * 26) c = sun;
+        if (y > 178) c = mix(bg, ground, 0.55 + 0.1 * Math.sin(x / 9));
+        if (x >= 44 && x < 132 && y >= 112 && y <= 182) c = mix(bg, wall, 0.8);
+        if (y >= 66 && y < 112 && Math.abs(x - 88) < (y - 66) * 1.05 + 1) c = roof;
+        if (x >= 78 && x < 100 && y >= 146 && y <= 182) c = door;
+        if (((x >= 54 && x < 70) || (x >= 108 && x < 124)) && y >= 126 && y < 142) c = mix(bg, sun, 0.7);
+        var k = 3 * (y * SIZE + x);
+        px[k] = c[0] / 255; px[k + 1] = c[1] / 255; px[k + 2] = c[2] / 255;
+      }
+      img = px;
+    }
+
+    function setup() {
+      var P = S.P, n = SIZE / P, N = n * n, L = 3 * P * P;
+      var R = A.rng(2300 + P);
+      // The toy projection E (8 x 3P^2), entries N(0, 1/(3P^2)).
+      var E = [];
+      for (var r = 0; r < DM; r++) {
+        var row = new Float32Array(L);
+        for (var j = 0; j < L; j++) row[j] = R.n(0, 1 / Math.sqrt(L));
+        E.push(row);
+      }
+      // The order patches are laid out in: the identity, or a fixed shuffle.
+      var perm = A.range(N);
+      if (S.shuffle) A.rng(77 + P).shuffle(perm);
+      // Flattened patch k of the original image, row by row, R G B per pixel.
+      function flat(k) {
+        var pr = Math.floor(k / n), pc = k % n, out = new Float32Array(L), q = 0;
+        for (var y = 0; y < P; y++) for (var x = 0; x < P; x++) {
+          var o = 3 * ((pr * P + y) * SIZE + pc * P + x);
+          out[q++] = img[o]; out[q++] = img[o + 1]; out[q++] = img[o + 2];
+        }
+        return out;
+      }
+      var Z = [];
+      for (var k = 0; k < N; k++) {
+        var x = flat(k), z = new Array(DM);
+        for (r = 0; r < DM; r++) { var s = 0, e = E[r]; for (j = 0; j < L; j++) s += e[j] * x[j]; z[r] = s; }
+        Z.push(z);
+      }
+      // A fixed 2-D sinusoidal position vector: four coordinates from the
+      // row, four from the column.
+      function posv(i) {
+        var a = Math.PI / n, rr = Math.floor(i / n), cc = i % n;
+        return [Math.sin(a * rr), Math.cos(a * rr), Math.sin(2 * a * rr), Math.cos(2 * a * rr),
+                Math.sin(a * cc), Math.cos(a * cc), Math.sin(2 * a * cc), Math.cos(2 * a * cc)].map(function (v) { return 0.6 * v; });
+      }
+      var Pos = A.range(N).map(posv);
+      geo = { P: P, n: n, N: N, L: L, E: E, perm: perm, Z: Z, Pos: Pos, flat: flat };
+      geo.cls = clsChange();
+      drawImage();
+      drawCost();
+    }
+
+    // The [CLS] output of one attention layer, for the current layout and
+    // for the unshuffled one; the size of the difference.
+    var WQ, WK, WV, CLS;
+    (function () {
+      var R = A.rng(2323);
+      function mat(sd) { return A.range(DM).map(function () { return A.range(DM).map(function () { return R.n(0, sd); }); }); }
+      WQ = mat(1); WK = mat(1); WV = mat(1 / Math.sqrt(DM));
+      CLS = A.range(DM).map(function () { return R.n(0, 0.6); });
+    })();
+    function tokens(perm) {
+      var seq = [CLS.slice()];
+      for (var i = 0; i < geo.N; i++) {
+        var z = geo.Z[perm[i]], p = geo.Pos[i];
+        seq.push(z.map(function (v, r) { return v + (S.pos ? p[r] : 0); }));
+      }
+      return seq;
+    }
+    function clsOut(seq) {
+      var q = A.matvec(WQ, seq[0]);
+      var sc = seq.map(function (t) { return A.dot(q, A.matvec(WK, t)) / Math.sqrt(DM); });
+      var w = A.softmax(sc), out = new Array(DM).fill(0);
+      seq.forEach(function (t, j) { var v = A.matvec(WV, t); for (var r = 0; r < DM; r++) out[r] += w[j] * v[r]; });
+      return out;
+    }
+    function clsChange() {
+      var a = clsOut(tokens(A.range(geo.N)));
+      var shuffled = A.rng(77 + geo.P).shuffle(A.range(geo.N));
+      var b = clsOut(tokens(shuffled));
+      // Relative change, ||a - b|| / ||a||.
+      return Math.sqrt(a.reduce(function (s, v, r) { return s + (v - b[r]) * (v - b[r]); }, 0)) / A.norm(a);
+    }
+
+    // --- layout
+    var top = A.$("#vit-top"), bottom = A.$("#vit-bottom");
+    var cImg = A.canvas(top, { w: 420, h: 420, caption: "The image, cut into P × P patches (the current one outlined)" });
+    var cTok = A.canvas(top, { w: 420, h: 420, caption: "One patch becomes one token" });
+    var cSeq = A.canvas(bottom, { w: 420, h: 230, caption: "The sequence so far: [CLS], then one column per token" });
+    var costHost = A.h("div", null, bottom);
+    var pCost = null;
+
+    var side = A.$("#vit-side");
+    A.select(side, { label: "Patch size $P$", value: "16",
+                     options: SIZES.map(function (p) { return [String(p), p + " × " + p + " (" + (SIZE / p) * (SIZE / p) + " patches)"]; }),
+                     onChange: function (v) { S.P = +v; setup(); pl.restart(true); } });
+    A.check(side, { label: "Add positions $\\mathbf{p}_i$", value: true,
+                    onChange: function (v) { S.pos = v; geo.cls = clsChange(); pl.restart(true); } });
+    A.check(side, { label: "Shuffle the patches", value: false,
+                    onChange: function (v) { S.shuffle = v; setup(); pl.restart(true); } });
+    var ro = A.readout(side, [["grid", "grid of patches"], ["N", "patches $N$"], ["len", "sequence length $N+1$"],
+                              ["L", "numbers per patch $3P^2$"], ["att", "attention scores $(N+1)^2$"],
+                              ["rel", "cost relative to $P = 16$"], ["cls", "<code>[CLS]</code> change if shuffled"]]);
+    A.legend(side, [{ swatch: "c0", label: "positive coordinate" }, { swatch: "c1", label: "negative coordinate" },
+                    { line: "line acc", label: "the current patch" }]);
+    var say = A.narrate("#vit-say");
+
+    var imgLayer = A.el("g", null, cImg.svg), gridLayer = A.el("g", null, cImg.svg), hiLayer = A.el("g", null, cImg.svg);
+    var X0 = 18, Y0 = 18, SC = 384 / SIZE;
+    // The displayed image: original, or its patches moved to their shuffled places.
+    function drawImage() {
+      var cv = document.createElement("canvas");
+      cv.width = SIZE; cv.height = SIZE;
+      var ctx = cv.getContext("2d"), im = ctx.createImageData(SIZE, SIZE), P = geo.P, n = geo.n;
+      for (var i = 0; i < geo.N; i++) {
+        var src = geo.perm[i], sr = Math.floor(src / n), sc = src % n, dr = Math.floor(i / n), dc = i % n;
+        for (var y = 0; y < P; y++) for (var x = 0; x < P; x++) {
+          var o = 3 * ((sr * P + y) * SIZE + sc * P + x), d = 4 * ((dr * P + y) * SIZE + dc * P + x);
+          im.data[d] = Math.round(255 * img[o]); im.data[d + 1] = Math.round(255 * img[o + 1]);
+          im.data[d + 2] = Math.round(255 * img[o + 2]); im.data[d + 3] = 255;
+        }
+      }
+      ctx.putImageData(im, 0, 0);
+      geo.url = cv.toDataURL();
+      A.clear(imgLayer); A.clear(gridLayer);
+      A.el("image", { href: geo.url, x: X0, y: Y0, width: 384, height: 384, preserveAspectRatio: "none",
+                      style: "image-rendering:pixelated" }, imgLayer);
+      var g = A.el("g", { class: "grid" }, gridLayer);
+      for (var k = 0; k <= n; k++) {
+        var t = X0 + k * P * SC;
+        A.el("line", { x1: t, x2: t, y1: Y0, y2: Y0 + 384, class: "stroke-card", "stroke-width": n > 30 ? 0.5 : 1 }, g);
+        A.el("line", { y1: Y0 + k * P * SC, y2: Y0 + k * P * SC, x1: X0, x2: X0 + 384, class: "stroke-card", "stroke-width": n > 30 ? 0.5 : 1 }, g);
+      }
+      A.el("rect", { x: X0, y: Y0, width: 384, height: 384, class: "frame" }, gridLayer);
+    }
+
+    function drawCost() {
+      A.clear(costHost);
+      var lx = SIZES.map(function (p) { return Math.log2(p); });
+      pCost = A.plot(costHost, { x: [1.8, 6.0], y: [2, 7.5], w: 420, h: 230,
+                                 xticks: lx, xfmt: function (v) { return String(Math.round(Math.pow(2, v))); },
+                                 yticks: [2, 3, 4, 5, 6, 7], yfmt: A.pow10,
+                                 xlabel: "patch size P (log scale)", ylabel: "scores per head",
+                                 caption: "Attention cost (N + 1)² against P, log–log" });
+      var pts = SIZES.map(function (p) { var N = (SIZE / p) * (SIZE / p); return [Math.log2(p), Math.log10((N + 1) * (N + 1))]; });
+      pCost.path(pts, "line math thin");
+      SIZES.forEach(function (p, i) {
+        var cur = p === geo.P;
+        pCost.dot(pts[i][0], pts[i][1], { r: cur ? 6 : 3.5, cls: cur ? "pt c0" : "pt c0 hollow" });
+        if (cur) pCost.text(pts[i][0], pts[i][1], int(Math.pow(10, pts[i][1])), { dx: 9, dy: -6, cls: "lbl-sm" });
+      });
+    }
+
+    function reset() { st = { t: 0 }; }
+    function step() { st.t++; return st.t < geo.N; }
+
+    function cellCls(v) { return v >= 0 ? "c0" : "c1"; }
+    function vecCells(c, x, y, v, vmax, label) {
+      for (var r = 0; r < DM; r++) {
+        A.el("rect", { x: x, y: y + r * 15, width: 22, height: 14, class: "box" }, c.g);
+        A.el("rect", { x: x, y: y + r * 15, width: 22, height: 14, class: cellCls(v[r]),
+                       opacity: (0.08 + 0.92 * Math.min(1, Math.abs(v[r]) / vmax)).toFixed(3) }, c.g);
+      }
+      c.text(x + 11, y - 6, label, "lbl-math", "middle");
+    }
+
+    function render() {
+      var P = geo.P, n = geo.n, N = geo.N, i = st.t - 1;
+      var att = (N + 1) * (N + 1), ref = 197 * 197;
+      ro.set("grid", n + " × " + n);
+      ro.set("N", int(N));
+      ro.set("len", int(N + 1));
+      ro.set("L", int(3 * P * P));
+      ro.set("att", int(att));
+      ro.set("rel", sig(att / ref, 3) + "×");
+      ro.set("cls", geo.cls < 1e-9 ? "0 (to rounding)" : A.pct(geo.cls, 1), geo.cls < 1e-9 ? "good" : "");
+
+      // The current patch, outlined on the image.
+      A.clear(hiLayer);
+      if (i >= 0) {
+        var r0 = Math.floor(i / n), c0 = i % n;
+        A.el("rect", { x: X0 + c0 * P * SC, y: Y0 + r0 * P * SC, width: P * SC, height: P * SC,
+                       class: "line acc", "stroke-width": 2.5 }, hiLayer);
+      }
+
+      // One patch to one token.
+      cTok.clear();
+      var c = cTok, vmax = 0;
+      geo.Z.forEach(function (z) { z.forEach(function (v) { vmax = Math.max(vmax, Math.abs(v)); }); });
+      vmax = Math.max(vmax, 0.6) * 1.0;
+      if (i < 0) {
+        c.text(210, 190, "Press Step to take the first patch.", "lbl", "middle");
+        c.text(210, 212, "Each patch is " + P + " × " + P + " pixels × 3 colours = " + int(3 * P * P) + " numbers.", "lbl-sm", "middle");
+      } else {
+        var src = geo.perm[i], x = geo.flat(src), z = geo.Z[src], p = geo.Pos[i];
+        var t = z.map(function (v, r) { return v + (S.pos ? p[r] : 0); });
+        // The patch, enlarged.
+        var pc = document.createElement("canvas"); pc.width = P; pc.height = P;
+        var ctx = pc.getContext("2d"), im = ctx.createImageData(P, P);
+        for (var q = 0; q < P * P; q++) {
+          im.data[4 * q] = Math.round(255 * x[3 * q]); im.data[4 * q + 1] = Math.round(255 * x[3 * q + 1]);
+          im.data[4 * q + 2] = Math.round(255 * x[3 * q + 2]); im.data[4 * q + 3] = 255;
+        }
+        ctx.putImageData(im, 0, 0);
+        A.el("image", { href: pc.toDataURL(), x: 20, y: 34, width: 110, height: 110, preserveAspectRatio: "none",
+                        style: "image-rendering:pixelated" }, c.g);
+        A.el("rect", { x: 20, y: 34, width: 110, height: 110, class: "line acc", "stroke-width": 2 }, c.g);
+        c.text(75, 22, "patch " + (i + 1) + " of " + N, "lbl", "middle");
+        c.text(150, 70, "row " + (Math.floor(i / n) + 1) + ", column " + (i % n + 1), "lbl-sm");
+        c.text(150, 90, P + " × " + P + " × 3 = " + int(3 * P * P) + " numbers", "lbl-sm");
+        c.text(150, 110, "read row by row:", "lbl-sm");
+        // The flattened strip, one cell per pixel in reading order.
+        var sc2 = document.createElement("canvas"); sc2.width = P * P; sc2.height = 1;
+        var c2 = sc2.getContext("2d"), im2 = c2.createImageData(P * P, 1);
+        for (q = 0; q < P * P; q++) {
+          im2.data[4 * q] = Math.round(255 * x[3 * q]); im2.data[4 * q + 1] = Math.round(255 * x[3 * q + 1]);
+          im2.data[4 * q + 2] = Math.round(255 * x[3 * q + 2]); im2.data[4 * q + 3] = 255;
+        }
+        c2.putImageData(im2, 0, 0);
+        c.arrow(75, 148, 75, 168, "arrow", 7);
+        A.el("image", { href: sc2.toDataURL(), x: 20, y: 172, width: 380, height: 18, preserveAspectRatio: "none",
+                        style: "image-rendering:pixelated" }, c.g);
+        A.el("rect", { x: 20, y: 172, width: 380, height: 18, class: "frame" }, c.g);
+        c.text(20, 206, "𝐱ᵢ: " + int(3 * P * P) + " values, " + P + " rows of the patch laid end to end", "lbl-sm");
+        // E x, + p, = token.
+        c.arrow(210, 214, 210, 236, "arrow", 7);
+        c.text(220, 230, "× E  (8 × " + int(3 * P * P) + ")", "lbl-sm");
+        vecCells(c, 120, 268, z, vmax, "zᵢ");
+        c.text(166, 330, "+", "lbl", "middle");
+        if (S.pos) vecCells(c, 188, 268, p, vmax, "pᵢ");
+        else { c.text(199, 330, "0", "lbl", "middle"); c.text(199, 262, "no pᵢ", "lbl-sm", "middle"); }
+        c.text(234, 330, "=", "lbl", "middle");
+        vecCells(c, 256, 268, t, vmax, "tᵢ");
+        c.text(300, 290, "token " + (i + 1), "lbl-sm");
+        c.text(300, 308, "d_model = 8 (toy)", "lbl-sm");
+      }
+
+      // The sequence: [CLS] then the tokens built so far, one column each.
+      cSeq.clear();
+      var cols = N + 1, w = 384, h = 8 * 16;
+      var sv = document.createElement("canvas"); sv.width = cols; sv.height = DM;
+      var c3 = sv.getContext("2d"), im3 = c3.createImageData(cols, DM);
+      var pos = A.rgb("c0"), neg = A.rgb("c1"), bg = A.rgb("card");
+      var seq = [CLS];
+      for (var j = 0; j <= i; j++) {
+        var zz = geo.Z[geo.perm[j]], pp = geo.Pos[j];
+        seq.push(zz.map(function (v, r) { return v + (S.pos ? pp[r] : 0); }));
+      }
+      for (var col = 0; col < cols; col++) for (var r = 0; r < DM; r++) {
+        var d = 4 * (r * cols + col), v = col < seq.length ? seq[col][r] : null;
+        var cc = v === null ? bg : (v >= 0 ? pos : neg), a = v === null ? 0 : Math.min(1, 0.1 + 0.9 * Math.abs(v) / vmax);
+        im3.data[d] = Math.round(bg[0] + (cc[0] - bg[0]) * a); im3.data[d + 1] = Math.round(bg[1] + (cc[1] - bg[1]) * a);
+        im3.data[d + 2] = Math.round(bg[2] + (cc[2] - bg[2]) * a); im3.data[d + 3] = 255;
+      }
+      c3.putImageData(im3, 0, 0);
+      A.el("image", { href: sv.toDataURL(), x: 18, y: 40, width: w, height: h, preserveAspectRatio: "none",
+                      style: "image-rendering:pixelated" }, cSeq.g);
+      A.el("rect", { x: 18, y: 40, width: w, height: h, class: "frame" }, cSeq.g);
+      var colW = w / cols;
+      A.el("rect", { x: 18, y: 40, width: Math.max(colW, 1.5), height: h, class: "line math", "stroke-width": 1.5 }, cSeq.g);
+      cSeq.text(18, 30, "[CLS]", "lbl-sm");
+      cSeq.text(18 + w, 30, "token " + int(N), "lbl-sm", "end");
+      cSeq.text(18, 196, "filled: " + int(seq.length) + " of " + int(N + 1) + " positions", "lbl-sm");
+      cSeq.text(18, 214, "each column is one 8-number token", "lbl-sm");
+
+      // The narration.
+      if (i < 0) {
+        say.say("<span class='k'>Start.</span> " + K("P = " + P) + " cuts the 224 × 224 image into " + K(n + "\\times" + n) +
+                " = " + int(N) + " patches. With the " + K("\\texttt{[CLS]}") + " token the sequence has " + int(N + 1) +
+                " positions, and one attention head in one layer computes " + K("(N+1)^2") + " = " + int(att) + " scores. Press <em>Step</em>.");
+      } else {
+        var zz2 = geo.Z[geo.perm[i]];
+        say.say("<span class='k'>Patch " + (i + 1) + " of " + int(N) + ".</span> Row " + (Math.floor(i / n) + 1) + ", column " + (i % n + 1) +
+                (S.shuffle ? " of the shuffled image (it came from position " + (geo.perm[i] + 1) + " of the original)" : "") +
+                ". Its " + int(3 * P * P) + " values become " + K("\\mathbf{z}_{" + (i + 1) + "} = \\mathbf{E}\\mathbf{x}_{" + (i + 1) + "} = (" +
+                zz2.slice(0, 3).map(function (v) { return fmt(v, 2); }).join(",\\ ") + ",\\ \\dots)") +
+                (S.pos ? ", and the position vector for this row and column is added." :
+                         "; with positions off, nothing records where the patch was.") +
+                " Sequence: " + K("\\texttt{[CLS]}") + " + " + (i + 1) + " tokens." +
+                (st.t >= N ? " <strong>Complete.</strong> This is the input to the transformer blocks." : ""));
+      }
+    }
+
+    A.onTheme(function () { paint(); setup(); render(); });
+    paint();
+    setup();
+    pl = A.player("#vit-bar", { step: step, reset: reset, render: render, fps: 8, unit: "patch" });
+  })();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1057 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 3 · Honest evaluation, and classification metrics — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 3 of Applications of Machine Learning: least squares drawn as squares, the normal equation as an orthogonal projection, k-fold cross-validation fold by fold, the ROC and precision/recall curves traced instance by instance, and what a rarer positive class does to each.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-03.html">Lecture 3 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 3 · Animations</p>
+  <h1>Honest evaluation, and classification metrics</h1>
+  <p>Five widgets, in the order of the lecture. The first two draw what
+  <code>LinearRegression().fit()</code> computes &mdash; as a sum of squares in
+  the plane of the data, and as a projection in the space of the labels. The
+  third is the procedure that tells you whether a fitted model generalises:
+  $k$-fold cross-validation, one fold at a time. The last two move a
+  classifier&rsquo;s threshold one instance at a time and trace the ROC and
+  precision/recall curves, then make the positive class rarer. Press
+  <strong>Step</strong> to advance one unit and read what happened.</p>
+  <p class="note">All data on this page is synthetic &mdash; generated in your
+  browser from a fixed seed, not the housing data or MNIST &mdash; so
+  <em>Reset</em> always gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#lsq">1 · Least squares, as squares</a></li>
+    <li><a href="#proj">2 · The normal equation is a projection</a></li>
+    <li><a href="#kfold">3 · k-fold cross-validation</a></li>
+    <li><a href="#curves">4 · Tracing the ROC and PR curves</a></li>
+    <li><a href="#rare">5 · A rarer positive class</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Least squares, as squares
+     ====================================================================== -->
+<section class="anim" id="lsq">
+  <h2><span class="num">1</span>Least squares, as squares</h2>
+  <p class="lede">Every residual $r_i = \hat y^{(i)} - y^{(i)}$ is drawn as a
+  square of side $|r_i|$, so the shaded area is $\sum_i r_i^2 = m\cdot\mathrm{MSE}$.
+  The green line is the normal-equation solution $\hat{\boldsymbol\theta}$,
+  recomputed whenever the data change. <em>Step</em> adds one instance;
+  drag any point to move it. The sliders move <em>your</em> line away from
+  $\hat{\boldsymbol\theta}$, and the bar on the right shows what that
+  costs.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="ls-plots"></div>
+      <div class="narrate" id="ls-say"></div>
+      <div class="toolbar" id="ls-bar"></div>
+    </div>
+    <aside class="side" id="ls-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>With rows $\mathbf{x}^{(i)} = (1, x_i)$ stacked into $\mathbf{X}$,</p>
+      $$\mathrm{MSE}(\boldsymbol\theta) = \tfrac{1}{m}\lVert\mathbf{X}\boldsymbol\theta - y\rVert_2^2,$$
+      <p>and setting the gradient to zero gives
+      $\mathbf{X}^{\intercal}\mathbf{X}\hat{\boldsymbol\theta} = \mathbf{X}^{\intercal}y$.
+      Here $\mathbf{X}^{\intercal}\mathbf{r} = (\sum_i r_i,\ \sum_i x_i r_i)$.
+      For any $\boldsymbol\theta = \hat{\boldsymbol\theta} + \boldsymbol\Delta$,
+      expanding the square and using $\mathbf{X}^{\intercal}\hat{\mathbf r} = \mathbf 0$,</p>
+      $$\lVert\mathbf{X}\boldsymbol\theta - y\rVert^2 = \lVert\hat{\mathbf r}\rVert^2 + \lVert\mathbf{X}\boldsymbol\Delta\rVert^2.$$
+      <p>When $\mathbf{X}^{\intercal}\mathbf{X}$ is singular the widget uses
+      $\mathbf{X}^{+} = (\mathbf{X}^{\intercal}\mathbf{X})^{+}\mathbf{X}^{\intercal}$,
+      which follows from $\mathbf{X} = \mathbf{U}\boldsymbol\Sigma\mathbf{V}^{\intercal}$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>With one instance, $m &lt; n + 1 = 2$: every line through the point
+        fits, and the pseudoinverse picks the one with the shortest
+        $\boldsymbol\theta$. With two, the line passes through both and the
+        area is zero.</li>
+        <li>From three instances on, the area is positive unless the points
+        happen to lie on one line, and $\mathbf{X}^{\intercal}\mathbf{r}$
+        stays at zero (to rounding) whatever you drag.</li>
+        <li>Moving your line costs exactly $\lVert\mathbf{X}\boldsymbol\Delta\rVert^2$,
+        and that does not depend on $y$ at all.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Drag one point far from the line. Its square grows with the
+        <em>square</em> of the distance, and the line swings towards it — one
+        outlier can dominate the sum.</li>
+        <li>At $m = 2$, drag one point until it is almost straight above the
+        other. $\det\mathbf{X}^{\intercal}\mathbf{X} = (x_1 - x_2)^2$ heads
+        to 0, the line through both turns towards vertical, and
+        $\hat\theta_1$ grows without bound: near-singular, so a tiny move
+        of one point swings $\hat{\boldsymbol\theta}$ wildly.</li>
+        <li>Set $\Delta\theta_0 = 1$, $\Delta\theta_1 = 0$: the extra area is
+        exactly $m$, one unit squared per instance.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · The projection
+     ====================================================================== -->
+<section class="anim" id="proj">
+  <h2><span class="num">2</span>The normal equation is a projection</h2>
+  <p class="lede">Three instances, so the label vector $y$ lives in
+  $\mathbb{R}^3$: each axis on the left is <em>one instance</em>, not a
+  feature. The columns of $\mathbf{X}$, the all-ones column $\mathbf{1}$
+  and the feature column $\mathbf{x}$, are two vectors in that space.
+  <em>Step</em> builds the argument piece by piece; drag the left picture to
+  turn it. On the right, the same fit in the usual picture.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="pj-plots"></div>
+      <div class="narrate" id="pj-say"></div>
+      <div class="toolbar" id="pj-bar"></div>
+    </div>
+    <aside class="side" id="pj-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>$\mathbf{X}\boldsymbol\theta = \theta_0\mathbf{1} + \theta_1\mathbf{x}$
+      ranges over the column space of $\mathbf{X}$. The closest point of a
+      subspace to $y$ is its orthogonal projection $\hat y$, so the residual
+      $\mathbf{r} = \mathbf{X}\hat{\boldsymbol\theta} - y$ is orthogonal to
+      both columns:</p>
+      $$\mathbf{1}^{\intercal}\mathbf{r} = 0,\qquad \mathbf{x}^{\intercal}\mathbf{r} = 0,$$
+      <p>which together say $\mathbf{X}^{\intercal}(\mathbf{X}\hat{\boldsymbol\theta} - y) = \mathbf 0$.</p>
+      <p>Here $\det\mathbf{X}^{\intercal}\mathbf{X} = m\sum_i (x_i - \bar x)^2$,
+      since $\mathbf{X}^{\intercal}\mathbf{X}$ has entries $m$, $\sum_i x_i$
+      and $\sum_i x_i^2$. It is zero exactly when $\mathbf{x}$ is a multiple
+      of $\mathbf 1$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The residual meets the plane at a right angle, and both dot
+        products in the side panel are zero to rounding.</li>
+        <li>As the spread of $\mathbf{x}$ shrinks, the plane is still the
+        plane but $\mathbf{x}$ lines up with $\mathbf{1}$, and
+        $\hat{\boldsymbol\theta}$ grows without bound: near-singular.</li>
+        <li>At spread 0 the plane collapses to a line. $\hat y$ is still
+        unique; only $\boldsymbol\theta$ is not.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Step to the end, then turn the picture until the plane is seen
+        edge-on, as a line. $\mathbf{r}$ is then drawn at a right angle to
+        it: the angle is real, not a trick of the view.</li>
+        <li>Slide the spread from 1 down to 0.1: $\hat y$ does not move at
+        all — for any nonzero spread the plane is the same plane — but
+        $\hat\theta_1$ goes from $0.38$ to $3.81$. Then set it to 0: the
+        plane collapses to a line and $\hat y$ jumps to
+        $\bar y\,\mathbf 1$.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     3 · k-fold cross-validation
+     ====================================================================== -->
+<section class="anim" id="kfold">
+  <h2><span class="num">3</span>k-fold cross-validation</h2>
+  <p class="lede">Forty instances and three models: a constant (the training
+  mean), a straight line by least squares, and a decision tree grown until
+  every leaf holds one instance. <em>Step</em> runs one fold: the hollow points
+  are held out, the three models are fitted on the rest, and each is scored
+  by RMSE on the held-out points only. The right-hand plot collects the
+  scores.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="kf-plots"></div>
+      <div class="narrate" id="kf-say"></div>
+      <div class="toolbar" id="kf-bar"></div>
+    </div>
+    <aside class="side" id="kf-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      $$\text{score} = \frac{1}{k}\sum_{j=1}^{k}\mathrm{RMSE}_j,$$
+      <p>where $\mathrm{RMSE}_j$ scores the model trained without fold $j$
+      on fold $j$. The spread is the standard deviation of the $k$ fold scores.
+      Two models are compared fold by fold: $d_j = \mathrm{RMSE}_j^{A} - \mathrm{RMSE}_j^{B}$,
+      with the mean and spread of the $d_j$. In one dimension, a tree split
+      halfway between neighbouring $x$ values until each leaf holds one
+      instance predicts the $y$ of the nearest training instance.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>On the training rows the tree scores exactly 0. Cross-validated,
+        it is indistinguishable from the straight line: $1.226$ against
+        $1.229$.</li>
+        <li>The constant's training and cross-validated scores are close,
+        $1.90$ against $1.82$: it is too rigid to memorise anything.</li>
+        <li>The fold scores scatter by more than the gap between the line and
+        the tree. Read the paired difference, not the two means.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Play all five folds and read the paired difference: the tree is
+        better on some folds and worse on others.</li>
+        <li>Press <em>New shuffle</em> a few times. The means move, and the
+        ranking of tree and line can flip — which is what a difference smaller
+        than the spread means.</li>
+        <li>Switch to $k = 10$: twice the fits, and four held-out points per
+        fold. The tree's fold scores now spread three times as widely,
+        $\pm 0.48$ against $\pm 0.15$: an RMSE on four points is a noisy
+        measurement.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+<!-- ======================================================================
+     4 · The ROC and PR curves, traced
+     ====================================================================== -->
+<section class="anim" id="curves">
+  <h2><span class="num">4</span>Tracing the ROC and PR curves</h2>
+  <p class="lede">The same 200 instances, now ranked from the highest score
+  down (the strip on top). <em>Step</em> lowers the threshold past the next
+  instance in the ranking, flagging it, and each curve gains one vertex. Both
+  curves come from the same sweep; they differ only in what they divide by.
+  The faint curves show where the sweep will end.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div id="cv-rank"></div>
+      <div class="viz-row" id="cv-plots"></div>
+      <div class="narrate" id="cv-say"></div>
+      <div class="toolbar" id="cv-bar"></div>
+    </div>
+    <aside class="side" id="cv-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      $$\mathrm{TPR} = \frac{\mathrm{TP}}{P} = \text{recall},\qquad
+        \mathrm{FPR} = \frac{\mathrm{FP}}{N}.$$
+      <p>Each negative $j$ flagged moves the ROC curve right by $1/N$ at
+      height $\mathrm{TPR} = a_j/P$, where $a_j$ is the number of positives
+      ranked above it. Adding up those strips,</p>
+      $$\text{AUC} = \frac{1}{PN}\sum_{\text{negatives } j} a_j,$$
+      <p>the fraction of (positive, negative) pairs in the right order.
+      Average precision here is the un-interpolated sum
+      $\mathrm{AP} = \sum_k (R_k - R_{k-1})\,\text{precision}_k$ — each
+      positive adds $1/P$ times the precision at its own rank, which is what
+      Scikit-Learn's <code>average_precision_score</code> computes.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The ROC curve only ever moves up or right: both its coordinates
+        divide by numbers the threshold cannot touch.</li>
+        <li>The PR curve moves up and to the right at a positive, and
+        <strong>straight down</strong> at a negative: recall stays put while
+        the flagged count grows.</li>
+        <li>When the sweep ends, the accumulated area equals the
+        pair count in the side panel exactly.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Set the separation $\Delta$ to 0: both classes draw scores from
+        the same distribution. The ROC curve wanders around the diagonal and
+        AUC lands near $0.5$; precision ends at $p = 0.1$.</li>
+        <li>Set $\Delta = 4$ and play: almost every positive is flagged before
+        any negative, AUC is close to 1, and the PR curve stays high until
+        recall is nearly 1.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     5 · A rarer positive class
+     ====================================================================== -->
+<section class="anim" id="rare">
+  <h2><span class="num">5</span>A rarer positive class</h2>
+  <p class="lede">2,000 negatives and 200 positives, scored by one fixed
+  classifier. <em>Step</em> deletes one positive at random — the scores of
+  everything left are unchanged — so the base rate $p$ falls from 9.1% towards
+  1%. Solid curves are now; dashed curves are the start. The marker on each
+  curve is the operating point at threshold $t$. The lower plot follows the
+  accuracy of that detector against the classifier that never fires.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="rr-plots"></div>
+      <div id="rr-acc"></div>
+      <div class="narrate" id="rr-say"></div>
+      <div class="toolbar" id="rr-bar"></div>
+    </div>
+    <aside class="side" id="rr-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>The classifier that never fires has $\mathrm{TP} = \mathrm{FP} = 0$,
+      so its accuracy is $N/m = 1 - p$. For any detector,</p>
+      $$\begin{aligned}\text{accuracy} - (1-p) &= \frac{\mathrm{TP}+\mathrm{TN}-N}{m} \\
+        &= \frac{\mathrm{TP}-\mathrm{FP}}{m},\end{aligned}$$
+      <p>using $\mathrm{TN} + \mathrm{FP} = N$. So a detector beats doing
+      nothing on accuracy exactly when $\mathrm{TP} &gt; \mathrm{FP}$, that
+      is, when its precision is above $1/2$. Deleting positives leaves FPR
+      untouched (no negative moves) and samples TPR from the same scores;
+      precision $= \mathrm{TP}/(\mathrm{TP}+\mathrm{FP})$ has the shrinking
+      $\mathrm{TP}$ against a fixed $\mathrm{FP}$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The ROC curve stays on top of its dashed starting curve, with only
+        the jitter of fewer positives. AUC never leaves $0.953$–$0.963$.</li>
+        <li>The PR curve sinks: average precision falls from $0.79$ to about
+        $0.50$, with nothing about the classifier changed.</li>
+        <li>At $t = 2$, FP stays at 55 throughout. The detector's accuracy
+        meets the never-fires line at the step where TP falls to 55, and is
+        below it from then on.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Play to the end and compare the operating point on the two
+        plots: on the ROC curve it has barely moved, on the PR curve precision
+        has fallen from $0.72$ to $0.20$.</li>
+        <li>Set $t$ to $3$ and play. Only 6 false positives, so the detector
+        stays above the never-fires line all the way down to $p \approx 1\%$
+        — at the price of recall: it flags 61 of the 200 positives at the
+        start, where $t = 2$ flags 144.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 3 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  // Least squares for X = [1, x], through the pseudoinverse of the 2 x 2
+  // matrix G = X^T X: theta = G^+ X^T y. G is symmetric, so G^+ is built
+  // from its eigendecomposition with the zero eigenvalues left out.
+  function fitLine(xs, ys) {
+    var m = xs.length, sx = A.sum(xs), sxx = A.dot(xs, xs), sy = A.sum(ys), sxy = A.dot(xs, ys);
+    var a = m, b = sx, d = sxx, tr = a + d, det = a * d - b * b;
+    var disc = Math.sqrt(Math.max(0, (a - d) * (a - d) / 4 + b * b));
+    var lams = [tr / 2 + disc, tr / 2 - disc], g = [sy, sxy], th = [0, 0];
+    var tol = 1e-9 * Math.max(1, lams[0]);
+    lams.forEach(function (l) {
+      if (l <= tol) return;
+      // An eigenvector of [[a, b], [b, d]] for eigenvalue l.
+      var v = Math.abs(b) > 1e-12 ? [b, l - a] : (Math.abs(l - a) < Math.abs(l - d) ? [1, 0] : [0, 1]);
+      var n = Math.hypot(v[0], v[1]); v = [v[0] / n, v[1] / n];
+      var c = (v[0] * g[0] + v[1] * g[1]) / l;
+      th[0] += c * v[0]; th[1] += c * v[1];
+    });
+    return { th: th, det: det, singular: lams[1] <= tol, lmax: lams[0], lmin: lams[1] };
+  }
+
+  /* ======================================================================
+     1 · Least squares, as squares
+     ====================================================================== */
+  (function () {
+    var MMAX = 12, R = A.rng(2), pool = [];
+    for (var i = 0; i < MMAX; i++) {
+      var x = 0.8 + 8.4 * ((i * 7) % MMAX + R.u()) / MMAX;
+      pool.push([x, 2 + 0.6 * x + R.n(0, 1.1)]);
+    }
+    var S = { d0: 0, d1: 0 }, pts, st, pl;
+
+    var plots = A.$("#ls-plots");
+    var pD = A.plot(plots, { x: [0, 10], y: [0, 10], w: 460, h: 420, equal: true, xlabel: "x", ylabel: "y",
+                             caption: "Data, lines, and one square per residual" });
+    var barHost = A.h("div", null, plots), pB;
+
+    var side = A.$("#ls-side");
+    var s0 = A.slider(side, { label: "Your line: $\\Delta\\theta_0$", min: -3, max: 3, step: 0.1, value: 0,
+                              fmt: function (v) { return fmt(v, 1); }, onInput: function (v) { S.d0 = v; render(); } });
+    var s1 = A.slider(side, { label: "Your line: $\\Delta\\theta_1$", min: -0.6, max: 0.6, step: 0.02, value: 0,
+                              fmt: function (v) { return fmt(v, 2); }, onInput: function (v) { S.d1 = v; render(); } });
+    var ro = A.readout(side, [["m", "instances $m$"], ["th", "$\\hat{\\boldsymbol\\theta}$"], ["det", "$\\det\\mathbf{X}^{\\intercal}\\mathbf{X}$"],
+                              ["area", "$\\lVert\\hat{\\mathbf r}\\rVert^2$ (green line)"], ["mse", "$\\mathrm{MSE}(\\hat{\\boldsymbol\\theta})$"],
+                              ["xtr", "$\\mathbf{X}^{\\intercal}\\hat{\\mathbf r}$"], ["yours", "your line's area"],
+                              ["xd", "$\\lVert\\mathbf{X}\\boldsymbol\\Delta\\rVert^2$"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "instance (drag it)" }, { line: "line ok", label: "least squares, $\\hat{\\boldsymbol\\theta}$" },
+                    { line: "line dash", label: "your line, $\\hat{\\boldsymbol\\theta} + \\boldsymbol\\Delta$" },
+                    { swatch: "fill-acc", label: "squared residuals" }]);
+    var say = A.narrate("#ls-say");
+
+    pD.drag(function (x, y) {
+      var best = -1, bd = 0.5;
+      pts.forEach(function (q, i) { var d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = i; } });
+      return best >= 0 ? { i: best } : null;
+    }, function (hd, x, y) { pts[hd.i] = [x, y]; st.dragged = true; render(); });
+
+    function reset() {
+      pts = pool.slice(0, 1).map(function (q) { return q.slice(); });
+      st = { dragged: false };
+    }
+    function step() {
+      if (pts.length >= MMAX) return false;
+      pts.push(pool[pts.length].slice());
+      st.dragged = false;
+      return pts.length < MMAX;
+    }
+
+    function squares(th, cls, outline) {
+      var hi = pD.x.domain[1];
+      pts.forEach(function (q) {
+        var yh = th[0] + th[1] * q[0], r = yh - q[1], s = Math.abs(r);
+        if (s < 1e-9) return;
+        var x0 = q[0] + s <= hi ? q[0] : q[0] - s;
+        pD.rect(x0, Math.min(q[1], yh), x0 + s, Math.max(q[1], yh), cls, "data", { "fill-opacity": 0.16 });
+        pD.rect(x0, Math.min(q[1], yh), x0 + s, Math.max(q[1], yh), outline, "data");
+      });
+    }
+
+    function render() {
+      var xs = pts.map(function (q) { return q[0]; }), ys = pts.map(function (q) { return q[1]; }), m = pts.length;
+      var F = fitLine(xs, ys), th = F.th, mine = [th[0] + S.d0, th[1] + S.d1];
+      var res = pts.map(function (q) { return th[0] + th[1] * q[0] - q[1]; });
+      var area = A.dot(res, res), xtr = [A.sum(res), A.dot(xs, res)];
+      var resM = pts.map(function (q) { return mine[0] + mine[1] * q[0] - q[1]; }), areaM = A.dot(resM, resM);
+      var xd = pts.reduce(function (s, q) { var v = S.d0 + S.d1 * q[0]; return s + v * v; }, 0);
+      var moved = S.d0 !== 0 || S.d1 !== 0;
+      var X0 = pD.x.domain[0], X1 = pD.x.domain[1];
+
+      pD.clear();
+      squares(moved ? mine : th, "fill-acc", "line acc thin");
+      pD.path([[X0, th[0] + th[1] * X0], [X1, th[0] + th[1] * X1]], "line ok");
+      if (moved) pD.path([[X0, mine[0] + mine[1] * X0], [X1, mine[0] + mine[1] * X1]], "line dash");
+      pts.forEach(function (q) { pD.dot(q[0], q[1], { r: 5.5, cls: "pt c0 draggable" }); });
+
+      // The bar: the best line's area, and yours split by Pythagoras.
+      var top = Math.max(1, areaM, area) * 1.15;
+      A.clear(barHost);
+      pB = A.plot(barHost, { x: [0, 3], y: [0, top], w: 460, h: 420, xticks: [], ylabel: "sum of squares",
+                             caption: "Total area: the best line and yours", margin: { l: 56, r: 10, t: 14, b: 44 } });
+      pB.rect(0.5, 0, 1.1, area, "fill-ok", "data", { "fill-opacity": 0.75 });
+      pB.rect(1.9, 0, 2.5, area, "fill-ok", "data", { "fill-opacity": 0.75 });
+      pB.rect(1.9, area, 2.5, area + xd, "fill-acc", "data", { "fill-opacity": 0.75 });
+      pB.text(0.8, 0, "least", { anchor: "middle", dy: 16, cls: "lbl-sm" });
+      pB.text(0.8, 0, "squares", { anchor: "middle", dy: 29, cls: "lbl-sm" });
+      pB.text(2.2, 0, "your", { anchor: "middle", dy: 16, cls: "lbl-sm" });
+      pB.text(2.2, 0, "line", { anchor: "middle", dy: 29, cls: "lbl-sm" });
+      pB.text(0.8, area, sig(area, 3), { anchor: "middle", dy: -5, cls: "lbl mono" });
+      pB.text(2.2, area + xd, sig(areaM, 3), { anchor: "middle", dy: -5, cls: "lbl mono" });
+      if (xd > top * 0.06) pB.text(2.2, area + xd / 2, "+‖XΔ‖²", { anchor: "middle", dy: 4, cls: "lbl-sm" });
+
+      ro.set("m", String(m));
+      ro.set("th", "(" + fmt(th[0], 3) + ", " + fmt(th[1], 3) + ")" + (F.singular ? " pinv" : ""), "good");
+      ro.set("det", sig(F.det, 3), F.singular ? "bad" : "");
+      ro.set("area", sig(area, 4));
+      ro.set("mse", sig(area / m, 4));
+      ro.set("xtr", "(" + sig(xtr[0], 2) + ", " + sig(xtr[1], 2) + ")");
+      ro.set("yours", sig(areaM, 4));
+      ro.set("xd", sig(xd, 4));
+
+      var tail = moved ? " Your line is " + K("\\hat{\\boldsymbol\\theta} + (" + fmt(S.d0, 1) + ",\\ " + fmt(S.d1, 2) + ")") +
+                 ": its area " + sig(areaM, 4) + " is " + sig(area, 4) + " + " + sig(xd, 4) + ", the best area plus " +
+                 K("\\lVert\\mathbf X\\boldsymbol\\Delta\\rVert^2") + "." : "";
+      if (m === 1) {
+        say.say("<span class='k'>One instance.</span> " + K("m = 1 < n + 1 = 2") + ", so " + K("\\mathbf X^{\\intercal}\\mathbf X") +
+                " is singular: every line through the point fits it exactly. The pseudoinverse returns the shortest " +
+                K("\\boldsymbol\\theta") + ", " + K("y_1\\,(1, x_1)/(1 + x_1^2) = (" + fmt(th[0], 3) + ",\\ " + fmt(th[1], 3) + ")") +
+                ". Press <em>Step</em> to add an instance." + tail);
+      } else if (F.singular) {
+        say.say("<span class='k'>Singular.</span> All " + m + " instances share one " + K("x") + ", so the column " + K("\\mathbf x") +
+                " is a multiple of " + K("\\mathbf 1") + " and " + K("\\det\\mathbf X^{\\intercal}\\mathbf X = 0") +
+                ". The pseudoinverse returns the minimum-norm " + K("\\boldsymbol\\theta = (" + fmt(th[0], 3) + ",\\ " + fmt(th[1], 3) + ")") +
+                "; its fitted values are still the best possible, with area " + sig(area, 4) + "." + tail);
+      } else if (area < 1e-9) {
+        say.say("<span class='k'>" + m + " instances, exact fit.</span> Two points, two parameters: the line passes through both and every residual is 0. " +
+                K("\\hat{\\boldsymbol\\theta} = (" + fmt(th[0], 3) + ",\\ " + fmt(th[1], 3) + ")") + "." + tail);
+      } else {
+        say.say("<span class='k'>" + m + " instances" + (st.dragged ? ", one moved" : "") + ".</span> The normal equation gives " +
+                K("\\hat{\\boldsymbol\\theta} = (" + fmt(th[0], 3) + ",\\ " + fmt(th[1], 3) + ")") + ", total area " + K("\\sum r_i^2 = " + sig(area, 4)) +
+                ", MSE " + sig(area / m, 4) + ". The residuals sum to " + sig(xtr[0], 2) + " and are orthogonal to " + K("\\mathbf x") +
+                ": " + K("\\sum x_i r_i = " + sig(xtr[1], 2)) + "." + tail);
+      }
+    }
+
+    pl = A.player("#ls-bar", { step: step, reset: reset, render: render, fps: 2, unit: "instance" });
+    A.button("#ls-bar", "Your line = least squares", function () { S.d0 = S.d1 = 0; s0.value = 0; s1.value = 0; render(); });
+  })();
+
+  /* ======================================================================
+     2 · The projection
+     ====================================================================== */
+  (function () {
+    var ONE = [1, 1, 1], D = [-1.2, -0.3, 1.5], Y = [1.0, 3.2, 2.4];
+    var S = { s: 1, az: -1.5, el: 0.4 }, st, pl;
+    var view = A.canvas("#pj-plots", { w: 460, h: 420, caption: "Label space ℝ³: one axis per instance (drag to turn)" });
+    A.el("rect", { x: 0, y: 0, width: 460, height: 420 }, A.el("clipPath", { id: "pj-clip" }, view.defs));
+    view.g.setAttribute("clip-path", "url(#pj-clip)");
+    var p2 = A.plot("#pj-plots", { x: [0, 4.5], y: [0, 4.5], w: 380, h: 420, equal: true, xlabel: "x", ylabel: "y",
+                                   caption: "The same three instances, as points" });
+
+    function add(a, b, k) { return [a[0] + (k === undefined ? 1 : k) * b[0], a[1] + (k === undefined ? 1 : k) * b[1], a[2] + (k === undefined ? 1 : k) * b[2]]; }
+    function scale(a, k) { return [k * a[0], k * a[1], k * a[2]]; }
+    function xcol() { return add(scale(ONE, 2), D, S.s); }
+    function solve() {
+      var x = xcol(), F = fitLine(x, Y), th = F.th;
+      var yh = add(scale(ONE, th[0]), x, th[1]), r = add(yh, Y, -1);
+      return { x: x, F: F, th: th, yh: yh, r: r };
+    }
+    // Orthographic view: turn about the vertical axis by az, then tilt by el.
+    function P(v) {
+      var ca = Math.cos(S.az), sa = Math.sin(S.az), ce = Math.cos(S.el), se = Math.sin(S.el);
+      // Centred on (1.5, 1.5, 1.5), the middle of the scene, so it turns in place.
+      var a = v[0] - 1.5, b = v[1] - 1.5, c = v[2] - 1.5;
+      var X = ca * a - sa * b, Yd = sa * a + ca * b;
+      var k = 70;
+      return [230 + k * X, 205 - k * (ce * c - se * Yd)];
+    }
+
+    var side = A.$("#pj-side");
+    A.slider(side, { label: "Spread of $\\mathbf{x}$", min: 0, max: 1.5, step: 0.05, value: 1,
+                     fmt: function (v) { return fmt(v, 2); },
+                     hint: "$\\mathbf{x} = 2\\cdot\\mathbf{1} + \\text{spread}\\cdot(-1.2, -0.3, 1.5)$. At 0 it is a multiple of $\\mathbf{1}$.",
+                     onInput: function (v) { S.s = v; render(); } });
+    var ro = A.readout(side, [["x", "$\\mathbf{x}$"], ["det", "$\\det\\mathbf{X}^{\\intercal}\\mathbf{X}$"], ["th", "$\\hat{\\boldsymbol\\theta}$"],
+                              ["yh", "$\\hat y = \\mathbf{X}\\hat{\\boldsymbol\\theta}$"], ["r", "$\\mathbf{r} = \\hat y - y$"],
+                              ["d1", "$\\mathbf{1}^{\\intercal}\\mathbf{r}$"], ["dx", "$\\mathbf{x}^{\\intercal}\\mathbf{r}$"], ["nr", "$\\lVert\\mathbf{r}\\rVert$"]]);
+    A.legend(side, [{ line: "line muted", label: "instance axes" }, { line: "line", label: "columns $\\mathbf{1}$, $\\mathbf{x}$" },
+                    { swatch: "fill-primary", label: "column space" }, { line: "line ink", label: "label vector $y$" },
+                    { line: "line ok", label: "$\\hat y$, the projection" }, { line: "line acc", label: "residual $\\mathbf r$" }]);
+    var say = A.narrate("#pj-say");
+
+    var drag = null;
+    view.svg.style.cursor = "grab";
+    view.svg.addEventListener("pointerdown", function (ev) { drag = [ev.clientX, ev.clientY, S.az, S.el]; view.svg.setPointerCapture(ev.pointerId); });
+    view.svg.addEventListener("pointermove", function (ev) {
+      if (!drag) return;
+      S.az = drag[2] - (ev.clientX - drag[0]) * 0.01;
+      S.el = A.clamp(drag[3] + (ev.clientY - drag[1]) * 0.01, -1.2, 1.4);
+      render();
+    });
+    ["pointerup", "pointercancel"].forEach(function (e) { view.svg.addEventListener(e, function () { drag = null; }); });
+
+    function reset() { st = { stage: 0 }; }
+    function step() { st.stage++; return st.stage < 5; }
+
+    function seg3(a, b, cls) { var p = P(a), q = P(b); return view.el("line", { x1: p[0], y1: p[1], x2: q[0], y2: q[1], class: cls }); }
+    function arrow3(a, b, cls) { var p = P(a), q = P(b); return view.arrow(p[0], p[1], q[0], q[1], cls, 9); }
+    function label3(v, s, cls, dx, dy) { var p = P(v); return view.text(p[0] + (dx || 6), p[1] + (dy || -6), s, cls || "lbl"); }
+
+    function render() {
+      var Q = solve(), x = Q.x, th = Q.th, yh = Q.yh, r = Q.r, g = st.stage, O = [0, 0, 0];
+      view.clear();
+      // Instance axes.
+      [[4, 0, 0], [0, 4, 0], [0, 0, 4]].forEach(function (e, i) {
+        seg3(O, e, "line thin muted");
+        label3(e, "instance " + (i + 1), "lbl-sm", 4, 4);
+      });
+      // The column space: a patch of the plane spanned by u = 1/sqrt(3) and w = d/|d|.
+      var u = scale(ONE, 1 / Math.sqrt(3)), nd = Math.hypot(D[0], D[1], D[2]), w = scale(D, 1 / nd);
+      if (g >= 1) {
+        if (S.s > 1e-9) {
+          var corners = [[-0.4, -1.2], [4.4, -1.2], [4.4, 3.2], [-0.4, 3.2]].map(function (c) { return P(add(scale(u, c[0]), w, c[1])); });
+          view.el("polygon", { points: corners.map(function (c) { return c.join(","); }).join(" "), class: "fill-primary", "fill-opacity": 0.13 });
+          view.el("polygon", { points: corners.map(function (c) { return c.join(","); }).join(" "), class: "line thin muted", "stroke-opacity": 0.5 });
+          label3(add(scale(u, 4.4), w, -1.2), "col(X)", "lbl-math", 4, 0);
+        } else {
+          seg3(scale(u, -0.4), scale(u, 4.4), "line thin");
+          label3(scale(u, 4.4), "col(X) is a line", "lbl-math", 4, 0);
+        }
+      }
+      // The columns.
+      arrow3(O, ONE, "line"); label3(ONE, "1", "lbl", -14, -4);
+      arrow3(O, x, "line"); label3(x, "x", "lbl", 6, 4);
+      if (g >= 2) { arrow3(O, Y, "line ink"); label3(Y, "y", "lbl"); }
+      if (g >= 3) {
+        arrow3(O, yh, "line ok"); label3(yh, "ŷ", "lbl", -16, -4);
+        seg3(Y, yh, "line acc");
+        label3(add(Y, r, 0.5), "r", "lbl", 6, 0);
+      }
+      if (g >= 4) {
+        // A right-angle mark at yh: one side back along -r, one side in the plane.
+        var nr = Math.hypot(r[0], r[1], r[2]), ny = Math.hypot(yh[0], yh[1], yh[2]);
+        if (nr > 1e-6) {
+          var e1 = scale(r, -0.28 / nr), e2 = scale(yh, -0.28 / ny);
+          var a = P(add(yh, e1)), b = P(add(add(yh, e1), e2)), c = P(add(yh, e2));
+          view.el("path", { d: "M" + a.join(",") + "L" + b.join(",") + "L" + c.join(","), class: "line thin ink" });
+        }
+      }
+      if (g >= 5) {
+        var t0 = scale(ONE, th[0]);
+        arrow3(O, t0, "arrow"); arrow3(t0, yh, "arrow");
+        label3(t0, "θ̂₀·1", "lbl-math", 6, 14);
+      }
+
+      // The usual picture: three points and the fitted line.
+      p2.clear();
+      var X0 = p2.x.domain[0], X1 = p2.x.domain[1];
+      if (!Q.F.singular) p2.path([[X0, th[0] + th[1] * X0], [X1, th[0] + th[1] * X1]], "line ok");
+      for (var i = 0; i < 3; i++) {
+        if (g >= 3) p2.line(x[i], Y[i], x[i], yh[i], "resid");
+        p2.dot(x[i], Y[i], { r: 5.5, cls: "pt c0" });
+        p2.text(x[i], Y[i], "instance " + (i + 1), { dx: 8, dy: 4, cls: "lbl-sm" });
+      }
+      if (Q.F.singular) p2.path([[X0, yh[0]], [X1, yh[0]]], "line ok dash");
+
+      var v3 = function (v) { return "(" + v.map(function (c) { return fmt(c, 2); }).join(", ") + ")"; };
+      ro.set("x", v3(x));
+      ro.set("det", sig(Q.F.det, 3), Q.F.singular ? "bad" : "");
+      ro.set("th", "(" + fmt(th[0], 3) + ", " + fmt(th[1], 3) + ")" + (Q.F.singular ? " pinv" : ""));
+      ro.set("yh", g >= 3 ? v3(yh) : "—");
+      ro.set("r", g >= 3 ? v3(r) : "—");
+      ro.set("d1", g >= 4 ? sig(A.dot(ONE, r), 2) : "—", g >= 4 ? "good" : "");
+      ro.set("dx", g >= 4 ? sig(A.dot(x, r), 2) : "—", g >= 4 ? "good" : "");
+      ro.set("nr", g >= 3 ? fmt(Math.hypot(r[0], r[1], r[2]), 3) : "—");
+
+      var msg = [
+        "<span class='k'>The columns.</span> " + K("\\mathbf 1 = (1, 1, 1)") + " and " + K("\\mathbf x = " + v3(x)) +
+          " are vectors in " + K("\\mathbb R^3") + ", one coordinate per instance. Press <em>Step</em>.",
+        "<span class='k'>The column space.</span> Every prediction vector " + K("\\mathbf X\\boldsymbol\\theta = \\theta_0\\mathbf 1 + \\theta_1\\mathbf x") +
+          " lies in the shaded plane" + (S.s > 1e-9 ? "" : " — here a line, because " + K("\\mathbf x = 2\\cdot\\mathbf 1")) +
+          ". Choosing " + K("\\boldsymbol\\theta") + " means choosing a point of it.",
+        "<span class='k'>The labels.</span> " + K("y = " + v3(Y)) + " is not in the plane: no " + K("\\boldsymbol\\theta") +
+          " fits all three instances exactly. Least squares asks for the point of the plane closest to " + K("y") + ".",
+        "<span class='k'>The projection.</span> The closest point is " + K("\\hat y = " + v3(yh)) + ", the foot of the perpendicular from " + K("y") +
+          ". The residual " + K("\\mathbf r = \\hat y - y") + " has length " + fmt(Math.hypot(r[0], r[1], r[2]), 3) +
+          " — the square root of the least possible " + K("\\sum_i r_i^2") + ".",
+        "<span class='k'>Orthogonality.</span> " + K("\\mathbf 1^{\\intercal}\\mathbf r = " + sig(A.dot(ONE, r), 2)) + " and " +
+          K("\\mathbf x^{\\intercal}\\mathbf r = " + sig(A.dot(x, r), 2)) + ": both zero to rounding. That pair of equations is " +
+          K("\\mathbf X^{\\intercal}(\\mathbf X\\hat{\\boldsymbol\\theta} - y) = \\mathbf 0") + ", the normal equation.",
+        "<span class='k'>The coordinates.</span> " + K("\\hat y = " + fmt(th[0], 3) + "\\cdot\\mathbf 1 + " + fmt(th[1], 3) + "\\cdot\\mathbf x") +
+          ": the purple path walks " + K("\\hat\\theta_0") + " along " + K("\\mathbf 1") + ", then " + K("\\hat\\theta_1") + " along " + K("\\mathbf x") +
+          ". " + (Q.F.singular ? "With " + K("\\mathbf x") + " parallel to " + K("\\mathbf 1") + " many pairs reach the same " + K("\\hat y") +
+          "; the pseudoinverse picks the shortest." : "These are the intercept and slope of the line on the right.")
+      ];
+      say.say(msg[g]);
+    }
+
+    pl = A.player("#pj-bar", { step: step, reset: reset, render: render, fps: 0.7, unit: "stage", max: 5 });
+  })();
+
+  /* ======================================================================
+     3 · k-fold cross-validation
+     ====================================================================== */
+  (function () {
+    var m = 40, R = A.rng(4), xs = [], ys = [];
+    for (var i = 0; i < m; i++) {
+      var x = 10 * R.u();
+      xs.push(x); ys.push(2 + 0.5 * x + 1.2 * Math.sin(0.9 * x) + R.n(0, 1));
+    }
+    var all = A.range(m);
+    var NAMES = ["constant", "line", "tree"], CLS = ["c2", "c0", "c1"], SH = ["sq", "circle", "tri"], LINE = ["line math", "line", "line gold"];
+    var S = { k: 5, shuffle: 0, show: 1 }, folds, st, pl;
+
+    // The three models, each fitted on the index set I.
+    function fit(I) {
+      var c = A.mean(I.map(function (i) { return ys[i]; }));
+      var L = fitLine(I.map(function (i) { return xs[i]; }), I.map(function (i) { return ys[i]; })).th;
+      var srt = I.slice().sort(function (a, b) { return xs[a] - xs[b]; });
+      var tree = function (x) {
+        // The leaf containing x: cut halfway between neighbouring training x values.
+        var j = 0;
+        while (j + 1 < srt.length && x > (xs[srt[j]] + xs[srt[j + 1]]) / 2) j++;
+        return ys[srt[j]];
+      };
+      return [function () { return c; }, function (x) { return L[0] + L[1] * x; }, tree];
+    }
+    function rmse(f, I) {
+      return Math.sqrt(A.mean(I.map(function (i) { var e = f(xs[i]) - ys[i]; return e * e; })));
+    }
+
+    var plots = A.$("#kf-plots");
+    var pD = A.plot(plots, { x: [0, 10], y: [-1, 11], w: 440, h: 380, xlabel: "x", ylabel: "y", caption: "This fold: fitted on the filled points" });
+    var scoreHost = A.h("div", null, plots), pS;
+    function buildScores() {
+      A.clear(scoreHost);
+      pS = A.plot(scoreHost, { x: [0.5, S.k + 0.5], y: [0, 4], w: 440, h: 380, xticks: A.range(S.k).map(function (j) { return j + 1; }),
+                           xlabel: "fold j", ylabel: "RMSE on fold j", caption: "Fold scores, and mean ± sd when done" });
+    }
+    buildScores();
+
+    var side = A.$("#kf-side");
+    A.seg(side, { label: "Number of folds", value: 5, options: [[2, "2"], [5, "5"], [10, "10"]],
+                  onChange: function (v) { S.k = v; buildScores(); pl.restart(); } });
+    A.seg(side, { label: "Residuals drawn for", value: 1, options: [[0, "constant"], [1, "line"], [2, "tree"]],
+                  onChange: function (v) { S.show = v; render(); } });
+    var ro = A.readout(side, [["tr", "training RMSE (c / l / t)"], ["c", "CV constant"], ["l", "CV line"], ["t", "CV tree"],
+                              ["d", "tree − line, per fold"], ["w", "folds where tree wins"]]);
+    A.legend(side, [{ shape: "sq", cls: "pt c2", label: "constant" }, { shape: "circle", cls: "pt c0", label: "line" },
+                    { shape: "tri", cls: "pt c1", label: "tree" }, { shape: "circle", cls: "pt c0 hollow", label: "held out" },
+                    { line: "resid", label: "held-out error" }]);
+    var say = A.narrate("#kf-say");
+
+    function reset() {
+      var idx = A.rng(104 + S.shuffle).shuffle(A.range(m));
+      folds = A.range(S.k).map(function (j) { return idx.filter(function (_, i) { return i % S.k === j; }); });
+      st = { j: 0, scores: [[], [], []], models: fit(all), held: [] };
+    }
+    function step() {
+      var held = folds[st.j], inF = {};
+      held.forEach(function (i) { inF[i] = true; });
+      var tr = all.filter(function (i) { return !inF[i]; });
+      st.models = fit(tr); st.held = held;
+      st.models.forEach(function (f, q) { st.scores[q].push(rmse(f, held)); });
+      st.j++;
+      return st.j < S.k;
+    }
+    function msd(a) { return a.length ? fmt(A.mean(a), 3) + " ± " + fmt(A.std(a), 3) : "—"; }
+
+    function render() {
+      var held = {}, done = st.j === S.k;
+      st.held.forEach(function (i) { held[i] = true; });
+
+      pD.clear();
+      var grid = A.linspace(0, 10, 401);
+      st.models.forEach(function (f, q) { pD.path(grid.map(function (x) { return [x, f(x)]; }), LINE[q] + (q === 2 ? " thin" : "")); });
+      st.held.forEach(function (i) { pD.line(xs[i], ys[i], xs[i], st.models[S.show](xs[i]), "resid"); });
+      all.forEach(function (i) { pD.dot(xs[i], ys[i], { r: 4.5, cls: "pt c0" + (held[i] ? " hollow" : "") }); });
+
+      pS.clear();
+      for (var q = 0; q < 3; q++) {
+        var sc = st.scores[q], off = (q - 1) * 0.18;
+        if (done) {
+          var mu = A.mean(sc), sd = A.std(sc);
+          pS.rect(0.5, mu - sd, S.k + 0.5, mu + sd, "fill-" + ["math", "primary", "gold"][q], "data", { "fill-opacity": 0.1 });
+          pS.line(0.5, mu, S.k + 0.5, mu, LINE[q] + " thin dash");
+        }
+        sc.forEach(function (v, j) { pS.dot(j + 1 + off, v, { shape: SH[q], cls: "pt " + CLS[q], r: 4.5 }); });
+      }
+
+      var trn = fit(all).map(function (f) { return rmse(f, all); });
+      var d = st.scores[2].map(function (v, j) { return v - st.scores[1][j]; });
+      var wins = d.filter(function (v) { return v < 0; }).length;
+      ro.set("tr", trn.map(function (v) { return fmt(v, 2); }).join(" / "));
+      ro.set("c", msd(st.scores[0])); ro.set("l", msd(st.scores[1])); ro.set("t", msd(st.scores[2]));
+      ro.set("d", msd(d));
+      ro.set("w", st.j ? wins + " of " + st.j : "—");
+
+      if (st.j === 0) {
+        say.say("<span class='k'>Before any fold.</span> All three models are fitted on all " + m + " instances and scored on the same " + m +
+                ": RMSE " + fmt(trn[0], 3) + " for the constant, " + fmt(trn[1], 3) + " for the line, and " + K(fmt(trn[2], 3)) +
+                " for the tree, which has memorised every instance. Press <em>Step</em> to hold out fold 1 of " + S.k + ".");
+      } else {
+        var j = st.j, s = st.scores;
+        say.say("<span class='k'>Fold " + j + " of " + S.k + ".</span> Held out " + st.held.length + " instances, fitted on the other " +
+                (m - st.held.length) + ". RMSE on the held-out points: constant " + fmt(s[0][j - 1], 3) + ", line " + fmt(s[1][j - 1], 3) +
+                ", tree " + fmt(s[2][j - 1], 3) + " — the tree is " + (d[j - 1] < 0 ? "better" : "worse") + " here by " + fmt(Math.abs(d[j - 1]), 3) + "." +
+                (done ? " <strong>Done.</strong> Tree − line: " + msd(d) + ", the tree winning " + wins + " of " + S.k +
+                        " folds. A mean difference that small against that spread is not a difference." : ""));
+      }
+    }
+
+    pl = A.player("#kf-bar", { step: step, reset: reset, render: render, fps: 1.5, unit: "fold" });
+    A.button("#kf-bar", "New shuffle", function () { S.shuffle++; pl.restart(); });
+  })();
+})();
+</script>
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  // Two Gaussian score distributions: negatives N(0, 1), positives N(delta, 1).
+  // Each instance is {s: score, y: label}. Same seed, same instances.
+  function scores(seed, N, P, delta) {
+    var R = A.rng(seed), out = [], i;
+    for (i = 0; i < N; i++) out.push({ s: R.n(0, 1), y: 0 });
+    for (i = 0; i < P; i++) out.push({ s: R.n(delta, 1), y: 1 });
+    return out;
+  }
+  // Counts when everything with s >= t is flagged.
+  function counts(D, t) {
+    var c = { TP: 0, FP: 0, FN: 0, TN: 0 };
+    D.forEach(function (e) {
+      if (e.s >= t) { if (e.y) c.TP++; else c.FP++; }
+      else { if (e.y) c.FN++; else c.TN++; }
+    });
+    c.P = c.TP + c.FN; c.N = c.FP + c.TN; c.n = c.TP + c.FP; c.m = c.P + c.N;
+    return c;
+  }
+  // The sweep from the top of the ranking down: after k instances flagged,
+  // TP, FP, TPR, FPR, precision, recall. Index 0 is "nothing flagged".
+  function sweep(D) {
+    var S = D.slice().sort(function (a, b) { return b.s - a.s; });
+    var P = 0, N = 0;
+    S.forEach(function (e) { if (e.y) P++; else N++; });
+    var T = 0, F = 0, out = [{ TP: 0, FP: 0, tpr: 0, fpr: 0, rec: 0, prec: NaN }];
+    S.forEach(function (e) {
+      if (e.y) T++; else F++;
+      out.push({ TP: T, FP: F, tpr: T / P, fpr: F / N, rec: T / P, prec: T / (T + F), s: e.s, y: e.y });
+    });
+    return { S: S, pts: out, P: P, N: N };
+  }
+  function aucOf(sw) {
+    var a = 0;
+    for (var k = 1; k < sw.pts.length; k++) if (!sw.pts[k].y) a += sw.pts[k].tpr / sw.N;
+    return a;
+  }
+  function apOf(sw) {
+    var a = 0;
+    for (var k = 1; k < sw.pts.length; k++) if (sw.pts[k].y) a += sw.pts[k].prec / sw.P;
+    return a;
+  }
+  function frac(a, b) { return a + "/" + b; }
+
+  /* ======================================================================
+     4 · Tracing the ROC and PR curves
+     ====================================================================== */
+  (function () {
+    var S = { delta: 2.5 }, sw, auc, ap, st, pl;
+
+    function build() { sw = sweep(scores(7, 180, 20, S.delta)); auc = aucOf(sw); ap = apOf(sw); }
+
+    var rank = A.plot("#cv-rank", { x: [0.5, 200.5], y: [0, 1], w: 720, h: 80, yticks: [], xticks: [1, 50, 100, 150, 200],
+                                    xlabel: "rank (1 = highest score)", grid: false, margin: { l: 52, r: 16, t: 6, b: 38 } });
+    var plots = A.$("#cv-plots");
+    var pR = A.plot(plots, { x: [0, 1], y: [0, 1], w: 420, h: 400, xlabel: "FPR = FP / N", ylabel: "TPR = TP / P",
+                             caption: "ROC curve" });
+    var pP = A.plot(plots, { x: [0, 1], y: [0, 1.04], w: 420, h: 400, xlabel: "recall = TP / P", ylabel: "precision = TP / n",
+                             yticks: [0, 0.2, 0.4, 0.6, 0.8, 1], caption: "Precision/recall curve" });
+
+    var side = A.$("#cv-side");
+    A.slider(side, { label: "Separation $\\Delta$", min: 0, max: 4, step: 0.1, value: S.delta,
+                     fmt: function (v) { return fmt(v, 1); },
+                     hint: "Negatives score $N(0, 1)$, positives $N(\\Delta, 1)$.",
+                     onInput: function (v) { S.delta = v; build(); pl.restart(true); } });
+    var ro = A.readout(side, [["k", "flagged $n$"], ["tp", "TP, FP"], ["roc", "(FPR, TPR)"], ["pr", "(recall, precision)"],
+                              ["area", "area so far"], ["auc", "pairs in order"], ["ap", "AP so far"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "negative" }, { shape: "tri", cls: "pt c1", label: "positive" },
+                    { line: "line", label: "traced so far" }, { line: "line thin muted dash", label: "the whole sweep" },
+                    { swatch: "fill-primary", label: "area under ROC so far" }]);
+    var say = A.narrate("#cv-say");
+
+    function reset() { st = { k: 0, area: 0, ap: 0 }; }
+    function step() {
+      if (st.k >= sw.S.length) return false;
+      st.k++;
+      var q = sw.pts[st.k];
+      if (q.y) st.ap += q.prec / sw.P; else st.area += q.tpr / sw.N;
+      return st.k < sw.S.length;
+    }
+
+    function render() {
+      var k = st.k, pts = sw.pts, q = pts[k];
+
+      rank.clear();
+      sw.S.forEach(function (e, i) {
+        rank.dot(i + 1, e.y ? 0.68 : 0.32, { shape: e.y ? "tri" : "circle", r: e.y ? 3.6 : 2.6,
+                                             cls: "pt c" + e.y + (i < k ? "" : " hollow") });
+      });
+      if (k > 0) rank.line(k + 0.5, 0, k + 0.5, 1, "line ink thin");
+
+      pR.clear(); pP.clear();
+      pR.line(0, 0, 1, 1, "zero");
+      // The area under the staircase traced so far.
+      var poly = [[0, 0]];
+      for (var i = 0; i <= k; i++) poly.push([pts[i].fpr, pts[i].tpr]);
+      poly.push([q.fpr, 0]);
+      pR.poly(poly, "fill-primary", "data", { "fill-opacity": 0.12 });
+      pR.path(pts.map(function (r) { return [r.fpr, r.tpr]; }), "line thin muted dash");
+      pR.path(pts.slice(0, k + 1).map(function (r) { return [r.fpr, r.tpr]; }), "line");
+      pR.dot(q.fpr, q.tpr, { r: 5, cls: "pt c" + (k ? q.y : 0) });
+
+      pP.line(0, sw.P / (sw.P + sw.N), 1, sw.P / (sw.P + sw.N), "zero");
+      pP.text(0, sw.P / (sw.P + sw.N), "p = " + fmt(sw.P / (sw.P + sw.N), 2), { dx: 6, dy: -5, cls: "lbl-sm" });
+      pP.path(pts.slice(1).map(function (r) { return [r.rec, r.prec]; }), "line thin muted dash");
+      if (k >= 1) {
+        pP.path(pts.slice(1, k + 1).map(function (r) { return [r.rec, r.prec]; }), "line");
+        pP.dot(q.rec, q.prec, { r: 5, shape: q.y ? "tri" : "circle", cls: "pt c" + q.y });
+      }
+
+      ro.set("k", k + " of " + sw.S.length);
+      ro.set("tp", q.TP + ", " + q.FP);
+      ro.set("roc", "(" + fmt(q.fpr, 3) + ", " + fmt(q.tpr, 3) + ")");
+      ro.set("pr", k ? "(" + fmt(q.rec, 3) + ", " + fmt(q.prec, 3) + ")" : "— (n = 0)");
+      ro.set("area", fmt(st.area, 4), k === sw.S.length ? "good" : "");
+      ro.set("auc", fmt(auc, 4), "good");
+      ro.set("ap", fmt(st.ap, 4));
+
+      if (k === 0) {
+        say.say("<span class='k'>Start.</span> Nothing is flagged: " + K("\\mathrm{TP} = \\mathrm{FP} = 0") +
+                ", so the ROC curve starts at (0, 0) and precision is " + K("0/0") + ", undefined. Of the " +
+                (sw.P * sw.N).toLocaleString("en-GB") + " (positive, negative) pairs, " + Math.round(auc * sw.P * sw.N).toLocaleString("en-GB") +
+                " are in the right order: AUC = " + fmt(auc, 4) + ". Press <em>Step</em> to flag the top-ranked instance.");
+      } else if (q.y) {
+        var pr0 = k > 1 ? pts[k - 1].prec : NaN;
+        say.say("<span class='k'>Rank " + k + " is a positive.</span> TPR rises by " + K("1/P = " + fmt(1 / sw.P, 3)) + " to " + fmt(q.tpr, 3) +
+                ": the ROC curve steps <strong>up</strong>. Recall rises to " + fmt(q.rec, 3) + " and precision " +
+                (k > 1 ? (q.prec > pr0 ? "rises from " + fmt(pr0, 3) + " to " : "stays at ") : "is ") + frac(q.TP, k) + " = " + fmt(q.prec, 3) +
+                ": the PR curve moves up and right. AP gains " + K("\\text{precision}/P = " + fmt(q.prec / sw.P, 4)) + "." +
+                (k === sw.S.length ? " <strong>Done</strong>: the area equals the pair count." : ""));
+      } else {
+        say.say("<span class='k'>Rank " + k + " is a negative.</span> FPR rises by " + K("1/N = " + fmt(1 / sw.N, 4)) +
+                ": the ROC curve steps <strong>right</strong> at height " + fmt(q.tpr, 3) + ", adding a strip of area " +
+                K(fmt(q.tpr, 3) + "/" + sw.N + " = " + fmt(q.tpr / sw.N, 4)) + " — this negative is out-ranked by " + q.TP +
+                " of the " + sw.P + " positives. Recall stays at " + fmt(q.rec, 3) + " while precision falls to " + frac(q.TP, k) + " = " +
+                fmt(q.prec, 3) + ": the PR curve drops <strong>straight down</strong>." +
+                (k === sw.S.length ? " <strong>Done</strong>: area " + fmt(st.area, 4) + " = pair count " + fmt(auc, 4) + "." : ""));
+      }
+    }
+
+    build();
+    pl = A.player("#cv-bar", { step: step, reset: reset, render: render, fps: 8, unit: "instance" });
+  })();
+
+  /* ======================================================================
+     5 · A rarer positive class
+     ====================================================================== */
+  (function () {
+    var N0 = 2000, P0 = 200, PMIN = 20, S = { t: 2 };
+    var all = scores(5, N0, P0, 2.5);
+    var neg = all.filter(function (e) { return !e.y; });
+    // The order in which positives are deleted: a fixed random permutation.
+    var order = A.rng(1005).shuffle(all.filter(function (e) { return e.y; }));
+    var start = sweep(all), auc0 = aucOf(start), ap0 = apOf(start);
+    var st, pl;
+
+    var plots = A.$("#rr-plots");
+    var pR = A.plot(plots, { x: [0, 1], y: [0, 1], w: 420, h: 380, xlabel: "FPR", ylabel: "TPR", caption: "ROC curve" });
+    var pP = A.plot(plots, { x: [0, 1], y: [0, 1.04], w: 420, h: 380, xlabel: "recall", ylabel: "precision",
+                             yticks: [0, 0.2, 0.4, 0.6, 0.8, 1], caption: "Precision/recall curve" });
+    var pA;
+    // The accuracy axis runs from just below the lowest accuracy this
+    // threshold will reach on the way down, so the curve is never clipped.
+    function buildAcc() {
+      var lo = 0.88;
+      [all, neg.concat(order.slice(0, PMIN))].forEach(function (D) {
+        var c = counts(D, S.t);
+        lo = Math.min(lo, Math.floor(((c.TP + c.TN) / c.m - 0.01) * 50) / 50);
+      });
+      A.clear(A.$("#rr-acc"));
+      pA = A.plot("#rr-acc", { x: [0, 0.1], y: [lo, 1], w: 640, h: 230, xlabel: "base rate p (falls to the left as positives are deleted)",
+                               ylabel: "accuracy", xticks: [0, 0.02, 0.04, 0.06, 0.08, 0.1],
+                               caption: "Accuracy against the base rate" });
+    }
+    buildAcc();
+
+    var side = A.$("#rr-side");
+    A.slider(side, { label: "Threshold $t$", min: 0, max: 4, step: 0.1, value: S.t,
+                     fmt: function (v) { return fmt(v, 1); },
+                     hint: "The operating point: flag when the score is at least $t$.",
+                     onInput: function (v) { S.t = v; buildAcc(); pl.restart(); } });
+    var ro = A.readout(side, [["P", "positives $P$ / negatives $N$"], ["p", "base rate $p$"], ["auc", "ROC AUC"], ["ap", "average precision"],
+                              ["tp", "TP, FP at $t$"], ["prec", "precision at $t$"], ["rec", "recall at $t$"],
+                              ["acc", "accuracy at $t$"], ["nf", "never fires, $1 - p$"]]);
+    A.legend(side, [{ line: "line", label: "now" }, { line: "line thin muted dash", label: "at the start" },
+                    { shape: "diamond", cls: "pt c2", label: "operating point at $t$" },
+                    { line: "line math", label: "accuracy at $t$" }, { line: "line ok dash", label: "never fires, $1 - p$" }]);
+    var say = A.narrate("#rr-say");
+
+    function current() { return neg.concat(order.slice(0, st.P)); }
+    function reset() { st = { P: P0, hist: [], removed: null }; record(); }
+    function record() {
+      var c = counts(current(), S.t);
+      st.hist.push({ p: c.P / c.m, acc: (c.TP + c.TN) / c.m });
+    }
+    function step() {
+      if (st.P <= PMIN) return false;
+      st.P--;
+      st.removed = order[st.P];
+      record();
+      return st.P > PMIN;
+    }
+
+    function render() {
+      var D = current(), sw = sweep(D), auc = aucOf(sw), ap = apOf(sw), c = counts(D, S.t);
+      var p = c.P / c.m, prec = c.n ? c.TP / c.n : NaN, rec = c.TP / c.P, acc = (c.TP + c.TN) / c.m;
+      var c0 = counts(all, S.t);
+
+      pR.clear(); pP.clear();
+      pR.line(0, 0, 1, 1, "zero");
+      pR.path(start.pts.map(function (r) { return [r.fpr, r.tpr]; }), "line thin muted dash");
+      pR.path(sw.pts.map(function (r) { return [r.fpr, r.tpr]; }), "line");
+      pR.dot(c.FP / c.N, rec, { shape: "diamond", r: 6, cls: "pt c2", layer: "over" });
+
+      pP.path(start.pts.slice(1).map(function (r) { return [r.rec, r.prec]; }), "line thin muted dash");
+      pP.path(sw.pts.slice(1).map(function (r) { return [r.rec, r.prec]; }), "line");
+      if (isFinite(prec)) pP.dot(rec, prec, { shape: "diamond", r: 6, cls: "pt c2", layer: "over" });
+      pP.line(0, 0.5, 1, 0.5, "zero");
+      pP.text(0, 0.5, "precision 1/2", { dx: 6, dy: -5, cls: "lbl-sm" });
+
+      pA.clear();
+      pA.path([[0, 1], [0.1, 0.9]], "line ok dash thin");
+      pA.text(0.1, 0.9, "never fires: 1 − p", { anchor: "end", dx: -4, dy: 16, cls: "lbl-sm" });
+      pA.path(st.hist.map(function (h) { return [h.p, h.acc]; }), "line math");
+      pA.dot(p, acc, { r: 4.5, cls: "pt c2", shape: "sq" });
+      pA.dot(p, 1 - p, { r: 4, cls: "pt c4" });
+
+      ro.set("P", c.P + " / " + c.N);
+      ro.set("p", A.pct(p, 2));
+      ro.set("auc", fmt(auc, 4));
+      ro.set("ap", fmt(ap, 3));
+      ro.set("tp", c.TP + ", " + c.FP);
+      ro.set("prec", fmt(prec, 3));
+      ro.set("rec", fmt(rec, 3));
+      ro.set("acc", A.pct(acc, 2), c.TP > c.FP ? "good" : c.TP < c.FP ? "bad" : "");
+      ro.set("nf", A.pct(1 - p, 2));
+
+      var gap = "accuracy − (1 − p) = (TP − FP)/m = (" + c.TP + " − " + c.FP + ")/" + c.m + " = " + fmt((c.TP - c.FP) / c.m, 4);
+      if (!st.removed) {
+        say.say("<span class='k'>Start.</span> " + c.P + " positives among " + c.m + ", so " + K("p = " + fmt(p, 4)) + ". ROC AUC " + fmt(auc, 4) +
+                ", average precision " + fmt(ap, 3) + ". At " + K("t = " + fmt(S.t, 1)) + " the detector has " + K("\\mathrm{TP} = " + c.TP + ",\\ \\mathrm{FP} = " + c.FP) +
+                ": " + gap + ". Press <em>Step</em> to delete a positive.");
+      } else {
+        say.say("<span class='k'>Deleted a positive</span> with score " + fmt(st.removed.s, 2) + ". Now " + K("P = " + c.P) + ", " + K("p = " + fmt(p, 4)) +
+                ". ROC AUC " + fmt(auc, 4) + " (start " + fmt(auc0, 4) + "); average precision " + fmt(ap, 3) + " (start " + fmt(ap0, 3) + "). " +
+                "FP is still " + c.FP + " — no negative was touched — and " + gap +
+                (c.TP > c.FP ? ": still above doing nothing." :
+                 c.TP === c.FP ? ": exactly as accurate as never firing." :
+                 ": the detector, with recall " + fmt(rec, 2) + ", is now <strong>less accurate than never firing</strong>.") +
+                (st.P <= PMIN ? " <strong>End</strong>: " + K("p") + " is about 1%." : ""));
+      }
+    }
+
+    pl = A.player("#rr-bar", { step: step, reset: reset, render: render, fps: 8, unit: "deletion" });
+  })();
+})();
+</script>
+</body>
+</html>

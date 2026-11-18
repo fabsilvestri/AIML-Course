@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 10 — Explaining and auditing models</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide" data-menu-title="Title">
+  <h1>Explaining and<br>auditing models</h1>
+  <p class="subtitle">Adult census income</p>
+  <p><span class="badge badge-lec">Lecture 10</span>
+     <span class="badge badge-notes">Lecture notes</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Outside the textbook and examinable from the notes. Say
+  so at the start. Two questions run through the lecture: what does the model
+  rely on, and for whom does it fail. The mathematics is one object, the
+  Shapley value; the rest is method, measured.</aside>
+</section>
+
+<!-- 2 -->
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <table class="smaller">
+    <tr><th>Lecture</th><th>What it built</th><th>The question it answered</th></tr>
+    <tr><td>3</td><td>honest evaluation; precision, recall, a chosen threshold</td><td>how good is the model, on rows it never saw?</td></tr>
+    <tr><td>4</td><td>logistic regression; calibration</td><td>is a probability of 0.7 right seven times in ten?</td></tr>
+    <tr><td>5</td><td>trees, forests, boosting</td><td>which model, and how stable is it?</td></tr>
+    <tr><td>7&ndash;8</td><td>networks, and the loop that trains them</td><td>how is a model with many parameters fitted?</td></tr>
+    <tr class="hit"><td><strong>10</strong></td><td><strong>explanations and audits</strong></td><td><strong>what does it rely on, and for whom does it fail?</strong></td></tr>
+  </table>
+  <div class="panel panel-when">
+    <span class="panel-title">Outside the book</span>
+    This lecture is taught from its notes rather than from G&eacute;ron, and is
+    examined on the same terms as every other. The notes are the primary
+    source; the deck is the lecture.
+  </div>
+</section>
+
+<!-- 3 -->
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li>Why look inside a model: debugging, trust, the law</li>
+    <li>The task: a bank&rsquo;s instant pre-approval, and the model behind it</li>
+    <li><strong>The method, globally</strong> &mdash; permutation importance
+        against the library&rsquo;s impurity importance; partial dependence and
+        ICE curves</li>
+    <li><strong>The mathematics</strong> &mdash; the Shapley value of one
+        prediction, computed exactly</li>
+    <li><strong>The audit</strong> &mdash; metrics per slice, three fairness
+        criteria and why they conflict, proxies, a threshold per group</li>
+    <li><strong>Design exercise</strong> &mdash; a digital bank&rsquo;s
+        credit-limit model, audited before it is filed as a high-risk system,
+        in nine steps</li>
+  </ol>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">
+       Open Lecture 10 in Google Colab</a>
+  </p>
+</section>
+
+<!-- 4 -->
+<section data-menu-title="Why look inside">
+  <h2>Why look inside a model that already scores well</h2>
+  <table class="smaller">
+    <tr><th>Reason</th><th>What can go wrong unseen</th></tr>
+    <tr><td><strong>Debugging</strong></td><td>the score is high for a reason you would reject: an identifier, a column filled in after the outcome, a quirk of how the data were collected &mdash; a <em>shortcut</em> that holds in the test set and not in the world</td></tr>
+    <tr><td><strong>Trust</strong></td><td>the people who act on the model &mdash; an underwriter, a recruiter &mdash; cannot tell when to overrule it</td></tr>
+    <tr><td><strong>The law</strong></td><td>the EU AI Act classes credit scoring and recruitment as <em>high-risk</em>: data examined for bias, documentation, logging, human oversight, monitoring after release. Under the GDPR a person refused by an automated decision can ask for a human and for meaningful information about the logic</td></tr>
+    <tr><td><strong>Fairness</strong></td><td>an accuracy is an average over everyone, and the people it fails can all be in one group</td></tr>
+  </table>
+  <p class="small fix">None of the four is answered by the test score. All of
+  them are answered by measurements on the fitted model.</p>
+</section>
+
+<!-- 5 -->
+<section data-menu-title="Two questions">
+  <h2>Two questions, and the tools for each</h2>
+  <table>
+    <tr><th>Question</th><th>About</th><th>Tool</th></tr>
+    <tr><td rowspan="2">What does the model rely on?</td><td>the whole model &mdash; <em>global</em></td><td>permutation importance; partial dependence</td></tr>
+    <tr><td>one prediction &mdash; <em>local</em></td><td>ICE curves; Shapley values</td></tr>
+    <tr><td>For whom does it fail?</td><td>groups of people</td><td>metrics per slice; fairness criteria; proxies</td></tr>
+  </table>
+  <div class="panel panel-when">
+    <span class="panel-title">What an explanation is not</span>
+    Every tool today describes <em>the model</em>: what its output does when
+    an input changes. None of them says what would happen to a person&rsquo;s
+    income if their answer changed. An explanation is a fact about a
+    function, not about the world.
+  </div>
+</section>
+
+<!-- 6 -->
+<section data-menu-title="The setting">
+  <h2>The setting: instant pre-approval at a bank</h2>
+  <p class="small">A bank&rsquo;s premium card needs an income above a band.
+  Applicants answer a dozen questions in the app. A model estimates the
+  probability that their income is above the band:</p>
+  <ul class="tight small">
+    <li><strong>0.5 or above</strong> &mdash; pre-approved on the spot</li>
+    <li><strong>below</strong> &mdash; sent to a manual check of payslips,
+        slower; many applicants give up on it</li>
+  </ul>
+  <table class="smaller">
+    <tr><th>Error</th><th>Who pays</th></tr>
+    <tr><td>a qualified applicant sent to the slow path</td><td>the applicant, and the bank in lost customers</td></tr>
+    <tr><td>an unqualified applicant pre-approved</td><td>the bank, when the documents arrive</td></tr>
+  </table>
+  <p class="small fix">The product team removed <code>sex</code> and
+  <code>race</code> from the model&rsquo;s inputs, reasoning that a model which
+  never sees an attribute cannot use it. Today tests that reasoning.</p>
+</section>
+
+<!-- 7 -->
+<section data-menu-title="The data">
+  <h2>The data, and what is kept aside</h2>
+  <div class="cols cols-60-40">
+    <div>
+      <table class="smaller">
+        <tr><th>Adult census income</th><th class="num">Value</th></tr>
+        <tr><td>People</td><td class="num">48,842</td></tr>
+        <tr><td>Answers the model sees (categorical)</td><td class="num">12 (6)</td></tr>
+        <tr><td>Fit / validation / test rows</td><td class="num">29,304 / 9,769 / 9,769</td></tr>
+        <tr><td>Share of women</td><td class="num">0.3315</td></tr>
+        <tr><td>Above 50K: everyone / men / women</td><td class="num">0.2393 / 0.3038 / 0.1093</td></tr>
+      </table>
+    </div>
+    <div>
+      <p class="small">Age, work class, education twice (as a level and as
+      years), marital status, occupation, relationship in the household,
+      capital gains and losses, hours, country &mdash; and
+      <code>fnlwgt</code>, the census&rsquo;s sampling weight.</p>
+      <p class="small"><code>sex</code> and <code>race</code> stay beside
+      every row, for the audit only.</p>
+    </div>
+  </div>
+  <div class="panel">
+    <span class="panel-title">A stand-in</span>
+    The 1994 US census extract every fairness method has been tried on. The
+    bank is a frame: the method transfers, the numbers do not.
+  </div>
+</section>
+
+<!-- 8 -->
+<section data-menu-title="The model">
+  <h2>The model the bank ships</h2>
+  <pre><code class="language-python" data-trim>model = HistGradientBoostingClassifier(categorical_features=CAT_MASK,
+                                       random_state=42).fit(X_fit, y_fit)
+p_test  = model.predict_proba(X_test)[:, 1]
+approve = p_test &gt;= THRESHOLD               # THRESHOLD = 0.5, the product rule
+  </code></pre>
+  <table class="smaller">
+    <tr><th>On the test rows</th><th class="num">Value</th></tr>
+    <tr><td>Accuracy at 0.5</td><td class="num">0.8714</td></tr>
+    <tr><td>Refuse everyone &mdash; the anchor</td><td class="num">0.7607</td></tr>
+    <tr class="hit"><td>AUC</td><td class="num">0.9248</td></tr>
+    <tr><td>Share pre-approved</td><td class="num">0.1988</td></tr>
+  </table>
+  <p class="small">Histogram boosting, the model a practitioner fits on a table
+  of mixed columns; the six categorical answers declared as categories, so a
+  code is never read as a size. A good model. The rest of the lecture is about
+  what it does.</p>
+</section>
+
+<!-- 9 -->
+<section data-menu-title="Two importances">
+  <h2>Which columns does the model rely on? Two ways to ask</h2>
+  <div class="cols">
+    <div class="panel">
+      <span class="panel-title">Impurity importance &mdash; trees only</span>
+      <p class="small">A tree grows by splits. Each split sends a node&rsquo;s
+      rows left or right so that each side is <strong>purer</strong>: closer to
+      all above 50K, or all below. Credit every split&rsquo;s gain in purity to
+      the column it split on, weighted by the rows it split; add up over all the
+      trees; scale so the columns sum to 1.</p>
+      <p class="small"><em>It asks:</em> how much did the trees use this
+      column to fit their rows?</p>
+    </div>
+    <div class="panel">
+      <span class="panel-title">Permutation importance &mdash; any model</span>
+      <p class="small">Score the model on a set of rows. Then
+      <strong>shuffle one column</strong>, so that every person gets someone
+      else&rsquo;s value, and score it again. The fall in AUC is the
+      column&rsquo;s importance: large if the predictions depend on it, zero if
+      the model ignores it.</p>
+      <p class="small"><em>It asks:</em> how much do the predictions depend on
+      this column?</p>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Permutation importance">
+  <h2>Permutation importance, defined</h2>
+  <div class="eqn-box">
+    $$I_j \;=\; \operatorname{AUC}\bigl(f;\, X, y\bigr) \;-\; \frac{1}{R}\sum_{r=1}^{R}\operatorname{AUC}\bigl(f;\, X^{(\pi_r,\,j)}, y\bigr)$$
+  </div>
+  <ul class="tight small">
+    <li>$X$, $y$: <strong>held-out</strong> rows; $X^{(\pi_r, j)}$: column $j$
+        replaced by a random permutation of itself</li>
+    <li>Shuffling keeps the column&rsquo;s distribution and destroys its link
+        with the target and with the rest of the row</li>
+    <li>Needs only predictions: it works for any model, the boosted one
+        included, at $R$ prediction passes per column</li>
+    <li>$R$ repeats give a spread; report it beside the mean</li>
+  </ul>
+  <pre><code class="language-python" data-trim>Xp = X.copy()
+Xp[:, j] = X[rng.permutation(len(X))][:, j]       # one column, or a group
+drop = auc(model, X, y) - auc(model, Xp, y)
+  </code></pre>
+</section>
+
+<section data-menu-title="Which rows">
+  <h2>On which rows? The forest has memorised its own</h2>
+  <pre><code class="language-python" data-trim>forest = RandomForestClassifier(n_estimators=200, random_state=42).fit(X_fit, y_fit)
+impurity = pd.Series(forest.feature_importances_, index=FEATURES)
+  </code></pre>
+  <div class="cols">
+    <div class="panel panel-when">
+      <span class="panel-title">Training rows &middot; AUC 1.0000</span>
+      The rows the 200 trees were grown on. The forest gets every one right:
+      it has memorised them. Importance here says what the forest needs to
+      reproduce rows it has memorised.
+    </div>
+    <div class="panel panel-fix">
+      <span class="panel-title">Held-out rows &middot; AUC 0.9046</span>
+      Rows the forest never saw. Importance here says what helps it predict
+      people it has not seen &mdash; the bank&rsquo;s question.
+    </div>
+  </div>
+  <p class="small">Impurity exists only on the training rows: it is a
+  by-product of growing the trees. Permutation runs on either. The boosted
+  model has no <code>feature_importances_</code>, so the comparison runs on a
+  forest.</p>
+</section>
+
+<section data-menu-title="fnlwgt">
+  <h2>The column to watch: <code>fnlwgt</code></h2>
+  <div class="cols">
+    <div class="panel">
+      <span class="panel-title">What it is</span>
+      The <em>final weight</em>: the Census Bureau&rsquo;s estimate of how many
+      people in the US population this one respondent stands for.
+    </div>
+    <div class="panel">
+      <span class="panel-title">How it is made</span>
+      From the survey&rsquo;s sampling design, adjusted so that weighted counts
+      match population totals by state, age, sex, race and Hispanic origin.
+    </div>
+    <div class="panel panel-when">
+      <span class="panel-title">Why it should not matter</span>
+      It records how the person was sampled, not their work, education or
+      household. And most people have their own value: 20,077 distinct
+      values on the fit rows.
+    </div>
+  </div>
+  <p class="lead">An importance measure that ranks <code>fnlwgt</code> high is
+  measuring something other than what predicts income.</p>
+</section>
+
+<section class="figslide" data-menu-title="◆ Importance, three ways">
+  <h2>One forest, one column, three verdicts</h2>
+  <figure class="fig fig-inset">
+    <img src="../assets/figures/xai10-importance.svg"
+         alt="Three bar charts ranking the twelve columns of a random forest. Panel 1, impurity importance on the training rows, with fnlwgt in red at the top, rank 1. Panel 2, permutation importance on the training rows, fnlwgt rank 6. Panel 3, permutation importance on held-out rows, where the fnlwgt bar is at zero, rank 11.">
+  </figure>
+  <div class="cols">
+    <div class="panel panel-when">
+      <span class="panel-title">1 &middot; Impurity, training rows</span>
+      How much did the trees use it? <strong><code>fnlwgt</code> first,
+      0.1793.</strong>
+    </div>
+    <div class="panel panel-when">
+      <span class="panel-title">2 &middot; Permutation, training rows</span>
+      What does the memorised forest need? <strong>Still rank 6.</strong>
+    </div>
+    <div class="panel panel-fix">
+      <span class="panel-title">3 &middot; Permutation, held-out rows</span>
+      What predicts new people? <strong>&minus;0.0006: nothing.</strong>
+    </div>
+  </div>
+  <p class="takeaway">Only rows the model never saw show that
+  <code>fnlwgt</code> is worth nothing.</p>
+</section>
+
+<section data-menu-title="Why impurity misleads">
+  <h2>Why impurity importance misleads: two causes, both measured</h2>
+  <table class="smaller">
+    <tr><th>Cause</th><th>Mechanism</th><th>Measured</th></tr>
+    <tr><td>Computed on the training rows</td><td>a fully grown forest fits its own rows exactly, so every split, even one on noise, reduces impurity there</td><td>forest AUC on its training rows 1.0000, on test rows 0.9046</td></tr>
+    <tr><td>Many distinct values</td><td>a column with a value per row offers a split anywhere; deep in a tree, some split on it always cleans a small node</td><td><code>fnlwgt</code> takes 20,077 distinct values on the fit rows; age takes 73</td></tr>
+  </table>
+  <p class="small">Panel 2 of the figure separates the two: on the
+  training rows, permutation still credits <code>fnlwgt</code> (0.0313, rank
+  6), because the trees memorised it there. Only rows the model never saw say
+  it is worth nothing.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; importance earned on the training rows</span>
+    Impurity importance measures how much a tree <em>used</em> a column to fit
+    its training rows, not how much the predictions on new rows depend on it.
+    It is biased towards columns with many distinct values, and it exists only
+    for trees.
+  </div>
+</section>
+
+
+
+<!-- 15 -->
+<section data-menu-title="PDP and ICE">
+  <h2>How does the prediction change with age?</h2>
+  <div class="cols">
+    <div class="panel panel-fix">
+      <span class="panel-title">ICE &mdash; one applicant&rsquo;s curve</span>
+      Take one applicant. Keep every answer they gave and change only their
+      age: 20, 22, &hellip; 80. Ask the model each time. The predictions,
+      joined, are that applicant&rsquo;s curve: <em>individual conditional
+      expectation</em>.
+    </div>
+    <div class="panel">
+      <span class="panel-title">Partial dependence &mdash; the average curve</span>
+      Draw the ICE curve of every applicant. At each age, average their
+      predictions. One curve: what the model predicts, on average, if
+      everyone had that age.
+    </div>
+  </div>
+  <div class="panel panel-when">
+    <span class="panel-title">What each one tells you</span>
+    The partial dependence gives the overall shape of the effect in one line.
+    The ICE curves show whether everyone follows that shape &mdash; and
+    sometimes nobody does.
+  </div>
+  <aside class="notes">Importance told us how much the model uses a column; it does not tell
+  us how the prediction moves when the column changes. Does the probability go
+  up with age? Steadily? For everyone? The simplest way to find out: take one
+  applicant, keep everything they told us &mdash; job, education, marriage
+  &mdash; change only their age, and ask the model again. Age 20, ask; 22, ask;
+  all the way to 80. Join the answers: what the model would say about this
+  person at every age. That is an ICE curve, one per person. Do it for
+  everyone and, at each age, average the curves: that single curve is the
+  partial dependence.</aside>
+</section>
+
+<section data-menu-title="A toy model">
+  <h2>A toy model, four applicants</h2>
+  <div class="panel panel-math">
+    <span class="panel-title">The model, written by hand</span>
+    Not married: 0.10 at any age. Married: 0.10 at age 20, rising by 0.10
+    every ten years.
+  </div>
+  <table class="smaller">
+    <tr><th>Applicant</th><th class="num">Age</th><th>Married</th><th class="num">Own prediction</th><th class="num">ICE at 20</th><th class="num">at 40</th><th class="num">at 60</th></tr>
+    <tr><td>A</td><td class="num">30</td><td>yes</td><td class="num">0.20</td><td class="num">0.10</td><td class="num">0.30</td><td class="num">0.50</td></tr>
+    <tr><td>B</td><td class="num">55</td><td>yes</td><td class="num">0.45</td><td class="num">0.10</td><td class="num">0.30</td><td class="num">0.50</td></tr>
+    <tr><td>C</td><td class="num">35</td><td>no</td><td class="num">0.10</td><td class="num">0.10</td><td class="num">0.10</td><td class="num">0.10</td></tr>
+    <tr><td>D</td><td class="num">60</td><td>no</td><td class="num">0.10</td><td class="num">0.10</td><td class="num">0.10</td><td class="num">0.10</td></tr>
+    <tr class="hit"><td>Partial dependence (mean)</td><td></td><td></td><td></td><td class="num">0.10</td><td class="num">0.20</td><td class="num">0.30</td></tr>
+  </table>
+  <p class="small">A&rsquo;s curve: set A&rsquo;s age to 20, 40, 60, keep
+  &ldquo;married&rdquo;, ask the model. A&rsquo;s real age only marks where A
+  sits on the curve.</p>
+  <aside class="notes">Before the real data, a model so simple we can check everything by
+  hand. Not married: 0.10 whatever the age. Married: 0.10 at 20, up by 0.10
+  every ten years &mdash; 0.30 at 40, 0.50 at 60. A and B are married, C and D
+  are not. A is 30, so A&rsquo;s own prediction is 0.20. To draw A&rsquo;s
+  curve, pretend A is 20: 0.10; 40: 0.30; 60: 0.50. We kept
+  &ldquo;married&rdquo; and changed only the age; A&rsquo;s real age only says
+  where A sits on the curve. B gets the same curve; C and D a flat line at
+  0.10. Partial dependence: average each column. At 20 everyone has 0.10; at
+  40 two have 0.30 and two 0.10, so 0.20; at 60 two have 0.50 and two 0.10, so
+  0.30. Ask the room: according to the partial dependence, what happens
+  between 20 and 60? (Up by 0.20.)</aside>
+</section>
+
+<section class="figslide" data-menu-title="◆ The toy, drawn">
+  <h2>The average rises at a rate nobody has</h2>
+  <figure class="fig fig-inset">
+    <img src="../assets/figures/xai10-toy-ice.svg"
+         alt="Toy ICE curves against age 20 to 60. The married applicants A and B share a green line rising from 0.10 to 0.50; the unmarried C and D share a grey flat line at 0.10. Each applicant's own age is a dot on their line. The partial dependence is a thick blue line from 0.10 to 0.30.">
+  </figure>
+  <div class="cols">
+    <div class="panel panel-fix">
+      <span class="panel-title">Married, A and B</span>
+      From 20 to 60: <strong>+0.40</strong>.
+    </div>
+    <div class="panel">
+      <span class="panel-title">Not married, C and D</span>
+      From 20 to 60: <strong>0.00</strong>.
+    </div>
+    <div class="panel panel-when">
+      <span class="panel-title">Partial dependence</span>
+      From 20 to 60: <strong>+0.20</strong> &mdash; true of no applicant.
+    </div>
+  </div>
+  <aside class="notes">The average rises by 0.20. The married rise by 0.40, twice that; the
+  unmarried do not move. Not one of the four rises by 0.20: the average curve
+  describes nobody. The effect of age depends on another answer, marriage
+  &mdash; an interaction &mdash; and the partial dependence averages two
+  different stories into one that is true of no one. The fix: look at the ICE
+  curves, coloured by what you suspect, here marriage. If asked whether the
+  partial dependence is useless: no, it is a good one-line summary when
+  everyone moves roughly the same way; never show it alone.</aside>
+</section>
+<section data-menu-title="PDP and ICE, defined">
+  <h2>ICE and partial dependence, in general</h2>
+  <div class="eqn-box">
+    $$\operatorname{ICE}_i(v) = f\bigl(v,\ \mathbf{x}^{(i)}_{-j}\bigr),
+      \qquad
+      \operatorname{PD}(v) = \frac{1}{n}\sum_{i=1}^{n}\operatorname{ICE}_i(v)$$
+  </div>
+  <ul class="tight small">
+    <li>$f$: the model; $j$: the column studied (age); $v$: a value on the
+        grid; $\mathbf{x}^{(i)}_{-j}$: every other answer of applicant $i$,
+        kept as given</li>
+    <li>In probabilities, the units of the product rule; on the data, 1,000
+        test applicants, ages 18 to 80</li>
+  </ul>
+  <pre><code class="language-python" data-trim>for k, v in enumerate(grid):
+    Xg = X.copy(); Xg[:, j] = v                   # everyone gets age v
+    ice[:, k] = model.predict_proba(Xg)[:, 1]
+pdp = ice.mean(axis=0)
+  </code></pre>
+</section>
+
+<!-- 16 -->
+<section class="figslide" data-menu-title="◆ PDP and ICE">
+  <h2>The same on the data: age, for 1,000 applicants</h2>
+  <figure class="fig fig-inset">
+    <img src="../assets/figures/xai10-pdp-ice.svg"
+         alt="Thin ICE curves of the probability against age, green for married applicants and grey for the rest, with the partial dependence as a thick blue line rising from near zero at 20 to about 0.27 at 50. The dashed mean of the married rises to about 0.49; the dashed mean of everyone else stays under 0.1.">
+  </figure>
+  <div class="cols">
+    <div class="panel panel-fix">
+      <span class="panel-title">Thin &middot; ICE</span>
+      One per applicant: green married, grey the rest.
+    </div>
+    <div class="panel">
+      <span class="panel-title">Dashed &middot; two groups</span>
+      The mean curve of the married and of everyone else.
+    </div>
+    <div class="panel panel-when">
+      <span class="panel-title">Thick &middot; partial dependence</span>
+      The mean of all the curves: like nobody.
+    </div>
+  </div>
+  <aside class="notes">That was a model written by hand; now the real one, on 1,000 real
+  applicants. Each thin line is one person&rsquo;s curve: green married, grey
+  not. The green climb, the grey stay low, and the thick blue line, the
+  partial dependence, sits in between &mdash; as in the toy. Same lesson, real
+  model.</aside>
+</section>
+
+<!-- 17 -->
+<section data-menu-title="What a PDP hides">
+  <h2>What a partial dependence hides: an interaction</h2>
+  <table class="smaller">
+    <tr><th class="num">Age</th><th class="num">Partial dependence</th><th class="num">Married</th><th class="num">Everyone else</th></tr>
+    <tr><td class="num">20</td><td class="num">0.015</td><td class="num">0.030</td><td class="num">0.003</td></tr>
+    <tr><td class="num">30</td><td class="num">0.203</td><td class="num">0.385</td><td class="num">0.055</td></tr>
+    <tr><td class="num">50</td><td class="num">0.270</td><td class="num">0.490</td><td class="num">0.092</td></tr>
+    <tr><td class="num">70</td><td class="num">0.218</td><td class="num">0.367</td><td class="num">0.097</td></tr>
+  </table>
+  <p class="small">The partial dependence is the weighted average of the two
+  groups, with the share married, 0.447, as the weight. From 20 to 50 the
+  married go from 0.030 to 0.490, everyone else from 0.003 to 0.092: the
+  effect of age depends on another answer, and an average of the two is
+  neither.</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; an average over an interaction</span>
+    Where the effect of one column depends on another, the partial dependence
+    averages curves of different shapes, and can even average a rise and a
+    fall into a flat line. Draw the ICE curves; colour them by the suspect.
+  </div>
+</section>
+
+
+<!-- 19 -->
+<section data-menu-title="One applicant asks why">
+  <h2>One applicant asks why</h2>
+  <p class="small">The rule for choosing him: of the 826 test applicants who
+  earn above 50K and were refused, the one at the median probability. A
+  typical refusal, not an extreme one.</p>
+  <div class="cols">
+    <div>
+      <table class="smaller">
+        <tr><th>Answer</th><th>Value</th></tr>
+        <tr><td>age</td><td>50</td></tr>
+        <tr><td>marital status, relationship</td><td>married, husband</td></tr>
+        <tr><td>education</td><td>HS-grad, 9 years</td></tr>
+        <tr><td>occupation, work class</td><td><em>left blank</em></td></tr>
+        <tr><td>capital gain, loss</td><td>none</td></tr>
+        <tr><td>hours, country</td><td>40, United States</td></tr>
+      </table>
+    </div>
+    <div>
+      <p class="lead">Probability <strong>0.2880</strong>, under the
+      threshold of 0.5.</p>
+      <p class="small">He was refused instant pre-approval, and the law
+      entitles him to ask what in his answers counted against him.</p>
+    </div>
+  </div>
+  <p class="small fix">We need a number per answer that says how much it moved
+  his probability &mdash; and that numbers add up to the probability itself.</p>
+</section>
+
+<!-- 20 -->
+<section data-menu-title="The Shapley value">
+  <h2>The mathematics: the Shapley value of one prediction</h2>
+  <p class="small">Features are players; a <strong>coalition</strong> $S$ is
+  the set whose answers are the applicant&rsquo;s. The others are filled in
+  from a background sample $B$ of applicants, and the model averaged:</p>
+  <div class="eqn-box">
+    $$v(S) \;=\; \frac{1}{|B|}\sum_{\mathbf{b}\in B} f\bigl(\mathbf{x}_S,\ \mathbf{b}_{\bar S}\bigr)$$
+    $$\phi_i \;=\; \sum_{S \subseteq N\setminus\{i\}} \frac{|S|!\,(M-|S|-1)!}{M!}\,\bigl(v(S\cup\{i\}) - v(S)\bigr)$$
+  </div>
+  <ul class="tight small">
+    <li>$v(S \cup \{i\}) - v(S)$: what revealing answer $i$ adds to a coalition
+        that already holds $S$</li>
+    <li>The weight is the share of the $M!$ orders of revealing the answers
+        in which exactly $S$ comes before $i$: $\phi_i$ is the marginal
+        contribution averaged over every order</li>
+  </ul>
+</section>
+
+<!-- 21 -->
+<section data-menu-title="Efficiency">
+  <h2>Efficiency, and the three other properties</h2>
+  <div class="eqn-box">
+    $$\sum_{i=1}^{M}\phi_i \;=\; v(N) - v(\varnothing) \;=\; f(\mathbf{x}) \;-\; \frac{1}{|B|}\sum_{\mathbf{b}\in B} f(\mathbf{b})$$
+  </div>
+  <table class="smaller">
+    <tr><th>Property</th><th>Statement</th></tr>
+    <tr class="hit"><td><strong>Efficiency</strong></td><td>they add up to the prediction minus the baseline: in every order the contributions telescope</td></tr>
+    <tr><td>Symmetry</td><td>answers that add the same to every coalition get the same value</td></tr>
+    <tr><td>Dummy</td><td>an answer that adds nothing to any coalition gets zero</td></tr>
+    <tr><td>Additivity</td><td>the values for $f + g$ are those for $f$ plus those for $g$</td></tr>
+  </table>
+  <p class="small">The only attribution with all four. Efficiency is proved in
+  the notes, and examinable.</p>
+</section>
+
+<!-- 22 -->
+<section data-menu-title="Computed exactly">
+  <h2>Computed exactly: every coalition, once</h2>
+  <pre><code class="language-python" data-trim data-line-numbers="1-9|1-2|3-4|6-9">masks = np.array(list(itertools.product([False, True], repeat=M)))  # 2^M
+rows  = np.where(masks[:, None, :], x, background[None])            # 2^M x |B| x M
+v     = predict(rows.reshape(-1, M)).reshape(len(masks), -1).mean(1)
+index, size = masks @ bit, masks.sum(1)                             # S -> row of v
+for i in range(M):
+    without = ~masks[:, i]                                          # every S without i
+    phi[i] = (WEIGHT[size[without]]
+              * (v[index[without] + bit[i]] - v[without])).sum()
+  </code></pre>
+  <ul class="tight small">
+    <li>$M = 12$ answers: 4,096 coalitions &times; 200 background applicants =
+        819,200 predictions, in one call</li>
+    <li>Checked first on a linear function, where the answer is known:
+        $\phi_i = w_i\,(x_i - \bar b_i)$</li>
+    <li>The cost doubles with every feature. At fifty, exact enumeration is
+        out of reach: sampling estimators, and exact algorithms for trees,
+        are what the <code>shap</code> library implements</li>
+  </ul>
+</section>
+
+<!-- 23 -->
+<section class="figslide" data-menu-title="◆ His explanation">
+  <h2>His explanation</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/xai10-shapley.svg"
+         alt="A waterfall of the twelve Shapley values from the baseline 0.2568 to the applicant's probability 0.2880, with the threshold at 0.5 to the right. Marital status adds 0.0834 and age 0.0676; occupation left blank subtracts 0.0564, high-school education 0.0428, no capital gain 0.0334.">
+  </figure>
+  <p class="takeaway">From the background&rsquo;s mean, 0.2568, to his
+  0.2880: the twelve values add up to 0.0312, exactly the difference.</p>
+</section>
+
+<!-- 24 -->
+<section data-menu-title="Reading it">
+  <h2>Reading his explanation</h2>
+  <table class="smaller">
+    <tr><th>Answer</th><th class="num">Value</th><th>Reading</th></tr>
+    <tr><td>married</td><td class="num">+0.0834</td><td>the largest push up</td></tr>
+    <tr><td>age 50</td><td class="num">+0.0676</td><td>near the top of the age curve</td></tr>
+    <tr class="hit"><td><strong>occupation left blank</strong></td><td class="num fail">&minus;0.0564</td><td><strong>the largest thing held against him</strong></td></tr>
+    <tr><td>HS-grad</td><td class="num">&minus;0.0428</td><td>below the background&rsquo;s education</td></tr>
+    <tr><td>no capital gain</td><td class="num">&minus;0.0334</td><td>most applicants have none; the few with some score high</td></tr>
+    <tr><td><code>fnlwgt</code></td><td class="num">&minus;0.0052</td><td>a survey weight, moving one person&rsquo;s score</td></tr>
+  </table>
+  <p class="small">A blank on the form: 0.0559 of the fit rows have one, and
+  0.0947 of them earn above 50K against 0.2478 of the rest. The model learned
+  that a blank predicts a lower income. Whether a blank <em>should</em> cost
+  an applicant anything is the bank&rsquo;s decision &mdash; and no global
+  summary would have put the question on the table.</p>
+</section>
+
+<!-- 25 -->
+<section data-menu-title="Local and global">
+  <h2>Local values, averaged: the global picture again</h2>
+  <table class="smaller">
+    <tr><th>Over 40 test applicants</th><th class="num">Mean |Shapley|</th><th class="num">Rank</th><th class="num">Permutation rank</th></tr>
+    <tr><td>marital status</td><td class="num">0.0823</td><td class="num">1</td><td class="num">2</td></tr>
+    <tr><td>age</td><td class="num">0.0550</td><td class="num">2</td><td class="num">3</td></tr>
+    <tr><td>capital gain</td><td class="num">0.0498</td><td class="num">3</td><td class="num">1</td></tr>
+    <tr><td>occupation</td><td class="num">0.0396</td><td class="num">4</td><td class="num">5</td></tr>
+    <tr><td>relationship</td><td class="num">0.0355</td><td class="num">5</td><td class="num">8</td></tr>
+    <tr><td>education</td><td class="num">0.0295</td><td class="num">6</td><td class="num">4</td></tr>
+  </table>
+  <p class="small">The two rankings agree at the top: averaged, many local
+  answers give back a global one.</p>
+  <p class="small muted">Capital gain is third on average and moved our
+  applicant by &minus;0.0334: local and global answer different questions.</p>
+</section>
+
+<!-- 26 -->
+<section data-menu-title="Failure conditions">
+  <h2>What each explanation cannot do, in one place</h2>
+  <table class="smaller">
+    <tr><th>Method</th><th>Fails when</th><th>Seen here</th></tr>
+    <tr><td>Impurity importance</td><td>read on training rows; a column has many distinct values</td><td><code>fnlwgt</code> first, worth nothing</td></tr>
+    <tr><td>Partial dependence</td><td>an interaction</td><td>married against the rest</td></tr>
+    <tr><td>Shapley values</td><td>the background is a choice; filled-in rows can be impossible; the cost doubles per feature</td><td>the baseline is the background&rsquo;s mean, 0.2568</td></tr>
+    <tr><td>All of them</td><td>read as causes</td><td>they describe the function, not the person</td></tr>
+  </table>
+  <p class="small fix">Use held-out rows, draw the ICE
+  curves, state the background &mdash; and never write
+  &ldquo;because&rdquo; about the world.</p>
+</section>
+
+<!-- 27 -->
+<section data-menu-title="Slices">
+  <h2>The audit: the same metrics, per slice</h2>
+  <table class="smaller">
+    <tr><th>Test rows, threshold 0.5</th><th class="num">n</th><th class="num">Above 50K</th><th class="num">Base rate</th><th class="num">Accuracy</th><th class="num">TPR</th><th class="num">FPR</th></tr>
+    <tr><td>men</td><td class="num">6530</td><td class="num">1984</td><td class="num">0.3038</td><td class="num">0.8398</td><td class="num">0.6613</td><td class="num">0.0823</td></tr>
+    <tr><td>women</td><td class="num">3239</td><td class="num">354</td><td class="num">0.1093</td><td class="num">0.9352</td><td class="num fail">0.5650</td><td class="num">0.0194</td></tr>
+    <tr><td>age under 25</td><td class="num">1678</td><td class="num">13</td><td class="num">0.0077</td><td class="num">0.9940</td><td class="num">0.3846</td><td class="num">0.0012</td></tr>
+    <tr><td>age 25&ndash;44</td><td class="num">4962</td><td class="num">1225</td><td class="num">0.2469</td><td class="num">0.8587</td><td class="num">0.6163</td><td class="num">0.0618</td></tr>
+    <tr><td>age 45&ndash;64</td><td class="num">2684</td><td class="num">1003</td><td class="num">0.3737</td><td class="num">0.8141</td><td class="num">0.6899</td><td class="num">0.1118</td></tr>
+    <tr><td>age 65 and over</td><td class="num">445</td><td class="num">97</td><td class="num">0.2180</td><td class="num">0.8966</td><td class="num">0.6186</td><td class="num">0.0259</td></tr>
+  </table>
+  <p class="small">TPR: of the applicants who earn above 50K, the share
+  pre-approved. FPR: of those who do not, the share pre-approved.</p>
+</section>
+
+<!-- 28 -->
+<section data-menu-title="Reading slices">
+  <h2>Reading the slices: accuracy points the wrong way</h2>
+  <ul class="tight small">
+    <li>The model is <strong>more accurate for women</strong>, 0.9352 against
+        0.8398 &mdash; and a qualified woman is pre-approved <strong>less
+        often</strong>, 0.5650 against 0.6613. With a base rate of 0.1093,
+        refusing is usually right, and accuracy rewards it.</li>
+    <li>Under 25: accuracy 0.9940, and a TPR of 0.3846 that is five people out
+        of 13. A rate on thirteen people is an anecdote with a decimal
+        point.</li>
+  </ul>
+  <table class="smaller">
+    <tr><th>Test rows</th><th class="num">n</th><th class="num">Above 50K</th><th class="num">TPR</th><th class="num">AUC</th></tr>
+    <tr><td>race: White</td><td class="num">8347</td><td class="num">2125</td><td class="num">0.6527</td><td class="num">0.9214</td></tr>
+    <tr><td>race: Black</td><td class="num">956</td><td class="num">121</td><td class="num">0.5702</td><td class="num">0.9576</td></tr>
+    <tr><td>race: Asian-Pac-Islander</td><td class="num">317</td><td class="num">76</td><td class="num">0.6316</td><td class="num">0.8897</td></tr>
+    <tr><td>race: Other</td><td class="num">71</td><td class="num">6</td><td class="num">0.5000</td><td class="num">0.9590</td></tr>
+  </table>
+  <p class="small fix">Read a slice by a rate that conditions on the truth
+  &mdash; TPR, FPR &mdash; and always beside its count.</p>
+</section>
+
+<!-- 29 -->
+<section data-menu-title="Three criteria">
+  <h2>Three fairness criteria, each reasonable</h2>
+  <p class="small">$\hat Y$ the decision, $Y$ the truth, $A$ the group, $s$ the
+  model&rsquo;s probability:</p>
+  <table class="smaller">
+    <tr><th>Criterion</th><th>Requires, for every group $a$</th><th>In words</th></tr>
+    <tr><td><strong>Demographic parity</strong></td><td>$P(\hat Y = 1 \mid A = a)$ equal</td><td>the same share pre-approved</td></tr>
+    <tr><td><strong>Equal opportunity</strong></td><td>$P(\hat Y = 1 \mid Y = 1, A = a)$ equal</td><td>the same TPR: a qualified applicant&rsquo;s chance does not depend on the group</td></tr>
+    <tr><td><strong>Calibration within groups</strong></td><td>$P(Y = 1 \mid s, A = a) = s$</td><td>a probability means the same in every group; at a threshold, its footprint is equal PPV</td></tr>
+  </table>
+  <p class="small">PPV, from Lecture 3&rsquo;s precision: of those pre-approved,
+  the share who earn above 50K.</p>
+  <p class="small muted">Each one has been written into a law, a policy or a
+  court judgment somewhere. Each one protects a different person.</p>
+</section>
+
+<!-- 30 -->
+<section data-menu-title="Measured">
+  <h2>Measured on the shipped model</h2>
+  <table>
+    <tr><th>Threshold 0.5, test rows</th><th class="num">Men</th><th class="num">Women</th><th>Criterion</th></tr>
+    <tr><td>Base rate</td><td class="num">0.3038</td><td class="num">0.1093</td><td></td></tr>
+    <tr><td>Share pre-approved</td><td class="num">0.2582</td><td class="num">0.0790</td><td class="fail">parity fails: ratio 0.3061</td></tr>
+    <tr><td>TPR</td><td class="num">0.6613</td><td class="num">0.5650</td><td class="fail">equal opportunity fails: gap 0.0963</td></tr>
+    <tr><td>PPV</td><td class="num">0.7782</td><td class="num">0.7812</td><td class="hit">predictive parity holds</td></tr>
+    <tr><td>FPR</td><td class="num">0.0823</td><td class="num">0.0194</td><td></td></tr>
+  </table>
+  <p class="small">One threshold, one model, three verdicts. A pre-approval
+  means the same thing for a man and for a woman; a qualified woman gets one
+  less often.</p>
+</section>
+
+<!-- 31 -->
+<section class="figslide" data-menu-title="◆ Scores">
+  <h2>Why: qualified women score lower</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/xai10-scores.svg"
+         alt="Histograms of the model's probability for test applicants who earn above 50K: men shaded, women outlined in red. The women's distribution has more mass at low probabilities. A solid line marks the threshold at 0.5, and a dashed red line the women's equal-opportunity threshold at 0.3846.">
+  </figure>
+  <p class="takeaway">The model sees fewer of the answers that go with high
+  incomes among qualified women, so more of them sit below 0.5. A threshold
+  at 0.3846 would give them the men&rsquo;s TPR on the validation rows.</p>
+</section>
+
+<!-- 32 -->
+<section class="figslide" data-menu-title="◆ Calibration">
+  <h2>Calibrated within both groups</h2>
+  <figure class="fig fig-wide">
+    <img src="../assets/figures/xai10-calibration.svg"
+         alt="A reliability diagram with ten bins for each group: the share above 50K against the mean probability, men in blue circles and women in red squares, both close to the diagonal; the women's middle bins, with few people, scatter more.">
+  </figure>
+  <p class="takeaway">Men: mean probability 0.3019, base rate 0.3038.
+  Women: 0.1165 and 0.1093. Calibration error 0.0146 and 0.0137 &mdash; a
+  probability means the same thing in both groups.</p>
+</section>
+
+<!-- 33 -->
+<section data-menu-title="They cannot all hold">
+  <h2>When base rates differ, they cannot all hold</h2>
+  <p class="small">For one group with base rate $p$, count its true positives
+  twice &mdash; as a share of those above 50K, and of those selected:</p>
+  <div class="eqn-box">
+    $$\text{TPR} \;=\; \frac{\text{selected}\times\text{PPV}}{p}$$
+  </div>
+  <ul class="tight small">
+    <li>Hold any two of the three equal across groups, and the identity fixes
+        the third by the ratio of the base rates</li>
+    <li>Equal PPV and equal TPR force the selection ratio to
+        $p_{\text{women}}/p_{\text{men}}$ = 0.3598. Measured, with PPV equal
+        and TPR not: 0.3061. Parity is out of reach for any rule that keeps
+        the other two</li>
+    <li>Only equal base rates escape, and no model changes a base rate</li>
+  </ul>
+  <div class="panel panel-math">
+    <span class="panel-title">What the result buys you</span>
+    No model satisfies every criterion. Choosing which to hold is a decision
+    about whom to protect, and it belongs to whoever is accountable for the
+    product.
+  </div>
+</section>
+
+<!-- 34 -->
+<section data-menu-title="Proxies">
+  <h2>Dropping the column does not drop the information</h2>
+  <p class="small">Fit the same model class with <strong>sex as the
+  target</strong>, from the answers the bank&rsquo;s model sees:</p>
+  <table>
+    <tr><th>Predicting sex from</th><th class="num">Test AUC</th></tr>
+    <tr class="hit"><td>the twelve answers</td><td class="num">0.9327</td></tr>
+    <tr><td>without <code>relationship</code></td><td class="num">0.8682</td></tr>
+    <tr><td>without <code>relationship</code> and <code>marital-status</code></td><td class="num">0.8030</td></tr>
+  </table>
+  <ul class="tight small">
+    <li><code>relationship</code> holds Husband and Wife: it names the sex of
+        every married applicant. Hours and occupation do much of the rest.</li>
+    <li>No single column carries it; removing columns lowers the AUC and
+        never takes it to 0.5.</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Failure condition &mdash; fairness through unawareness</span>
+    A model that never sees an attribute can still use it through its
+    proxies. And a bank that never records the attribute cannot even measure
+    whether it does: keep it, under separate access, for the audit.
+  </div>
+</section>
+
+<!-- 35 -->
+<section data-menu-title="A threshold per group">
+  <h2>Moving the threshold for one group</h2>
+  <p class="small">Men stay at 0.5; the women&rsquo;s threshold is chosen on
+  the validation rows, and the test rows read once:</p>
+  <table class="smaller">
+    <tr><th>Test rows</th><th class="num">One threshold</th><th class="num">Equal opportunity</th><th class="num">Demographic parity</th></tr>
+    <tr><td>Women&rsquo;s threshold</td><td class="num">0.5000</td><td class="num">0.3846</td><td class="num">0.0783</td></tr>
+    <tr><td>Women pre-approved</td><td class="num">0.0790</td><td class="num">0.0985</td><td class="num">0.2658</td></tr>
+    <tr><td>TPR, women (men 0.6613)</td><td class="num">0.5650</td><td class="num hit">0.6525</td><td class="num">0.9040</td></tr>
+    <tr><td>PPV, women (men 0.7782)</td><td class="num">0.7812</td><td class="num">0.7241</td><td class="num fail">0.3717</td></tr>
+    <tr><td>FPR, women (men 0.0823)</td><td class="num">0.0194</td><td class="num">0.0305</td><td class="num">0.1875</td></tr>
+    <tr><td>Accuracy, everyone</td><td class="num">0.8714</td><td class="num">0.8713</td><td class="num">0.8341</td></tr>
+  </table>
+  <p class="small">Equal opportunity: 31 more qualified women pre-approved, and
+  32 more who do not qualify. Demographic parity: 120 more qualified, and 485
+  more who do not.</p>
+</section>
+
+<!-- 36 -->
+<section data-menu-title="A policy decision">
+  <h2>A threshold per group is a policy decision</h2>
+  <ul class="tight small">
+    <li><strong>It uses the attribute at the moment of decision.</strong> The
+        model never saw sex; the rule now reads it for every applicant.
+        Anti-discrimination law may forbid exactly that in credit &mdash; a
+        question for the bank&rsquo;s legal and policy owners, not for the
+        data team.</li>
+    <li><strong>Every option has a price, and the table states it.</strong>
+        Equal opportunity costs almost no accuracy and lowers the women&rsquo;s
+        PPV; parity costs a great deal of both.</li>
+    <li><strong>There are remedies upstream.</strong> Better answers on the
+        form, the blank occupation fixed, a manual review for everyone in a band
+        below the threshold &mdash; none of which needs the attribute at
+        decision time.</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The data team&rsquo;s job</span>
+    Measure every criterion, per group, with counts; show what each remedy
+    costs and buys; write it down. The choice is made by the people
+    accountable for it, and it is recorded with its reasons.
+  </div>
+</section>
+
+<!-- 37 -->
+<section data-menu-title="Look out for · explaining">
+  <h2>In practice, look out for &mdash; when explaining</h2>
+  <table class="smaller">
+    <tr><th>Situation</th><th>What goes wrong</th><th>Do this</th></tr>
+    <tr><td>The library&rsquo;s importance chart</td><td>impurity, on training rows: an identifier or a weight comes first</td><td>permutation importance on held-out rows, with its spread</td></tr>
+    <tr><td>One partial dependence curve</td><td>it averages curves of different shapes</td><td>draw the ICE curves, coloured by the suspect</td></tr>
+    <tr><td>A Shapley value quoted alone</td><td>its background was never stated</td><td>state the background and the baseline; check that the values add up</td></tr>
+    <tr><td>An explanation in a customer letter</td><td>it cites a proxy, or something nobody can change</td><td>review the reasons before they are sent; map them to plain language</td></tr>
+  </table>
+</section>
+
+<!-- 38 -->
+<section data-menu-title="Look out for · auditing">
+  <h2>In practice, look out for &mdash; when auditing</h2>
+  <table class="smaller">
+    <tr><th>Situation</th><th>What goes wrong</th><th>Do this</th></tr>
+    <tr><td>Accuracy per group</td><td>the group with the lower base rate looks best served</td><td>TPR and FPR per group, beside the base rate</td></tr>
+    <tr><td>A small slice</td><td>a rate on a dozen people swings by chance</td><td>print the count; pool, or wait for more data, before acting</td></tr>
+    <tr><td>&ldquo;We don&rsquo;t use sex&rdquo;</td><td>proxies carry it; nobody can check</td><td>keep the attribute under separate access, for the audit</td></tr>
+    <tr><td>One fairness criterion, passed</td><td>the others fail unseen</td><td>report all three; say which one is held, and why</td></tr>
+    <tr><td>Thresholds tuned on the test rows</td><td>the reported equality was chosen, not measured</td><td>choose on validation, read the test rows once</td></tr>
+    <tr><td>An audit done once</td><td>the population drifts; a retrained model is a new model</td><td>re-audit on every retrain, and monitor slice metrics in production</td></tr>
+  </table>
+</section>
+
+<!-- 39 -->
+<section data-menu-title="Model card">
+  <h2>A model card, in one slide</h2>
+  <table class="smaller">
+    <tr><th>Section</th><th>For the pre-approval model</th></tr>
+    <tr><td>Intended use</td><td>instant pre-approval for the premium card; a refusal sends the applicant to a manual check, never to a final no</td></tr>
+    <tr><td>Not for</td><td>credit limits, pricing, any decision without a manual path</td></tr>
+    <tr><td>Data</td><td>census-style answers, 29,304 rows to fit; sex and race excluded from inputs and kept for audit</td></tr>
+    <tr><td>Performance</td><td>test AUC 0.9248; accuracy 0.8714 against 0.7607 for refusing everyone</td></tr>
+    <tr><td>By group</td><td>TPR 0.6613 men, 0.5650 women; PPV 0.7782 and 0.7812; calibrated in both</td></tr>
+    <tr><td>Known limits</td><td>proxies for sex (AUC 0.9327); a blank occupation lowers the score; slices under a hundred positives not assessed</td></tr>
+    <tr><td>Explanations</td><td>permutation importance on held-out rows; Shapley values against a stated background of 200 fit rows</td></tr>
+    <tr><td>Decision owner</td><td>which fairness criterion is held, and the threshold rule: named, dated, with reasons</td></tr>
+  </table>
+</section>
+
+<!-- 40 -->
+<section class="notebook-slide" data-menu-title="★ The notebook">
+  <h2>The notebook for this lecture</h2>
+  <p class="colab-line">
+    <a class="colab-btn" target="_blank"
+       href="https://colab.research.google.com/github/fabsilvestri/AIML-Course/blob/main/notebooks/lecture-10.ipynb">Open Lecture 10 in Colab</a>
+  </p>
+  <ul class="tight small">
+    <li><strong>Runs on free CPU</strong>, top to bottom; it downloads the
+        census data itself, and the numbers on these slides are its run</li>
+    <li>The bank&rsquo;s model; the forest&rsquo;s three importances;
+        permutation importance by hand</li>
+    <li>ICE and partial dependence by hand, on a toy model and on the data</li>
+    <li>Shapley values by full enumeration, checked on a linear function and
+        by efficiency; forty applicants against the permutation ranking</li>
+    <li>The audit: slices, three criteria and the identity, calibration per
+        group, proxies, three threshold policies</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">What to change</span>
+    In the Shapley section, draw the background from the refused applicants
+    instead of the fit rows. The baseline drops, every value changes, and they
+    still add up to the same probability minus the new baseline &mdash; the
+    background is part of the explanation.
+  </div>
+</section>
+
+<!-- 41 -->
+<section data-menu-title="Design · The task">
+  <p class="kicker">Design exercise &middot; in the manner of an ML system-design interview</p>
+  <h2>The task: audit a credit-limit model before it is filed</h2>
+  <div class="panel">
+    <span class="panel-title">The brief</span>
+    A digital bank operating across the European Union sells a credit card
+    inside its app. The feature is the model that decides, at application,
+    whether to offer the card and with what <strong>credit limit</strong>,
+    and later whether to raise it. The users are applicants and cardholders;
+    the business measures losses from defaults, the share of applicants who
+    take the card, and the revenue a limit earns. Under the EU AI Act a
+    creditworthiness model is a <strong>high-risk system</strong>: before it
+    ships, the bank must document it, examine its data for bias, and put
+    human oversight and monitoring in place.
+  </div>
+  <ul class="tight small">
+    <li><strong>Given:</strong> application answers, the bank&rsquo;s own
+        account history, credit-bureau data, and repayment outcomes for the
+        cards it issued</li>
+    <li><strong>Consumers of the output:</strong> the app, the credit
+        officers who review cases, the letters that tell an applicant why</li>
+    <li><strong>Regulators:</strong> the financial supervisor, the data
+        protection authority, and anti-discrimination law</li>
+  </ul>
+</section>
+
+<!-- 42 -->
+<section data-menu-title="Design · 1 Frame it">
+  <h2>Step 1 &mdash; Frame the audit: decisions, harms, groups</h2>
+  <ul class="tight small">
+    <li>Name the decisions the model makes &mdash; offer or refuse, the limit,
+        each raise &mdash; and the harm each error does: a good customer
+        refused or kept at a low limit; a customer given more credit than
+        they can repay</li>
+    <li>Name the groups the audit will read before any number is computed:
+        the protected attributes the law lists, age bands, regions, new
+        customers against existing ones</li>
+    <li>Write the metrics per harm: among customers who would repay, the
+        share offered the card; among those who default, the share given a
+        high limit</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    Auditing the overall score. A model can rank well on everyone and fail
+    one group, and an average reported to the regulator hides exactly that.
+    Decide the groups and the harms first, so that the numbers cannot be
+    chosen to pass.
+  </div>
+</section>
+
+<!-- 43 -->
+<section data-menu-title="Design · 2 The attributes">
+  <h2>Step 2 &mdash; The attributes the audit needs</h2>
+  <ul class="tight small">
+    <li>The model takes no protected attribute as input. The audit needs
+        them anyway, to measure outcomes per group</li>
+    <li>Collect them with a legal basis and the applicant&rsquo;s knowledge,
+        store them apart from the model&rsquo;s features, with access
+        limited to the audit team and every read logged</li>
+    <li>Measure the proxies: fit a model that predicts each attribute from
+        the features, and list the features that carry it</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    &ldquo;We do not collect it, so we cannot discriminate.&rdquo; Postcode,
+    employer, household answers and spending patterns carry the attribute, the
+    model uses it through them, and without the attribute nobody can show
+    whether it does. Keep it, guarded, for the audit.
+  </div>
+</section>
+
+<!-- 44 -->
+<section data-menu-title="Design · 3 Never labelled">
+  <h2>Step 3 &mdash; Who was never labelled</h2>
+  <ul class="tight small">
+    <li>Repayment is observed only for applicants the old policy approved.
+        Everyone it refused has no outcome, and they are not a random sample</li>
+    <li>Keep a small randomised approval slice, within risk limits, so that
+        some outcomes exist where the old policy said no; document the rest
+        as an assumption</li>
+    <li>Audit refusals on the applicants with outcomes, and say plainly which
+        groups the outcomes cover thinly</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    Auditing only the approved. A group the old policy refused often has few
+    labels, so its error rates rest on a handful of people &mdash; or on none
+    &mdash; and the audit reports the model fair where it simply cannot see.
+  </div>
+</section>
+
+<!-- 45 -->
+<section data-menu-title="Design · 4 Global">
+  <h2>Step 4 &mdash; What the model relies on</h2>
+  <ul class="tight small">
+    <li>Permutation importance on held-out applicants, with its spread over
+        repeats, for the technical documentation</li>
+    <li>A column of random numbers added as a control: any feature that
+        scores no better than it is reported as unused</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    Filing the library&rsquo;s impurity chart. An application identifier, a
+    timestamp or a sampling weight with thousands of distinct values comes
+    first, the supervisor reads it as what drives the credit decision, and
+    the bank has documented a model it does not have.
+  </div>
+</section>
+
+<!-- 46 -->
+<section data-menu-title="Design · 5 Shortcuts">
+  <h2>Step 5 &mdash; Shapes, and shortcuts</h2>
+  <ul class="tight small">
+    <li>ICE curves for every important feature, coloured by the suspected
+        interaction; the partial dependence only beside them</li>
+    <li>Look for shortcuts: a feature that encodes how the data were
+        collected &mdash; the branch, the channel, the device &mdash; rather
+        than whether the customer repays</li>
+    <li>Review every important feature with the credit officers: would they
+        defend its effect in front of a customer?</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    One partial dependence curve filed alone. It averages customers whose
+    curves have different shapes, and the shape the bank documents is one the
+    model shows nobody real.
+  </div>
+</section>
+
+<!-- 47 -->
+<section data-menu-title="Design · 6 Reasons">
+  <h2>Step 6 &mdash; Reasons for one applicant</h2>
+  <ul class="tight small">
+    <li>Shapley values for every refusal and every reduced limit, against a
+        stated and versioned background &mdash; for instance the customers
+        approved last quarter</li>
+    <li>The few largest negative values become plain-language reasons in the
+        letter, from a reviewed list; the values themselves go to the
+        credit officer who reviews the case</li>
+    <li>The values must add up to the score minus the baseline; that check
+        runs on every letter</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    A reason that is a proxy, or that nobody can act on. &ldquo;Household
+    status&rdquo; in a refusal letter tells the applicant the bank weighed
+    something close to a protected attribute, and invites the complaint;
+    reasons are reviewed before they can be sent, and a proxy is a finding
+    for step seven, not a reason.
+  </div>
+</section>
+
+<!-- 48 -->
+<section data-menu-title="Design · 7 By group">
+  <h2>Step 7 &mdash; The audit by group</h2>
+  <ul class="tight small">
+    <li>Per group: the offer rate, the true-positive rate among customers who
+        repay, the false-positive rate among those who default, calibration
+        of the default probability, and the limits granted</li>
+    <li>Every rate with its count and an interval; small groups pooled or
+        flagged, never silently dropped</li>
+    <li>All three fairness criteria reported, with the identity that says
+        they cannot all hold when default rates differ</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    Reporting the one criterion that passes. A model calibrated in every group
+    passes predictive parity and fails equal opportunity whenever the base
+    rates differ, and a report that shows only the first has hidden the
+    finding the supervisor asked for.
+  </div>
+</section>
+
+<!-- 49 -->
+<section data-menu-title="Design · 8 Remedies">
+  <h2>Step 8 &mdash; Remedies, oversight, monitoring</h2>
+  <ul class="tight small">
+    <li>Remedies upstream first: better features, a fixed form, a manual
+        review band below the threshold where most wrongful refusals sit</li>
+    <li>Any rule that reads a protected attribute at decision time goes to the
+        legal and policy owners, and their decision is recorded with its
+        reasons</li>
+    <li>Ship with a model card, logs of every decision and its reasons, credit
+        officers able to overrule with the override logged, and slice metrics
+        monitored in production; re-audit on every retrain</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Pitfall</span>
+    A per-group threshold chosen by the data team. It may be unlawful
+    differential treatment, it was never approved by anyone accountable, and
+    when the regulator asks who decided to treat applicants differently by
+    sex, the answer is a notebook.
+  </div>
+</section>
+
+<!-- 50 -->
+<section data-menu-title="Design · 9 The pitfalls">
+  <h2>Step 9 &mdash; File it: pipeline and pitfalls</h2>
+  <p class="small">Decisions, harms and groups named &rarr; protected
+  attributes kept apart for the audit, proxies measured &rarr; the unlabelled
+  refused accounted for &rarr; held-out permutation importance with a
+    control &rarr; ICE and shortcut review &rarr; reviewed reasons from Shapley
+  values &rarr; every criterion per group, with counts &rarr; remedies decided
+  by their owners &rarr; model card, logs, oversight, monitoring.</p>
+  <table class="smaller">
+    <tr><th>Pitfall</th><th>Address it by</th></tr>
+    <tr><td>The overall score as the audit</td><td>groups and harms named before any number</td></tr>
+    <tr><td>&ldquo;We do not collect it&rdquo;</td><td>attributes kept apart, for the audit; proxies measured</td></tr>
+    <tr><td>Auditing only the approved</td><td>a randomised approval slice; thin groups stated</td></tr>
+    <tr><td>The impurity chart filed</td><td>permutation importance on held-out rows, with a control</td></tr>
+    <tr><td>One PDP filed alone</td><td>ICE curves, coloured by the suspected interaction</td></tr>
+    <tr><td>A proxy as a reason</td><td>a reviewed list of reasons, values that add up</td></tr>
+    <tr><td>The one criterion that passes</td><td>all three reported, with the identity</td></tr>
+    <tr><td>A threshold chosen by the data team</td><td>remedies upstream; the rule decided by its owners</td></tr>
+  </table>
+</section>
+
+<!-- 51 -->
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight small">
+    <li>Asked a good model two questions its test score cannot answer: what
+        does it rely on, and for whom does it fail</li>
+    <li>Global: impurity importance ranked a survey weight first, earned on
+        the training rows; permutation importance on held-out rows put it at
+        zero</li>
+    <li>Shape: partial dependence averages ICE curves of different shapes,
+        and can describe nobody</li>
+    <li>Local: the Shapley value, computed exactly over 4,096 coalitions;
+        efficiency makes the values add up to the prediction minus the
+        baseline; a blank on the form was the largest thing held against
+        one applicant</li>
+    <li>Audit: accuracy per group points the wrong way; demographic parity,
+        equal opportunity and calibration cannot all hold when base rates
+        differ; dropping a column leaves its proxies; a threshold per group
+        is a policy decision with a price the table states</li>
+    <li>Designed the audit of a bank&rsquo;s credit-limit model before it is
+        filed as a high-risk system, in nine steps &mdash; harms and groups
+        first, attributes kept for the audit, the unlabelled refused, held-out
+        permutation importance, ICE and shortcuts, reviewed reasons, every
+        criterion per group, remedies decided by their owners &mdash; each
+        named for the pitfall it avoids</li>
+  </ol>
+</section>
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 10">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 10</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 10">
+  <h2>Exercises &mdash; Lecture 10</h2>
+  <ul class="ex-list">
+    <li>A random forest ranks a census sampling weight first by impurity importance, yet shuffling that column on held-out rows does not change the AUC. Give the two reasons impurity importance can rank such a column first. <span class="ex-marks">[4]</span></li>
+    <li>The partial dependence of a model's probability on age rises from 0.015 at 20 to 0.270 at 50. Say what the curve averages, and how it can misrepresent the model. <span class="ex-marks">[4]</span></li>
+    <li>Define the Shapley value $\phi_i$ of feature $i$ for one prediction, given a value function $v$ over coalitions of the $M$ features, and prove that $\sum_i \phi_i = v(N) - v(\varnothing)$. <span class="ex-marks">[5]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 11&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 10 (2)">
+  <h2>Exercises &mdash; Lecture 10 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>A classifier is applied to two groups whose base rates differ, and at its threshold the two groups have the same PPV and the same selection rate. Show that they cannot also have the same true-positive rate. <span class="ex-marks">[5]</span></li>
+    <li>A bank removes the applicant's sex from its model's inputs and reports that the model is therefore fair. State two things wrong with the claim, and what the bank should do instead. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 11&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 9">
+  <p class="kicker">The five set at the end of Lecture 9</p>
+  <h1>Solutions<br>Lecture 9</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 9">
+  <h2>Solutions &mdash; Lecture 9</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> A harmful-content model ends in one softmax over five harms. Say why this is the wrong output layer, and what&hellip;</p>
+      <p class="lead"><span class="fix">Harms co-occur and a softmax forces the probabilities to sum to one, so a post cannot be both violent and hateful. Use one sigmoid output per harm, each trained with its own binary cross-entropy term.</span></p>
+      <ul class="tight smaller">
+        <li>The task is multi-label, not multi-class</li>
+        <li>Actions are taken by a separate policy layer with a threshold per harm, so each harm needs a probability of its own</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> Harmful posts are a fraction of a percent of all posts. Explain why accuracy and the area under the ROC curve&hellip;</p>
+      <p class="lead"><span class="fix">Predicting &ldquo;not harmful&rdquo; for everything is almost always right, and the ROC curve looks excellent because negatives dominate the false positive rate. Report the precision&ndash;recall curve per harm, read at the precision each action requires, and check calibration.</span></p>
+      <ul class="tight smaller">
+        <li>With rare positives a tiny false positive rate is still a flood of wrong flags; precision shows it, the ROC curve hides it</li>
+        <li>Different harms carry different costs, so one number for all of them hides the trade-off the policy team has to make</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 9 (2)">
+  <h2>Solutions &mdash; Lecture 9 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> The training labels are past reviewer decisions on posts the current system flagged. Name the bias, its&hellip;</p>
+      <p class="lead"><span class="fix">Selection bias: only flagged posts are ever labelled, so the next model never learns what the current one misses. Label a random sample of all traffic every week, use it for evaluation and prevalence, and add it to training.</span></p>
+      <ul class="tight smaller">
+        <li>The loop closes on itself: the model chooses its own training data</li>
+        <li>Only a sample drawn independently of the model can measure what the model does not see</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> Adding &ldquo;number of user reports&rdquo; sharply raises the offline recall of the model that checks posts&hellip;</p>
+      <p class="lead"><span class="fix">It is leakage in time: at upload the count is always zero, so the gain cannot appear in production. Compute every feature as of the moment of the decision; use reports only in a second model that re-scores the post as reactions arrive.</span></p>
+      <ul class="tight smaller">
+        <li>A feature is valid only if the serving system can produce it at decision time</li>
+        <li>The offline split must reproduce what is known when the decision is made</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 9 (3)">
+  <h2>Solutions &mdash; Lecture 9 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> For each harm the policy layer has three thresholds: remove automatically, send to a human reviewer, reduce&hellip;</p>
+      <p class="lead"><span class="fix">Automatic removal: the precision the policy team accepts with no human in the loop. Review: reviewer capacity, since the expected daily volume must fit the queue. Reduced distribution: the cost of spreading a harmful post against hiding a good one. Each is a point on that harm&rsquo;s validation precision&ndash;recall curve, signed off as policy.</span></p>
+      <ul class="tight smaller">
+        <li>A threshold is a decision about costs, not a hyperparameter tuned for a score</li>
+        <li>The bands only mean something if the probabilities are calibrated</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 11 &middot; Lecture notes</p>
+  <h1>Autoencoders and representation learning</h1>
+  <p class="small">
+    A network that learns from the images alone<br>
+    A linear autoencoder recovers the principal subspace, derived<br>
+    The code as a representation: similar items, groups, the odd ones
+  </p>
+  <p class="clock">Run the Lecture 10 notebook first</p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 10
+  <span class="sep">&middot;</span> Explaining and auditing models
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>
