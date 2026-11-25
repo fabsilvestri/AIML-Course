@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 15 — ML system design interview: crop disease from a phone photo</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal eqn-centre">
+<div class="slides">
+
+
+<section class="title-slide" data-menu-title="Title">
+  <h1>ML system design interview</h1>
+  <p class="subtitle">Crop disease from a phone photograph &mdash; features by
+  hand, or learned end to end</p>
+  <p><span class="badge badge-lec">Lecture 15</span>
+     <span class="badge badge-notes">Mock interview</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Same format as the harmful-content interview: you are
+  the interviewer, the class in pairs is the candidate, and at every "Your
+  turn" slide they write before you show the strong answer. The difference
+  today: after a quick pass over the whole design, you stop on one box, the
+  representation, and keep pushing.</aside>
+</section>
+
+
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Today&rsquo;s system is built from pieces you have already
+  measured on images.</p>
+  <table class="smaller">
+    <tr><th>The piece</th><th>Where we saw it</th></tr>
+    <tr><td>Convolutions, weight sharing, a network trained from scratch on few labels per class</td><td>Lecture 12</td></tr>
+    <tr><td>A pretrained backbone: probe first, fine-tune second; augmentation, and where it must not reach</td><td>Lecture 13</td></tr>
+    <tr><td>Finding the object before naming it: detection, segmentation, IoU</td><td>Lecture 14</td></tr>
+    <tr><td>What a model relies on, and for whom it fails</td><td>Lecture 10</td></tr>
+    <tr><td>The interview itself: nine steps, trade-offs out loud</td><td>Lecture 9</td></tr>
+  </table>
+  <p class="small fix">Nothing new is needed. What is new is defending one
+  choice against another when the interviewer will not let go.</p>
+</section>
+
+
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li><strong>The prompt</strong> &mdash; a farmer photographs a sick leaf;
+        the app names the disease</li>
+    <li><strong>The overview</strong> &mdash; clarify, frame, metrics and
+        labels, at the pace of a real interview</li>
+    <li><strong>The deep dive</strong> &mdash; what the model looks at. Two
+        solutions: features engineered by hand, and a network trained end to
+        end. Then the interviewer makes you choose</li>
+    <li><strong>The rest of the system</strong>, the whole design on one
+        slide, the follow-ups and the red flags</li>
+  </ol>
+  <p class="small muted">No notebook today: a whiteboard and a
+  conversation.</p>
+</section>
+
+
+<section data-menu-title="The deep dive">
+  <h2>The format, with one change: the deep dive</h2>
+  <ul class="tight small">
+    <li>A real interview has two halves. First the candidate sketches the
+        whole system, a sentence per step</li>
+    <li>Then the interviewer <strong>picks one box and digs</strong>:
+        &ldquo;tell me more about that&rdquo;, &ldquo;what if &hellip;&rdquo;,
+        &ldquo;why not the other way?&rdquo; &mdash; until the candidate reaches
+        the edge of what they know</li>
+    <li>The deep dive is where senior and junior candidates separate. Anyone
+        can name a technique; few can say when it breaks</li>
+    <li>Today the box is <strong>the representation</strong>: who decides what
+        the model looks at &mdash; you, or the network?</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">How to survive a deep dive</span>
+    Answer the question asked, then say what it costs. When you do not know,
+    say how you would find out: which experiment, on which data.
+  </div>
+</section>
+
+
+<section class="divider" data-menu-title="◆ The prompt">
+  <p class="kicker">The interviewer</p>
+  <h1>&ldquo;We are a farmers&rsquo; cooperative. A farmer photographs a
+  sick leaf with a phone. Design the system that tells them what disease it
+  is.&rdquo;</h1>
+  <p class="clock">What do you say first?</p>
+</section>
+
+
+<section data-menu-title="1 · Your turn">
+  <p class="kicker">Step 1 &middot; Your turn</p>
+  <h2>Before you design anything: what do you ask?</h2>
+  <p class="lead">Write down the questions that would change the design.</p>
+  <p class="small muted">Which plants, which diseases, which phones, where the
+  photo is taken, what happens after the answer, and what you can learn
+  from.</p>
+</section>
+
+
+<section data-menu-title="1 · The questions">
+  <h2>Step 1 &mdash; The questions, and why each one matters</h2>
+  <table class="smaller">
+    <tr><th>Question</th><th>Why it changes the design</th></tr>
+    <tr><td>Which crops, which diseases?</td><td>the classes, and whether two of them look alike</td></tr>
+    <tr><td>Where is the photo taken, and by whom?</td><td>a lab table or a field: the hardest fact for any representation</td></tr>
+    <tr><td>Is there a network connection in the field?</td><td>on the phone or on a server: the size of the model</td></tr>
+    <tr><td>What does the farmer do with the answer?</td><td>a wrong treatment costs a harvest; the output is advice</td></tr>
+    <tr><td>Who checks a doubtful case?</td><td>whether the app may say &ldquo;I am not sure&rdquo;</td></tr>
+    <tr><td>What labelled photos exist today?</td><td>how much a learned representation can learn</td></tr>
+  </table>
+</section>
+
+
+<section data-menu-title="1 · The answers">
+  <h2>Step 1 &mdash; What the interviewer answers</h2>
+  <ul class="tight small">
+    <li><strong>Crops:</strong> tomato, potato and grapevine; about twenty
+        diseases between them, plus &ldquo;healthy&rdquo;. Some look alike:
+        early and late blight, downy and powdery mildew</li>
+    <li><strong>Photos:</strong> taken in the field, on whatever phone the
+        farmer owns, in sun or shade, often with soil, hands and other leaves
+        in the frame</li>
+    <li><strong>Connection:</strong> often none in the field. The diagnosis
+        must run on the phone; photos upload later</li>
+    <li><strong>Next:</strong> the app shows the likely diseases and the
+        cooperative&rsquo;s treatment advice; an agronomist answers the cases
+        the app sends on</li>
+    <li><strong>Labels:</strong> a few thousand field photos from past
+        consultations, labelled by the agronomist who answered, mostly of the
+        common diseases; and a large public set of single leaves shot on a
+        plain table in a lab</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Write it on the board</span>
+    Two facts will decide the deep dive: <em>field photos</em>, and
+    <em>few field labels</em> for the rare diseases.
+  </div>
+</section>
+
+
+<section data-menu-title="2 · Your turn">
+  <p class="kicker">Step 2 &middot; Your turn</p>
+  <h2>State the machine learning task</h2>
+  <p class="lead">What goes in, what comes out, and what may the app answer
+  when it cannot tell?</p>
+</section>
+
+
+<section data-menu-title="2 · The framing">
+  <h2>Step 2 &mdash; Input, output, decision</h2>
+  <ul class="tight small">
+    <li><strong>Input:</strong> the photo, and the crop the farmer selected
+        &mdash; region and date as context</li>
+    <li><strong>Output:</strong> a probability for each disease of that crop
+        and for &ldquo;healthy&rdquo;: one softmax per crop. The agronomists
+        label the main disease, so one answer per leaf is a fair assumption
+        &mdash; say it aloud</li>
+    <li><strong>Decision:</strong> show the top three with their treatments;
+        if the top probability is low, or the photo is not a usable leaf,
+        <strong>abstain</strong> and send it to an agronomist</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Red flag</span>
+    An app that always answers. A confident wrong diagnosis sends a farmer to
+    spray the wrong product; &ldquo;I am not sure, an agronomist will
+    look&rdquo; is part of the output, not a failure of it.
+  </div>
+</section>
+
+
+<section data-menu-title="3–4 · Quickly">
+  <h2>Steps 3 and 4 &mdash; Metrics and labels, at interview pace</h2>
+  <div class="cols">
+    <div>
+      <p class="small"><strong>Metrics</strong></p>
+      <ul class="tight smaller">
+        <li>Recall per disease, the dangerous ones read first; top-three
+            accuracy, because the app shows three</li>
+        <li>Mistakes weighted by what they cost: two diseases with the same
+            treatment are a cheap confusion; a fungus called a virus is
+            not</li>
+        <li>Accuracy against coverage: how right the app is on the cases it
+            answers, and how many it sends on</li>
+        <li>Online: the agronomists&rsquo; verdicts on a sample of
+            answered cases</li>
+      </ul>
+    </div>
+    <div>
+      <p class="small"><strong>Labels</strong></p>
+      <ul class="tight smaller">
+        <li>Consultation photos: farmers ask when worried, so severe cases
+            are over-represented &mdash; selection bias</li>
+        <li>Agronomists disagree on look-alikes: label a slice twice and
+            measure it; that is the ceiling</li>
+        <li>The lab set is plentiful, and taken in conditions the app will
+            never see</li>
+        <li><strong>Split by farm and by season</strong>, never by photo:
+            one farm sends many photos of the same field</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small fix">The interviewer nods and stops you here: &ldquo;Fine.
+  Now tell me what your model looks at.&rdquo;</p>
+</section>
+
+
+<section class="divider" data-menu-title="◆ The deep dive">
+  <p class="kicker">The deep dive &middot; Steps 5 and 6</p>
+  <h1>&ldquo;What does your model look at &mdash; and who decided
+  that?&rdquo;</h1>
+  <p class="clock">Two solutions, then a choice</p>
+</section>
+
+
+<section data-menu-title="5 · Your turn">
+  <p class="kicker">Steps 5&ndash;6 &middot; Your turn</p>
+  <h2>Two ways to turn a photo into a diagnosis</h2>
+  <p class="lead">Sketch a system in which <em>you</em> decide what the
+  model measures, and one in which <em>the network</em> decides. Do not pick
+  one yet.</p>
+</section>
+
+
+<section data-menu-title="5 · Two pipelines">
+  <h2>The two solutions, side by side</h2>
+  <table class="smaller">
+    <tr><th></th><th>The pipeline</th><th>Who decides what is measured</th></tr>
+    <tr><td><strong>A &middot; Features by hand</strong></td><td>photo &rarr; find the leaf &rarr; measure colour, spots, texture, shape &rarr; a small classifier on a few dozen numbers</td><td>the agronomist and the engineer, in advance</td></tr>
+    <tr><td><strong>B &middot; End to end</strong></td><td>photo &rarr; a convolutional network &rarr; one probability per disease</td><td>gradient descent, from the labelled photos</td></tr>
+  </table>
+  <ul class="tight small">
+    <li>A is how plant pathology was automated before convolutional networks;
+        B is what most such apps ship today</li>
+    <li>Neither is obsolete. Each wins under conditions you can state &mdash;
+        that is what the interviewer wants to hear by the end</li>
+  </ul>
+</section>
+
+
+<section data-menu-title="A · Your turn">
+  <p class="kicker">Solution A &middot; Your turn</p>
+  <h2>You are the agronomist. What would you measure?</h2>
+  <p class="lead">An agronomist tells blight from mildew by looking. Turn what
+  they look at into numbers a classifier can use.</p>
+  <p class="small muted">And before measuring anything on the leaf: how do
+  you know which pixels are leaf?</p>
+</section>
+
+
+<section data-menu-title="A · Find the leaf">
+  <h2>Solution A &mdash; First, find the leaf</h2>
+  <ul class="tight small">
+    <li><strong>Segment by colour:</strong> convert to a colour space where
+        &ldquo;green&rdquo; is one channel&rsquo;s range (hue, or the a* axis of
+        Lab), threshold it, keep the largest connected region</li>
+    <li><strong>Separate the lesions</strong> inside the leaf the same way:
+        brown, yellow, black and white pixels that are not healthy green</li>
+    <li><strong>Normalise:</strong> correct the white balance, so the same
+        yellow under sun and under shade gives the same numbers</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Note what just happened</span>
+    Every feature on the next slide is measured on this mask. If the mask is
+    wrong, every feature is wrong, and the classifier is never told.
+  </div>
+</section>
+
+
+<section data-menu-title="A · The features">
+  <h2>Solution A &mdash; The features, and the symptom each one reads</h2>
+  <table class="smaller">
+    <tr><th>Group</th><th>Measured as</th><th>The symptom it reads</th></tr>
+    <tr><td>Colour</td><td>histograms of the lesion pixels&rsquo; colour; the share of the leaf that is yellow</td><td>chlorosis; the brown of blight against the white of mildew</td></tr>
+    <tr><td>Spots</td><td>number of lesions, their sizes, how round they are, concentric rings</td><td>the target-shaped spots of early blight</td></tr>
+    <tr><td>Texture</td><td>statistics of local intensity patterns inside the lesions</td><td>the powdery film of powdery mildew; a mosaic pattern of a virus</td></tr>
+    <tr><td>Shape and position</td><td>leaf outline and curl; lesions on the margin or along the veins</td><td>leaf curl; spots bounded by the veins</td></tr>
+    <tr><td>Severity</td><td>lesion area over leaf area</td><td>how far it has gone &mdash; useful advice in itself</td></tr>
+  </table>
+  <p class="small">Then a classifier that suits a few dozen numbers and a few
+  labels: logistic regression, or gradient-boosted trees for the interactions
+  between colour and spot shape.</p>
+</section>
+
+
+<section data-menu-title="A · The push">
+  <p class="kicker">The interviewer pushes</p>
+  <h2>&ldquo;Here is a real photo: three leaves, soil, a thumb, the sun behind
+  them. Walk me through your pipeline.&rdquo;</h2>
+  <ul class="tight small">
+    <li>The colour threshold keeps the green of the other leaves and drops
+        the brown dead tissue &mdash; which is the disease. The largest region
+        is the wrong leaf</li>
+    <li>Backlight turns healthy green to yellow: the &ldquo;chlorosis&rdquo;
+        feature fires on a healthy plant</li>
+    <li>Soil is brown and spotted: the spot counter counts it</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">A strong answer</span>
+    Say that the <em>first</em> step fails, and fix the capture before the
+    model: the app asks for one leaf, held against the sky or a sheet of
+    paper, and a quality check refuses dark, blurred or cluttered photos.
+    The user interface is part of the feature engineering.
+  </div>
+</section>
+
+
+<section data-menu-title="A · Costs">
+  <h2>Solution A &mdash; What it buys, and what it costs</h2>
+  <table class="smaller">
+    <tr><th>It buys</th><th>It costs</th></tr>
+    <tr><td>few labels: a few dozen numbers need tens of examples per disease, not hundreds</td><td>a ceiling: it can only see what the agronomist could name in advance</td></tr>
+    <tr><td>an explanation: &ldquo;large brown spots with rings&rdquo;, and a severity in percent</td><td>brittle capture: every feature inherits the segmentation&rsquo;s mistakes</td></tr>
+    <tr><td>a tiny model that runs on any phone</td><td>a new disease means new features, written and tested by hand</td></tr>
+    <tr><td>failures you can debug, one feature at a time</td><td>look-alike diseases that differ in ways nobody wrote down stay confused</td></tr>
+  </table>
+</section>
+
+
+<section data-menu-title="B · Your turn">
+  <p class="kicker">Solution B &middot; Your turn</p>
+  <h2>Let the network decide. What exactly do you train?</h2>
+  <p class="lead">On which photos, starting from which weights, at which
+  resolution &mdash; and how does it fit on a phone?</p>
+</section>
+
+
+<section data-menu-title="B · The model">
+  <h2>Solution B &mdash; The model</h2>
+  <ul class="tight small">
+    <li><strong>Start pretrained.</strong> A few thousand field photos cannot
+        train a network from scratch; a backbone pretrained on a large
+        image collection already knows edges, textures and blobs. Probe first:
+        a linear head on frozen features, the number to beat; then fine-tune
+        the last blocks</li>
+    <li><strong>Small enough for the phone:</strong> a backbone designed for
+        mobile devices, not the largest one; measure its accuracy against its
+        size</li>
+    <li><strong>Resolution:</strong> an early lesion is a few pixels once the
+        photo is shrunk to the network&rsquo;s input. Find the leaf first with a
+        small detector, crop it, then classify the crop</li>
+    <li><strong>Output:</strong> one head per crop, or the crop as an input;
+        a softmax, and abstention below a threshold</li>
+  </ul>
+  <p class="small fix">Solution B keeps A&rsquo;s first step, done by a
+  learned detector instead of a colour threshold.</p>
+</section>
+
+
+<section data-menu-title="B · Augmentation">
+  <p class="kicker">The interviewer pushes</p>
+  <h2>&ldquo;You have few field photos. Which augmentations would you use
+  &mdash; and which would you refuse?&rdquo;</h2>
+  <table class="smaller">
+    <tr><th>Augmentation</th><th>Use it?</th><th>Why</th></tr>
+    <tr><td>flips, rotations</td><td class="hit">yes</td><td>a leaf has no &ldquo;up&rdquo;</td></tr>
+    <tr><td>random crops and scale</td><td class="hit">yes</td><td>farmers hold the phone at every distance</td></tr>
+    <tr><td>brightness, contrast, blur</td><td class="hit">yes, mildly</td><td>sun and shade; phones that do not focus</td></tr>
+    <tr><td>hue shifts, strong colour jitter</td><td class="miss">no</td><td>yellow against green <em>is</em> the symptom: shifting it relabels the photo</td></tr>
+    <tr><td>random erasing</td><td class="miss">careful</td><td>it can erase the only lesion and leave a &ldquo;diseased&rdquo; label on a healthy leaf</td></tr>
+  </table>
+  <p class="small">An augmentation is a claim that the label does not change.
+  Make it only where an agronomist would agree. And on the training loader
+  only: an augmented validation set no longer measures the model.</p>
+</section>
+
+
+<section data-menu-title="B · The shortcut">
+  <p class="kicker">The interviewer pushes</p>
+  <h2>&ldquo;You trained on the large lab set and got a near-perfect test
+  score. Ship it?&rdquo;</h2>
+  <ul class="tight small">
+    <li>No. The test photos came from the same lab: one leaf, the same table,
+        the same light, often each disease photographed in its own session</li>
+    <li>A network takes whatever separates the classes most cheaply. If the
+        background or the light differs between diseases, it learns those
+        &mdash; a <strong>shortcut</strong>. The test set shares the shortcut,
+        so it cannot see it</li>
+    <li>This has happened in published work: near-perfect on lab photos,
+        and far lower on photos from the field</li>
+  </ul>
+  <div class="panel panel-fix">
+    <span class="panel-title">How to find out</span>
+    Test on field photos, split by farm and by season. Paste the leaves onto
+    other backgrounds and see if the answer changes. Look at what the network
+    attends to, with the explanation tools of the auditing lecture: the
+    lesion, or the table?
+  </div>
+</section>
+
+
+<section data-menu-title="B · Costs">
+  <h2>Solution B &mdash; What it buys, and what it costs</h2>
+  <table class="smaller">
+    <tr><th>It buys</th><th>It costs</th></tr>
+    <tr><td>a higher ceiling: it finds the cues nobody wrote down, and separates look-alikes better</td><td>labels: hundreds of field photos per disease to fine-tune well; the rare diseases have tens</td></tr>
+    <tr><td>robustness to clutter and light &mdash; if, and only if, it was trained on photos that have them</td><td>shortcuts, learned silently, invisible to a test set that shares them</td></tr>
+    <tr><td>a new disease is new labelled photos, not new code</td><td>no explanation a farmer can read; no severity for free</td></tr>
+    <tr><td>one pipeline for every crop</td><td>a larger model on the phone, and a retraining pipeline to run</td></tr>
+  </table>
+</section>
+
+
+<section data-menu-title="Choose · Your turn">
+  <p class="kicker">The interviewer pushes &middot; Your turn</p>
+  <h2>&ldquo;You have one engineer and one season. Pick one, and defend
+  it.&rdquo;</h2>
+  <p class="lead">Name the facts your choice depends on, and what would make
+  you change your mind.</p>
+</section>
+
+
+<section data-menu-title="Choose · Side by side">
+  <h2>A against B, on the facts of this prompt</h2>
+  <table class="smaller">
+    <tr><th>The fact</th><th>Favours</th><th>Because</th></tr>
+    <tr><td>field photos, cluttered, any phone</td><td>B</td><td>A&rsquo;s colour segmentation fails first, and everything inherits it</td></tr>
+    <tr><td>look-alike diseases</td><td>B</td><td>the difference is in cues nobody has named</td></tr>
+    <tr><td>a few thousand field labels, rare diseases with tens</td><td>A, or B pretrained</td><td>few labels favour few parameters to fit</td></tr>
+    <tr><td>runs offline on the phone</td><td>A, or a small B</td><td>a mobile backbone fits; the largest one does not</td></tr>
+    <tr><td>advice must be explained; severity wanted</td><td>A</td><td>its features are the explanation</td></tr>
+  </table>
+  <p class="small fix">There is no free winner. The interviewer is waiting
+  for the conditions, not for a name.</p>
+</section>
+
+
+<section data-menu-title="Choose · The answer">
+  <h2>A strong answer: B, built on A&rsquo;s parts</h2>
+  <ul class="tight small">
+    <li><strong>Ship B</strong>: a mobile backbone, pretrained, fine-tuned on
+        the field photos; the lab set only as extra training data, never as
+        the test</li>
+    <li><strong>Keep A&rsquo;s pieces where they win:</strong> the capture
+        guide and the quality check in front; the leaf found before it is
+        classified; lesion area as the severity shown to the farmer</li>
+    <li><strong>A is the baseline B must beat</strong>, on field photos split
+        by farm, disease by disease. A rare disease where B does not beat A
+        keeps A&rsquo;s answer, or goes to an agronomist</li>
+  </ul>
+  <table class="smaller">
+    <tr><th>I would switch to A if &hellip;</th><th>I would stay with B because &hellip;</th></tr>
+    <tr><td>the photos were taken at a fixed station &mdash; same light, plain background &mdash; and labels were scarce</td><td>the photos are taken in the field, and each season brings more labelled ones</td></tr>
+  </table>
+</section>
+
+
+<section data-menu-title="Deep dive · Red flags">
+  <h2>What the interviewer writes down in the deep dive</h2>
+  <ul class="tight small">
+    <li>&ldquo;Hand-made features are obsolete&rdquo; &mdash; or &ldquo;networks
+        are a black box, so hand features are safer&rdquo;: either one, with no
+        conditions</li>
+    <li>&ldquo;The network learns its own features, so the data does not
+        matter&rdquo;: what it learns is decided by the photos</li>
+    <li>A test score on lab photos reported as the field accuracy</li>
+    <li>A hue or colour augmentation on a task where colour is the label</li>
+    <li>Training from scratch on a few thousand photos</li>
+    <li>No baseline: B with nothing to beat</li>
+    <li>Cannot say what would change the choice</li>
+  </ul>
+</section>
+
+
+<section data-menu-title="7–9 · Quickly">
+  <h2>Steps 7 to 9 &mdash; The rest of the system, briefly</h2>
+  <table class="smaller">
+    <tr><th>Step</th><th>The strong answer, in a line or two</th></tr>
+    <tr><td>7 &middot; Thresholds</td><td>the abstention threshold set from accuracy against coverage, with the agronomists: as many answers as the cooperative will stand behind; check calibration per crop first</td></tr>
+    <tr><td>8 &middot; Serving</td><td>on the phone, offline; the model shipped with the app and updated with it; photos and answers uploaded when there is signal</td></tr>
+    <tr><td>9 &middot; Launch</td><td>shadow first: the app answers, an agronomist answers too, compare. Then one region at a time</td></tr>
+    <tr><td>9 &middot; Drift</td><td>a new season, a new disease, a new phone&rsquo;s colour processing: watch the abstention rate and the agronomists&rsquo; sample</td></tr>
+    <tr><td>9 &middot; Feedback</td><td>abstained cases come back labelled, but only the hard ones; also label a random sample of answered cases</td></tr>
+  </table>
+</section>
+
+
+<section data-menu-title="The whole system">
+  <h2>The whole system, on one slide</h2>
+  <p class="small">Photo, with the crop selected &rarr; capture guide and
+  quality check (dark, blurred, no leaf: ask again) &rarr; a small detector
+  finds the leaf and crops it &rarr; a fine-tuned mobile network: one
+  probability per disease of that crop &rarr; above the threshold, show the top
+  three with treatments, and the lesion area as severity; below it, send to an
+  agronomist &rarr; the agronomists&rsquo; answers, and a random sample they
+  check, become labels &rarr; retrain each season, test on the newest season
+  by farm, disease by disease, against the hand-feature baseline.</p>
+  <table class="smaller">
+    <tr><th>Measured by</th><th>Offline</th><th>Online</th></tr>
+    <tr><td>Each disease</td><td>recall on field photos split by farm and season; top three; accuracy against coverage</td><td>agronomists&rsquo; verdicts on a sample; abstention rate; farmers&rsquo; reports of a treatment that failed</td></tr>
+  </table>
+</section>
+
+
+<section data-menu-title="Follow-ups">
+  <h2>The follow-up questions interviewers ask</h2>
+  <table class="smaller">
+    <tr><th>&ldquo;What if &hellip;&rdquo;</th><th>The gist of a good answer</th></tr>
+    <tr><td>a new disease reaches the region?</td><td>agronomists first; in A new features, in B labelled photos and a new output; the new class measured before it is shown</td></tr>
+    <tr><td>a farmer photographs a fruit, or the dog?</td><td>the quality check and the detector refuse it; a softmax always names a disease, so abstain</td></tr>
+    <tr><td>the cooperative adds olives?</td><td>a new crop is a new head; the field photos start the cycle again, with A as the first baseline</td></tr>
+    <tr><td>a phone brand saturates its colours?</td><td>a slice by phone model; white balance in the capture step; photos from that phone in training</td></tr>
+    <tr><td>two agronomists disagree?</td><td>a third one, or a lab test; and the agreement rate as the ceiling you report</td></tr>
+  </table>
+</section>
+
+
+<section data-menu-title="Red flags">
+  <h2>The red flags an interviewer writes down</h2>
+  <ul class="tight small">
+    <li>Designs before asking where the photos are taken</li>
+    <li>An app that always answers</li>
+    <li>Accuracy on a random split of photos: the same farm on both sides</li>
+    <li>Lab photos as the test of a field system</li>
+    <li>One solution named, no baseline, no condition under which the other
+        would win</li>
+    <li>Augmentations that change the label</li>
+    <li>A model too big for the phone it must run on, offline</li>
+    <li>Stops at training: no capture guide, no abstention, no feedback
+        loop</li>
+  </ul>
+</section>
+
+
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight smaller">
+    <li>Ran a second mock interview, with a deep dive: the whole design
+        sketched quickly, then one box &mdash; the representation &mdash;
+        pushed on until it broke</li>
+    <li>Framed the task as one softmax per crop with abstention, measured by
+        recall per disease, top three and accuracy against coverage, on field
+        photos split by farm and season</li>
+    <li>Solution A, features by hand: find the leaf, measure colour, spots,
+        texture and shape, a small classifier. Few labels and an explanation;
+        brittle capture and a ceiling</li>
+    <li>Solution B, end to end: a pretrained mobile network fine-tuned on
+        field photos, the leaf cropped first, augmentations that keep the
+        label. A higher ceiling; more labels, and shortcuts that a lab test
+        cannot see</li>
+    <li>Chose B, kept A&rsquo;s capture step, severity and baseline, and said
+        under which conditions A would win</li>
+  </ol>
+</section>
+
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 15">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 15</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 15">
+  <h2>Exercises &mdash; Lecture 15</h2>
+  <ul class="ex-list">
+    <li>A crop-disease classifier is fine-tuned on a few field photos per disease, with random hue shifts among its augmentations. Say why this augmentation is wrong here, and state the rule it breaks. <span class="ex-marks">[4]</span></li>
+    <li>A network trained and tested on a large public set of leaves photographed one at a time on a lab table reaches a near-perfect test score. Explain why this does not tell you how the app will do in the field, and say how you would find out. <span class="ex-marks">[5]</span></li>
+    <li>Solution A finds the leaf by thresholding green pixels, then measures colour, spots and texture on that mask. Name the step that fails first on a cluttered field photo, why the classifier cannot notice, and two ways to fix it. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 16&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 15 (2)">
+  <h2>Exercises &mdash; Lecture 15 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>Two cooperatives want the same diagnosis app. One photographs leaves at a fixed station with the same light and a plain background, and has tens of labelled photos per disease. The other has farmers photographing in the field, and hundreds per disease. Recommend hand-made features or an end-to-end network for each, and justify both. <span class="ex-marks">[5]</span></li>
+    <li>The diagnosis app ends in a softmax over the diseases of the selected crop. Say why it must be able to abstain, and what sets the abstention threshold. <span class="ex-marks">[4]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 16&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 14">
+  <p class="kicker">The five set at the end of Lecture 14</p>
+  <h1>Solutions<br>Lecture 14</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 14">
+  <h2>Solutions &mdash; Lecture 14</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> Two boxes are disjoint and moved further apart. State what IoU and its derivative do, and why no learning&hellip;</p>
+      <p class="lead"><span class="fix">Both are identically zero; a constant has no descent direction.</span></p>
+      <ul class="tight smaller">
+        <li>Past contact the intersection is exactly zero for every separation</li>
+        <li>The gradient is absent rather than small, so no optimiser can act on it</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> A detector counts objects with MAE 3.00 at the conventional score cut-off of 0.5. A sweep over the same 128&hellip;</p>
+      <p class="lead"><span class="fix">The cut-off was chosen on the same images the error is reported on, so 1.92 is optimistic by construction; quote it as a diagnostic, beside the 3.00 at the threshold fixed before looking.</span></p>
+      <ul class="tight smaller">
+        <li>Picking 0.75 after seeing the error curve is fitting a hyperparameter on the test data</li>
+        <li>With no held-out images, only a threshold fixed in advance gives an honest figure</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 14 (2)">
+  <h2>Solutions &mdash; Lecture 14 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> Average precision is defined with a maximum inside it. State what that maximum repairs, and which earlier&hellip;</p>
+      <p class="lead"><span class="fix">It replaces the non-monotone precision by its running maximum &mdash; the non-monotonicity proved in Lecture 3.</span></p>
+      <ul class="tight smaller">
+        <li>Precision falls at every false positive and can rise again</li>
+        <li>Integrating the raw curve would reward the sawtooth rather than the ranking</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> mAP is a mean over classes of a mean over IoU thresholds. Give one thing each averaging hides.</p>
+      <p class="lead"><span class="fix">The class mean hides that a one-instance class weighs as much as a 350-instance one; the threshold mean hides the spread between loose and tight matching.</span></p>
+      <ul class="tight smaller">
+        <li>An unweighted mean ignores how many instances each class has</li>
+        <li>A single number in the middle stands for two very different regimes</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 14 (3)">
+  <h2>Solutions &mdash; Lecture 14 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> Your mAP over IoU 0.50 to 0.95 on 128 COCO images is 43.9; torchvision reports 37.0 for the same weights on&hellip;</p>
+      <p class="lead"><span class="fix">Run a reference evaluator on the same predictions and annotations (ours agreed to 0.0014); the gap is then the sample &mdash; 128 images, many easy, and classes with a single instance.</span></p>
+      <ul class="tight smaller">
+        <li>An implementation you wrote yourself is checked against one you did not before its number is quoted</li>
+        <li>A small evaluation set moves the score, here in the flattering direction, with the detector unchanged</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 16 &middot; G&eacute;ron Ch. 13</p>
+  <h1>Recurrent networks</h1>
+  <p class="small">
+    A one-day-ahead forecast, the baselines it must beat, and a split that
+    respects time<br>
+    A recurrent cell, unrolled, and trained by backpropagation through time<br>
+    LSTM and GRU gates, and the 2020 regime change
+  </p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 15
+  <span class="sep">&middot;</span> ML system design interview
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>

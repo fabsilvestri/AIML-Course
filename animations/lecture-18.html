@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 18 · Attention and transformers — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 18 of Applications of Machine Learning: scaled dot-product attention computed number by number, why the scores are divided by the square root of d_k, multi-head attention, and positional encoding.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-18.html">Lecture 18 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 18 · Animations</p>
+  <h1>Attention and transformers</h1>
+  <p>Attention is a similarity, a softmax and a weighted average. The two
+  widgets below compute it in front of you on short made-up sentences: one
+  query at a time with every number shown, and what goes wrong without
+  positions. Press <strong>Step</strong> to advance one unit and read
+  what happened; press <strong>Play</strong> to let it run.</p>
+  <p class="note">All data on this page is synthetic: the embeddings and the
+  projection matrices are random draws from a fixed seed, made in your
+  browser, and nothing here was trained. Where a pattern is designed rather
+  than random, the widget says so. <em>Reset</em> always gives back the same
+  picture.</p>
+  <ul class="toc">
+    <li><a href="#attn">1 · Scaled dot-product attention</a></li>
+    <li><a href="#pos">2 · Positions, and the permutation problem</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Scaled dot-product attention
+     ====================================================================== -->
+<section class="anim" id="attn">
+  <h2><span class="num">1</span>Scaled dot-product attention, one query at a time</h2>
+  <p class="lede">Five tokens, each a random vector $\mathbf x_i \in \mathbb R^4$,
+  projected to a query, a key and a value of width $d_k = 2$, so that they can
+  be drawn. Left: the keys $\mathbf k_j$ and the current query
+  $\mathbf q_i$; a key's score is its dot product with the query, so keys
+  further along the query's direction score higher. Right: the values
+  $\mathbf v_j$ and the output $\mathbf z_i$, their weighted average. Each
+  step moves to the next query.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="at-plots"></div>
+      <div id="at-table"></div>
+      <div class="narrate" id="at-say"></div>
+      <div class="toolbar" id="at-bar"></div>
+    </div>
+    <aside class="side" id="at-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>$\mathbf q_i = \mathbf W_Q\mathbf x_i$, $\mathbf k_j = \mathbf W_K\mathbf x_j$,
+      $\mathbf v_j = \mathbf W_V\mathbf x_j$, and</p>
+      $$s_{ij} = \mathbf q_i^{\mathsf T}\mathbf k_j,\qquad
+        w_{ij} = \mathrm{softmax}_j\!\left(\frac{s_{ij}}{\sqrt{d_k}}\right),$$
+      $$\mathbf z_i = \sum_j w_{ij}\mathbf v_j .$$
+      <p>All rows at once: $\mathrm{softmax}\bigl(\mathbf Q\mathbf K^{\mathsf T}/\sqrt{d_k}\bigr)\mathbf V$.
+      The dot product is $\mathbf q^{\mathsf T}\mathbf k = \lVert\mathbf q\rVert\,\lVert\mathbf k\rVert\cos\theta$:
+      the length of $\mathbf q$ times the signed length of $\mathbf k$'s
+      projection onto $\mathbf q$'s direction. The decoder's mask sets
+      $s_{ij} = -\infty$ for $j &gt; i$, and $e^{-\infty} = 0$.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The weights in each row are positive and sum to 1, so
+        $\mathbf z_i$ always lands inside the shaded region spanned by the
+        values (their convex hull): attention averages, it never
+        extrapolates.</li>
+        <li>The key with the largest projection onto the query's direction
+        gets the largest weight. A key behind the origin, relative to the
+        query, scores negative.</li>
+        <li>With the mask on, row 1 has a single allowed key, so
+        $w_{11} = 1$ and $\mathbf z_1 = \mathbf v_1$ exactly; the heat map
+        becomes lower-triangular.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Step through all five rows and check in the table that each row of
+        $w$ sums to 1.</li>
+        <li>Turn on the causal mask and step again: the upper triangle of the
+        heat map empties, and the first output sits exactly on the first
+        value.</li>
+        <li>Set the query scale to 4: the scores grow fourfold, the weights
+        concentrate on one key, and $\mathbf z_i$ moves towards that key's
+        value.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · Positions, and the permutation problem
+     ====================================================================== -->
+<section class="anim" id="pos">
+  <h2><span class="num">2</span>Positions, and the permutation problem</h2>
+  <p class="lede">Top: the sinusoidal positional encoding, one column per
+  position and one row per coordinate (blue positive, gold negative). Bottom:
+  one self-attention layer applied to <em>the film was not good</em> and to a
+  shuffle of it. Under each token, its output vector drawn as eight bars. Each
+  step draws a new shuffle. Without positions, every token's output is the
+  same in both orders — only the order of the outputs changes.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div id="ps-pe"></div>
+      <div id="ps-perm"></div>
+      <div class="narrate" id="ps-say"></div>
+      <div class="toolbar" id="ps-bar"></div>
+    </div>
+    <aside class="side" id="ps-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      $$\mathrm{PE}(pos, 2m) = \sin\frac{pos}{10000^{2m/d}},$$
+      $$\mathrm{PE}(pos, 2m+1) = \cos\frac{pos}{10000^{2m/d}} .$$
+      <p>Why order is invisible without it: shuffling the rows of $\mathbf X$
+      is $\mathbf P\mathbf X$ for a permutation matrix $\mathbf P$, with
+      $\mathbf P^{\mathsf T}\mathbf P = \mathbf I$. Then
+      $\mathbf Q\mathbf K^{\mathsf T}$ becomes $\mathbf P\mathbf Q\mathbf K^{\mathsf T}\mathbf P^{\mathsf T}$
+      — the same scores, rows and columns permuted alike — and a softmax
+      along each row does not care in what order its entries come, so</p>
+      $$\begin{aligned}\mathrm{Attn}(\mathbf P\mathbf X) &= \mathbf P\,\mathrm{softmax}\Bigl(\tfrac{\mathbf Q\mathbf K^{\mathsf T}}{\sqrt{d_k}}\Bigr)\mathbf P^{\mathsf T}\,\mathbf P\mathbf V\\ &= \mathbf P\,\mathrm{Attn}(\mathbf X).\end{aligned}$$
+      <p>A mean over positions, which a classifier head reads, is then
+      identical for every order.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>Without positions, the largest difference between a token's output
+        in the two orders is 0 to rounding ($10^{-16}$), shuffle after
+        shuffle, and so is the difference of the mean-pooled vectors.</li>
+        <li>With positions added, the same token gets a different output in a
+        different place, and the mean-pooled vectors differ: the model can now
+        tell the two sentences apart.</li>
+        <li>In the heat map, the top rows oscillate fast along the positions
+        and the bottom rows slowly: each pair of rows is a sine and cosine of
+        one frequency.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Step a few times with positions off and read the two differences in
+        the side panel: both stay at rounding level.</li>
+        <li>Tick <em>add positional encoding</em> and step again: both
+        differences are now between about 0.3 and 4 — fifteen orders of
+        magnitude above rounding.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 18 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  function randMat(R, rows, cols, sd) {
+    return A.range(rows).map(function () { return A.range(cols).map(function () { return R.n(0, sd); }); });
+  }
+  // Row-wise softmax of scores already divided by sqrt(d_k); -Infinity entries get weight 0.
+  function softmaxRow(s) {
+    var m = -Infinity;
+    s.forEach(function (v) { if (v > m) m = v; });
+    var e = s.map(function (v) { return v === -Infinity ? 0 : Math.exp(v - m); }), t = A.sum(e);
+    return e.map(function (v) { return v / t; });
+  }
+  // Sinusoidal positional encoding of width d.
+  function PE(pos, d) {
+    var out = [];
+    for (var m = 0; m < d / 2; m++) {
+      var w = 1 / Math.pow(10000, 2 * m / d);
+      out.push(Math.sin(pos * w), Math.cos(pos * w));
+    }
+    return out;
+  }
+  // Andrew's monotone chain: the convex hull of 2-D points, counter-clockwise.
+  function hull(P) {
+    var p = P.slice().sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+    function cross(o, a, b) { return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]); }
+    var lo = [], up = [];
+    p.forEach(function (q) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); });
+    p.slice().reverse().forEach(function (q) { while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); });
+    return lo.slice(0, -1).concat(up.slice(0, -1));
+  }
+
+  /* ======================================================================
+     1 · Scaled dot-product attention
+     ====================================================================== */
+  (function () {
+    var TOK = ["the", "film", "was", "not", "good"], T = TOK.length, DK = 2;
+    var R = A.rng(46);
+    var X = randMat(R, T, 4, 1);
+    var WQ = randMat(R, DK, 4, 0.7), WK = randMat(R, DK, 4, 0.7), WV = randMat(R, DK, 4, 0.7);
+    var Kk = X.map(function (x) { return A.matvec(WK, x); });
+    var V = X.map(function (x) { return A.matvec(WV, x); });
+    var S = { mask: false, qs: 1 }, st, pl;
+
+    function Q(i) { return A.matvec(WQ, X[i]).map(function (v) { return S.qs * v; }); }
+    function rowOf(i) {
+      var q = Q(i), s = Kk.map(function (k) { return A.dot(q, k); });
+      var ss = s.map(function (v, j) { return S.mask && j > i ? -Infinity : v / Math.sqrt(DK); });
+      var w = softmaxRow(ss), z = [0, 0];
+      w.forEach(function (wj, j) { z[0] += wj * V[j][0]; z[1] += wj * V[j][1]; });
+      return { q: q, s: s, ss: ss, w: w, z: z };
+    }
+
+    function extent(pts) {
+      var m = 0;
+      pts.forEach(function (p) { m = Math.max(m, Math.abs(p[0]), Math.abs(p[1])); });
+      return Math.ceil(m * 1.15 * 2) / 2;
+    }
+    var allQ = A.range(T).map(function (i) { return A.matvec(WQ, X[i]); });
+    var eK = extent(Kk.concat(allQ)), eV = extent(V);
+
+    var plots = A.$("#at-plots");
+    var pK = A.plot(plots, { x: [-eK, eK], y: [-eK, eK], w: 420, h: 380, equal: true, xlabel: "coordinate 1", ylabel: "coordinate 2",
+                             caption: "Keys k_j (circles) and the query q_i (arrow)", zero: true });
+    var pV = A.plot(plots, { x: [-eV, eV], y: [-eV, eV], w: 420, h: 380, equal: true, xlabel: "coordinate 1", ylabel: "coordinate 2",
+                             caption: "Values v_j (triangles) and the output z_i (square)", zero: true });
+    var tab = A.canvas("#at-table", { w: 900, h: 190 });
+
+    var side = A.$("#at-side");
+    A.check(side, { label: "Causal mask (decoder): $j \\le i$ only", value: false,
+                    onChange: function (v) { S.mask = v; pl.restart(); } });
+    A.slider(side, { label: "Query scale", min: 0.25, max: 4, value: 1, log: true,
+                     fmt: function (v) { return fmt(v, 2) + "×"; },
+                     hint: "Multiplies $\\mathbf W_Q$, and with it every score.",
+                     onInput: function (v) { S.qs = v; render(); } });
+    var ro = A.readout(side, [["i", "query $i$"], ["sq", "$\\sqrt{d_k}$"], ["sum", "$\\sum_j w_{ij}$"],
+                              ["top", "largest weight"], ["z", "$\\mathbf z_i$"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "key k_j" }, { line: "arrow", label: "query q_i" },
+                    { shape: "tri", cls: "pt c1", label: "value v_j" }, { shape: "sq", cls: "pt c2", label: "output z_i" },
+                    { swatch: "fill-math", label: "convex hull of the values" }]);
+    var say = A.narrate("#at-say");
+
+    function reset() { st = { i: 0 }; }
+    function step() { st.i++; return st.i < T - 1; }
+
+    function render() {
+      var i = st.i, r = rowOf(i), q = r.q;
+      // Keys and query.
+      pK.clear();
+      var qn = A.norm(q), u = qn > 1e-12 ? [q[0] / qn, q[1] / qn] : [1, 0], L = eK * 3;
+      pK.line(-L * u[0], -L * u[1], L * u[0], L * u[1], "line thin muted dot");
+      Kk.forEach(function (k, j) {
+        var t = A.dot(k, u);
+        pK.line(k[0], k[1], t * u[0], t * u[1], "line thin muted dash");
+      });
+      Kk.forEach(function (k, j) {
+        var dim = S.mask && j > i;
+        pK.dot(k[0], k[1], { r: 6, cls: "pt c0" + (dim ? " dim" : "") });
+        pK.text(k[0], k[1], TOK[j], { dx: 8, dy: -6, cls: "lbl" });
+      });
+      // A query longer than the plot is drawn shortened, and says so.
+      var fit = Math.min(1, 0.95 * eK / Math.max(Math.abs(q[0]), Math.abs(q[1]), 1e-12)), qa = [q[0] * fit, q[1] * fit];
+      pK.arrow(0, 0, qa[0], qa[1]);
+      pK.text(qa[0], qa[1], "q" + (i + 1) + (fit < 1 ? " (shortened)" : ""), { dx: 6, dy: 14, cls: "lbl-math" });
+
+      // Values, hull, output.
+      pV.clear();
+      pV.poly(hull(V), "fill-math", "data", { opacity: 0.12 });
+      V.forEach(function (v, j) {
+        if (r.w[j] > 1e-6) pV.line(v[0], v[1], r.z[0], r.z[1], "line math", "data", { opacity: Math.max(0.12, r.w[j]), "stroke-width": 1 + 5 * r.w[j] });
+      });
+      V.forEach(function (v, j) {
+        pV.dot(v[0], v[1], { shape: "tri", r: 6, cls: "pt c1" });
+        pV.text(v[0], v[1], TOK[j], { dx: 8, dy: -6, cls: "lbl" });
+      });
+      pV.dot(r.z[0], r.z[1], { shape: "sq", r: 6, cls: "pt c2", layer: "over" });
+      pV.text(r.z[0], r.z[1], "z" + (i + 1), { dx: 8, dy: 14, cls: "lbl-math" });
+
+      // The numbers for this row, and the whole weight matrix.
+      tab.clear();
+      var g = tab.g, x0 = 150, cw = 74;
+      TOK.forEach(function (t, j) { tab.text(x0 + cw * j + cw / 2, 18, t + " (j=" + (j + 1) + ")", "axis-label", "middle"); });
+      var rows = [["s_ij = q_i·k_j", r.s.map(function (v) { return fmt(v, 2); })],
+                  ["s_ij / √d_k", r.ss.map(function (v) { return v === -Infinity ? "−∞" : fmt(v, 2); })],
+                  ["w_ij = softmax", r.w.map(function (v) { return fmt(v, 3); })]];
+      rows.forEach(function (rw, k) {
+        var yy = 46 + 28 * k;
+        tab.text(8, yy, rw[0], "lbl");
+        rw[1].forEach(function (s, j) {
+          if (k === 2) A.el("rect", { x: x0 + cw * j + 4, y: yy - 15, width: cw - 8, height: 21, class: "fill-primary", opacity: 0.08 + 0.6 * r.w[j] }, g);
+          tab.text(x0 + cw * j + cw / 2, yy, s, "lbl mono", "middle");
+        });
+      });
+      tab.text(8, 140, "z_i = Σ_j w_ij v_j = (" + fmt(r.z[0], 3) + ", " + fmt(r.z[1], 3) + ")", "lbl mono");
+      tab.text(8, 166, "row sum Σ_j w_ij = " + fmt(A.sum(r.w), 6), "lbl-sm");
+      // Heat map of w: rows done so far.
+      var hx = 560, hy = 30, c = 28;
+      tab.text(hx + c * T / 2, 16, "weights w_ij (row i = query)", "lbl-sm", "middle");
+      for (var a = 0; a < T; a++) {
+        tab.text(hx - 6, hy + c * a + c / 2 + 4, TOK[a], "lbl-sm", "end");
+        var ra = a <= i ? rowOf(a) : null;
+        for (var b = 0; b < T; b++) {
+          A.el("rect", { x: hx + c * b, y: hy + c * a, width: c - 2, height: c - 2, class: ra ? "fill-primary" : "fill-soft",
+                         opacity: ra ? 0.06 + 0.9 * ra.w[b] : 1 }, g);
+          if (ra) A.el("text", { x: hx + c * b + c / 2 - 1, y: hy + c * a + c / 2 + 3, "text-anchor": "middle", "font-size": 11,
+                                 class: ra.w[b] > 0.45 ? "fill-card" : "fill-ink", text: fmt(ra.w[b], 2).replace(/^0/, "") }, g);
+        }
+      }
+      A.el("rect", { x: hx - 2, y: hy + c * i - 2, width: c * T + 2, height: c + 2, class: "halo" }, g);
+      for (b = 0; b < T; b++) tab.text(hx + c * b + c / 2 - 1, hy + c * T + 14, TOK[b], "lbl-sm", "middle");
+
+      var jb = A.argmax(r.w);
+      ro.set("i", (i + 1) + " (" + TOK[i] + ")");
+      ro.set("sq", fmt(Math.sqrt(DK), 3));
+      ro.set("sum", fmt(A.sum(r.w), 6), "good");
+      ro.set("top", fmt(r.w[jb], 3) + " on " + TOK[jb]);
+      ro.set("z", "(" + fmt(r.z[0], 2) + ", " + fmt(r.z[1], 2) + ")");
+
+      var sorted = r.s.map(function (v, j) { return [v, j]; }).filter(function (p) { return !(S.mask && p[1] > i); })
+                      .sort(function (p1, p2) { return p2[0] - p1[0]; });
+      say.say("<span class='k'>Query " + (i + 1) + " (" + TOK[i] + ").</span> " +
+              "Scores " + K("s_{" + (i + 1) + "j} = (" + r.s.map(function (v, j) { return S.mask && j > i ? "\\cdot" : fmt(v, 2); }).join(",\\ ") + ")") +
+              ", highest for <em>" + TOK[sorted[0][1]] + "</em>. Divided by √2 ≈ 1.414" +
+              " and passed through softmax they give weights summing to 1, the largest " + fmt(r.w[jb], 3) +
+              ". The output " + K("\\mathbf z_{" + (i + 1) + "} = (" + fmt(r.z[0], 2) + ",\\ " + fmt(r.z[1], 2) + ")") +
+              " is that weighted average of the values." + (i === 0 ? " Press <em>Step</em> for the next query." : ""));
+    }
+
+    pl = A.player("#at-bar", { step: step, reset: reset, render: render, fps: 1, unit: "query" });
+  })();
+
+  /* ======================================================================
+     2 · Positions, and the permutation problem
+     ====================================================================== */
+  (function () {
+    var TOK = ["the", "film", "was", "not", "good"], T = TOK.length, D = 16, DK = 8;
+    var R = A.rng(184);
+    var E = TOK.map(function () { return A.range(D).map(function () { return R.n(0, 1); }); });
+    var WQ = randMat(R, DK, D, 0.25), WK = randMat(R, DK, D, 0.25), WV = randMat(R, DK, D, 0.5);
+    var S = { pe: false }, st, pl;
+
+    // One self-attention layer on the sequence of token indices `order`.
+    function attend(order) {
+      var X = order.map(function (t, pos) {
+        var p = PE(pos, D);
+        return E[t].map(function (v, k) { return S.pe ? v + p[k] : v; });
+      });
+      var Qm = X.map(function (x) { return A.matvec(WQ, x); }), Km = X.map(function (x) { return A.matvec(WK, x); });
+      var Vm = X.map(function (x) { return A.matvec(WV, x); });
+      return Qm.map(function (q) {
+        var w = softmaxRow(Km.map(function (k) { return A.dot(q, k) / Math.sqrt(DK); })), z = A.range(DK).map(function () { return 0; });
+        w.forEach(function (wj, j) { for (var k = 0; k < DK; k++) z[k] += wj * Vm[j][k]; });
+        return z;
+      });
+    }
+    function meanOf(Z) { return A.range(DK).map(function (k) { return A.mean(Z.map(function (z) { return z[k]; })); }); }
+    function dist(a, b) { return Math.sqrt(a.reduce(function (s, v, k) { return s + (v - b[k]) * (v - b[k]); }, 0)); }
+
+    // The heat map of the encoding itself: 40 positions by 32 coordinates.
+    var NP = 60, DD = 32;
+    var hm = A.canvas("#ps-pe", { w: 900, h: 230, caption: "Sinusoidal encoding, d = 32: blue positive, gold negative, stronger = larger |value|" });
+    (function () {
+      var g = hm.g, x0 = 60, cw = 13.5, ch = 5.6, y0 = 12;
+      for (var pos = 0; pos < NP; pos++) {
+        var p = PE(pos, DD);
+        for (var k = 0; k < DD; k++)
+          A.el("rect", { x: x0 + cw * pos, y: y0 + ch * k, width: cw - 0.3, height: ch - 0.2,
+                         class: p[k] >= 0 ? "fill-primary" : "fill-gold", opacity: Math.abs(p[k]) }, g);
+        if (pos % 10 === 0) hm.text(x0 + cw * pos + cw / 2, y0 + ch * DD + 14, String(pos), "tick", "middle");
+      }
+      hm.text(x0 + cw * NP / 2, y0 + ch * DD + 30, "position", "axis-label", "middle");
+      hm.text(x0 - 6, y0 + 6, "dim 0", "lbl-sm", "end");
+      hm.text(x0 - 6, y0 + ch * DD - 2, "dim 31", "lbl-sm", "end");
+    })();
+
+    var cv = A.canvas("#ps-perm", { w: 900, h: 250 });
+    var side = A.$("#ps-side");
+    A.check(side, { label: "Add positional encoding", value: false, onChange: function (v) { S.pe = v; render(); } });
+    var ro = A.readout(side, [["perm", "shuffled order"], ["tok", "worst token difference"],
+                              ["mean", "mean-pooled difference"]]);
+    A.h("p", { class: "hint", html: "Differences are Euclidean norms: for each token, " +
+               "$\\lVert\\mathbf z^{\\text{orig}} - \\mathbf z^{\\text{shuf}}\\rVert$, the largest over the five tokens; " +
+               "then the same for the two means.", style: "margin:0;font-size:0.74rem" }, side);
+    A.legend(side, [{ swatch: "fill-primary", label: "positive" }, { swatch: "fill-gold", label: "negative" },
+                    { swatch: "box on", label: "the same token in both rows" }]);
+    var say = A.narrate("#ps-say");
+
+    function reset() { st = { perm: [4, 0, 1, 2, 3], k: 0, seed: 0 }; }
+    function step() {
+      st.k++;
+      var p;
+      do { p = A.rng(700 + st.seed++).shuffle(A.range(T)); } while (p.every(function (v, i) { return v === i; }));
+      st.perm = p;
+      return st.k < 400;
+    }
+
+    function glyph(g, x, y, z, scale) {
+      // Eight bars up (positive) or down (negative) from a baseline.
+      A.el("line", { x1: x - 2, x2: x + 8 * 9 + 2, y1: y, y2: y, class: "axis" }, g);
+      z.forEach(function (v, k) {
+        var hgt = A.clamp(v * scale, -34, 34);
+        A.el("rect", { x: x + k * 9, y: hgt >= 0 ? y - hgt : y, width: 7, height: Math.abs(hgt), class: v >= 0 ? "fill-primary" : "fill-gold" }, g);
+      });
+    }
+
+    function render() {
+      var orig = A.range(T), shuf = st.perm;
+      var Zo = attend(orig), Zs = attend(shuf);
+      var g = cv.g, x0 = 100, cw = 125, sc = 28;
+      cv.clear();
+      var rowsY = [62, 172];
+      [[orig, Zo, "original"], [shuf, Zs, "shuffled"]].forEach(function (row, r) {
+        var y = rowsY[r];
+        cv.text(8, y - 30, row[2], "axis-label");
+        row[0].forEach(function (t, pos) {
+          var x = x0 + cw * pos;
+          A.el("rect", { x: x - 6, y: y - 52, width: 86, height: 22, rx: 3, class: "box" + (t === shuf[0] ? " on" : "") }, g);
+          cv.text(x + 37, y - 37, TOK[t], "lbl", "middle");
+          glyph(g, x, y + 4, row[1][pos], sc);
+        });
+        var mx = x0 + cw * T + 20;
+        cv.text(mx + 37, y - 37, "mean", "lbl", "middle");
+        glyph(g, mx, y + 4, meanOf(row[1]), sc);
+      });
+      A.el("line", { x1: x0 + cw * T + 8, x2: x0 + cw * T + 8, y1: 10, y2: 240, class: "zero" }, g);
+
+      // Match each token's output across the two orders.
+      var worst = 0;
+      shuf.forEach(function (t, pos) { worst = Math.max(worst, dist(Zo[t], Zs[pos])); });
+      var dm = dist(meanOf(Zo), meanOf(Zs));
+      ro.set("perm", shuf.map(function (t) { return TOK[t]; }).join(" "));
+      ro.set("tok", sig(worst, 2), worst < 1e-9 ? "good" : "");
+      ro.set("mean", sig(dm, 2), dm < 1e-9 ? "good" : "");
+
+      say.say("<span class='k'>" + (st.k ? "Shuffle " + st.k : "Start") + ".</span> The shuffled sentence is <em>" +
+              shuf.map(function (t) { return TOK[t]; }).join(" ") + "</em>. " +
+              (S.pe ? "With positions added, <em>" + TOK[shuf[0]] + "</em> (outlined) now sits at position " + 1 +
+                      " instead of " + (shuf[0] + 1) + ", so its input vector — and its output — differ: the largest per-token difference is " +
+                      sig(worst, 2) + ", and the mean-pooled vectors differ by " + sig(dm, 2) + ". The model can tell the orders apart."
+                    : "Without positions, each token's output is the same in both rows — the largest difference is " + sig(worst, 2) +
+                      ", rounding — and the outputs have merely moved with their tokens. The mean-pooled vectors differ by " + sig(dm, 2) +
+                      ": a classifier reading them cannot tell the two sentences apart."));
+    }
+
+    pl = A.player("#ps-bar", { step: step, reset: reset, render: render, fps: 1.5, unit: "shuffle" });
+  })();
+})();
+</script>
+</body>
+</html>

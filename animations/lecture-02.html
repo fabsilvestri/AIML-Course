@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecture 2 · The end-to-end project — Animations</title>
+<meta name="description" content="Interactive animations for Lecture 2 of Applications of Machine Learning: why a test score used to choose a model is optimistic, what stratified sampling buys over a random split, and what the correlation coefficient cannot see.">
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../lib/katex/dist/katex.min.css">
+<link rel="stylesheet" href="kit/anim.css">
+<script src="../lib/katex/dist/katex.min.js"></script>
+<script src="../lib/katex/dist/contrib/auto-render.min.js"></script>
+<script src="kit/anim.js"></script>
+</head>
+<body>
+
+<header class="topbar"><div class="inner">
+  <a class="home" href="../index.html">Applications of Machine Learning</a>
+  <nav>
+    <a href="../slides/lecture-02.html">Lecture 2 slides</a>
+    <a href="../index.html#lectures">All lectures</a>
+  </nav>
+</div></header>
+
+<main>
+<div class="hero">
+  <p class="kicker">Lecture 2 · Animations</p>
+  <h1>The end-to-end project</h1>
+  <p>Three ways a number can mislead before any model is any good: a test
+  score that was used to choose, a split that does not represent the data, and
+  a correlation coefficient read as more than it measures. Each widget repeats
+  an experiment many times, because each of these failures is about what
+  happens <em>across</em> repetitions, not on one. Press <strong>Step</strong>
+  for one more repetition and read what happened.</p>
+  <p class="note">All data on this page is synthetic, generated in your browser
+  from a fixed seed, so <em>Reset</em> always gives back the same picture.</p>
+  <ul class="toc">
+    <li><a href="#select">1 · Choosing on the test set</a></li>
+    <li><a href="#strat">2 · Random against stratified splits</a></li>
+    <li><a href="#corr">3 · What the correlation coefficient sees</a></li>
+  </ul>
+</div>
+
+<!-- ======================================================================
+     1 · Choosing on the test set
+     ====================================================================== -->
+<section class="anim" id="select">
+  <h2><span class="num">1</span>Choosing on the test set</h2>
+  <p class="lede">A model chosen by its test score, run many times. $N$ candidate
+  models are scored on one test set of $n$ instances, and the best score is
+  reported. Every candidate here has <strong>no skill at all</strong>: each
+  prediction is a fair coin, so every true accuracy is exactly $0.5$. The
+  chosen candidate is then scored once more on a fresh test set. Each
+  <em>Step</em> is one complete experiment.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div id="se-exp"></div>
+      <div class="viz-row" id="se-plots"></div>
+      <div class="narrate" id="se-say"></div>
+      <div class="toolbar" id="se-bar"></div>
+    </div>
+    <aside class="side" id="se-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>Candidate $j$ gets $K_j \sim \mathrm{Binomial}(n, \tfrac12)$ test
+      instances right, independently of the others, so its score $K_j/n$ has
+      mean $\tfrac12$. The reported score is $M = \max_j K_j/n$. With $F$ the
+      binomial distribution function, independence gives
+      $P(nM &lt; k) = F(k-1)^N$, and for a count $Z \ge 0$,
+      $E[Z] = \sum_{k \ge 1} P(Z \ge k)$, so</p>
+      $$E[M] = \frac1n\sum_{k=1}^{n}\Big(1 - F(k-1)^N\Big).$$
+      <p>This is the dashed curve. It grows with $N$, because $F(k-1)^N$
+      falls as $N$ grows. The fresh score uses instances that played no part
+      in the choice, so its mean is $\tfrac12$ whatever was chosen.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The reported mean settles near the exact $E[M] = 0.593$ for
+        $N = 20$, $n = 100$, while the fresh mean settles near $0.5$, the
+        truth.</li>
+        <li>Which candidate wins is pure chance. Nothing about the winner is
+        better; it was luckier on these $n$ instances.</li>
+        <li>The gap is a statement about repetitions. In a single experiment
+        the fresh score can even beat the reported one.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Set $N = 1$: no choice is made, and the two histograms become the
+        same distribution, centred on $0.5$.</li>
+        <li>Set $N = 5$, say five values of one hyperparameter:
+        $E[M] = 0.558$ on 100 instances. Then $N = 200$: $0.636$, from
+        coin flips.</li>
+        <li>With $N = 20$, raise $n$ to 1,000: $E[M]$ falls to $0.530$. A
+        larger test set shrinks the bias, but never removes it.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     2 · Random against stratified
+     ====================================================================== -->
+<section class="anim" id="strat">
+  <h2><span class="num">2</span>Random against stratified splits</h2>
+  <p class="lede">A synthetic population of districts with a median income
+  each, cut into income bands as in the deck: below 1.5, 1.5–3, 3–4.5,
+  4.5–6, and above 6. Each <em>Step</em> draws a 20% test set twice: once
+  purely at random, once stratified on the band. The left plot shows how far
+  each band's share of the test set is from its share of the whole
+  population; the right plot keeps the worst band of every draw.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="st-plots"></div>
+      <div class="narrate" id="st-say"></div>
+      <div class="toolbar" id="st-bar"></div>
+    </div>
+    <aside class="side" id="st-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      <p>Band $k$ holds $n_k$ of the $m$ districts, a share $q_k = n_k/m$.
+      A test set of $T = f m$ districts with $c_k$ from band $k$ has share
+      $\hat q_k = c_k/T$, and the error shown is
+      $100\,(\hat q_k - q_k)/q_k$ per cent.</p>
+      <p>Drawn at random, $c_k$ is hypergeometric, with mean $T q_k$ and
+      variance $T q_k(1-q_k)\frac{m-T}{m-1}$. So the relative error has
+      standard deviation about $\sqrt{(1-q_k)(1-f)/(f\,m\,q_k)}$: worst for
+      the smallest band, and shrinking like $1/\sqrt m$.</p>
+      <p>Stratified, $c_k$ is $f n_k$ rounded to a whole number (largest
+      remainders, so that $\sum_k c_k = T$). The only error left is the
+      rounding.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The random split's worst band is most often the smallest one,
+        below 1.5, with about 4% of the districts: in 191 of the first 300
+        draws.</li>
+        <li>The stratified split lands on the same proportions on every draw:
+        which districts it picks changes, how many from each band does
+        not.</li>
+        <li>The random split's worst-band error is usually a few per cent, and
+        now and then far more. One draw cannot tell you which you got.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>Shrink the population to 2,000 districts: the random split's
+        errors roughly triple, as $1/\sqrt m$ says ($\sqrt{10} \approx 3.2$).</li>
+        <li>Raise the number of bands to 10: every band is smaller, so the
+        random split gets worse, while the stratified one stays within
+        rounding.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     3 · What r sees
+     ====================================================================== -->
+<section class="anim" id="corr">
+  <h2><span class="num">3</span>What the correlation coefficient sees</h2>
+  <p class="lede">Pearson's $r$ for a growing sample. On the left, the data as
+  they are, with the means $\bar x$ and $\bar y$ dashed. On the right, the
+  same points in standard units: $r$ is the average of the products
+  $z_x z_y$, so a point in the shaded top-right or bottom-left quarter pushes
+  $r$ up (blue circle) and a point in the other two pulls it down (gold
+  triangle). <em>Step</em> adds one point.</p>
+
+  <div class="stage">
+    <div class="viz">
+      <div class="viz-row" id="co-plots"></div>
+      <div class="narrate" id="co-say"></div>
+      <div class="toolbar" id="co-bar"></div>
+    </div>
+    <aside class="side" id="co-side"></aside>
+  </div>
+
+  <div class="panels">
+    <div class="panel math">
+      <span class="panel-title">The mathematics</span>
+      $$r = \frac{\sum_i (x_i-\bar x)(y_i-\bar y)}{\sqrt{\sum_i (x_i-\bar x)^2\,\sum_i (y_i-\bar y)^2}},$$
+      $$r = \frac1m\sum_i z_{x,i}\,z_{y,i},$$
+      <p>with $z_{x,i} = (x_i - \bar x)/s_x$ and $s_x$ the standard deviation
+      with divisor $m$ (likewise for $y$). Replacing $y$ by $b\,y + c$ with
+      $b &gt; 0$ leaves every $z_{y,i}$, and so $r$, unchanged: $r$ cannot
+      see the slope. If $y = b x$ exactly, every $z_{y,i} = z_{x,i}$ and
+      $r = \frac1m\sum_i z_{x,i}^2 = 1$.</p>
+      <p>The points are drawn in mirror pairs, $x$ and $-x$ (on the circle,
+      $\phi$ and $-\phi$). With an even $m$ on the parabola, $\bar x = 0$ and
+      the two points of a pair share $y$, so their products $z_x z_y$ are
+      equal and opposite.</p>
+    </div>
+    <div class="panel watch">
+      <span class="panel-title">Watch for</span>
+      <ul>
+        <li>The right-hand picture does not change when you move the slope
+        slider with the noise at 0. Neither does $r$.</li>
+        <li>On the parabola every point has a mirror image in the
+        neighbouring quarter: their products cancel, and $r$ is exactly 0
+        whenever $m$ is even, although $y$ is a function of $x$.</li>
+        <li>With few points $r$ jumps about; it settles as $m$ grows. A
+        correlation is a measurement on a sample, with a spread.</li>
+      </ul>
+    </div>
+    <div class="panel try">
+      <span class="panel-title">Try this</span>
+      <ol>
+        <li>On the line, set the noise to 0, then the slope to 0.01 and to
+        100: $r = 1.000$ both times. Inches against nanometres.</li>
+        <li>Switch to the parabola with noise 0 and step: $y$ is exactly
+        $x^2$, and $r$ reads $0.000$ at every even $m$. The circle does the
+        same.</li>
+        <li>Play to 150 points on the line with noise 0.5, then slide the
+        slope from 1 down to 0.1: the relationship is the same shape, but $r$
+        falls from $0.71$ to $0.01$. With the noise fixed, a shallower line
+        accounts for less of $y$'s spread; $r$ measures that, not how steep
+        the line is.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="page">
+  Applicazioni Informatiche del Machine Learning · Sapienza Università di Roma ·
+  Lecture 2 animations. Synthetic data; every widget runs in your browser.
+</footer>
+
+
+<script>
+(function () {
+  "use strict";
+  var A = AIML, fmt = A.fmt, sig = A.sig, K = A.k;
+
+  // Counts of the values falling in each of nb equal bins of [lo, hi).
+  function hist(vals, lo, hi, nb) {
+    var c = A.range(nb).map(function () { return 0; });
+    vals.forEach(function (v) {
+      var b = Math.floor((v - lo) / (hi - lo) * nb);
+      if (b >= 0 && b < nb) c[b]++;
+    });
+    return c;
+  }
+
+  /* ======================================================================
+     1 · Choosing on the test set
+     ====================================================================== */
+  (function () {
+    var S = { N: 20, n: 100 }, st, pl, R;
+
+    // E[max of N iid Binomial(n, 1/2)] / n, by the tail-sum formula.
+    function expectedMax(N, n) {
+      var lf = [0];
+      for (var i = 1; i <= n; i++) lf.push(lf[i - 1] + Math.log(i));
+      var F = [], c = 0;
+      for (var k = 0; k <= n; k++) {
+        c += Math.exp(lf[n] - lf[k] - lf[n - k] - n * Math.LN2);
+        F.push(Math.min(1, c));
+      }
+      var e = 0;
+      for (k = 1; k <= n; k++) e += 1 - Math.pow(F[k - 1], N);
+      return e / n;
+    }
+    // One candidate with no skill, scored on n instances: n fair coins.
+    function score(n) { var s = 0; for (var i = 0; i < n; i++) if (R.u() < 0.5) s++; return s / n; }
+
+    var pE = A.plot("#se-exp", { x: [0.2, 1], y: [0, 1], w: 760, h: 150, yticks: [], xlabel: "accuracy",
+                                 margin: { l: 104, r: 16, t: 8, b: 40 } });
+    pE.text(0.2, 0.72, "test set, all N", { anchor: "end", dx: -10, dy: 4, cls: "lbl-sm", layer: "axes" });
+    pE.text(0.2, 0.22, "fresh test set", { anchor: "end", dx: -10, dy: 4, cls: "lbl-sm", layer: "axes" });
+    var plots = A.$("#se-plots");
+    var histHost = A.h("div", null, plots), pH;
+    var pC = A.plot(plots, { x: [0, 3], y: [0.5, 0.8], w: 420, h: 300, xticks: [0, 1, 2, 3], xfmt: A.pow10,
+                             xlabel: "candidates N", ylabel: "expected reported accuracy", yticks: [0.5, 0.6, 0.7, 0.8],
+                             caption: "E[M] against N, for this n (exact)" });
+
+    var side = A.$("#se-side");
+    A.slider(side, { label: "Candidates $N$", min: 1, max: 200, value: S.N, log: true,
+                     fmt: function (v) { return String(Math.round(v)); },
+                     onInput: function (v) { S.N = Math.round(v); pl.restart(); } });
+    A.slider(side, { label: "Test set size $n$", min: 20, max: 1000, value: S.n, log: true,
+                     fmt: function (v) { return String(Math.round(v)); },
+                     onInput: function (v) { S.n = Math.round(v); pl.restart(); } });
+    var ro = A.readout(side, [["k", "experiments"], ["rep", "mean reported"], ["fresh", "mean fresh"],
+                              ["exp", "exact $E[M]$"], ["gap", "reported − fresh"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0 hollow", label: "a candidate's test score" },
+                    { shape: "circle", cls: "pt c0", label: "the one reported" }, { shape: "tri", cls: "pt c1", label: "its fresh score" },
+                    { line: "line ok dash", label: "true accuracy, 0.5" }, { swatch: "fill-acc", label: "reported, all experiments" },
+                    { swatch: "fill-primary", label: "fresh, all experiments" }]);
+    var say = A.narrate("#se-say");
+
+    function buildHist() {
+      A.clear(histHost);
+      pH = A.plot(histHost, { x: [0.2, 1], y: [0, 1.05], w: 420, h: 300, yticks: [], xlabel: "accuracy",
+                              caption: "Every experiment so far: reported and fresh" });
+    }
+    function reset() {
+      R = A.rng(11);
+      st = { rep: [], fresh: [], last: null, E: expectedMax(S.N, S.n) };
+      buildHist();
+    }
+    function step() {
+      var sc = A.range(S.N).map(function () { return score(S.n); });
+      var best = A.argmax(sc), fr = score(S.n);
+      st.last = { sc: sc, best: best, fresh: fr };
+      st.rep.push(sc[best]); st.fresh.push(fr);
+      return st.rep.length < 5000;
+    }
+
+    function render() {
+      var L = st.last, k = st.rep.length;
+      pE.clear();
+      pE.line(0.5, 0, 0.5, 1, "line ok dash thin");
+      if (L) {
+        var J = A.rng(5);
+        L.sc.forEach(function (v, j) {
+          if (j !== L.best) pE.dot(v, 0.58 + 0.3 * J.u(), { r: 3.5, cls: "pt c0 hollow" });
+        });
+        pE.dot(L.sc[L.best], 0.72, { r: 6, cls: "pt c0" });
+        pE.arrow(L.sc[L.best], 0.62, L.fresh, 0.32, { cls: "arrow" });
+        pE.dot(L.fresh, 0.22, { r: 6.5, shape: "tri", cls: "pt c1" });
+      }
+
+      pH.clear();
+      var nb = 40, hr = hist(st.rep, 0.2, 1, nb), hf = hist(st.fresh, 0.2, 1, nb);
+      var top = Math.max(1, Math.max.apply(null, hr.concat(hf)));
+      for (var b = 0; b < nb; b++) {
+        var x0 = 0.2 + 0.8 * b / nb, x1 = x0 + 0.8 / nb;
+        if (hf[b]) pH.rect(x0, 0, x1, hf[b] / top, "fill-primary", "data", { "fill-opacity": 0.45 });
+        if (hr[b]) pH.rect(x0, 0, x1, hr[b] / top, "fill-acc", "data", { "fill-opacity": 0.45 });
+      }
+      pH.line(0.5, 0, 0.5, 1.05, "line ok dash thin");
+      if (k) {
+        pH.line(A.mean(st.rep), 0, A.mean(st.rep), 1.05, "line acc thin");
+        pH.line(A.mean(st.fresh), 0, A.mean(st.fresh), 1.05, "line thin");
+      }
+
+      pC.clear();
+      var pts = A.linspace(0, 3, 61).map(function (lg) { return [lg, expectedMax(Math.round(Math.pow(10, lg)), S.n)]; });
+      pC.path(pts, "line acc dash thin");
+      pC.line(0, 0.5, 3, 0.5, "line ok dash thin");
+      pC.dot(Math.log10(S.N), st.E, { r: 5, shape: "diamond", cls: "pt c2" });
+      if (k) pC.dot(Math.log10(S.N), A.mean(st.rep), { r: 4, cls: "pt c0" });
+      pC.text(Math.log10(S.N), st.E, "E[M] = " + fmt(st.E, 3), { dx: 9, dy: -8, cls: "lbl-sm" });
+
+      ro.set("k", String(k));
+      ro.set("rep", k ? fmt(A.mean(st.rep), 3) : "—", "bad");
+      ro.set("fresh", k ? fmt(A.mean(st.fresh), 3) : "—", "good");
+      ro.set("exp", fmt(st.E, 4));
+      ro.set("gap", k ? fmt(A.mean(st.rep) - A.mean(st.fresh), 3) : "—");
+
+      if (!L) {
+        say.say("<span class='k'>Ready.</span> " + S.N + " candidates, each a fair coin, will be scored on the same " + S.n +
+                " test instances. Every one has true accuracy 0.5. The best score is expected to be " + K("E[M] = " + fmt(st.E, 3)) +
+                ". Press <em>Step</em> to run one experiment.");
+      } else {
+        say.say("<span class='k'>Experiment " + k + ".</span> The best of " + S.N + " test scores is candidate " + (L.best + 1) + ", with " +
+                fmt(L.sc[L.best], 3) + (S.N > 1 ? " (the worst scored " + fmt(Math.min.apply(null, L.sc), 3) + ")" : "") +
+                ". On a fresh test set the same candidate scores " + fmt(L.fresh, 3) + ". Over " + k + " experiment" + (k > 1 ? "s" : "") +
+                ", the reported score averages " + fmt(A.mean(st.rep), 3) + " and the fresh one " + fmt(A.mean(st.fresh), 3) +
+                "; the truth is 0.5 for every candidate.");
+      }
+    }
+
+    pl = A.player("#se-bar", { step: step, reset: reset, render: render, fps: 6, unit: "experiment" });
+  })();
+
+  /* ======================================================================
+     2 · Random against stratified splits
+     ====================================================================== */
+  (function () {
+    var MMAX = 100000, F = 0.2, G = A.rng(1), income = [];
+    // Median incomes, lognormal with median 3.5 (tens of thousands of dollars).
+    for (var i = 0; i < MMAX; i++) income.push(3.5 * Math.exp(0.47 * G.n()));
+    var S = { m: 20640, B: 5 }, cat, nk, st, pl, R, range, xmax;
+
+    function cuts() { return A.linspace(1.5, 6, S.B - 1); }
+    function bandName(k) {
+      var c = cuts();
+      if (k === 0) return "below " + fmt(c[0], c[0] % 1 ? 2 : 1);
+      if (k === S.B - 1) return "above " + fmt(c[S.B - 2], 2);
+      return fmt(c[k - 1], 2) + "–" + fmt(c[k], 2);
+    }
+    function build() {
+      var c = cuts();
+      cat = new Int8Array(S.m); nk = A.range(S.B).map(function () { return 0; });
+      for (var i = 0; i < S.m; i++) {
+        var k = 0;
+        while (k < c.length && income[i] >= c[k]) k++;
+        cat[i] = k; nk[k]++;
+      }
+      // Axis ranges from the sampling spread of the smallest band.
+      var T = Math.round(F * S.m), q = Math.min.apply(null, nk) / S.m;
+      var sd = 100 * Math.sqrt((1 - q) * (S.m - T) / (T * q * (S.m - 1)));
+      range = Math.max(5, Math.ceil(3.2 * sd / 5) * 5);
+      xmax = Math.max(5, Math.ceil(4 * sd / 5) * 5);
+      A.clear(A.$("#st-plots"));
+      pBand = A.plot("#st-plots", { x: [-0.5, S.B - 0.5], y: [-range, range], w: 460, h: 330, xticks: [], ylabel: "error in band share (%)",
+                                    caption: "This draw: each band's share, test against population", margin: { l: 56, r: 10, t: 12, b: 56 } });
+      pDist = A.plot("#st-plots", { x: [0, xmax], y: [0, 1], w: 420, h: 330, yticks: [], xlabel: "worst band's |error| (%)",
+                                    caption: "Every draw so far: the worst band", margin: { l: 80, r: 14, t: 12, b: 44 } });
+      for (var k = 0; k < S.B; k++) {
+        pBand.text(k, -range, bandName(k), { anchor: "middle", dy: 16, cls: "lbl-sm", layer: "axes" });
+        pBand.text(k, -range, A.pct(nk[k] / S.m, 1), { anchor: "middle", dy: 30, cls: "lbl-sm", layer: "axes" });
+      }
+      pDist.text(0, 0.73, "random", { anchor: "end", dx: -8, dy: 4, cls: "lbl-sm", layer: "axes" });
+      pDist.text(0, 0.27, "stratified", { anchor: "end", dx: -8, dy: 4, cls: "lbl-sm", layer: "axes" });
+    }
+    var pBand, pDist;
+
+    // Test counts per band for a random 20% sample: a partial Fisher-Yates.
+    function randomCounts() {
+      var T = Math.round(F * S.m), idx = new Int32Array(S.m), c = A.range(S.B).map(function () { return 0; });
+      for (var i = 0; i < S.m; i++) idx[i] = i;
+      for (i = 0; i < T; i++) {
+        var j = i + Math.floor(R.u() * (S.m - i)), t = idx[i]; idx[i] = idx[j]; idx[j] = t;
+        c[cat[idx[i]]]++;
+      }
+      return c;
+    }
+    // Stratified: f * n_k rounded by largest remainders, so the total is T.
+    function stratCounts() {
+      var T = Math.round(F * S.m), ex = nk.map(function (n) { return F * n; });
+      var c = ex.map(Math.floor), left = T - A.sum(c);
+      var order = A.range(S.B).sort(function (a, b) { return (ex[b] - c[b]) - (ex[a] - c[a]); });
+      for (var i = 0; i < left; i++) c[order[i]]++;
+      return c;
+    }
+    function errors(c) {
+      var T = A.sum(c);
+      return c.map(function (ck, k) { var q = nk[k] / S.m; return 100 * (ck / T - q) / q; });
+    }
+    function worst(e) { var k = 0; e.forEach(function (v, j) { if (Math.abs(v) > Math.abs(e[k])) k = j; }); return k; }
+
+    var side = A.$("#st-side");
+    A.slider(side, { label: "Population $m$", min: 1000, max: MMAX, step: 20, value: S.m,
+                     fmt: function (v) { return Math.round(v).toLocaleString("en-GB"); },
+                     onInput: function (v) { S.m = Math.round(v); build(); pl.restart(); } });
+    A.slider(side, { label: "Income bands", min: 2, max: 10, step: 1, value: S.B,
+                     fmt: function (v) { return String(v); },
+                     hint: "Cut points evenly spaced from 1.5 to 6; five bands is the deck's choice.",
+                     onInput: function (v) { S.B = Math.round(v); build(); pl.restart(); } });
+    var ro = A.readout(side, [["k", "draws"], ["T", "test set size"], ["rw", "random: worst band, this draw"],
+                              ["rmed", "random: median of worst"], ["rmax", "random: worst so far"], ["sw", "stratified: worst band"]]);
+    A.legend(side, [{ swatch: "fill-primary", label: "random split" }, { swatch: "fill-gold", label: "stratified split" },
+                    { shape: "circle", cls: "pt c0", label: "one random draw" }, { shape: "tri", cls: "pt c1", label: "one stratified draw" }]);
+    var say = A.narrate("#st-say");
+
+    function reset() { R = A.rng(42); st = { hr: [], hs: [], er: null, es: errors(stratCounts()) }; }
+    function step() {
+      st.er = errors(randomCounts());
+      st.es = errors(stratCounts());
+      st.hr.push(Math.abs(st.er[worst(st.er)]));
+      st.hs.push(Math.abs(st.es[worst(st.es)]));
+      return st.hr.length < 2000;
+    }
+    function median(a) { var s = a.slice().sort(function (x, y) { return x - y; }); return s.length ? s[Math.floor((s.length - 1) / 2)] : NaN; }
+
+    function render() {
+      pBand.clear(); pDist.clear();
+      pBand.line(-0.5, 0, S.B - 0.5, 0, "zero");
+      for (var k = 0; k < S.B; k++) {
+        if (st.er) pBand.rect(k - 0.36, 0, k - 0.02, A.clamp(st.er[k], -range, range), "fill-primary", "data", { "fill-opacity": 0.8 });
+        pBand.rect(k + 0.02, 0, k + 0.36, A.clamp(st.es[k], -range, range), "fill-gold", "data", { "fill-opacity": 0.9 });
+      }
+      var J = A.rng(9);
+      st.hr.forEach(function (v) { pDist.dot(Math.min(v, xmax), 0.6 + 0.26 * J.u(), { r: 3, cls: "pt c0", extra: { "fill-opacity": 0.5 } }); });
+      st.hs.forEach(function (v) { pDist.dot(Math.min(v, xmax), 0.14 + 0.26 * J.u(), { r: 3.5, shape: "tri", cls: "pt c1" }); });
+      if (st.hr.length) {
+        var md = median(st.hr);
+        pDist.line(md, 0.52, md, 0.94, "line ink thin");
+        pDist.text(md, 0.94, "median " + fmt(md, 1) + "%", { anchor: "middle", dy: -3, cls: "lbl-sm" });
+      }
+
+      var T = Math.round(F * S.m), n = st.hr.length, sw = st.es[worst(st.es)];
+      ro.set("k", String(n));
+      ro.set("T", T.toLocaleString("en-GB"));
+      ro.set("rw", st.er ? fmt(Math.abs(st.er[worst(st.er)]), 2) + "%" : "—");
+      ro.set("rmed", n ? fmt(median(st.hr), 2) + "%" : "—");
+      ro.set("rmax", n ? fmt(Math.max.apply(null, st.hr), 2) + "%" : "—", "bad");
+      ro.set("sw", fmt(Math.abs(sw), 2) + "%", "good");
+
+      if (!st.er) {
+        say.say("<span class='k'>Ready.</span> " + S.m.toLocaleString("en-GB") + " districts in " + S.B + " bands; the smallest, " + bandName(A.argmax(nk.map(function (v) { return -v; }))) +
+                ", holds " + Math.min.apply(null, nk).toLocaleString("en-GB") + ". The gold bars are already fixed: stratifying takes " + K("f n_k") +
+                " rounded from each band, whatever the seed. Press <em>Step</em> for a random draw.");
+      } else {
+        var w = worst(st.er);
+        say.say("<span class='k'>Draw " + n + ".</span> The random test set's worst band is " + bandName(w) + ", whose share is " +
+                (st.er[w] > 0 ? "over" : "under") + "-represented by " + fmt(Math.abs(st.er[w]), 2) + "%. The stratified test set's worst band is off by " +
+                fmt(Math.abs(sw), 2) + "% — rounding, the same on every draw. Over " + n + " random draws, the worst-band error has median " +
+                fmt(median(st.hr), 2) + "% and has reached " + fmt(Math.max.apply(null, st.hr), 2) + "%.");
+      }
+    }
+
+    build();
+    pl = A.player("#st-bar", { step: step, reset: reset, render: render, fps: 6, unit: "draw" });
+  })();
+
+  /* ======================================================================
+     3 · What the correlation coefficient sees
+     ====================================================================== */
+  (function () {
+    var MMAX = 150, M0 = 5, G = A.rng(21), U = [], E = [];
+    // Points come in mirror pairs, u and 1 - u: x and -x on the line and the
+    // parabola, the angle and its reflection on the circle.
+    for (var i = 0; i < MMAX; i += 2) { var u0 = G.u(); U.push(u0, 1 - u0); E.push(G.n(), G.n()); }
+    var S = { kind: "line", b: 1, sd: 0.5 }, st, pl, pRaw, pZ;
+
+    // The i-th point: the same uniform draw and the same noise draw whatever
+    // the settings, so a slider changes the relationship, not the sample.
+    function point(i) {
+      var u = U[i], e = S.sd * E[i];
+      if (S.kind === "line") { var x = 2 * u - 1; return [x, S.b * x + e]; }
+      if (S.kind === "parab") { x = 2 * u - 1; return [x, S.b * x * x + e]; }
+      var a = 2 * Math.PI * u;
+      return [Math.cos(a), S.b * Math.sin(a) + e];
+    }
+    function stats(P) {
+      var m = P.length, xs = P.map(function (p) { return p[0]; }), ys = P.map(function (p) { return p[1]; });
+      var mx = A.mean(xs), my = A.mean(ys), sx = A.std(xs), sy = A.std(ys);
+      var z = P.map(function (p) { return [(p[0] - mx) / sx, (p[1] - my) / sy]; });
+      var prod = z.map(function (q) { return q[0] * q[1]; });
+      return { m: m, mx: mx, my: my, sx: sx, sy: sy, z: z, prod: prod, r: sy > 0 ? A.mean(prod) : NaN };
+    }
+
+    function build() {
+      var all = A.range(MMAX).map(point);
+      var ys = all.map(function (p) { return p[1]; }), lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+      var pad = Math.max(1e-6, (hi - lo) * 0.08);
+      A.clear(A.$("#co-plots"));
+      pRaw = A.plot("#co-plots", { x: [-1.15, 1.15], y: [lo - pad, hi + pad], w: 420, h: 380, xlabel: "x", ylabel: "y",
+                                   margin: { l: 64, r: 14, t: 14, b: 44 }, caption: "The data, in their own units" });
+      pZ = A.plot("#co-plots", { x: [-3, 3], y: [-3, 3], w: 400, h: 380, equal: true, xlabel: "x in standard units", ylabel: "y in standard units",
+                                 caption: "Standard units: r is the mean of the products" });
+    }
+
+    var side = A.$("#co-side");
+    A.seg(side, { label: "Relationship", value: "line", options: [["line", "line"], ["parab", "parabola"], ["circle", "circle"]],
+                  hint: "Line $y = bx$, parabola $y = bx^2$ (with $x$ uniform on $[-1, 1]$), circle $(\\cos\\phi,\\ b\\sin\\phi)$; then noise is added to $y$.",
+                  onChange: function (v) { S.kind = v; build(); render(); } });
+    A.slider(side, { label: "Slope $b$", min: 0.01, max: 100, value: S.b, log: true,
+                     fmt: function (v) { return sig(v, 2); }, onInput: function (v) { S.b = v; build(); render(); } });
+    A.slider(side, { label: "Noise $\\sigma$", min: 0, max: 2, step: 0.05, value: S.sd,
+                     fmt: function (v) { return fmt(v, 2); }, onInput: function (v) { S.sd = v; build(); render(); } });
+    var ro = A.readout(side, [["m", "points $m$"], ["r", "$r$"], ["pos", "sum of positive $z_x z_y$"], ["neg", "sum of negative $z_x z_y$"],
+                              ["sl", "least-squares slope"]]);
+    A.legend(side, [{ shape: "circle", cls: "pt c0", label: "product positive: pushes r up" },
+                    { shape: "tri", cls: "pt c1", label: "product negative: pulls r down" },
+                    { line: "line muted dash", label: "means $\\bar x$, $\\bar y$" }]);
+    var say = A.narrate("#co-say");
+
+    function reset() { st = { m: M0 }; }
+    function step() { st.m++; return st.m < MMAX; }
+
+    function render() {
+      var P = A.range(st.m).map(point), s = stats(P);
+      var X = pRaw.x.domain, Y = pRaw.y.domain;
+      pRaw.clear(); pZ.clear();
+      pRaw.line(s.mx, Y[0], s.mx, Y[1], "line thin muted dash");
+      pRaw.line(X[0], s.my, X[1], s.my, "line thin muted dash");
+      pZ.rect(0, 0, 3.5, 3.5, "fill-primary", "data", { "fill-opacity": 0.08 });
+      pZ.rect(-3.5, -3.5, 0, 0, "fill-primary", "data", { "fill-opacity": 0.08 });
+      pZ.line(-3.5, 0, 3.5, 0, "zero"); pZ.line(0, -3.5, 0, 3.5, "zero");
+      P.forEach(function (p, i) {
+        var pos = s.prod[i] >= 0, last = i === P.length - 1;
+        var d = { shape: pos ? "circle" : "tri", cls: "pt " + (pos ? "c0" : "c1"), r: last ? 6 : 4 };
+        pRaw.dot(p[0], p[1], d);
+        pZ.dot(s.z[i][0], s.z[i][1], d);
+        if (last) { pRaw.dot(p[0], p[1], { r: 10, cls: "halo", layer: "over" }); pZ.dot(s.z[i][0], s.z[i][1], { r: 10, cls: "halo", layer: "over" }); }
+      });
+
+      var pos = A.sum(s.prod.filter(function (v) { return v > 0; })), neg = A.sum(s.prod.filter(function (v) { return v < 0; }));
+      var slope = s.sx > 0 ? s.r * s.sy / s.sx : NaN;
+      ro.set("m", String(s.m));
+      ro.set("r", fmt(s.r, 3));
+      ro.set("pos", fmt(pos, 2));
+      ro.set("neg", fmt(neg, 2));
+      ro.set("sl", sig(slope, 3));
+
+      var last = s.prod[s.m - 1];
+      say.say("<span class='k'>" + s.m + " points.</span> " + K("r = \\tfrac{1}{" + s.m + "}\\sum z_x z_y = (" + fmt(pos, 2) + " " + (neg < 0 ? "-" : "+") + " " + fmt(Math.abs(neg), 2) + ")/" + s.m + " = " + fmt(s.r, 3)) +
+              ". The newest point (ringed) has " + K("z_x z_y = " + fmt(last, 2)) + (last >= 0 ? ", pushing " : ", pulling ") + K("r") + (last >= 0 ? " up" : " down") +
+              ". The least-squares slope is " + sig(slope, 3) + " while " + K("r = " + fmt(s.r, 3)) +
+              (S.kind === "line" ? "." : S.kind === "parab" ? ": " + K("y") + " depends on " + K("x") + " through " + K("x^2") + ", which no straight line can follow." :
+               ": a circle has no linear trend at all.") + (st.m === M0 ? " Press <em>Step</em> to add a point." : ""));
+    }
+
+    build();
+    pl = A.player("#co-bar", { step: step, reset: reset, render: render, fps: 6, unit: "point" });
+  })();
+})();
+</script>
+</body>
+</html>

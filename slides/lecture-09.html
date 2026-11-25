@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/favicon-180.png">
+  <meta name="theme-color" content="#0b3d62">
+<title>Lecture 9 — ML system design interview: harmful content detection</title>
+
+<link rel="stylesheet" href="../lib/reveal.js/dist/reset.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/reveal.css">
+<link rel="stylesheet" href="../lib/reveal.js/dist/theme/white.css" id="theme">
+<link rel="stylesheet" href="../lib/reveal.js/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="../lib/reveal-menu/menu.css">
+<link rel="stylesheet" href="../lib/reveal-chalkboard/style.css">
+<link rel="stylesheet" href="../assets/css/custom.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+
+<section class="title-slide" data-menu-title="Title">
+  <h1>ML system design interview</h1>
+  <p class="subtitle">Harmful content detection on a social platform</p>
+  <p><span class="badge badge-lec">Lecture 9</span>
+     <span class="badge badge-notes">Mock interview</span></p>
+  <p class="meta">
+    Applications of Machine Learning<br>
+    BSc Mathematics of Artificial Intelligence &middot; Third year
+  </p>
+  <aside class="notes">Run it as an interview, not a lecture. You are the
+  interviewer; the class, in pairs, is the candidate. At every "Your turn"
+  slide, stop and let them write before showing the strong answer.</aside>
+</section>
+
+
+<section data-menu-title="Where we are">
+  <h2>Where we are</h2>
+  <p class="small">Eight lectures built every piece a production system
+  needs. Today they are put together under interview conditions.</p>
+  <table class="smaller">
+    <tr><th>The piece</th><th>Where we saw it</th></tr>
+    <tr><td>Framing a task, a baseline to beat, the end-to-end pipeline</td><td>Lectures 1&ndash;2</td></tr>
+    <tr><td>Precision, recall, thresholds as decisions, honest splits</td><td>Lecture 3</td></tr>
+    <tr><td>Probabilities, log loss, calibration</td><td>Lecture 4</td></tr>
+    <tr><td>Trees and ensembles on tabular data; rare positives and resampling</td><td>Lecture 5</td></tr>
+    <tr><td>Clustering, anomalies, where to spend a few labels</td><td>Lecture 6</td></tr>
+    <tr><td>Networks, output layers and losses, a training loop in PyTorch</td><td>Lectures 7&ndash;8</td></tr>
+  </table>
+  <p class="small fix">Nothing new is needed to design a real system. What is
+  new is doing it out loud, in order, with trade-offs.</p>
+</section>
+
+
+<section data-menu-title="Today">
+  <h2>Today</h2>
+  <ol>
+    <li><strong>The format</strong> &mdash; what an ML system design interview
+        is, and how it is scored</li>
+    <li><strong>The prompt</strong> &mdash; detect harmful content on a social
+        platform</li>
+    <li><strong>Nine steps</strong> &mdash; at each one you answer first, in
+        pairs; then a strong answer, and the red flags an interviewer writes
+        down</li>
+    <li><strong>The whole system</strong> on one slide, the follow-up
+        questions, and how to practise</li>
+  </ol>
+  <p class="small muted">There is no notebook today: an interview is a
+  whiteboard and a conversation.</p>
+</section>
+
+
+<section data-menu-title="The format">
+  <h2>What an ML system design interview is</h2>
+  <ul class="tight small">
+    <li>A standard round for machine learning engineers and applied scientists
+        at Meta, Google, Amazon, Microsoft, Apple and most companies that ship
+        models</li>
+    <li>One open-ended prompt &mdash; &ldquo;design the system that &hellip;&rdquo;
+        &mdash; and a whiteboard. There is no single right answer</li>
+    <li><strong>The candidate drives.</strong> The interviewer plays the product
+        manager: answers questions, adds constraints, and pushes on whatever
+        looks weak</li>
+    <li>It tests whether you can turn a vague business problem into a system
+        that works, can be measured, and can be run</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">What it is not</span>
+    A quiz on the newest architecture. Candidates who open with &ldquo;I would
+    fine-tune a large model&rdquo; are usually marked down: they have answered
+    a question nobody asked yet.
+  </div>
+</section>
+
+
+<section data-menu-title="How it is scored">
+  <h2>How it is scored</h2>
+  <table class="smaller">
+    <tr><th>Signal</th><th>A weak answer</th><th>A strong answer</th></tr>
+    <tr><td>Framing</td><td>&ldquo;Train a classifier&rdquo;</td><td>asks what the output is used for, and what each mistake costs</td></tr>
+    <tr><td>Metrics</td><td>accuracy, or AUC alone</td><td>the metric the decision needs, offline and online</td></tr>
+    <tr><td>Data</td><td>assumes clean labels exist</td><td>says where labels come from, and how they are biased</td></tr>
+    <tr><td>Modelling</td><td>names the biggest model</td><td>a baseline first, and a reason for every step up</td></tr>
+    <tr><td>Production</td><td>stops at training</td><td>serving, cost, monitoring, feedback loops</td></tr>
+    <tr><td>Communication</td><td>a list of techniques</td><td>trade-offs: &ldquo;X, because Y; Z would cost W&rdquo;</td></tr>
+  </table>
+  <p class="small fix">Every row is something this course has measured. The
+  interview checks that you reach for it without being asked.</p>
+</section>
+
+
+<section data-menu-title="The shape of an answer">
+  <h2>The shape of a good answer</h2>
+  <ol class="tight small">
+    <li><strong>Clarify</strong> the problem and its constraints</li>
+    <li><strong>Frame</strong> it as a machine learning task: input, output, decision</li>
+    <li><strong>Metrics</strong>, offline and online</li>
+    <li><strong>Data and labels</strong></li>
+    <li><strong>Features</strong></li>
+    <li><strong>The model</strong>, from baseline up</li>
+    <li><strong>Training, thresholds and offline evaluation</strong></li>
+    <li><strong>Serving</strong> at scale</li>
+    <li><strong>Launch, monitoring and iteration</strong></li>
+  </ol>
+  <p class="small fix">Cover all nine at the level of a sentence each before
+  going deep anywhere; then go deep where the interviewer pulls. Running out of
+  time at step four is the most common way to fail.</p>
+</section>
+
+
+<section data-menu-title="How we run it">
+  <h2>How we run it today</h2>
+  <ul class="tight small">
+    <li>I am the interviewer. You are the candidate, in pairs</li>
+    <li>At every <strong>Your turn</strong> slide: write your answer down before
+        the next slide &mdash; a sentence or a sketch is enough</li>
+    <li>Then a strong answer, and the red flags an interviewer would note</li>
+    <li>Say your answers as trade-offs, and say your assumptions aloud: an
+        interviewer can only credit reasoning they can hear</li>
+  </ul>
+  <div class="panel">
+    <span class="panel-title">The rule of the room</span>
+    Wrong answers are the point. The strong answer is one good answer, not the
+    only one; if yours differs, argue for it.
+  </div>
+</section>
+
+
+<section class="divider" data-menu-title="◆ The prompt">
+  <p class="kicker">The interviewer</p>
+  <h1>&ldquo;We run a social platform with billions of users. Design a
+  system that detects harmful content.&rdquo;</h1>
+  <p class="clock">What do you say first?</p>
+</section>
+
+
+<section data-menu-title="1 · Your turn">
+  <p class="kicker">Step 1 &middot; Your turn</p>
+  <h2>Before you design anything: what do you ask?</h2>
+  <p class="lead">Write down the questions you would ask the interviewer before
+  drawing a single box.</p>
+  <p class="small muted">Think about what is being detected, in what, how much
+  of it, how fast, what happens next, and what you can learn from.</p>
+</section>
+
+
+<section data-menu-title="1 · The questions">
+  <h2>Step 1 &mdash; The questions a strong candidate asks</h2>
+  <table class="smaller">
+    <tr><th>Question</th><th>Why it changes the design</th></tr>
+    <tr><td>Which harms? Violence, nudity, hate speech, harassment, self-harm, scams&hellip;</td><td>each policy is a label, a threshold and a team</td></tr>
+    <tr><td>Which content? Text, images, video, comments, live streams</td><td>the modality decides the features and the cost</td></tr>
+    <tr><td>How much, and in how many languages?</td><td>the cost of every prediction, and where the model is blind</td></tr>
+    <tr><td>Before publishing, or after?</td><td>the latency budget</td></tr>
+    <tr><td>What happens to flagged content?</td><td>the output is an action, not a label</td></tr>
+    <tr><td>What labels exist today?</td><td>everything downstream depends on it</td></tr>
+    <tr><td>Appeals, regulators, transparency reports?</td><td>what must be explained and measured</td></tr>
+  </table>
+</section>
+
+
+<section data-menu-title="1 · The answers">
+  <h2>Step 1 &mdash; What the interviewer answers</h2>
+  <ul class="tight small">
+    <li><strong>Harms:</strong> violence, nudity, hate speech, harassment and
+        self-harm, each with its own written policy</li>
+    <li><strong>Content:</strong> posts with text and images; hundreds of
+        millions a day, in dozens of languages</li>
+    <li><strong>When:</strong> check at upload within tens of milliseconds, and
+        again as a post spreads</li>
+    <li><strong>Actions:</strong> remove automatically when sure, send to a
+        human reviewer when unsure, reduce distribution in between</li>
+    <li><strong>Labels:</strong> past reviewer decisions and user reports; users
+        can appeal; a regulator expects a public report on what was removed</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Red flag</span>
+    Starting to design before asking. Second red flag: asking twenty questions
+    and never committing. Ask the few that change the design, write the
+    answers on the board as assumptions, and move on.
+  </div>
+</section>
+
+
+<section data-menu-title="2 · Your turn">
+  <p class="kicker">Step 2 &middot; Your turn</p>
+  <h2>State the machine learning task</h2>
+  <p class="lead">What goes in, what comes out, and what is the output used
+  for? One model or several?</p>
+</section>
+
+
+<section data-menu-title="2 · The framing">
+  <h2>Step 2 &mdash; Input, output, decision</h2>
+  <ul class="tight small">
+    <li><strong>Input:</strong> a post &mdash; its text and image, its author,
+        where and when it was posted</li>
+    <li><strong>Output:</strong> one probability per harm,
+        $p(\text{violence} \mid \text{post}), p(\text{hate} \mid \text{post}), \dots$
+        &mdash; <em>multi-label</em>: a post can be violent and hateful at once</li>
+    <li><strong>Decision:</strong> a separate <em>policy layer</em> turns the
+        probabilities into actions with a threshold per harm and per action</li>
+  </ul>
+  <p class="small">Post &rarr; model &rarr; one probability per harm &rarr;
+  policy layer &rarr; remove, send to review, reduce distribution, or leave</p>
+  <div class="panel panel-when">
+    <span class="panel-title">Red flag</span>
+    One softmax over the harms. A softmax makes the probabilities sum to one,
+    so a post cannot be both violent and hateful; use one sigmoid output per
+    harm. And keep the action out of the model: policies change weekly,
+    weights should not have to.
+  </div>
+</section>
+
+
+<section data-menu-title="2 · One model or many">
+  <h2>Step 2 &mdash; One model, one per harm, or one with many heads?</h2>
+  <table class="smaller">
+    <tr><th>Option</th><th>For</th><th>Against</th></tr>
+    <tr><td>One binary model, harmful or not</td><td>simplest to build</td><td>policies differ in cost; one threshold cannot serve them; the action cannot say why</td></tr>
+    <tr><td>One model per harm</td><td>independent teams and releases</td><td>many models to serve; rare harms have too few labels to learn alone</td></tr>
+    <tr class="hit"><td>One shared model, one head per harm</td><td>rare harms borrow from common ones; one pass per post</td><td>retraining couples the harms; one head&rsquo;s change must be checked on all</td></tr>
+  </table>
+  <p class="small fix">A strong candidate picks one and says what it costs:
+  &ldquo;a shared model with a head per harm, because the rare harms need the
+  shared representation; I will re-evaluate every head on every release.&rdquo;</p>
+</section>
+
+
+<section data-menu-title="3 · Your turn">
+  <p class="kicker">Step 3 &middot; Your turn</p>
+  <h2>How do you know it works?</h2>
+  <p class="lead">Name the metrics you would report offline, before launch, and
+  online, after it.</p>
+  <p class="small muted">Harmful posts are a tiny fraction of everything
+  posted. What does that do to accuracy?</p>
+</section>
+
+
+<section data-menu-title="3 · Offline metrics">
+  <h2>Step 3 &mdash; Offline: precision and recall, per harm</h2>
+  <ul class="tight small">
+    <li>Violating posts are a fraction of a percent of all posts, so
+        &ldquo;nothing is harmful&rdquo; is right almost every time:
+        <strong>accuracy is meaningless</strong></li>
+    <li>Per harm, the <strong>precision&ndash;recall curve</strong>; the area
+        under it rather than under the ROC curve, which looks excellent when
+        negatives dominate</li>
+    <li>Read it at the operating points the actions need: recall at the
+        precision required to <em>remove automatically</em>, and recall at the
+        precision reviewers can afford</li>
+    <li><strong>Calibration</strong>, because the policy layer and the queue
+        size both use the probabilities as probabilities</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Red flag</span>
+    One number for all harms. Missing self-harm and missing spam do not cost
+    the same; report each harm, and say which one you would trade for which.
+  </div>
+</section>
+
+
+<section data-menu-title="3 · Online metrics">
+  <h2>Step 3 &mdash; Online: what users actually see</h2>
+  <table class="smaller">
+    <tr><th>Metric</th><th>What it measures</th></tr>
+    <tr><td><strong>Prevalence</strong> of each harm</td><td>the share of <em>views</em> that land on violating content, estimated by having reviewers label a random sample of what was viewed</td></tr>
+    <tr><td>Proactive rate</td><td>the share of removed content caught before any user reported it</td></tr>
+    <tr><td>Appeals overturned</td><td>wrong removals: a precision signal from the field</td></tr>
+    <tr><td>Reviewer queue</td><td>how much reaches humans, and how long it waits</td></tr>
+    <tr><td>Guardrails</td><td>creators&rsquo; complaints, engagement, time to action</td></tr>
+  </table>
+  <div class="panel panel-when">
+    <span class="panel-title">Red flag</span>
+    &ldquo;Number of posts removed&rdquo; as the goal. It rewards removing
+    everything; prevalence weighted by views is what the platform owes its
+    users.
+  </div>
+</section>
+
+
+<section data-menu-title="4 · Your turn">
+  <p class="kicker">Step 4 &middot; Your turn</p>
+  <h2>Where do the labels come from &mdash; and what is wrong with them?</h2>
+  <p class="lead">List the sources of labels you can use, and one problem with
+  each.</p>
+</section>
+
+
+<section data-menu-title="4 · Label sources">
+  <h2>Step 4 &mdash; The labels, and their biases</h2>
+  <table class="smaller">
+    <tr><th>Source</th><th>Good</th><th>Wrong with it</th></tr>
+    <tr><td>Reviewer decisions</td><td>trained people, written policy</td><td>expensive; exist only for what was flagged &mdash; <em>selection bias</em></td></tr>
+    <tr><td>User reports</td><td>cheap, plentiful</td><td>noisy; mass-reporting campaigns; popular posts get reported more</td></tr>
+    <tr><td>Appeal outcomes</td><td>the hardest cases, judged twice</td><td>few; only from users who bother to appeal</td></tr>
+    <tr><td>Known-bad matches</td><td>exact copies of known images</td><td>catches only what has been seen before</td></tr>
+  </table>
+  <ul class="tight small">
+    <li>Reviewers disagree: <strong>measure agreement</strong> on a doubly
+        labelled slice; it is the ceiling for any model</li>
+    <li>Policies change, and a label is only valid for the policy it was given
+        under: <strong>store the policy version with every label</strong></li>
+  </ul>
+</section>
+
+
+<section data-menu-title="4 · Sampling and splits">
+  <h2>Step 4 &mdash; Spend labels well, and split honestly</h2>
+  <ul class="tight small">
+    <li><strong>A random sample</strong> of all traffic, labelled every week:
+        the only unbiased estimate of prevalence and of what the model misses</li>
+    <li><strong>Targeted labelling</strong> for training: the posts the model is
+        least sure about, and representatives of new clusters &mdash; where a
+        few labels buy the most, as with Lecture 6&rsquo;s forty</li>
+    <li><strong>Split by time</strong>: train on the past, validate and test on
+        later weeks, as the system will meet them</li>
+    <li><strong>Split by author</strong> and remove near-duplicate reposts across
+        the split</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Red flag</span>
+    A random split of posts. The same author&rsquo;s style and the same viral
+    image land on both sides; the model memorises them and the offline score
+    is a memory test.
+  </div>
+</section>
+
+
+<section data-menu-title="5 · Your turn">
+  <p class="kicker">Step 5 &middot; Your turn</p>
+  <h2>What does the model look at?</h2>
+  <p class="lead">Group the features you would use, and say which ones exist
+  at the moment of upload.</p>
+</section>
+
+
+<section data-menu-title="5 · Features">
+  <h2>Step 5 &mdash; Features</h2>
+  <table class="smaller">
+    <tr><th>Group</th><th>Examples</th><th>Available at upload?</th></tr>
+    <tr><td>Text</td><td>a pretrained multilingual text encoder&rsquo;s vector of the caption &mdash; opened later in the course; today a black box</td><td class="hit">yes</td></tr>
+    <tr><td>Image</td><td>a pretrained image encoder&rsquo;s vector; text read out of the image</td><td class="hit">yes</td></tr>
+    <tr><td>Author</td><td>account age, past violations, followers, verified</td><td class="hit">yes</td></tr>
+    <tr><td>Context</td><td>where it is posted, the group, the language, the hour</td><td class="hit">yes</td></tr>
+    <tr><td>Reaction</td><td>reports, shares, how fast it spreads, the comments</td><td class="miss">only later</td></tr>
+  </table>
+  <div class="panel panel-when">
+    <span class="panel-title">Red flag &mdash; leakage in time</span>
+    Training on &ldquo;number of reports&rdquo; and serving at upload, where it
+    is always zero. Compute every feature as of the moment of the decision; use
+    an upload-time model, and re-score with reaction features as they arrive.
+  </div>
+</section>
+
+
+<section data-menu-title="5 · Adversaries">
+  <h2>Step 5 &mdash; The data fights back</h2>
+  <ul class="tight small">
+    <li>Bad actors adapt: misspellings, characters swapped for look-alikes,
+        hateful text written <em>inside</em> an image, coded words that change
+        every month</li>
+    <li>Features that survive this: characters rather than whole words, text
+        read out of images, the author&rsquo;s history, the network of accounts
+        posting the same thing</li>
+    <li>A benign image with a hateful caption is harmful only in combination:
+        the model must see both together</li>
+  </ul>
+  <p class="small fix">Say this unprompted. It is what separates a candidate who
+  has run a system from one who has trained a model.</p>
+</section>
+
+
+<section data-menu-title="6 · Your turn">
+  <p class="kicker">Step 6 &middot; Your turn</p>
+  <h2>Which model &mdash; and how do you get there?</h2>
+  <p class="lead">Start from the simplest thing that could work, and say what
+  would make you move up each step.</p>
+</section>
+
+
+<section data-menu-title="6 · The progression">
+  <h2>Step 6 &mdash; From baseline to the shipped model</h2>
+  <table class="smaller">
+    <tr><th>Stage</th><th>Model</th><th>Why</th></tr>
+    <tr><td>Baseline</td><td>rules: lists of banned terms, matching against known-bad images</td><td>ships in days, explainable, the bar to beat</td></tr>
+    <tr><td>First model</td><td>logistic regression on the frozen vectors and the tabular features</td><td>fast, calibrated, a real metric to improve on</td></tr>
+    <tr><td>Tabular strength</td><td>gradient-boosted trees on the same features</td><td>interactions between author, context and content</td></tr>
+    <tr class="hit"><td>Shipped</td><td>a network: the vectors and features together &rarr; shared layers &rarr; one sigmoid head per harm</td><td>sees text and image together; rare harms share what common ones learn</td></tr>
+    <tr><td>Maybe later</td><td>fine-tuning the encoders themselves</td><td>only if the offline gain pays for the serving cost</td></tr>
+  </table>
+  <p class="small fix">Every step up is justified by the offline metric of step
+  three, measured on the split of step four.</p>
+</section>
+
+
+<section data-menu-title="6 · The network">
+  <h2>Step 6 &mdash; The shipped model, in detail</h2>
+  <ul class="tight small">
+    <li><strong>Early fusion:</strong> concatenate the text vector, the image
+        vector and the tabular features before the shared layers, so a benign
+        picture and a hateful caption are judged together. Late fusion &mdash;
+        one classifier per modality, scores combined &mdash; misses exactly
+        that case</li>
+    <li><strong>Loss:</strong> the sum over harms of binary cross-entropy, one
+        term per head, weighted so the rare harms are not drowned out</li>
+    <li><strong>Imbalance:</strong> keep every positive, sample the negatives,
+        then correct the probabilities back &mdash; the log-odds shift of
+        Lecture 5&rsquo;s advertising design exercise</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Red flag</span>
+    Class weights or resampling with no correction, then thresholds set as if
+    the outputs were probabilities. The policy layer needs calibrated
+    probabilities; check them per harm, as in Lecture 4.
+  </div>
+</section>
+
+
+<section data-menu-title="7 · Your turn">
+  <p class="kicker">Step 7 &middot; Your turn</p>
+  <h2>Before launch: how do you set the thresholds?</h2>
+  <p class="lead">Each harm needs a rule for &ldquo;remove&rdquo;, &ldquo;send to a
+  human&rdquo; and &ldquo;reduce distribution&rdquo;. Who decides, and from
+  what?</p>
+</section>
+
+
+<section data-menu-title="7 · Thresholds">
+  <h2>Step 7 &mdash; Thresholds are policy, set from the curves</h2>
+  <table class="smaller">
+    <tr><th>Band of $p(\text{harm})$</th><th>Action</th><th>Set by</th></tr>
+    <tr><td>very high</td><td>remove automatically, notify, allow appeal</td><td>the precision the policy team accepts for no human in the loop</td></tr>
+    <tr><td>high</td><td>send to a human reviewer</td><td>reviewer capacity: the expected daily volume must fit the queue</td></tr>
+    <tr><td>medium</td><td>reduce distribution while it is reviewed</td><td>the cost of spreading a harmful post against hiding a good one</td></tr>
+    <tr><td>low</td><td>leave it</td><td>&mdash;</td></tr>
+  </table>
+  <p class="small">Each band is a point on the validation precision&ndash;recall
+  curve of that harm, chosen with the policy team and signed off &mdash; as
+  Lecture 3 put it, the threshold is a decision, not a hyperparameter.</p>
+</section>
+
+
+<section data-menu-title="7 · Slices">
+  <h2>Step 7 &mdash; Evaluate where it fails, not on average</h2>
+  <ul class="tight small">
+    <li>Report every metric per language, per region, per content type, for new
+        and for established accounts</li>
+    <li>The known failure: dialects and reclaimed words flagged as hate speech
+        far more often than standard usage, so one community&rsquo;s posts are
+        removed more often for saying the same thing</li>
+    <li>Report the <strong>worst slice</strong> beside the average, and set a
+        floor that every slice must clear before launch</li>
+    <li>Read a sample of false positives and false negatives by eye before any
+        launch decision</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Red flag</span>
+    One global number. Lecture 10 is about exactly this: what a model relies
+    on, and for whom it fails.
+  </div>
+</section>
+
+
+<section data-menu-title="8 · Your turn">
+  <p class="kicker">Step 8 &middot; Your turn</p>
+  <h2>Hundreds of millions of posts a day</h2>
+  <p class="lead">Draw the path a post takes from upload to action. Where do
+  you spend the expensive computation?</p>
+</section>
+
+
+<section data-menu-title="8 · Two stages">
+  <h2>Step 8 &mdash; Serving: cheap first, expensive where it matters</h2>
+  <ul class="tight small">
+    <li><strong>Stage one, at upload, on everything:</strong> known-bad
+        matching and a small model, within the latency budget. Clearly fine:
+        publish. Clearly violating: block</li>
+    <li><strong>Stage two, in the background:</strong> the full multimodal model
+        on the uncertain posts, published meanwhile with reduced
+        distribution</li>
+    <li><strong>Re-score</strong> as reaction features arrive and as a post
+        starts to spread</li>
+    <li><strong>The review queue</strong> is ordered by expected harm:
+        probability of violation times predicted reach &mdash; the post about
+        to go viral first</li>
+  </ul>
+  <p class="small fix">Compute each post&rsquo;s text and image vectors once,
+  store them, and share them with the other systems that need them.</p>
+</section>
+
+
+<section data-menu-title="8 · Trade-offs">
+  <h2>Step 8 &mdash; The trade-offs to say out loud</h2>
+  <table class="smaller">
+    <tr><th>Decision</th><th>The trade-off</th></tr>
+    <tr><td>Check before or after publishing</td><td>safety against the delay every user feels</td></tr>
+    <tr><td>Size of the stage-one model</td><td>what it catches against what the latency budget allows</td></tr>
+    <tr><td>When the model is down</td><td>fail open (publish unchecked) or fail closed (hold every post): a policy choice, decided in advance</td></tr>
+    <tr><td>How much reaches humans</td><td>accuracy on the hard cases against cost &mdash; and against the reviewers&rsquo; wellbeing, which limits how much they can see</td></tr>
+  </table>
+</section>
+
+
+<section data-menu-title="9 · Your turn">
+  <p class="kicker">Step 9 &middot; Your turn</p>
+  <h2>You have launched. How do you know it works &mdash; and keeps
+  working?</h2>
+  <p class="lead">How do you roll it out, what do you watch, and what makes it
+  degrade?</p>
+</section>
+
+
+<section data-menu-title="9 · Launch">
+  <h2>Step 9 &mdash; Rolling it out</h2>
+  <ul class="tight small">
+    <li><strong>Shadow mode:</strong> the new model scores live traffic but takes
+        no action; compare its decisions with the reviewers&rsquo;</li>
+    <li><strong>Gradual ramp:</strong> a growing share of traffic, watching
+        prevalence, appeals overturned and the queue</li>
+    <li><strong>A/B test</strong> against the current model on prevalence and
+        appeals &mdash; but a control group cannot be left exposed to the worst
+        harms, so for those the random-sample prevalence estimate replaces a
+        pure holdout</li>
+  </ul>
+  <div class="panel panel-when">
+    <span class="panel-title">Red flag</span>
+    Launching on an offline gain alone. The model changes what is shown, what
+    users report and what reviewers see; only the live measurement counts.
+  </div>
+</section>
+
+
+<section data-menu-title="9 · Monitoring">
+  <h2>Step 9 &mdash; What makes it degrade, and what to watch</h2>
+  <table class="smaller">
+    <tr><th>Cause</th><th>What to watch, and what to do</th></tr>
+    <tr><td>New slang, new formats, news events</td><td>flag rates and input distributions per harm and language; relabel and retrain</td></tr>
+    <tr><td>Bad actors adapting</td><td>the random sample catches what the model now misses; red teams</td></tr>
+    <tr><td>The feedback loop</td><td>labels come only from what the model flagged, so it never learns its misses &mdash; keep labelling the random sample</td></tr>
+    <tr><td>A policy change</td><td>old labels become wrong; relabel under the new policy version</td></tr>
+  </table>
+  <p class="small fix">Retrain on a schedule, but only release a model that
+  beats the current one on the latest weeks and clears every slice.</p>
+</section>
+
+
+<section data-menu-title="The whole system">
+  <h2>The whole system, on one slide</h2>
+  <p class="small">Upload &rarr; stage one: known-bad matching and a small model
+  &rarr; publish, block, or publish with reduced distribution &rarr; stage two:
+  the multimodal model, one head per harm &rarr; policy layer: thresholds per
+  harm and per action &rarr; remove, send to review (ordered by probability
+  times reach), or leave &rarr; reviewers&rsquo; decisions and appeals become
+  labels &rarr; a random sample is labelled every week &rarr; retrain, test on
+  the latest weeks and on every slice &rarr; shadow, ramp, A/B test.</p>
+  <table class="smaller">
+    <tr><th>Measured by</th><th>Offline</th><th>Online</th></tr>
+    <tr><td>Each harm</td><td>precision and recall at the action thresholds; calibration; worst slice</td><td>prevalence; proactive rate; appeals overturned; queue</td></tr>
+  </table>
+</section>
+
+
+<section data-menu-title="Follow-ups">
+  <h2>The follow-up questions interviewers ask</h2>
+  <table class="smaller">
+    <tr><th>&ldquo;What if &hellip;&rdquo;</th><th>The gist of a good answer</th></tr>
+    <tr><td>a new kind of harm appears overnight?</td><td>rules and reviewers first; a new head on the shared model; targeted labelling</td></tr>
+    <tr><td>you launch in a new language?</td><td>a multilingual encoder, labels in that language, the slice measured before launch</td></tr>
+    <tr><td>bad actors misspell every word?</td><td>character-level and image-text features, adversarial examples in training</td></tr>
+    <tr><td>reviewers are overwhelmed?</td><td>order the queue by reach; act automatically only where precision allows; never just lower the bar</td></tr>
+    <tr><td>a famous account is wrongly removed?</td><td>appeals and a second review; the same rules for every account</td></tr>
+  </table>
+</section>
+
+
+<section data-menu-title="Red flags">
+  <h2>The red flags an interviewer writes down</h2>
+  <ul class="tight small">
+    <li>Designs before asking a single question &mdash; or asks and never commits</li>
+    <li>Accuracy, or one number for everything</li>
+    <li>Assumes labels are free, clean and unbiased</li>
+    <li>A random split of posts; features that exist only after the decision</li>
+    <li>Starts with the biggest model; cannot say what the baseline is</li>
+    <li>A softmax over harms that can co-occur</li>
+    <li>Stops at training: no serving path, no cost, no monitoring, no feedback loop</li>
+    <li>Lists techniques instead of choosing one and saying what it costs</li>
+  </ul>
+</section>
+
+
+<section data-menu-title="How to practise">
+  <h2>How to practise</h2>
+  <ul class="tight small">
+    <li>Take any product you use and run the nine steps on it, out loud, against
+        a clock</li>
+    <li>Say every choice as a trade-off; write assumptions on the board</li>
+    <li>Prompts in the same style: video recommendations for a streaming app;
+        the arrival time shown by a food-delivery app; ranking an e-commerce
+        site&rsquo;s search results; blocking fraudulent payments at checkout;
+        &ldquo;people you may know&rdquo;</li>
+    <li>Every lecture from here on ends with a design exercise in this format:
+        it is practice for this conversation</li>
+  </ul>
+</section>
+
+
+<section data-menu-title="Summary">
+  <h2>What we did</h2>
+  <ol class="tight smaller">
+    <li>Ran a mock ML system design interview, in the format used for machine
+        learning engineers at the large technology companies: one open prompt,
+        the candidate drives, trade-offs out loud</li>
+    <li>Clarified before designing, and framed the task as one probability per
+        harm &mdash; multi-label, sigmoid heads &mdash; with a separate policy
+        layer that turns probabilities into actions</li>
+    <li>Measured with precision and recall per harm at the action thresholds,
+        and online with prevalence weighted by views, never accuracy</li>
+    <li>Treated labels as biased evidence: random-sample labelling, targeted
+        labelling, splits by time and by author, policy versions</li>
+    <li>Built up from rules to a fused multimodal network, set thresholds as
+        policy, evaluated per slice, served in two stages, and launched through
+        shadow mode and a ramp, watching for drift, adversaries and the
+        feedback loop</li>
+  </ol>
+</section>
+
+
+<!-- BEGIN EXERCISES -->
+<section class="divider" data-menu-title="◆ Exercises · Lecture 9">
+  <p class="kicker">Not presented &mdash; for afterwards</p>
+  <h1>Exercises<br>Lecture 9</h1>
+  <p class="clock">five, in the style of the written paper</p>
+</section>
+
+<section data-menu-title="Exercises · 9">
+  <h2>Exercises &mdash; Lecture 9</h2>
+  <ul class="ex-list">
+    <li>A harmful-content model ends in one softmax over five harms. Say why this is the wrong output layer, and what replaces it. <span class="ex-marks">[4]</span></li>
+    <li>Harmful posts are a fraction of a percent of all posts. Explain why accuracy and the area under the ROC curve both mislead here, and say what you would report offline for each harm. <span class="ex-marks">[5]</span></li>
+    <li>The training labels are past reviewer decisions on posts the current system flagged. Name the bias, its consequence for the next model, and how to correct for it. <span class="ex-marks">[5]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 10&rsquo;s deck.</p>
+</section>
+
+<section data-menu-title="Exercises · 9 (2)">
+  <h2>Exercises &mdash; Lecture 9 (continued)</h2>
+  <ul class="ex-list" style="counter-reset: ex 3">
+    <li>Adding &ldquo;number of user reports&rdquo; sharply raises the offline recall of the model that checks posts at upload. Explain the gain, and say what you would do. <span class="ex-marks">[4]</span></li>
+    <li>For each harm the policy layer has three thresholds: remove automatically, send to a human reviewer, reduce distribution. Say what sets each one. <span class="ex-marks">[5]</span></li>
+  </ul>
+  <p class="ex-note">Solutions on Lecture 10&rsquo;s deck.</p>
+</section>
+
+<section class="divider" data-menu-title="◇ Solutions · Lecture 8">
+  <p class="kicker">The five set at the end of Lecture 8</p>
+  <h1>Solutions<br>Lecture 8</h1>
+  <p class="clock">not part of this lecture</p>
+</section>
+
+<section data-menu-title="Solutions · 8">
+  <h2>Solutions &mdash; Lecture 8</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>1.</strong> Reverse-mode automatic differentiation costs one sweep for all partial derivatives; forward mode costs one&hellip;</p>
+      <p class="lead"><span class="fix">Many inputs, one output &mdash; which is exactly a loss.</span></p>
+      <ul class="tight smaller">
+        <li>Forward mode&rsquo;s cost scales with the number of inputs, reverse mode&rsquo;s with the number of outputs</li>
+        <li>A neural network has millions of parameters and one scalar loss</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>2.</strong> Test accuracy on 10,000 images is computed as the plain mean of the per-batch accuracies, in batches of 384.&hellip;</p>
+      <p class="lead"><span class="fix">The last batch holds 16 images but is weighted as heavily as a full batch of 384. Count the hits over the whole set, or weight each batch by its size.</span></p>
+      <ul class="tight smaller">
+        <li>10,000 = 26 &times; 384 + 16, so there are 27 batches and the last is short</li>
+        <li>Measured, the error was 0.067 points &mdash; small here, but you cannot tell from the number whether it was</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 8 (2)">
+  <h2>Solutions &mdash; Lecture 8 (2)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>3.</strong> The five lines of the training loop are reordered so that opt.step() comes before loss.backward(). State what&hellip;</p>
+      <p class="lead"><span class="fix">Nothing raises, and the training loss stays at its starting level: the parameters are never changed.</span></p>
+      <ul class="tight smaller">
+        <li>The step is taken with the gradients zeroed at the top of the iteration</li>
+        <li>The gradients computed afterwards are cleared before they are ever used</li>
+      </ul>
+    </div>
+    <div>
+      <p class="smaller"><strong>4.</strong> A network with dropout is evaluated without calling model.eval(). Describe the symptom precisely, and the&hellip;</p>
+      <p class="lead"><span class="fix">The score wobbles between identical calls. Evaluate twice and assert the two agree.</span></p>
+      <ul class="tight smaller">
+        <li>Dropout keeps sampling masks in training mode, so the metric is a random variable</li>
+        <li>A deterministic function of fixed weights and fixed data does not change between calls</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-menu-title="Solutions · 8 (3)">
+  <h2>Solutions &mdash; Lecture 8 (3)</h2>
+  <div class="cols">
+    <div>
+      <p class="smaller"><strong>5.</strong> In the measured comparison the accelerator barely beat the CPU on the smallest network, and its lead grew as&hellip;</p>
+      <p class="lead"><span class="fix">Dispatch overhead: on a small matrix product much of each step is the cost of dispatching it, not the arithmetic. The crossover is set by how much arithmetic each batch carries &mdash; measured, near-parity at the smallest width and a clear lead at the widest.</span></p>
+      <ul class="tight smaller">
+        <li>A GPU is a machine for large matrix products, and a narrow layer at a batch of 128 is not a large one</li>
+        <li>The device pulls ahead once each batch carries enough arithmetic to cover the dispatch, and that grows with the layer widths</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<!-- END EXERCISES -->
+<section class="divider" data-menu-title="Next">
+  <p class="kicker">Lecture 10 &middot; Outside the book</p>
+  <h1>Explaining and auditing models</h1>
+  <p class="small">
+    What a model relies on: permutation importance, partial dependence,
+    Shapley values<br>
+    For whom it fails: slices, fairness criteria, proxies<br>
+    The audit a regulator will ask for
+  </p>
+</section>
+</div>
+</div>
+
+<div class="deck-footer">
+  Applications of Machine Learning
+  <span class="sep">&middot;</span> Lecture 9
+  <span class="sep">&middot;</span> ML system design interview
+</div>
+
+<script src="../assets/js/print-mode.js"></script>
+<script src="../lib/reveal.js/dist/reveal.js"></script>
+<script src="../lib/reveal.js/plugin/notes/notes.js"></script>
+<script src="../lib/reveal.js/plugin/highlight/highlight.js"></script>
+<script src="../lib/reveal.js/plugin/math/math.js"></script>
+<script src="../lib/reveal.js/plugin/search/search.js"></script>
+<script src="../lib/reveal.js/plugin/zoom/zoom.js"></script>
+<script src="../lib/reveal-menu/menu.js"></script>
+<script src="../lib/reveal-chalkboard/plugin.js"></script>
+
+<script>
+Reveal.initialize({
+  // Flush-left, fixed-top. Centring both axes swung the h2 baseline
+  // 16px-241px across the deck, and made overflow invisible.
+  center: false,
+  hash: true,
+  slideNumber: 'c/t',
+  history: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  width: 1280,
+  height: 720,
+  margin: 0.055,
+  minScale: 0.2,
+  maxScale: 2.0,
+  pdfSeparateFragments: false,
+
+  katex: {
+    local: '../lib/katex',
+    delimiters: [
+      { left: '$$',  right: '$$',  display: true  },
+      { left: '$',   right: '$',   display: false },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '\\[', right: '\\]', display: true  }
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+
+  menu: {
+    side: 'left',
+    numbers: true,
+    titleSelector: 'h1, h2, h3',
+    useTextContentForMissingTitles: false,
+    hideMissingTitles: false,
+    markers: true,
+    custom: false,
+    themes: false,
+    transitions: false,
+    openButton: true,
+    openSlideNumber: true,
+    keyboard: true
+  },
+
+  chalkboard: {
+    boardmarkerWidth: 3,
+    chalkWidth: 5,
+    chalkEffect: 0.4,
+    toggleChalkboardButton: { left: '78px', bottom: '30px', top: 'auto', right: 'auto' },
+    toggleNotesButton:      { left: '30px', bottom: '30px', top: 'auto', right: 'auto' }
+  },
+
+  customcontrols: { controls: [] },
+
+  plugins: [
+    RevealNotes,
+    RevealHighlight,
+    RevealMath.KaTeX,
+    RevealSearch,
+    RevealZoom,
+    RevealMenu,
+    RevealChalkboard
+  ]
+}).then(() => {
+  // Suppress the footer on full-bleed slides, where it is unreadable.
+  const footer = document.querySelector('.deck-footer');
+  const syncFooter = () => {
+    const s = Reveal.getCurrentSlide();
+    if (!s || !footer) return;
+    footer.classList.toggle('is-hidden',
+      s.classList.contains('divider') || s.classList.contains('title-slide'));
+  };
+  Reveal.on('slidechanged', syncFooter);
+  syncFooter();
+});
+</script>
+
+</body>
+</html>
